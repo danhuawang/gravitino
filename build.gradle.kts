@@ -3,6 +3,10 @@
  * This software is licensed under the Apache License version 2.
  */
 
+import org.gradle.internal.hash.ChecksumService
+import org.gradle.internal.os.OperatingSystem
+import org.gradle.kotlin.dsl.support.serviceOf
+
 plugins {
   `maven-publish`
   id("java")
@@ -73,6 +77,29 @@ subprojects {
 
   group = "com.datastrato.enterprise.gravitino"
   version = "$version"
+
+  java {
+    toolchain {
+      // Some JDK vendors like Homebrew installed OpenJDK 17 have problems in building trino-connector:
+      // It will cause tests of Trino-connector hanging forever on macOS, to avoid this issue and
+      // other vendor-related problems, Gravitino will use the specified AMAZON OpenJDK 17 to build
+      // Trino-connector on macOS.
+      if (project.name == "trino-connector-extension") {
+        if (OperatingSystem.current().isMacOsX) {
+          vendor.set(JvmVendorSpec.AMAZON)
+        }
+        languageVersion.set(JavaLanguageVersion.of(17))
+      } else {
+        languageVersion.set(JavaLanguageVersion.of(8))
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+      }
+    }
+  }
+
+  tasks.test {
+    useJUnitPlatform()
+  }
 }
 
 tasks.rat {
@@ -94,6 +121,9 @@ tasks.rat {
     "**/*.log",
     "**/licenses/*.txt",
     "**/licenses/*.md",
+    "gravitino-oss/integration-test/**/*.sql",
+    "gravitino-oss/integration-test/**/*.txt",
+    "gravitino-oss/docs/**/*.md",
     "gravitino-oss/integration-test/**",
     "gravitino-oss/web/.**",
     "gravitino-oss/web/next-env.d.ts",
@@ -106,8 +136,11 @@ tasks.rat {
     "gravitino-oss/web/package-lock.json",
     "gravitino-oss/web/pnpm-lock.yaml",
     "gravitino-oss/web/src/lib/icons/svg/**/*.svg",
+    "gravitino-oss/DISCLAIMER_WIP.txt",
+    "gravitino-oss/DISCLAIMER.txt",
     "**/LICENSE.*",
     "**/NOTICE.*",
+    "**/testsets/*",
     "gravitino-oss/ROADMAP.md",
     "gravitino-oss/clients/client-python/.pytest_cache/*",
     "gravitino-oss/clients/client-python/gravitino.egg-info/*",
@@ -133,4 +166,54 @@ tasks.check.get().dependsOn(tasks.rat)
 jacoco {
   toolVersion = "0.8.10"
   reportsDirectory.set(layout.buildDirectory.dir("JacocoReport"))
+}
+
+tasks {
+  val projectDir = layout.projectDirectory
+  val outputDir = projectDir.dir("distribution")
+
+  val assembleDistribution by registering(Tar::class) {
+    dependsOn("assembleTrinoConnector")
+    dependsOn("copyTrino", "build")
+    group = "gravitino distribution"
+  }
+
+  val copyTrino by registering(Copy::class) {
+    from("gravitino-oss/trino-connector/build/libs", "trino-connector-extension/build/libs")
+    destinationDir = file("$projectDir/distribution/${rootProject.name}-trino-connector")
+  }
+
+  val assembleTrinoConnector by registering(Tar::class) {
+    dependsOn(copyTrino)
+    group = "gravitino distribution"
+    finalizedBy("checksumTrinoConnector")
+    into("${rootProject.name}-trino-connector-$version") {
+      from("gravitino-oss/trino-connector/build/libs")
+      from("trino-connector-extension/build/libs")
+    }
+    compression = Compression.GZIP
+    archiveFileName.set("${rootProject.name}-trino-connector-$version.tar.gz")
+    destinationDirectory.set(projectDir.dir("distribution"))
+  }
+
+  register("checksumTrinoConnector") {
+    group = "gravitino distribution"
+    dependsOn(assembleTrinoConnector)
+    val archiveFile = assembleTrinoConnector.flatMap { it.archiveFile }
+    val checksumFile = archiveFile.map { archive ->
+      archive.asFile.let { it.resolveSibling("${it.name}.sha256") }
+    }
+    inputs.file(archiveFile)
+    outputs.file(checksumFile)
+    doLast {
+      checksumFile.get().writeText(
+        serviceOf<ChecksumService>().sha256(archiveFile.get().asFile).toString()
+      )
+    }
+  }
+
+  clean {
+    group = "gravitino distribution"
+    delete(outputDir)
+  }
 }

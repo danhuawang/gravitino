@@ -1,4 +1,4 @@
 [submodule "gravitino-oss"]
 	path = gravitino-oss
-	url = git@github.com:apache/gravitino.git
+	url = https://github.com/apache/gravitino.git
 	branch = main
