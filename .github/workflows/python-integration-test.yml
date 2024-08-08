@@ -1,0 +1,67 @@
+name: Python Client Integration Test
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    branches: [ "main", "branch-*" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # Integration test for AMD64 architecture
+  test-amd64-arch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [ 17 ]
+    env:
+      PLATFORM: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Python Client Integration Test
+        id: integrationTest
+        run: |
+          ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
+
+          cp -r -f ./distribution ./gravitino-oss
+          
+          for pythonVersion in "3.8" "3.9" "3.10" "3.11"
+          do
+            echo "Use Python version ${pythonVersion} to test the Python client."
+            ./gradlew -p gravitino-oss -PjdkVersion=${{ matrix.java-version }} -PpythonVersion=${pythonVersion} -PskipDockerTests=false :clients:client-python:test
+            # Clean Gravitino database to clean test data
+            rm -rf ./gravitino-oss/distribution/package/data
+          done
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v3
+        if: ${{ failure() && steps.integrationTest.outcome == 'failure' }}
+        with:
+          name: integrate test reports
+          path: |
+            gravitino-oss/build/reports
+            gravitino-oss/integration-test/build/integration-test.log
+            gravitino-oss/distribution/package/logs/gravitino-server.out
+            gravitino-oss/distribution/package/logs/gravitino-server.log
+            gravitino-oss/catalogs/**/*.log
+            gravitino-oss/catalogs/**/*.tar

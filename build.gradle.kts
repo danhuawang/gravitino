@@ -3,9 +3,7 @@
  * This software is licensed under the Apache License version 2.
  */
 
-import org.gradle.internal.hash.ChecksumService
 import org.gradle.internal.os.OperatingSystem
-import org.gradle.kotlin.dsl.support.serviceOf
 
 plugins {
   `maven-publish`
@@ -119,12 +117,13 @@ tasks.rat {
     "gravitino-oss/dev/docker/**/*.conf",
     "gravitino-oss/dev/docker/kerberos-hive/kadm5.acl",
     "**/*.log",
+    "**/*.out",
     "**/licenses/*.txt",
     "**/licenses/*.md",
     "gravitino-oss/integration-test/**/*.sql",
     "gravitino-oss/integration-test/**/*.txt",
     "gravitino-oss/docs/**/*.md",
-    "gravitino-oss/integration-test/**",
+    "gravitino-oss/spark-connector/spark-common/src/test/resources/**",
     "gravitino-oss/web/.**",
     "gravitino-oss/web/next-env.d.ts",
     "gravitino-oss/web/dist/**/*",
@@ -171,49 +170,91 @@ jacoco {
 tasks {
   val projectDir = layout.projectDirectory
   val outputDir = projectDir.dir("distribution")
+  val submoduleDir = projectDir.dir("gravitino-oss")
+
+  val compileDistribution by registering {
+    group = "datastrato gravitino distribution"
+    outputs.dir(projectDir.dir("distribution/package"))
+
+    dependsOn("copyOssDistribution", "copySubprojectDependencies", "copySubprojectLib")
+
+    doLast {
+      copy {
+        from(submoduleDir.dir("conf")) { into("package/conf") }
+        from(submoduleDir.dir("bin")) { into("package/bin") }
+        into(outputDir)
+        rename { fileName ->
+          fileName.replace(".template", "")
+        }
+        fileMode = 0b111101101
+      }
+
+      // Modify gravitino.sh
+      val shellFile = file(outputDir.dir("package/bin/gravitino.sh"))
+      if (shellFile.exists()) {
+        val content = shellFile.readText()
+        val updatedContent = content.replace(
+          "GRAVITINO_SERVER_NAME=org.apache.gravitino.server.GravitinoServer",
+          "GRAVITINO_SERVER_NAME=org.apache.gravitino.server.DatastratoGravitinoServer"
+        )
+        shellFile.writeText(updatedContent)
+      }
+
+      // Modify gravitino.conf
+      val confFile = file(outputDir.dir("package/conf/gravitino.conf"))
+      if (confFile.exists()) {
+        val newLine = "\n# Comma separated list of REST API packages to expand\n" +
+          "gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest\n"
+        confFile.appendText(newLine)
+      }
+    }
+  }
 
   val assembleDistribution by registering(Tar::class) {
-    dependsOn("assembleTrinoConnector")
-    dependsOn("copyTrino", "build")
-    group = "gravitino distribution"
-  }
-
-  val copyTrino by registering(Copy::class) {
-    from("gravitino-oss/trino-connector/build/libs", "trino-connector-extension/build/libs")
-    destinationDir = file("$projectDir/distribution/${rootProject.name}-trino-connector")
-  }
-
-  val assembleTrinoConnector by registering(Tar::class) {
-    dependsOn(copyTrino)
-    group = "gravitino distribution"
-    finalizedBy("checksumTrinoConnector")
-    into("${rootProject.name}-trino-connector-$version") {
-      from("gravitino-oss/trino-connector/build/libs")
-      from("trino-connector-extension/build/libs")
-    }
+    into("${rootProject.name}-$version-bin")
+    from(compileDistribution.map { it.outputs.files.single() })
     compression = Compression.GZIP
-    archiveFileName.set("${rootProject.name}-trino-connector-$version.tar.gz")
+    archiveFileName.set("${rootProject.name}-$version-bin.tar.gz")
     destinationDirectory.set(projectDir.dir("distribution"))
   }
 
-  register("checksumTrinoConnector") {
-    group = "gravitino distribution"
-    dependsOn(assembleTrinoConnector)
-    val archiveFile = assembleTrinoConnector.flatMap { it.archiveFile }
-    val checksumFile = archiveFile.map { archive ->
-      archive.asFile.let { it.resolveSibling("${it.name}.sha256") }
+  val cleanDistribution by registering(Delete::class) {
+    group = "datastrato gravitino distribution"
+    delete(outputDir)
+  }
+
+  register("copyOssDistribution", Copy::class) {
+    group = "datastrato gravitino distribution"
+    // Use OSS packages as the base directory
+    dependsOn(gradle.includedBuild("gravitino-oss").task(":compileDistribution"))
+    from(submoduleDir.dir("distribution"))
+    into(outputDir)
+  }
+
+  register("copySubprojectDependencies", Copy::class) {
+    group = "datastrato gravitino distribution"
+    dependsOn("copyOssDistribution")
+    subprojects.forEach {
+      if (!it.name.startsWith("trino")) {
+        from(it.configurations.runtimeClasspath)
+        into("distribution/package/libs")
+      }
     }
-    inputs.file(archiveFile)
-    outputs.file(checksumFile)
-    doLast {
-      checksumFile.get().writeText(
-        serviceOf<ChecksumService>().sha256(archiveFile.get().asFile).toString()
-      )
+  }
+
+  register("copySubprojectLib", Copy::class) {
+    group = "datastrato gravitino distribution"
+    dependsOn("copyOssDistribution")
+    subprojects.forEach {
+      dependsOn("${it.name}:build")
+      from("${it.name}/build/libs")
+      into("distribution/package/libs")
+      include("*.jar")
+      duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
   }
 
   clean {
-    group = "gravitino distribution"
-    delete(outputDir)
+    dependsOn(cleanDistribution)
   }
 }

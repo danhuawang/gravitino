@@ -1,0 +1,52 @@
+/*
+ * Copyright 2024 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+package com.datastrato.gravitino.dto.responses;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Preconditions;
+import java.util.Arrays;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.ToString;
+import org.apache.gravitino.dto.rel.TableDTO;
+import org.apache.gravitino.dto.responses.BaseResponse;
+
+/** Represents a response for a list of tables with their information. */
+@Getter
+@ToString
+@EqualsAndHashCode(callSuper = true)
+public class TableListResponse extends BaseResponse {
+
+  @JsonProperty("tables")
+  private final TableDTO[] tables;
+
+  /**
+   * Create a new TableListResponse.
+   *
+   * @param tables The list of tables.
+   */
+  public TableListResponse(TableDTO[] tables) {
+    super(0);
+    this.tables = tables;
+  }
+
+  /**
+   * This is the constructor that is used by Jackson deserializer to create an instance of
+   * TableListResponse.
+   */
+  public TableListResponse() {
+    super();
+    this.tables = null;
+  }
+
+  @Override
+  public void validate() throws IllegalArgumentException {
+    super.validate();
+
+    Preconditions.checkArgument(tables != null, "\"tables\" cannot be null");
+    Arrays.stream(tables)
+        .forEach(table -> Preconditions.checkArgument(table != null, "table cannot be null"));
+  }
+}

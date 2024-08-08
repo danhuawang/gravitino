@@ -1,0 +1,74 @@
+name: Flink Integration Test
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    branches: [ "main", "branch-*" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # Integration test for AMD64 architecture
+  test-amd64-arch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [ 17 ]
+    env:
+      PLATFORM: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Check required command
+        run: |
+          gravitino-oss/dev/ci/check_commands.sh
+
+      - name: Package Gravitino
+        run: |
+          ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
+
+      - name: Free up disk space
+        run: |
+          gravitino-oss/dev/ci/util_free_space.sh
+
+      - name: Copy distribution package
+        run: |
+          cp -r -f ./distribution ./gravitino-oss
+
+      - name: Flink Integration Test
+        id: integrationTest
+        run: |
+          ./gradlew -p gravitino-oss -PskipTests -PtestMode=deploy -PjdkVersion=${{ matrix.java-version }} -PskipDockerTests=false :flink-connector:test --tests "org.apache.gravitino.flink.connector.integration.test.**"
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v3
+        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
+        with:
+          name: flink-connector-integrate-test-reports-${{ matrix.java-version }}
+          path: |
+            gravitino-oss/build/reports
+            gravitino-oss/flink-connector/build/flink-connector-integration-test.log
+            gravitino-oss/flink-connector/build/*.tar
+            gravitino-oss/distribution/package/logs/gravitino-server.out
+            gravitino-oss/distribution/package/logs/gravitino-server.log
+            gravitino-oss/catalogs/**/*.log
+            gravitino-oss/catalogs/**/*.tar

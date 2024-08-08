@@ -1,0 +1,76 @@
+name: Spark Integration Test
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    branches: [ "main", "branch-*" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # Integration test for AMD64 architecture
+  test-amd64-arch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [ 17 ]
+        scala-version: [ 2.12 ]
+        test-mode: [ deploy ]
+    env:
+      PLATFORM: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Check required command
+        run: |
+          gravitino-oss/dev/ci/check_commands.sh
+
+      - name: Package Gravitino
+        if : ${{ matrix.test-mode == 'deploy' }}
+        run: |
+          ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
+
+      - name: Free up disk space
+        run: |
+          gravitino-oss/dev/ci/util_free_space.sh
+
+      - name: Copy distribution package
+        run: |
+          cp -r -f ./distribution ./gravitino-oss
+
+      - name: Spark Integration Test
+        id: integrationTest
+        run: |
+          ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PscalaVersion=${{ matrix.scala-version }} -PskipDockerTests=false :spark-connector:spark-3.4:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v3
+        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
+        with:
+          name: spark-connector-integrate-test-reports-${{ matrix.java-version }}-${{ matrix.test-mode }}
+          path: |
+            gravitino-oss/build/reports
+            gravitino-oss/spark-connector/v3.3/spark/build/spark-3.3-integration-test.log
+            gravitino-oss/spark-connector/v3.4/spark/build/spark-3.4-integration-test.log
+            gravitino-oss/spark-connector/v3.5/spark/build/spark-3.5-integration-test.log
+            gravitino-oss/distribution/package/logs/*.out
+            gravitino-oss/distribution/package/logs/*.log

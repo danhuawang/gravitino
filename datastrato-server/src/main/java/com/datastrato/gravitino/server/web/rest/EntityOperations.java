@@ -1,0 +1,289 @@
+/*
+ * Copyright 2024 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+package com.datastrato.gravitino.server.web.rest;
+
+import static org.apache.gravitino.dto.util.DTOConverters.toDTO;
+
+import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
+import com.datastrato.gravitino.dto.responses.FilesetListResponse;
+import com.datastrato.gravitino.dto.responses.SchemaListResponse;
+import com.datastrato.gravitino.dto.responses.TableListResponse;
+import com.datastrato.gravitino.dto.responses.TopicListResponse;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.DefaultValue;
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.Response;
+import org.apache.gravitino.Catalog;
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.Namespace;
+import org.apache.gravitino.catalog.CatalogDispatcher;
+import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.SchemaDispatcher;
+import org.apache.gravitino.catalog.TableDispatcher;
+import org.apache.gravitino.catalog.TopicDispatcher;
+import org.apache.gravitino.dto.AuditDTO;
+import org.apache.gravitino.dto.CatalogDTO;
+import org.apache.gravitino.dto.SchemaDTO;
+import org.apache.gravitino.dto.file.FilesetDTO;
+import org.apache.gravitino.dto.messaging.TopicDTO;
+import org.apache.gravitino.dto.rel.TableDTO;
+import org.apache.gravitino.dto.responses.CatalogListResponse;
+import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.lock.LockType;
+import org.apache.gravitino.lock.TreeLockUtils;
+import org.apache.gravitino.meta.FilesetEntity;
+import org.apache.gravitino.meta.SchemaEntity;
+import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.meta.TopicEntity;
+import org.apache.gravitino.server.web.Utils;
+import org.apache.gravitino.server.web.rest.ExceptionHandlers;
+import org.apache.gravitino.server.web.rest.OperationType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@Path("/web/entities")
+public class EntityOperations {
+
+  private static final Logger LOG = LoggerFactory.getLogger(EntityOperations.class);
+
+  @Context private HttpServletRequest httpRequest;
+
+  private final CatalogDispatcher catalogDispatcher;
+  private final DatastratoSchemaDispatcher schemaDispatcher;
+  private final DatastratoTableDispatcher tableDispatcher;
+  private final DatastratoFilesetDispatcher filesetDispatcher;
+  private final DatastratoTopicDispatcher topicDispatcher;
+
+  @Inject
+  public EntityOperations(
+      CatalogDispatcher catalogDispatcher,
+      SchemaDispatcher schemaDispatcher,
+      TableDispatcher tableDispatcher,
+      FilesetDispatcher filesetDispatcher,
+      TopicDispatcher topicDispatcher) {
+    this.catalogDispatcher = catalogDispatcher;
+    this.schemaDispatcher = (DatastratoSchemaDispatcher) schemaDispatcher;
+    this.tableDispatcher = (DatastratoTableDispatcher) tableDispatcher;
+    this.filesetDispatcher = (DatastratoFilesetDispatcher) filesetDispatcher;
+    this.topicDispatcher = (DatastratoTopicDispatcher) topicDispatcher;
+  }
+
+  @GET
+  @Produces("application/vnd.gravitino.v1+json")
+  public Response listEntities(
+      @QueryParam("namespace") Namespace namespace,
+      @QueryParam("catalogType") Catalog.Type catalogType,
+      @QueryParam("resultLimit") @DefaultValue("1000") int resultLimit) {
+    LOG.info("Received request to list entities for namespace: {}", namespace);
+    if (namespace == null || namespace.isEmpty()) {
+      return Utils.illegalArguments(
+          "Query param namespace cannot be empty", new IllegalArgumentException());
+    }
+
+    if (catalogType == null) {
+      return Utils.illegalArguments(
+          "Query param catalogType cannot be empty", new IllegalArgumentException());
+    }
+
+    if (resultLimit <= 0) {
+      return Utils.illegalArguments(
+          "Result limit should be greater than 0", new IllegalArgumentException());
+    }
+
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () ->
+              TreeLockUtils.doWithTreeLock(
+                  NameIdentifier.of(namespace.levels()),
+                  LockType.READ,
+                  () -> doList(namespace, catalogType, resultLimit)));
+    } catch (Exception e) {
+      return Utils.internalError("Error while listing entities", e);
+    }
+  }
+
+  private Response doList(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
+    switch (namespace.length()) {
+      case 1:
+        // list catalogs
+        try {
+          return listCatalogs(namespace, catalogType, resultLimit);
+        } catch (Exception e) {
+          return ExceptionHandlers.handleCatalogException(
+              OperationType.LIST, "", namespace.toString(), e);
+        }
+      case 2:
+        // list schemas
+        try {
+          return listSchemas(namespace, resultLimit);
+        } catch (Exception e) {
+          return ExceptionHandlers.handleSchemaException(
+              OperationType.LIST, "", namespace.toString(), e);
+        }
+      case 3:
+        // list tables/topics/filesets
+        switch (catalogType) {
+          case RELATIONAL:
+            try {
+              return listTables(namespace, resultLimit);
+            } catch (Exception e) {
+              return ExceptionHandlers.handleTableException(
+                  OperationType.LIST, "", namespace.toString(), e);
+            }
+          case MESSAGING:
+            try {
+              return listTopics(namespace, resultLimit);
+            } catch (Exception e) {
+              return ExceptionHandlers.handleTopicException(
+                  OperationType.LIST, "", namespace.toString(), e);
+            }
+          case FILESET:
+            try {
+              return listFilesets(namespace, resultLimit);
+            } catch (Exception e) {
+              return ExceptionHandlers.handleFilesetException(
+                  OperationType.LIST, "", namespace.toString(), e);
+            }
+          default:
+            return Utils.illegalArguments(
+                "Unsupported catalog type: " + catalogType, new IllegalArgumentException());
+        }
+      default:
+        return Utils.illegalArguments(
+            "Namespace levels should be less than 4: " + namespace, new IllegalArgumentException());
+    }
+  }
+
+  private Response listCatalogs(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
+    Catalog[] catalogs = catalogDispatcher.listCatalogsInfo(namespace);
+    CatalogDTO[] catalogDTOs =
+        Arrays.stream(catalogs)
+            .filter(catalog -> catalog.type() == catalogType)
+            .map(DTOConverters::toDTO)
+            .sorted(Comparator.comparing(CatalogDTO::name))
+            .limit(resultLimit)
+            .toArray(CatalogDTO[]::new);
+
+    Response response = Utils.ok(new CatalogListResponse(catalogDTOs));
+    LOG.info("List {} catalog entities under namespace: {}", catalogDTOs.length, namespace);
+    return response;
+  }
+
+  private Response listSchemas(Namespace namespace, int resultLimit) {
+    NameIdentifier[] schemaIdents = schemaDispatcher.listSchemas(namespace);
+    List<SchemaEntity> schemaEntities = schemaDispatcher.listEntities(namespace);
+    ImmutableMap<String, SchemaEntity> nameToEntity =
+        Maps.uniqueIndex(schemaEntities, SchemaEntity::name);
+
+    SchemaDTO[] schemaDTOs =
+        Arrays.stream(schemaIdents)
+            .sorted(Comparator.comparing(NameIdentifier::name))
+            .limit(resultLimit)
+            .map(
+                schemaIdent -> {
+                  SchemaDTO.Builder builder = SchemaDTO.builder().withName(schemaIdent.name());
+                  return Optional.ofNullable(nameToEntity.get(schemaIdent.name()))
+                      .map(s -> builder.withAudit(toDTO(s.auditInfo())).build())
+                      .orElse(builder.withAudit(AuditDTO.builder().build()).build());
+                })
+            .toArray(SchemaDTO[]::new);
+
+    Response response = Utils.ok(new SchemaListResponse(schemaDTOs));
+    LOG.info("List {} schema entities under namespace: {}", schemaDTOs.length, namespace);
+    return response;
+  }
+
+  private Response listTables(Namespace namespace, int resultLimit) {
+    NameIdentifier[] tableIdents = tableDispatcher.listTables(namespace);
+    List<TableEntity> tableEntities = tableDispatcher.listEntities(namespace);
+    ImmutableMap<String, TableEntity> nameToTableEntity =
+        Maps.uniqueIndex(tableEntities, TableEntity::name);
+
+    TableDTO[] tableDTOs =
+        Arrays.stream(tableIdents)
+            .sorted(Comparator.comparing(NameIdentifier::name))
+            .limit(resultLimit)
+            .map(
+                tableIdent -> {
+                  TableDTO.Builder builder = TableDTO.builder().withName(tableIdent.name());
+                  return Optional.ofNullable(nameToTableEntity.get(tableIdent.name()))
+                      .map(t -> builder.withAudit(toDTO(t.auditInfo())).build())
+                      .orElse(builder.withAudit(AuditDTO.builder().build()).build());
+                })
+            .toArray(TableDTO[]::new);
+
+    Response response = Utils.ok(new TableListResponse(tableDTOs));
+    LOG.info("List {} table entities under namespace: {}", tableDTOs.length, namespace);
+    return response;
+  }
+
+  private Response listTopics(Namespace namespace, int resultLimit) {
+    NameIdentifier[] topicIdents = topicDispatcher.listTopics(namespace);
+    List<TopicEntity> topicEntities = topicDispatcher.listEntities(namespace);
+    ImmutableMap<String, TopicEntity> nameToTopicEntity =
+        Maps.uniqueIndex(topicEntities, TopicEntity::name);
+
+    TopicDTO[] topicDTOs =
+        Arrays.stream(topicIdents)
+            .sorted(Comparator.comparing(NameIdentifier::name))
+            .limit(resultLimit)
+            .map(
+                topicIdent -> {
+                  TopicDTO.Builder builder = TopicDTO.builder().withName(topicIdent.name());
+                  return Optional.ofNullable(nameToTopicEntity.get(topicIdent.name()))
+                      .map(
+                          t ->
+                              builder
+                                  .withComment(t.comment())
+                                  .withAudit(toDTO(t.auditInfo()))
+                                  .build())
+                      .orElse(builder.withAudit(AuditDTO.builder().build()).build());
+                })
+            .toArray(TopicDTO[]::new);
+
+    Response response = Utils.ok(new TopicListResponse(topicDTOs));
+    LOG.info("List {} topic entities under namespace: {}", topicDTOs.length, namespace);
+    return response;
+  }
+
+  private Response listFilesets(Namespace namespace, int resultLimit) {
+    // since fileset is managed by Gravitino, we can directly list them from store
+    List<FilesetEntity> filesetEntities = filesetDispatcher.listEntities(namespace);
+    FilesetDTO[] filesetDTOs =
+        filesetEntities.stream()
+            .sorted(Comparator.comparing(FilesetEntity::name))
+            .limit(resultLimit)
+            .map(
+                e ->
+                    FilesetDTO.builder()
+                        .name(e.name())
+                        .comment(e.comment())
+                        .type(e.filesetType())
+                        .storageLocation(e.storageLocation())
+                        .properties(e.properties())
+                        .audit(toDTO(e.auditInfo()))
+                        .build())
+            .toArray(FilesetDTO[]::new);
+
+    Response response = Utils.ok(new FilesetListResponse(filesetDTOs));
+    LOG.info("List {} fileset entities under namespace: {}", filesetDTOs.length, namespace);
+    return response;
+  }
+}
