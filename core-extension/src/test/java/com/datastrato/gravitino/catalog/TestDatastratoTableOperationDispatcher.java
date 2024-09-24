@@ -310,6 +310,8 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
           TestColumn.builder().withName("col1").withType(Types.StringType.get()).build(),
           TestColumn.builder().withName("col2").withType(Types.StringType.get()).build()
         };
+    schemaOperationDispatcher.createSchema(
+        NameIdentifier.of(tableIdent.namespace().levels()), "comment", props);
 
     tableOperationDispatcher.createTable(tableIdent, columns, "comment", props, new Transform[0]);
 

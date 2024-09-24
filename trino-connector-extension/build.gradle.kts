@@ -18,7 +18,7 @@ dependencies {
   implementation(libs.commons.lang3)
   implementation(libs.guava)
 
-  implementation("org.apache.gravitino:trino-connector")
+  implementation("org.apache.gravitino:trino-connector:trino-connector")
   implementation("org.apache.gravitino:client-java-runtime")
   implementation("org.apache.gravitino:catalog-common")
 

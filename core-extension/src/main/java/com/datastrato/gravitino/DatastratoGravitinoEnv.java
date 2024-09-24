@@ -5,15 +5,19 @@
 package com.datastrato.gravitino;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoFilesetHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoSchemaHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoTableHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoTopicHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicOperationDispatcher;
 import com.datastrato.gravitino.listener.DatastratoFilesetEventDispatcher;
@@ -62,32 +66,40 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
     // initialize schema dispatcher
     DatastratoSchemaDispatcher schemaOperationDispatcher =
         new DatastratoSchemaOperationDispatcher(catalogManager(), entityStore(), idGenerator());
+    DatastratoSchemaHookDispatcher schemaHookDispatcher =
+        new DatastratoSchemaHookDispatcher(schemaOperationDispatcher);
     DatastratoSchemaDispatcher schemaNormalizeDispatcher =
-        new DatastratoSchemaNormalizeDispatcher(schemaOperationDispatcher, catalogManager());
+        new DatastratoSchemaNormalizeDispatcher(schemaHookDispatcher, catalogManager());
     datastratoSchemaDispatcher =
         new DatastratoSchemaEventDispatcher(eventBus(), schemaNormalizeDispatcher);
 
     // initialize table dispatcher
     DatastratoTableDispatcher tableOperationDispatcher =
         new DatastratoTableOperationDispatcher(catalogManager(), entityStore(), idGenerator());
+    DatastratoTableHookDispatcher tableHookDispatcher =
+        new DatastratoTableHookDispatcher(tableOperationDispatcher);
     DatastratoTableDispatcher tableNormalizeDispatcher =
-        new DatastratoTableNormalizeDispatcher(tableOperationDispatcher, catalogManager());
+        new DatastratoTableNormalizeDispatcher(tableHookDispatcher, catalogManager());
     datastratoTableDispatcher =
         new DatastratoTableEventDispatcher(eventBus(), tableNormalizeDispatcher);
 
     // initialize fileset dispatcher
     DatastratoFilesetDispatcher filesetOperationDispatcher =
         new DatastratoFilesetOperationDispatcher(catalogManager(), entityStore(), idGenerator());
+    DatastratoFilesetDispatcher filesetHookDispatcher =
+        new DatastratoFilesetHookDispatcher(filesetOperationDispatcher);
     DatastratoFilesetDispatcher filesetNormalizeDispatcher =
-        new DatastratoFilesetNormalizeDispatcher(filesetOperationDispatcher, catalogManager());
+        new DatastratoFilesetNormalizeDispatcher(filesetHookDispatcher, catalogManager());
     datastratoFilesetDispatcher =
         new DatastratoFilesetEventDispatcher(eventBus(), filesetNormalizeDispatcher);
 
     // initialize topic dispatcher
     DatastratoTopicDispatcher topicOperationDispatcher =
         new DatastratoTopicOperationDispatcher(catalogManager(), entityStore(), idGenerator());
+    DatastratoTopicHookDispatcher topicHookDispatcher =
+        new DatastratoTopicHookDispatcher(topicOperationDispatcher);
     DatastratoTopicDispatcher topicNormalizeDispatcher =
-        new DatastratoTopicNormalizeDispatcher(topicOperationDispatcher, catalogManager());
+        new DatastratoTopicNormalizeDispatcher(topicHookDispatcher, catalogManager());
     datastratoTopicDispatcher =
         new DatastratoTopicEventDispatcher(eventBus(), topicNormalizeDispatcher);
 

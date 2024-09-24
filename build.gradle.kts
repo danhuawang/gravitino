@@ -111,40 +111,17 @@ tasks.rat {
   inputDir.set(project.rootDir)
 
   val exclusions = mutableListOf(
+    // Ignore gitSubmodule files which should be dealt by itself
+    "gravitino-oss/**",
+
     // Ignore files we track but do not need headers
     "**/.github/**/*",
-    "gravitino-oss/dev/docker/**/*.xml",
-    "gravitino-oss/dev/docker/**/*.conf",
     "gravitino-oss/dev/docker/kerberos-hive/kadm5.acl",
     "**/*.log",
     "**/*.out",
     "**/licenses/*.txt",
     "**/licenses/*.md",
-    "gravitino-oss/integration-test/**/*.sql",
-    "gravitino-oss/integration-test/**/*.txt",
-    "gravitino-oss/docs/**/*.md",
-    "gravitino-oss/spark-connector/spark-common/src/test/resources/**",
-    "gravitino-oss/web/.**",
-    "gravitino-oss/web/next-env.d.ts",
-    "gravitino-oss/web/dist/**/*",
-    "gravitino-oss/web/node_modules/**/*",
-    "gravitino-oss/web/src/lib/utils/axios/**/*",
-    "gravitino-oss/web/src/lib/enums/httpEnum.js",
-    "gravitino-oss/web/src/types/axios.d.ts",
-    "gravitino-oss/web/yarn.lock",
-    "gravitino-oss/web/package-lock.json",
-    "gravitino-oss/web/pnpm-lock.yaml",
-    "gravitino-oss/web/src/lib/icons/svg/**/*.svg",
-    "gravitino-oss/DISCLAIMER_WIP.txt",
-    "gravitino-oss/DISCLAIMER.txt",
-    "**/LICENSE.*",
-    "**/NOTICE.*",
-    "**/testsets/*",
-    "gravitino-oss/ROADMAP.md",
-    "gravitino-oss/clients/client-python/.pytest_cache/*",
-    "gravitino-oss/clients/client-python/gravitino.egg-info/*",
-    "gravitino-oss/clients/client-python/gravitino/utils/exceptions.py",
-    "gravitino-oss/clients/client-python/gravitino/utils/http_client.py"
+    "**/LICENSE.*"
   )
 
   // Add .gitignore excludes to the Apache Rat exclusion list.

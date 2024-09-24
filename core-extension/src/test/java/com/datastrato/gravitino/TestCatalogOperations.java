@@ -5,11 +5,13 @@
 package com.datastrato.gravitino;
 
 import com.datastrato.gravitino.catalog.TestDatastratoOperationDispatcher;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
@@ -59,6 +61,8 @@ public class TestCatalogOperations
   private final Map<NameIdentifier, TestFileset> filesets;
 
   private final Map<NameIdentifier, TestTopic> topics;
+
+  private static final String SLASH = "/";
 
   public static final String FAIL_CREATE = "fail-create";
 
@@ -449,6 +453,33 @@ public class TestCatalogOperations
     } else {
       return false;
     }
+  }
+
+  @Override
+  public String getFileLocation(NameIdentifier ident, String subPath)
+      throws NoSuchFilesetException {
+    Preconditions.checkArgument(subPath != null, "subPath must not be null");
+    String processedSubPath;
+    if (!subPath.trim().isEmpty() && !subPath.trim().startsWith(SLASH)) {
+      processedSubPath = SLASH + subPath.trim();
+    } else {
+      processedSubPath = subPath.trim();
+    }
+
+    Fileset fileset = loadFileset(ident);
+
+    String fileLocation;
+    // subPath cannot be null, so we only need check if it is blank
+    if (StringUtils.isBlank(processedSubPath)) {
+      fileLocation = fileset.storageLocation();
+    } else {
+      String storageLocation =
+          fileset.storageLocation().endsWith(SLASH)
+              ? fileset.storageLocation().substring(0, fileset.storageLocation().length() - 1)
+              : fileset.storageLocation();
+      fileLocation = String.format("%s%s", storageLocation, processedSubPath);
+    }
+    return fileLocation;
   }
 
   @Override
