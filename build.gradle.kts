@@ -195,11 +195,6 @@ tasks {
     destinationDirectory.set(projectDir.dir("distribution"))
   }
 
-  val cleanDistribution by registering(Delete::class) {
-    group = "datastrato gravitino distribution"
-    delete(outputDir)
-  }
-
   register("copyOssDistribution", Copy::class) {
     group = "datastrato gravitino distribution"
     // Use OSS packages as the base directory
@@ -232,6 +227,14 @@ tasks {
   }
 
   clean {
-    dependsOn(cleanDistribution)
+    doLast {
+      // Clean up all subprojects of submodule
+      exec {
+        commandLine("./gradlew", "-p", "gravitino-oss", "clean")
+      }
+
+      // Clean up the distribution directory
+      delete(outputDir)
+    }
   }
 }
