@@ -234,7 +234,7 @@ tasks {
       }
 
       // Clean up the distribution directory
-      delete(outputDir)
+      project.delete(outputDir)
     }
   }
 }
