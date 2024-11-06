@@ -15,6 +15,7 @@ import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
 import com.datastrato.gravitino.dto.responses.TopicListResponse;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -45,6 +46,7 @@ import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.lock.LockType;
 import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.FilesetEntity;
@@ -212,7 +214,14 @@ public class EntityOperations {
 
   private Response listTables(Namespace namespace, int resultLimit) {
     NameIdentifier[] tableIdents = tableDispatcher.listTables(namespace);
-    List<TableEntity> tableEntities = tableDispatcher.listEntities(namespace);
+    List<TableEntity> tableEntities;
+    try {
+      tableEntities = tableDispatcher.listEntities(namespace);
+    } catch (NoSuchSchemaException e) {
+      // If the schema is not created by Gravitino, there will be no table entities.
+      tableEntities = Lists.newArrayList();
+    }
+
     ImmutableMap<String, TableEntity> nameToTableEntity =
         Maps.uniqueIndex(tableEntities, TableEntity::name);
 
@@ -236,7 +245,13 @@ public class EntityOperations {
 
   private Response listTopics(Namespace namespace, int resultLimit) {
     NameIdentifier[] topicIdents = topicDispatcher.listTopics(namespace);
-    List<TopicEntity> topicEntities = topicDispatcher.listEntities(namespace);
+    List<TopicEntity> topicEntities;
+    try {
+      topicEntities = topicDispatcher.listEntities(namespace);
+    } catch (NoSuchSchemaException e) {
+      // If the schema is not created by Gravitino, there will be no topic entities.
+      topicEntities = Lists.newArrayList();
+    }
     ImmutableMap<String, TopicEntity> nameToTopicEntity =
         Maps.uniqueIndex(topicEntities, TopicEntity::name);
 

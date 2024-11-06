@@ -266,6 +266,29 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(1, tableResp.getTables().length);
     assertTables(tableResp.getTables());
 
+    // test list tables with schema not found in store
+    doThrow(new NoSuchSchemaException("Schema testMetalake.relCatalog.relSchema does not exist"))
+        .when(tableDispatcher)
+        .listEntities(any());
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake.relCatalog.relSchema")
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    tableResp = resp.readEntity(TableListResponse.class);
+    Assertions.assertEquals(0, tableResp.getCode());
+    Assertions.assertEquals(1, tableResp.getTables().length);
+    TableDTO tableDTO = tableResp.getTables()[0];
+    Assertions.assertEquals("relTable", tableDTO.name());
+    Assertions.assertNull(tableDTO.comment());
+    Assertions.assertNull(tableDTO.properties());
+    Assertions.assertNull(tableDTO.auditInfo().creator());
+
     // test list topics
     namespace = Namespace.of("testMetalake", "messagingCatalog", "messagingSchema");
     NameIdentifier topicIdent = NameIdentifier.of(namespace, "messagingTopic");
@@ -287,6 +310,31 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0, topicResp.getCode());
     Assertions.assertEquals(1, topicResp.getTopics().length);
     assertTopics(topicResp.getTopics());
+
+    // test list topics with schema not found in store
+    doThrow(
+            new NoSuchSchemaException(
+                "Schema testMetalake.messagingCatalog.messagingSchema does not exist"))
+        .when(topicDispatcher)
+        .listEntities(any());
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake.messagingCatalog.messagingSchema")
+            .queryParam("catalogType", "messaging")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    topicResp = resp.readEntity(TopicListResponse.class);
+    Assertions.assertEquals(0, topicResp.getCode());
+    Assertions.assertEquals(1, topicResp.getTopics().length);
+    TopicDTO topicDTO = topicResp.getTopics()[0];
+    Assertions.assertEquals("messagingTopic", topicDTO.name());
+    Assertions.assertNull(topicDTO.comment());
+    Assertions.assertNull(topicDTO.properties());
+    Assertions.assertNull(topicDTO.auditInfo().creator());
 
     // test list filesets
     namespace = Namespace.of("testMetalake", "filesetCatalog", "filesetSchema");
