@@ -26,7 +26,8 @@ gravitino_home="$(cd "${gravitino_dir}/../../..">/dev/null; pwd)"
 git -C "${gravitino_home}" submodule update --init --recursive
 
 # Prepare compile Gravitino packages
-${gravitino_home}/gradlew clean compileDistribution -x test
+"${gravitino_home}"/gradlew clean
+"${gravitino_home}"/gradlew compileDistribution -x test -x :gravitino-oss:docs:build
 
 # Removed old packages, Avoid multiple re-executions using the wrong file
 rm -rf "${gravitino_dir}/packages"
