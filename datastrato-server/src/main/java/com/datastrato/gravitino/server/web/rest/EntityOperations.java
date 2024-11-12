@@ -98,7 +98,8 @@ public class EntityOperations {
           "Query param namespace cannot be empty", new IllegalArgumentException());
     }
 
-    if (catalogType == null) {
+    if (catalogType == null && namespace.length() != 1) {
+      // catalogType is required except for listing catalogs
       return Utils.illegalArguments(
           "Query param catalogType cannot be empty", new IllegalArgumentException());
     }
@@ -177,7 +178,7 @@ public class EntityOperations {
     Catalog[] catalogs = catalogDispatcher.listCatalogsInfo(namespace);
     CatalogDTO[] catalogDTOs =
         Arrays.stream(catalogs)
-            .filter(catalog -> catalog.type() == catalogType)
+            .filter(catalog -> catalogType == null || catalog.type() == catalogType)
             .map(DTOConverters::toDTO)
             .sorted(Comparator.comparing(CatalogDTO::name))
             .limit(resultLimit)

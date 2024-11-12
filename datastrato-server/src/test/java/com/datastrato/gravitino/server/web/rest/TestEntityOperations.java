@@ -166,7 +166,7 @@ public class TestEntityOperations extends JerseyTest {
     // test catalogType error
     resp =
         target("/web/entities")
-            .queryParam("namespace", "testMetalake")
+            .queryParam("namespace", "testMetalake.relCatalog")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -219,6 +219,25 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0, catalogResponse.getCode());
 
     CatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
+    Assertions.assertEquals(2, catalogDTOs.length);
+    assertCatalogs(catalogDTOs);
+
+    // test list all catalogs
+    when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
+        .thenReturn(mockedCatalogs);
+
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+    catalogResponse = resp.readEntity(CatalogListResponse.class);
+    Assertions.assertEquals(0, catalogResponse.getCode());
+
+    catalogDTOs = catalogResponse.getCatalogs();
     Assertions.assertEquals(2, catalogDTOs.length);
     assertCatalogs(catalogDTOs);
 
