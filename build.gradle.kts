@@ -3,8 +3,6 @@
  * This software is licensed under the Apache License version 2.
  */
 
-import org.gradle.internal.os.OperatingSystem
-
 plugins {
   `maven-publish`
   id("java")
@@ -75,25 +73,6 @@ subprojects {
 
   group = "com.datastrato.enterprise.gravitino"
   version = "$version"
-
-  java {
-    toolchain {
-      // Some JDK vendors like Homebrew installed OpenJDK 17 have problems in building trino-connector:
-      // It will cause tests of Trino-connector hanging forever on macOS, to avoid this issue and
-      // other vendor-related problems, Gravitino will use the specified AMAZON OpenJDK 17 to build
-      // Trino-connector on macOS.
-      if (project.name == "trino-connector-extension") {
-        if (OperatingSystem.current().isMacOsX) {
-          vendor.set(JvmVendorSpec.AMAZON)
-        }
-        languageVersion.set(JavaLanguageVersion.of(17))
-      } else {
-        languageVersion.set(JavaLanguageVersion.of(8))
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-      }
-    }
-  }
 
   tasks.test {
     useJUnitPlatform()
@@ -207,10 +186,8 @@ tasks {
     group = "datastrato gravitino distribution"
     dependsOn("copyOssDistribution")
     subprojects.forEach {
-      if (!it.name.startsWith("trino")) {
-        from(it.configurations.runtimeClasspath)
-        into("distribution/package/libs")
-      }
+      from(it.configurations.runtimeClasspath)
+      into("distribution/package/libs")
     }
   }
 

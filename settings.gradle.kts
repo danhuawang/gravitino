@@ -30,13 +30,9 @@ includeBuild("gravitino-oss") {
 
     substitute(module("org.apache.gravitino:server-common"))
       .using(project(":server-common"))
-
-    substitute(module("org.apache.gravitino:trino-connector:trino-connector"))
-      .using(project(":trino-connector:trino-connector"))
   }
 }
 
 include("common-extension")
 include("core-extension")
 include("datastrato-server")
-include("trino-connector-extension")
