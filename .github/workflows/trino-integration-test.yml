@@ -1,4 +1,4 @@
-name: Python Client Integration Test
+name: Trino Integration Test
 
 # Controls when the workflow will run
 on:
@@ -17,7 +17,7 @@ jobs:
   # Integration test for AMD64 architecture
   test-amd64-arch:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       matrix:
         architecture: [linux/amd64]
@@ -38,23 +38,37 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
-      - name: Python Client Integration Test
-        id: integrationTest
+      - name: Check required command
+        run: |
+          gravitino-oss/dev/ci/check_commands.sh
+
+      - name: Package Gravitino
         run: |
           ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
 
+      - name: Free up disk space
+        run: |
+          gravitino-oss/dev/ci/util_free_space.sh
+
+      - name: Copy distribution package
+        run: |
           cp -r -f ./distribution ./gravitino-oss
-          
-          ./gradlew -p gravitino-oss -PjdkVersion=${{ matrix.java-version }} -PpythonVersion=3.8 -PskipDockerTests=false :clients:client-python:test
+
+      - name: Trino Integration Test
+        id: integrationTest
+        run: |
+          ./gradlew -p gravitino-oss -PskipTests -PtestMode=deploy -PjdkVersion=${{ matrix.java-version }} -PskipDockerTests=false :trino-connector:integration-test:test
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v3
-        if: ${{ failure() && steps.integrationTest.outcome == 'failure' }}
+        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
         with:
-          name: integrate test reports
+          name: flink-connector-integrate-test-reports-${{ matrix.java-version }}
           path: |
             gravitino-oss/build/reports
-            gravitino-oss/integration-test/build/integration-test.log
+            gravitino-oss/trino-connector/integrate-test/build/*.log
+            gravitino-oss/trino-connector/integrate-test/build/*.tar
+            gravitino-oss/integration-test-common/build/trino-ci-container-log
             gravitino-oss/distribution/package/logs/gravitino-server.out
             gravitino-oss/distribution/package/logs/gravitino-server.log
             gravitino-oss/catalogs/**/*.log
