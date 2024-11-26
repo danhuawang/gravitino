@@ -16,7 +16,7 @@ jobs:
 
   # Integration test for AMD64 architecture
   test-amd64-arch:
-    runs-on: ubuntu-latest
+    runs-on: github-large-runner
     timeout-minutes: 60
     strategy:
       matrix:
