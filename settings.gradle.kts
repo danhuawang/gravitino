@@ -30,9 +30,13 @@ includeBuild("gravitino-oss") {
 
     substitute(module("org.apache.gravitino:server-common"))
       .using(project(":server-common"))
+
+    substitute(module("org.apache.gravitino:docs"))
+      .using(project(":docs"))
   }
 }
 
 include("common-extension")
 include("core-extension")
 include("datastrato-server")
+include("docs")

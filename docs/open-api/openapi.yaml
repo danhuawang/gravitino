@@ -1,0 +1,180 @@
+#
+# Copyright 2024 Datastrato.
+# This software is licensed under the Apache License version 2.
+#
+
+---
+openapi: 3.0.3
+info:
+  title: Datastrato REST API
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  version: 0.7.0
+  description: |
+    Defines the specification for the Datastrato Gravitino REST API.
+
+
+servers:
+  - url: "{scheme}://{host}:{port}/{basePath}"
+    description: Generic base server URL, with all parts configurable.
+    variables:
+      scheme:
+        description: The scheme of the URI, either http or https.
+        default: http
+      host:
+        description: The host address for the specified server
+        default: localhost
+      port:
+        description: The port used when addressing the host
+        default: "8090"
+      basePath:
+        description: Optional prefix to be appended to all routes
+        default: "api"
+
+security:
+  - OAuth2WithJWT: [serviceAudience]
+  - BasicAuth: []
+
+paths:
+  /web/entities:
+    get:
+      tags:
+        - entity
+      summary: List entities
+      operationId: listEntities
+      description: |
+        List entities under the specified namespace, this endpoint is used for display tree in Web UI.
+      parameters:
+        - name: namespace
+          in: query
+          description: The namespace of the entity
+          required: true
+          schema:
+            type: string
+        - name: catalogType
+          in: query
+          description: The catalog type of the entity
+          required: false
+          schema:
+            type: string
+        - name: resultLimit
+          in: query
+          description: The maximum number of entities to return
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1000
+      responses:
+        "200":
+          description: Returns the list of entities under the specified namespace
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/CatalogListResponse"
+                  - $ref: "#/components/schemas/SchemaListResponse"
+                  - $ref: "#/components/schemas/TableListResponse"
+                  - $ref: "#/components/schemas/FilesetListResponse"
+                  - $ref: "#/components/schemas/TopicListResponse"
+        "400":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5xx":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    CatalogListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        catalogs:
+          type: array
+          description: A list of catalog objects
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/catalogs.yaml#/components/schemas/Catalog"
+
+    SchemaListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        schemas:
+          type: array
+          description: A list of schema objects
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/schemas.yaml#/components/schemas/Schema"
+
+    TableListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        tables:
+          type: array
+          description: A list of table objects
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/Table"
+
+    FilesetListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        filesets:
+          type: array
+          description: A list of fileset objects
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/filesets.yaml#/components/schemas/Fileset"
+
+    TopicListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        topics:
+          type: array
+          description: A list of topic objects
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/topics.yaml#/components/schemas/Topic"
+
+  securitySchemes:
+
+    OAuth2WithJWT:
+      type: oauth2
+      description: OAuth2 with JWT
+      flows:
+        clientCredentials:
+          tokenUrl: https://external-oauth-server.com/token
+          scopes:
+            serviceAudience: The audience name when Gravitino uses OAuth as the authenticator.
+
+    BasicAuth:
+      type: http
+      scheme: basic
+
+    KerberosAuth:
+      type: http
+      scheme: negotiate

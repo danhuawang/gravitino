@@ -98,6 +98,9 @@ tasks.rat {
     "gravitino-oss/dev/docker/kerberos-hive/kadm5.acl",
     "**/*.log",
     "**/*.out",
+    "**/node_modules/**",
+    "**/.node/**",
+    "**/.npm/**",
     "**/licenses/*.txt",
     "**/licenses/*.md",
     "**/LICENSE.*"
@@ -186,8 +189,10 @@ tasks {
     group = "datastrato gravitino distribution"
     dependsOn("copyOssDistribution")
     subprojects.forEach {
-      from(it.configurations.runtimeClasspath)
-      into("distribution/package/libs")
+      if (it.name != "docs") {
+        from(it.configurations.runtimeClasspath)
+        into("distribution/package/libs")
+      }
     }
   }
 
@@ -195,11 +200,13 @@ tasks {
     group = "datastrato gravitino distribution"
     dependsOn("copyOssDistribution")
     subprojects.forEach {
-      dependsOn("${it.name}:build")
-      from("${it.name}/build/libs")
-      into("distribution/package/libs")
-      include("*.jar")
-      duplicatesStrategy = DuplicatesStrategy.INCLUDE
+      if (it.name != "docs") {
+        dependsOn("${it.name}:build")
+        from("${it.name}/build/libs")
+        into("distribution/package/libs")
+        include("*.jar")
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+      }
     }
   }
 
