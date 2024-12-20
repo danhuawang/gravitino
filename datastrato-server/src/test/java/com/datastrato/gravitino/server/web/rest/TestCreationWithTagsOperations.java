@@ -14,28 +14,35 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.dto.requests.CatalogWithTagsCreateRequest;
+import com.datastrato.gravitino.dto.requests.SchemaWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.responses.CatalogWithTagsResponse;
+import com.datastrato.gravitino.dto.responses.SchemaWithTagsResponse;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.reflect.FieldUtils;
+import org.apache.gravitino.Audit;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.Schema;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.CatalogAlreadyExistsException;
+import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
 import org.apache.gravitino.exceptions.TagAlreadyAssociatedException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
@@ -62,6 +69,8 @@ public class TestCreationWithTagsOperations extends JerseyTest {
   }
 
   private final CatalogDispatcher catalogDispatcher = mock(CatalogManager.class);
+  private final DatastratoSchemaDispatcher schemaDispatcher =
+      mock(DatastratoSchemaDispatcher.class);
   private final TagManager tagManager = mock(TagManager.class);
 
   @BeforeAll
@@ -89,6 +98,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
           @Override
           protected void configure() {
             bind(catalogDispatcher).to(CatalogDispatcher.class).ranked(2);
+            bind(schemaDispatcher).to(DatastratoSchemaDispatcher.class).ranked(2);
             bind(tagManager).to(TagManager.class).ranked(2);
             bindFactory(TestCreationWithTagsOperations.MockServletRequestFactory.class)
                 .to(HttpServletRequest.class);
@@ -198,6 +208,110 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
     Assertions.assertEquals(
         TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testCreateSchemaWithTag() {
+    // test create schema without tags
+    SchemaWithTagsCreateRequest req =
+        new SchemaWithTagsCreateRequest(
+            "schema1", "comment", ImmutableMap.of("key", "value"), null);
+    Schema schema = buildSchema("schema1", "comment", ImmutableMap.of("key", "value"));
+
+    when(schemaDispatcher.createSchema(any(), any(), any())).thenReturn(schema);
+
+    Response resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    SchemaWithTagsResponse schemaWithTagsResponse = resp.readEntity(SchemaWithTagsResponse.class);
+    Assertions.assertEquals(0, schemaWithTagsResponse.getCode());
+
+    Schema schemaDTO = schemaWithTagsResponse.getSchema();
+    Assertions.assertEquals("schema1", schemaDTO.name());
+    Assertions.assertEquals(0, schemaWithTagsResponse.getTags().length);
+
+    // test create schema with tags
+    String[] tags = new String[] {"tag1", "tag2"};
+    req =
+        new SchemaWithTagsCreateRequest(
+            "schema2", "comment", ImmutableMap.of("key", "value"), tags);
+
+    schema = buildSchema("schema2", "comment", ImmutableMap.of("key", "value"));
+    when(schemaDispatcher.createSchema(any(), any(), any())).thenReturn(schema);
+    when(tagManager.associateTagsForMetadataObject(any(), any(), any(), any())).thenReturn(tags);
+
+    resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    schemaWithTagsResponse = resp.readEntity(SchemaWithTagsResponse.class);
+    Assertions.assertEquals(0, schemaWithTagsResponse.getCode());
+
+    schemaDTO = schemaWithTagsResponse.getSchema();
+    Assertions.assertEquals("schema2", schemaDTO.name());
+    Assertions.assertEquals(2, schemaWithTagsResponse.getTags().length);
+    Assertions.assertArrayEquals(tags, schemaWithTagsResponse.getTags());
+
+    // test create schema error
+    doThrow(new SchemaAlreadyExistsException("mock error"))
+        .when(schemaDispatcher)
+        .createSchema(any(), any(), any());
+    Response errorResp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(CONFLICT.getStatusCode(), errorResp.getStatus());
+
+    ErrorResponse errorResponse = errorResp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
+    Assertions.assertEquals(
+        SchemaAlreadyExistsException.class.getSimpleName(), errorResponse.getType());
+
+    // test tag association error
+    schema = buildSchema("schema3", "comment", ImmutableMap.of("key", "value"));
+    reset(schemaDispatcher);
+    when(schemaDispatcher.createSchema(any(), any(), any())).thenReturn(schema);
+    doThrow(new TagAlreadyAssociatedException("mock error"))
+        .when(tagManager)
+        .associateTagsForMetadataObject(any(), any(), any(), any());
+    errorResp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(CONFLICT.getStatusCode(), errorResp.getStatus());
+    errorResponse = errorResp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
+    Assertions.assertEquals(
+        TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  private Schema buildSchema(String name, String comment, Map<String, String> properties) {
+    Schema mockSchema = mock(Schema.class);
+    when(mockSchema.name()).thenReturn(name);
+    when(mockSchema.comment()).thenReturn(comment);
+    when(mockSchema.properties()).thenReturn(properties);
+
+    Audit mockAudit = mock(Audit.class);
+    when(mockAudit.creator()).thenReturn("gravitino");
+    when(mockAudit.createTime()).thenReturn(Instant.now());
+    when(mockSchema.auditInfo()).thenReturn(mockAudit);
+
+    return mockSchema;
   }
 
   private static TestCatalog buildCatalog(String metalake, String catalogName) {
