@@ -10,8 +10,10 @@ plugins {
 }
 
 dependencies {
+  implementation("org.apache.gravitino:api")
   implementation("org.apache.gravitino:common")
 
+  implementation(libs.commons.lang3)
   implementation(libs.guava)
   implementation(libs.jackson.annotations)
 
