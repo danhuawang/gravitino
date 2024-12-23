@@ -8,31 +8,31 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import org.apache.gravitino.dto.SchemaDTO;
-import org.apache.gravitino.dto.responses.SchemaResponse;
+import org.apache.gravitino.dto.file.FilesetDTO;
+import org.apache.gravitino.dto.responses.FilesetResponse;
 
-/** Represents a response containing schema information with tags */
+/** Represents a response containing fileset information with tags. */
 @Getter
 @ToString
 @EqualsAndHashCode(callSuper = true)
-public class SchemaWithTagsResponse extends SchemaResponse {
+public class FilesetWithTagsResponse extends FilesetResponse {
 
   @JsonProperty("tags")
   private final String[] tags;
 
   /**
-   * Constructor for SchemaResponse.
+   * Constructor for FilesetWithTagsResponse.
    *
-   * @param schemaDTO The schema data transfer object.
-   * @param tags The tags for the schema.
+   * @param filesetDTO The fileset data transfer object.
+   * @param tags The tags for the fileset.
    */
-  public SchemaWithTagsResponse(SchemaDTO schemaDTO, String[] tags) {
-    super(schemaDTO);
+  public FilesetWithTagsResponse(FilesetDTO filesetDTO, String[] tags) {
+    super(filesetDTO);
     this.tags = tags;
   }
 
-  /** Default constructor for SchemaResponse. (Used for Jackson deserialization.) */
-  public SchemaWithTagsResponse() {
+  /** Default constructor for FilesetWithTagsResponse. (Used for Jackson deserialization.) */
+  public FilesetWithTagsResponse() {
     super();
     this.tags = null;
   }
@@ -40,7 +40,7 @@ public class SchemaWithTagsResponse extends SchemaResponse {
   /**
    * Validates the response data.
    *
-   * @throws IllegalArgumentException if the schema name, type or audit is not set.
+   * @throws IllegalArgumentException if the fileset name, type or audit is not set.
    */
   @Override
   public void validate() throws IllegalArgumentException {
