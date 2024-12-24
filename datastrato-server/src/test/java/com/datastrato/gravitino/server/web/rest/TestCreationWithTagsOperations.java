@@ -74,7 +74,7 @@ import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.rel.types.Type;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.rest.RESTUtils;
-import org.apache.gravitino.tag.TagManager;
+import org.apache.gravitino.tag.TagDispatcher;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -101,7 +101,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
   private final DatastratoFilesetDispatcher filesetDispatcher =
       mock(DatastratoFilesetDispatcher.class);
   private final DatastratoTopicDispatcher topicDispatcher = mock(DatastratoTopicDispatcher.class);
-  private final TagManager tagManager = mock(TagManager.class);
+  private final TagDispatcher tagDispatcher = mock(TagDispatcher.class);
 
   @BeforeAll
   public static void setup() throws IllegalAccessException {
@@ -132,7 +132,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
             bind(tableDispatcher).to(TableDispatcher.class).ranked(2);
             bind(filesetDispatcher).to(FilesetDispatcher.class).ranked(2);
             bind(topicDispatcher).to(TopicDispatcher.class).ranked(2);
-            bind(tagManager).to(TagManager.class).ranked(2);
+            bind(tagDispatcher).to(TagDispatcher.class).ranked(2);
             bindFactory(TestCreationWithTagsOperations.MockServletRequestFactory.class)
                 .to(HttpServletRequest.class);
           }
@@ -187,7 +187,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     catalog = buildCatalog("metalake", "catalog2");
 
     when(catalogDispatcher.createCatalog(any(), any(), any(), any(), any())).thenReturn(catalog);
-    when(tagManager.associateTagsForMetadataObject(any(), any(), any(), any())).thenReturn(tags);
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), any(), any())).thenReturn(tags);
 
     resp =
         target("/web/with-tags/metalakes/metalake1/catalogs")
@@ -228,7 +228,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     reset(catalogDispatcher);
     when(catalogDispatcher.createCatalog(any(), any(), any(), any(), any())).thenReturn(catalog);
     doThrow(new TagAlreadyAssociatedException("mock error"))
-        .when(tagManager)
+        .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
         target("/web/with-tags/metalakes/metalake1/catalogs")
@@ -277,7 +277,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
 
     schema = buildSchema("schema2", "comment", ImmutableMap.of("key", "value"));
     when(schemaDispatcher.createSchema(any(), any(), any())).thenReturn(schema);
-    when(tagManager.associateTagsForMetadataObject(any(), any(), any(), any())).thenReturn(tags);
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), any(), any())).thenReturn(tags);
 
     resp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
@@ -318,7 +318,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     reset(schemaDispatcher);
     when(schemaDispatcher.createSchema(any(), any(), any())).thenReturn(schema);
     doThrow(new TagAlreadyAssociatedException("mock error"))
-        .when(tagManager)
+        .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
@@ -394,10 +394,11 @@ public class TestCreationWithTagsOperations extends JerseyTest {
 
     when(tableDispatcher.createTable(any(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(table2);
-    when(tagManager.associateTagsForMetadataObject(any(), any(), eq(tags), any())).thenReturn(tags);
-    when(tagManager.associateTagsForMetadataObject(any(), any(), eq(col1Tags), any()))
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), eq(tags), any()))
+        .thenReturn(tags);
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), eq(col1Tags), any()))
         .thenReturn(col1Tags);
-    when(tagManager.associateTagsForMetadataObject(any(), any(), eq(col2Tags), any()))
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), eq(col2Tags), any()))
         .thenReturn(col2Tags);
 
     resp =
@@ -441,7 +442,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(tableDispatcher.createTable(any(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(table2);
     doThrow(new TagAlreadyAssociatedException("mock error"))
-        .when(tagManager)
+        .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
@@ -500,7 +501,8 @@ public class TestCreationWithTagsOperations extends JerseyTest {
             "mock location",
             ImmutableMap.of("k1", "v1"));
     when(filesetDispatcher.createFileset(any(), any(), any(), any(), any())).thenReturn(fileset);
-    when(tagManager.associateTagsForMetadataObject(any(), any(), eq(tags), any())).thenReturn(tags);
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), eq(tags), any()))
+        .thenReturn(tags);
 
     resp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
@@ -546,7 +548,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     reset(filesetDispatcher);
     when(filesetDispatcher.createFileset(any(), any(), any(), any(), any())).thenReturn(fileset);
     doThrow(new TagAlreadyAssociatedException("mock error"))
-        .when(tagManager)
+        .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
@@ -591,7 +593,8 @@ public class TestCreationWithTagsOperations extends JerseyTest {
 
     topic = mockTopic("topic2", "comment", null);
     when(topicDispatcher.createTopic(any(), any(), any(), any())).thenReturn(topic);
-    when(tagManager.associateTagsForMetadataObject(any(), any(), eq(tags), any())).thenReturn(tags);
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), eq(tags), any()))
+        .thenReturn(tags);
 
     resp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
@@ -631,7 +634,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     reset(topicDispatcher);
     when(topicDispatcher.createTopic(any(), any(), any(), any())).thenReturn(topic);
     doThrow(new TagAlreadyAssociatedException("mock error"))
-        .when(tagManager)
+        .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")

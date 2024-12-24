@@ -8,10 +8,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import java.util.List;
 import java.util.Map;
-import org.apache.gravitino.connector.BasePropertiesMetadata;
+import org.apache.gravitino.connector.BaseCatalogPropertiesMetadata;
 import org.apache.gravitino.connector.PropertyEntry;
 
-public class TestBasePropertiesMetadata extends BasePropertiesMetadata {
+public class TestBasePropertiesMetadata extends BaseCatalogPropertiesMetadata {
   public static final String COMMENT_KEY = "comment";
 
   public static final String TEST_REQUIRED_KEY = "k1";

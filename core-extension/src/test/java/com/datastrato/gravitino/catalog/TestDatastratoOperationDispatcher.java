@@ -52,7 +52,6 @@ public class TestDatastratoOperationDispatcher {
 
     entityStore = spy(new InMemoryEntityStore());
     entityStore.initialize(config);
-    entityStore.setSerDe(null);
 
     BaseMetalake metalakeEntity =
         BaseMetalake.builder()

@@ -11,6 +11,7 @@ import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.apache.gravitino.StringIdentifier.ID_KEY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -130,7 +131,9 @@ public class TestDatastratoTopicOperationDispatcher extends TestDatastratoOperat
     reset(entityStore);
     entityStore.delete(topicIdent1, Entity.EntityType.TOPIC);
     entityStore.delete(NameIdentifier.of(topicNs.levels()), Entity.EntityType.SCHEMA);
-    doThrow(new NoSuchEntityException("")).when(entityStore).get(any(), any(), any());
+    doThrow(new NoSuchEntityException(""))
+        .when(entityStore)
+        .get(any(), eq(Entity.EntityType.TOPIC), any());
     Topic loadedTopic2 = topicOperationDispatcher.loadTopic(topicIdent1);
     // Succeed to import the topic entity
     Assertions.assertTrue(entityStore.exists(topicIdent1, Entity.EntityType.TOPIC));
@@ -143,7 +146,7 @@ public class TestDatastratoTopicOperationDispatcher extends TestDatastratoOperat
     reset(entityStore);
     entityStore.delete(topicIdent1, Entity.EntityType.TOPIC);
     entityStore.delete(NameIdentifier.of(topicNs.levels()), Entity.EntityType.SCHEMA);
-    doThrow(new IOException()).when(entityStore).get(any(), any(), any());
+    doThrow(new IOException()).when(entityStore).get(any(), eq(Entity.EntityType.TOPIC), any());
     Topic loadedTopic3 = topicOperationDispatcher.loadTopic(topicIdent1);
     // Succeed to import the topic entity
     Assertions.assertTrue(
@@ -162,7 +165,7 @@ public class TestDatastratoTopicOperationDispatcher extends TestDatastratoOperat
             .withAuditInfo(
                 AuditInfo.builder().withCreator("gravitino").withCreateTime(Instant.now()).build())
             .build();
-    doReturn(unmatchedEntity).when(entityStore).get(any(), any(), any());
+    doReturn(unmatchedEntity).when(entityStore).get(any(), eq(Entity.EntityType.TOPIC), any());
     Topic loadedTopic4 = topicOperationDispatcher.loadTopic(topicIdent1);
     // Succeed to import the topic entity
     reset(entityStore);

@@ -416,14 +416,16 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals("relCatalog1", catalogDTO1.name());
     Assertions.assertEquals(Catalog.Type.RELATIONAL, catalogDTO1.type());
     Assertions.assertEquals("comment", catalogDTO1.comment());
-    Assertions.assertEquals(ImmutableMap.of("key", "value"), catalogDTO1.properties());
+    Assertions.assertEquals(
+        ImmutableMap.of("key", "value", "in-use", "true"), catalogDTO1.properties());
     Assertions.assertEquals("creator", catalogDTO1.auditInfo().creator());
 
     CatalogDTO catalogDTO2 = catalogDTOs[1];
     Assertions.assertEquals("relCatalog2", catalogDTO2.name());
     Assertions.assertEquals(Catalog.Type.RELATIONAL, catalogDTO2.type());
     Assertions.assertEquals("comment", catalogDTO2.comment());
-    Assertions.assertEquals(ImmutableMap.of("key", "value"), catalogDTO2.properties());
+    Assertions.assertEquals(
+        ImmutableMap.of("key", "value", "in-use", "true"), catalogDTO2.properties());
     Assertions.assertEquals("creator", catalogDTO2.auditInfo().creator());
   }
 

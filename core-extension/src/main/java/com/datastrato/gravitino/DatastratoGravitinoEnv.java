@@ -28,9 +28,13 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
+import org.apache.gravitino.authorization.FutureGrantManager;
+import org.apache.gravitino.authorization.OwnerManager;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.catalog.CredentialManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.PartitionDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
@@ -39,7 +43,7 @@ import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.metrics.MetricsSystem;
 import org.apache.gravitino.storage.IdGenerator;
-import org.apache.gravitino.tag.TagManager;
+import org.apache.gravitino.tag.TagDispatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,9 +61,9 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @Override
-  public void initialize(Config config, boolean isGravitinoServer) {
-    // Avoid calling super.initialize() to prevent double initialization.
-    GravitinoEnv.getInstance().initialize(config, isGravitinoServer);
+  public void initializeFullComponents(Config config) {
+    // Avoid calling super.initializeFullComponents() to prevent double initialization.
+    GravitinoEnv.getInstance().initializeFullComponents(config);
 
     LOG.info("Initializing Datastrato Gravitino Environment...");
 
@@ -182,8 +186,28 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @Override
-  public TagManager tagManager() {
-    return GravitinoEnv.getInstance().tagManager();
+  public TagDispatcher tagDispatcher() {
+    return GravitinoEnv.getInstance().tagDispatcher();
+  }
+
+  @Override
+  public CredentialManager credentialManager() {
+    return GravitinoEnv.getInstance().credentialManager();
+  }
+
+  @Override
+  public OwnerManager ownerManager() {
+    return GravitinoEnv.getInstance().ownerManager();
+  }
+
+  @Override
+  public FutureGrantManager futureGrantManager() {
+    return GravitinoEnv.getInstance().futureGrantManager();
+  }
+
+  @Override
+  public ModelDispatcher modelDispatcher() {
+    return GravitinoEnv.getInstance().modelDispatcher();
   }
 
   @Override

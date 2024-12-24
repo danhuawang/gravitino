@@ -61,7 +61,7 @@ import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
-import org.apache.gravitino.tag.TagManager;
+import org.apache.gravitino.tag.TagDispatcher;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -81,7 +81,7 @@ public class CreationWithTagsOperations {
   private final DatastratoFilesetDispatcher filesetDispatcher;
   private final DatastratoTopicDispatcher topicDispatcher;
 
-  private final TagManager tagManager;
+  private final TagDispatcher tagDispatcher;
 
   @Inject
   public CreationWithTagsOperations(
@@ -90,13 +90,13 @@ public class CreationWithTagsOperations {
       TableDispatcher tableDispatcher,
       FilesetDispatcher filesetDispatcher,
       TopicDispatcher topicDispatcher,
-      TagManager tagManager) {
+      TagDispatcher tagDispatcher) {
     this.catalogDispatcher = catalogDispatcher;
     this.schemaDispatcher = (DatastratoSchemaDispatcher) schemaDispatcher;
     this.tableDispatcher = (DatastratoTableDispatcher) tableDispatcher;
     this.filesetDispatcher = (DatastratoFilesetDispatcher) filesetDispatcher;
     this.topicDispatcher = (DatastratoTopicDispatcher) topicDispatcher;
-    this.tagManager = tagManager;
+    this.tagDispatcher = tagDispatcher;
   }
 
   @POST
@@ -475,7 +475,7 @@ public class CreationWithTagsOperations {
       return new String[0];
     }
     MetadataObject object = MetadataObjects.parse(fullName, objectType);
-    return tagManager.associateTagsForMetadataObject(metalake, object, tags, new String[0]);
+    return tagDispatcher.associateTagsForMetadataObject(metalake, object, tags, new String[0]);
   }
 
   private Response rollbackIfNecessary(

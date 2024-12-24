@@ -8,9 +8,8 @@ import static com.datastrato.gravitino.TestCatalogOperations.FAIL_CREATE;
 
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
-import org.apache.gravitino.Catalog;
 import org.apache.gravitino.connector.BaseCatalog;
-import org.apache.gravitino.connector.BasePropertiesMetadata;
+import org.apache.gravitino.connector.BaseCatalogPropertiesMetadata;
 import org.apache.gravitino.connector.CatalogOperations;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.connector.PropertyEntry;
@@ -53,7 +52,7 @@ public class TestCatalog extends BaseCatalog<TestCatalog> {
 
   @Override
   public PropertiesMetadata catalogPropertiesMetadata() throws UnsupportedOperationException {
-    return new BasePropertiesMetadata() {
+    return new BaseCatalogPropertiesMetadata() {
       @Override
       protected Map<String, PropertyEntry<?>> specificPropertyEntries() {
         return ImmutableMap.<String, PropertyEntry<?>>builder()
@@ -98,15 +97,6 @@ public class TestCatalog extends BaseCatalog<TestCatalog> {
                     false,
                     false,
                     false,
-                    false,
-                    false))
-            .put(
-                AUTHORIZATION_PROVIDER,
-                PropertyEntry.stringImmutablePropertyEntry(
-                    Catalog.AUTHORIZATION_PROVIDER,
-                    "The name of the authorization provider for Gravitino",
-                    false,
-                    null,
                     false,
                     false))
             .build();

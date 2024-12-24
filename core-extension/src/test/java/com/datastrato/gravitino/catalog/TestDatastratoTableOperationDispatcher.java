@@ -13,6 +13,7 @@ import static org.apache.gravitino.Entity.EntityType.TABLE;
 import static org.apache.gravitino.StringIdentifier.ID_KEY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
@@ -192,7 +194,9 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
     reset(entityStore);
     entityStore.delete(tableIdent1, TABLE);
     entityStore.delete(NameIdentifier.of(tableNs.levels()), SCHEMA);
-    doThrow(new NoSuchEntityException("")).when(entityStore).get(any(), any(), any());
+    doThrow(new NoSuchEntityException(""))
+        .when(entityStore)
+        .get(any(), eq(Entity.EntityType.TABLE), any());
     Table loadedTable2 = tableOperationDispatcher.loadTable(tableIdent1);
     // Succeed to import the topic entity
     Assertions.assertTrue(entityStore.exists(NameIdentifier.of(tableNs.levels()), SCHEMA));
@@ -204,7 +208,7 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
     reset(entityStore);
     entityStore.delete(tableIdent1, TABLE);
     entityStore.delete(NameIdentifier.of(tableNs.levels()), SCHEMA);
-    doThrow(new IOException()).when(entityStore).get(any(), any(), any());
+    doThrow(new IOException()).when(entityStore).get(any(), eq(Entity.EntityType.TABLE), any());
     Table loadedTable3 = tableOperationDispatcher.loadTable(tableIdent1);
     // Succeed to import the topic entity
     Assertions.assertTrue(entityStore.exists(NameIdentifier.of(tableNs.levels()), SCHEMA));
@@ -222,7 +226,7 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
             .withAuditInfo(
                 AuditInfo.builder().withCreator("gravitino").withCreateTime(Instant.now()).build())
             .build();
-    doReturn(tableEntity).when(entityStore).get(any(), any(), any());
+    doReturn(tableEntity).when(entityStore).get(any(), eq(Entity.EntityType.TABLE), any());
     Table loadedTable4 = tableOperationDispatcher.loadTable(tableIdent1);
     // Succeed to import the topic entity
     reset(entityStore);

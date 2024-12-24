@@ -15,7 +15,6 @@ import java.util.stream.Collectors;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityAlreadyExistsException;
-import org.apache.gravitino.EntitySerDe;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.NameIdentifier;
@@ -38,9 +37,6 @@ public class InMemoryEntityStore implements EntityStore {
 
   @Override
   public void initialize(Config config) throws RuntimeException {}
-
-  @Override
-  public void setSerDe(EntitySerDe entitySerDe) {}
 
   @Override
   public <E extends Entity & HasIdentifier> List<E> list(
