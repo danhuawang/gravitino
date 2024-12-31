@@ -32,12 +32,12 @@ import org.apache.gravitino.authorization.FutureGrantManager;
 import org.apache.gravitino.authorization.OwnerManager;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
-import org.apache.gravitino.catalog.CredentialManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
 import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.PartitionDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
+import org.apache.gravitino.credential.CredentialOperationDispatcher;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
@@ -191,8 +191,8 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @Override
-  public CredentialManager credentialManager() {
-    return GravitinoEnv.getInstance().credentialManager();
+  public CredentialOperationDispatcher credentialOperationDispatcher() {
+    return GravitinoEnv.getInstance().credentialOperationDispatcher();
   }
 
   @Override

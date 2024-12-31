@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino.dto.requests;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.Map;
@@ -34,20 +35,16 @@ public class CatalogWithTagsCreateRequest extends CatalogCreateRequest {
    * @param properties The properties for the catalog.
    * @param tagsToAdd The tags to add.
    */
+  @JsonCreator
   public CatalogWithTagsCreateRequest(
-      String name,
-      Catalog.Type type,
-      String provider,
-      String comment,
-      Map<String, String> properties,
-      String[] tagsToAdd) {
+      @JsonProperty("name") String name,
+      @JsonProperty("type") Catalog.Type type,
+      @JsonProperty("provider") String provider,
+      @JsonProperty("comment") String comment,
+      @JsonProperty("properties") Map<String, String> properties,
+      @JsonProperty("tagsToAdd") String[] tagsToAdd) {
     super(name, type, provider, comment, properties);
     this.tagsToAdd = tagsToAdd;
-  }
-
-  /** This is the constructor that is used by Jackson deserializer */
-  public CatalogWithTagsCreateRequest() {
-    this(null, null, null, null, null, null);
   }
 
   /**
