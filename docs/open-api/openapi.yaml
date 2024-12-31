@@ -1,7 +1,16 @@
-#
 # Copyright 2024 Datastrato.
-# This software is licensed under the Apache License version 2.
 #
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 ---
 openapi: 3.0.3
@@ -38,128 +47,30 @@ security:
 
 paths:
   /web/entities:
-    get:
-      tags:
-        - entity
-      summary: List entities
-      operationId: listEntities
-      description: |
-        List entities under the specified namespace, this endpoint is used for display tree in Web UI.
-      parameters:
-        - name: namespace
-          in: query
-          description: The namespace of the entity
-          required: true
-          schema:
-            type: string
-        - name: catalogType
-          in: query
-          description: The catalog type of the entity
-          required: false
-          schema:
-            type: string
-        - name: resultLimit
-          in: query
-          description: The maximum number of entities to return
-          required: false
-          schema:
-            type: integer
-            format: int32
-            default: 1000
-      responses:
-        "200":
-          description: Returns the list of entities under the specified namespace
-          content:
-            application/vnd.gravitino.v1+json:
-              schema:
-                oneOf:
-                  - $ref: "#/components/schemas/CatalogListResponse"
-                  - $ref: "#/components/schemas/SchemaListResponse"
-                  - $ref: "#/components/schemas/TableListResponse"
-                  - $ref: "#/components/schemas/FilesetListResponse"
-                  - $ref: "#/components/schemas/TopicListResponse"
-        "400":
-          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
-        "5xx":
-          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./entities.yaml#/paths/~1web~1entities"
+
+  /web/with-tags/metalakes/{metalake}/catalogs:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/filesets:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1filesets"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/topics:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1topics"
 
 components:
-  schemas:
-    CatalogListResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-          description: Status code of the response
-          enum:
-            - 0
-        catalogs:
-          type: array
-          description: A list of catalog objects
-          items:
-            $ref: "./../../gravitino-oss/docs/open-api/catalogs.yaml#/components/schemas/Catalog"
-
-    SchemaListResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-          description: Status code of the response
-          enum:
-            - 0
-        schemas:
-          type: array
-          description: A list of schema objects
-          items:
-            $ref: "./../../gravitino-oss/docs/open-api/schemas.yaml#/components/schemas/Schema"
-
-    TableListResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-          description: Status code of the response
-          enum:
-            - 0
-        tables:
-          type: array
-          description: A list of table objects
-          items:
-            $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/Table"
-
-    FilesetListResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-          description: Status code of the response
-          enum:
-            - 0
-        filesets:
-          type: array
-          description: A list of fileset objects
-          items:
-            $ref: "./../../gravitino-oss/docs/open-api/filesets.yaml#/components/schemas/Fileset"
-
-    TopicListResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-          description: Status code of the response
-          enum:
-            - 0
-        topics:
-          type: array
-          description: A list of topic objects
-          items:
-            $ref: "./../../gravitino-oss/docs/open-api/topics.yaml#/components/schemas/Topic"
-
   securitySchemes:
 
     OAuth2WithJWT:

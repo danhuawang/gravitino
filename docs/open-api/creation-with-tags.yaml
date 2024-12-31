@@ -1,0 +1,1049 @@
+# Copyright 2024 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+---
+
+paths:
+
+  /web/with-tags/metalakes/{metalake}/catalogs:
+    parameters:
+      - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/metalake"
+    post:
+      tags:
+        - catalog
+      summary: Create catalog with tags
+      operationId: createCatalogWithTags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogWithTagsCreateRequest"
+            examples:
+              CatalogWithTagsCreate:
+                $ref: "#/components/examples/CatalogWithTagsCreate"
+
+      responses:
+        "200":
+          $ref: "#/components/responses/CatalogWithTagsResponse"
+        "409":
+          description: Conflict - The target catalog already exists in the specified metalake
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                CatalogAlreadyExistsException:
+                  $ref: "./../../gravitino-oss/docs/open-api/catalogs.yaml#/components/examples/CatalogAlreadyExistsException"
+        "5xx":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas:
+    parameters:
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/catalog"
+    post:
+      tags:
+        - schema
+      summary: Create schema with tags
+      operationId: createSchemaWithTags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchemaWithTagsCreateRequest"
+            examples:
+              SchemaWithTagsCreate:
+                $ref: "#/components/examples/SchemaWithTagsCreate"
+
+      responses:
+        "200":
+          $ref: "#/components/responses/SchemaWithTagsResponse"
+        "409":
+          description: Conflict - The target schema already exists in the specified catalog
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                SchemaAlreadyExistsException:
+                  $ref: "./../../gravitino-oss/docs/open-api/schemas.yaml#/components/examples/SchemaAlreadyExistsException"
+        "5xx":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables:
+    parameters:
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/schema"
+    post:
+      tags:
+        - table
+      summary: Create table with tags
+      operationId: createTableWithTags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TableWithTagsCreateRequest"
+            examples:
+              HiveTableWithTagsCreate:
+                $ref: "#/components/examples/HiveTableWithTagsCreate"
+      responses:
+        "200":
+          $ref: "#/components/responses/TableWithTagsResponse"
+        "409":
+          description: Conflict - The target table already exists
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                TableAlreadyExistsErrorResponse:
+                  $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/examples/TableAlreadyExistsException"
+        "5xx":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/filesets:
+    parameters:
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/schema"
+    post:
+      tags:
+        - fileset
+      summary: Create fileset with tags
+      operationId: createFilesetWithTags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FilesetWithTagsCreateRequest"
+            examples:
+              FilesetWithTagsCreate:
+                $ref: "#/components/examples/FilesetWithTagsCreateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/FilesetWithTagsResponse"
+        "409":
+          description: Conflict - The target fileset already exists
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                FilesetAlreadyExistsErrorResponse:
+                  $ref: "./../../gravitino-oss/docs/open-api/filesets.yaml#/components/examples/FilesetAlreadyExistsException"
+        "5xx":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/topics:
+    parameters:
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/schema"
+    post:
+      tags:
+        - topic
+      summary: Create topic with tags
+      operationId: createTopicWithTags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TopicWithTagsCreateRequest"
+            examples:
+              TopicWithTagsCreate:
+                $ref: "#/components/examples/TopicWithTagsCreateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/TopicWithTagsResponse"
+        "409":
+          description: Conflict - The target topic already exists
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                TopicAlreadyExistsErrorResponse:
+                  $ref: "./../../gravitino-oss/docs/open-api/topics.yaml#/components/examples/TopicAlreadyExistsException"
+        "5xx":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    CatalogWithTags:
+      type: object
+      description: A catalog
+      required:
+        - name
+        - type
+        - provider
+        - audit
+        - tags
+      properties:
+        name:
+          type: string
+          description: The name of the catalog
+        type:
+          type: string
+          description: The type of the catalog
+          enum:
+            - relational
+            - fileset
+            - messaging
+        provider:
+          type: string
+          description: The provider of the catalog
+          enum:
+            - hive
+            - lakehouse-iceberg
+            - lakehouse-paimon
+            - jdbc-mysql
+            - jdbc-postgresql
+            - jdbc-doris
+            - hadoop
+            - kafka
+        comment:
+          type: string
+          description: A comment about the catalog
+          nullable: true
+        audit:
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/Audit"
+        tags:
+          type: array
+          description: A list of tags for the catalog
+          items:
+              type: string
+        properties:
+          type: object
+          description: Configured string to string map of properties for the catalog
+          default: { }
+          additionalProperties:
+            type: string
+
+    SchemaWithTagsCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: The name of the schema
+        comment:
+          type: string
+          description: A comment describing the schema
+          nullable: true
+        properties:
+          type: object
+          description: A map of properties for the schema
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        tagsToAdd:
+          type: array
+          description: A list of tags to add to the schema
+          nullable: true
+          default: [ ]
+          items:
+              type: string
+
+    CatalogWithTagsCreateRequest:
+      type: object
+      required:
+        - name
+        - type
+        - provider
+      properties:
+        name:
+          type: string
+          description: The name of the catalog
+        type:
+          type: string
+          description: The type of the catalog
+          enum:
+            - relational
+            - fileset
+            - stream
+        provider:
+          type: string
+          description: The provider of the catalog
+          enum:
+            - hive
+            - lakehouse-iceberg
+            - lakehouse-paimon
+            - lakehouse-hudi
+            - jdbc-mysql
+            - jdbc-postgresql
+            - jdbc-doris
+            - jdbc-oceanbase
+            - hadoop
+            - kafka
+        comment:
+          type: string
+          description: A comment for the catalog
+          nullable: true
+        properties:
+          type: object
+          description: A map of properties for the catalog
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        tagsToAdd:
+          type: array
+          description: A list of tags to add to the catalog
+          nullable: true
+          default: [ ]
+          items:
+              type: string
+
+    SchemaWithTags:
+      type: object
+      description: A schema
+      required:
+        - name
+        - audit
+        - tags
+      properties:
+        name:
+          type: string
+          description: The name of the schema
+        comment:
+          type: string
+          description: A comment describing the schema
+          nullable: true
+        audit:
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/Audit"
+        tags:
+          type: array
+          description: A list of tags for the schema
+          items:
+              type: string
+        properties:
+          type: object
+          description: A map of properties for the schema
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+
+    TableWithTagsCreateRequest:
+      type: object
+      required:
+        - name
+        - columns
+      properties:
+        name:
+          type: string
+          description: The name of the table
+        columns:
+          type: array
+          description: A list of columns
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/Column"
+        comment:
+          type: string
+          description: The comment of the table
+          nullable: true
+        properties:
+          type: object
+          description: A map of table properties
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        sortOrders:
+          type: array
+          description: Describes the sort order of the table data
+          nullable: true
+          default: [ ]
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/SortOrder"
+        distribution:
+          $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/Distribution"
+        partitioning:
+          type: array
+          description: partitioning of the table data
+          nullable: true
+          default: [ ]
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/partitioning.yaml#/components/schemas/PartitioningSpec"
+        indexes:
+          type: array
+          description: Indexes of the table
+          nullable: true
+          default: [ ]
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/indexes.yaml#/components/schemas/IndexSpec"
+        tagsToAdd:
+          type: array
+          description: A list of tags to add to the table
+          nullable: true
+          default: [ ]
+          items:
+              type: string
+        columnTags:
+          type: object
+          description: A map of column tags
+          nullable: true
+          default: { }
+          additionalProperties:
+              type: array
+              items:
+                type: string
+
+    TableWithTags:
+      type: object
+      description: A table object
+      required:
+        - name
+        - columns
+        - audit
+        - tags
+        - columnTags
+      properties:
+        name:
+          type: string
+          description: The name of the table
+        columns:
+          type: array
+          description: A list of columns
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/Column"
+        comment:
+          type: string
+          description: The comment of the table
+          nullable: true
+        audit:
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/Audit"
+        properties:
+          type: object
+          description: A map of table properties
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        distribution:
+          $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/Distribution"
+        sortOrders:
+          type: array
+          description: Describes the sort order of the table data
+          nullable: true
+          default: [ ]
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/SortOrder"
+        partitioning:
+          type: array
+          description: partitioning of the table data
+          nullable: true
+          default: [ ]
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/partitioning.yaml#/components/schemas/PartitioningSpec"
+        indexes:
+          type: array
+          description: Indexes of the table
+          nullable: true
+          default: [ ]
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/indexes.yaml#/components/schemas/IndexSpec"
+        tags:
+          type: array
+          description: A list of tags for the table
+          items:
+              type: string
+        columnTags:
+          type: object
+          description: A map of column tags
+          nullable: true
+          default: { }
+          additionalProperties:
+              type: array
+              items:
+                  type: string
+
+    FilesetWithTagsCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: The name of the fileset. Can not be empty.
+        type:
+          type: string
+          description: The type of the fileset. The value of type should be EXTERNAL or MANAGED
+          nullable: true
+        comment:
+          type: string
+          description: The comment of the fileset. Can be empty.
+          nullable: true
+        storageLocation:
+          type: string
+          description: The location of the fileset. If the storage location of managed fileset is empty, it will \
+            use the location of namespace. The storage location of external fileset must be set.
+          nullable: true
+        properties:
+          type: object
+          description: The properties of the fileset. Can be empty.
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        tagsToAdd:
+          type: array
+          description: A list of tags to add to the fileset
+          nullable: true
+          default: [ ]
+          items:
+              type: string
+
+    FilesetWithTags:
+      type: object
+      required:
+        - name
+        - tags
+      properties:
+        name:
+          type: string
+          description: The name of the fileset
+        type:
+          type: string
+          description: The type of the fileset
+          nullable: true
+        comment:
+          type: string
+          description: The comment of the fileset
+          nullable: true
+        storageLocation:
+          type: string
+          description: The location of the fileset
+          nullable: true
+        properties:
+          type: object
+          description: The properties of the fileset
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        audit:
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/Audit"
+        tags:
+          type: array
+          description: A list of tags for the fileset
+          items:
+              type: string
+
+    TopicWithTagsCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: The name of the topic
+        comment:
+          type: string
+          description: The comment of the topic
+          nullable: true
+        properties:
+          type: object
+          description: The properties of the topic
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        tagsToAdd:
+          type: array
+          description: A list of tags to add to the topic
+          nullable: true
+          default: [ ]
+          items:
+              type: string
+
+    TopicWithTags:
+      type: object
+      required:
+        - name
+        - tags
+      properties:
+        name:
+          type: string
+          description: The name of the topic
+        comment:
+          type: string
+          description: The comment of the topic
+        properties:
+          type: object
+          description: The properties of the topic
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        audit:
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/Audit"
+        tags:
+          type: array
+          description: A list of tags for the topic
+          items:
+              type: string
+
+  responses:
+    CatalogWithTagsResponse:
+      description: Returns included catalog object with tags
+      content:
+        application/vnd.gravitino.v1+json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                format: int32
+                description: Status code of the response
+                enum:
+                  - 0
+              catalog:
+                $ref: "./../../gravitino-oss/docs/open-api/catalogs.yaml#/components/schemas/Catalog"
+              tags:
+                type: array
+                description: A list of tags for the catalog
+                items:
+                    type: string
+          examples:
+            CatalogWithTagsResponse:
+              $ref: "#/components/examples/CatalogWithTagsResponse"
+
+    SchemaWithTagsResponse:
+      description: Returns include the schema object
+      content:
+        application/vnd.gravitino.v1+json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                format: int32
+                description: Status code of the response
+                enum:
+                  - 0
+              schema:
+                $ref: "./../../gravitino-oss/docs/open-api/schemas.yaml#/components/schemas/Schema"
+              tags:
+                type: array
+                description: A list of tags for the schema
+                items:
+                    type: string
+
+          examples:
+            SchemaWithTagsResponse:
+              $ref: "#/components/examples/SchemaWithTagsResponse"
+
+    TableWithTagsResponse:
+      description: Returns include the table object with tags
+      content:
+        application/vnd.gravitino.v1+json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                format: int32
+                description: Status code of the response
+                enum:
+                  - 0
+              table:
+                $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/Table"
+              tags:
+                type: array
+                description: A list of tags for the table
+                items:
+                    type: string
+              columnTags:
+                type: object
+                description: A map of column tags
+                nullable: true
+                default: { }
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+          examples:
+            TableWithTagsResponse:
+              $ref: "#/components/examples/HiveTableWithTagsResponse"
+
+    FilesetWithTagsResponse:
+      description: The response of fileset object
+      content:
+        application/vnd.gravitino.v1+json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                format: int32
+                description: Status code of the response
+                enum:
+                  - 0
+              fileset:
+                $ref: "./../../gravitino-oss/docs/open-api/filesets.yaml#/components/schemas/Fileset"
+              tags:
+                type: array
+                description: A list of tags for the fileset
+                items:
+                    type: string
+          examples:
+            FilesetWithTagsResponse:
+              $ref: "#/components/examples/FilesetWithTagsResponse"
+
+    TopicWithTagsResponse:
+      description: Returns include the topic object
+      content:
+        application/vnd.gravitino.v1+json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                format: int32
+                description: Status code of the response
+                enum:
+                  - 0
+              topic:
+                $ref: "../../gravitino-oss/docs/open-api/topics.yaml#/components/schemas/Topic"
+              tags:
+                type: array
+                description: A list of tags for the topic
+                items:
+                    type: string
+          examples:
+            TopicWithTagsResponse:
+              $ref: "#/components/examples/TopicWithTagsResponse"
+
+  examples:
+    CatalogWithTagsCreate:
+      value: {
+        "name": "my-catalog",
+        "type": "relational",
+        "provider": "jdbc-mysql",
+        "comment": "This is my catalog",
+        "properties": {
+          "key1": "value1",
+          "key2": "value2"
+        },
+        "tagsToAdd": [ "tag1", "tag2" ]
+      }
+
+    CatalogWithTagsResponse:
+      value: {
+        "code": 0,
+        "catalog": {
+          "name": "my_hive_catalog",
+          "type": "relational",
+          "provider": "hive",
+          "comment": "This is my hive catalog",
+          "properties": {
+            "key1": "value1",
+            "gravitino.bypass.hive.metastore.client.capability.check": "false",
+            "metastore.uris": "thrift://127.0.0.1:9083"
+          },
+          "audit": {
+            "creator": "gravitino",
+            "createTime": "2023-12-08T03:41:25.595Z"
+          }
+        },
+        "tags": [ "tag1", "tag2" ]
+      }
+
+    SchemaWithTagsCreate:
+      value: {
+        "name": "my_hive_schema",
+        "comment": "This is my Hive schema",
+        "properties": {
+          "location": "/user/hive/warehouse",
+          "key1": "value1",
+          "key2": "value2"
+        },
+        "tagsToAdd": [ "tag1", "tag2" ]
+      }
+
+    SchemaWithTagsResponse:
+      value: {
+        "code": 0,
+        "schema": {
+          "name": "my_hive_schema",
+          "comment": "This is my Hive schema",
+          "properties": {
+            "key1": "value1",
+            "key2": "value2",
+            "location": "hdfs://0.0.0.0:9000/user/hive/warehouse"
+          },
+          "audit": {
+            "creator": "gravitino",
+            "createTime": "2023-12-08T08:37:43.531Z"
+          }
+        },
+        "tags": [ "tag1", "tag2" ]
+      }
+
+    HiveTableWithTagsCreate:
+      value: {
+        "name": "my_hive_table",
+        "comment": "This is my Hive table",
+        "columns": [
+          {
+            "name": "id",
+            "type": "integer",
+            "comment": "id column comment",
+            "nullable": true,
+            "autoIncrement": false
+          },
+          {
+            "name": "name",
+            "type": "string",
+            "comment": "name column comment",
+            "nullable": true
+          },
+          {
+            "name": "age",
+            "type": "integer",
+            "comment": "age column comment",
+            "nullable": true
+          },
+          {
+            "name": "info",
+            "type": {
+              "type": "struct",
+              "fields": [
+                {
+                  "name": "position",
+                  "type": "string",
+                  "nullable": true,
+                  "comment": "position field comment"
+                },
+                {
+                  "name": "contact",
+                  "type": {
+                    "type": "list",
+                    "elementType": "integer",
+                    "containsNull": false
+                  },
+                  "nullable": true,
+                  "comment": "contact field comment"
+                },
+                {
+                  "name": "rating",
+                  "type": {
+                    "type": "map",
+                    "keyType": "string",
+                    "valueType": "integer",
+                    "valueContainsNull": false
+                  },
+                  "nullable": true,
+                  "comment": "rating field comment"
+                }
+              ]
+            },
+            "comment": "info column comment",
+            "nullable": true
+          },
+          {
+            "name": "dt",
+            "type": "date",
+            "comment": "dt column comment",
+            "nullable": true
+          }
+        ],
+        "partitioning": [
+          {
+            "strategy": "identity",
+            "fieldName": [ "dt" ]
+          }
+        ],
+        "distribution": {
+          "strategy": "hash",
+          "number": 32,
+          "funcArgs": [
+            {
+              "type": "field",
+              "fieldName": [ "id" ]
+            }
+          ]
+        },
+        "sortOrders": [
+          {
+            "sortTerm": {
+              "type": "field",
+              "fieldName": [ "age" ]
+            },
+            "direction": "asc",
+            "nullOrdering": "nulls_first"
+          }
+        ],
+        "properties": {
+          "format": "ORC"
+        },
+        indexes: [ ],
+        tagsToAdd: [ "tag1", "tag2" ],
+        columnTags: {
+          "id": [ "tag1" ],
+          "name": [ "tag2" ],
+          "age": [ "tag3" ],
+          "info": [ "tag4" ],
+          "dt": [ "tag5" ]
+        }
+      }
+
+    HiveTableWithTagsResponse:
+      value: {
+        "code": 0,
+        "table": {
+          "name": "my_hive_table",
+          "comment": "This is my Hive table",
+          "columns": [
+            {
+              "name": "id",
+              "type": "integer",
+              "comment": "id column comment",
+              "nullable": true,
+              "autoIncrement": false
+            },
+            {
+              "name": "name",
+              "type": "string",
+              "comment": "name column comment",
+              "nullable": true
+            },
+            {
+              "name": "age",
+              "type": "integer",
+              "comment": "age column comment",
+              "nullable": true
+            },
+            {
+              "name": "dt",
+              "type": "date",
+              "comment": "dt column comment",
+              "nullable": true
+            }
+          ],
+          "properties": {
+            "input-format": "org.apache.hadoop.hive.ql.io.orc.OrcInputFormat",
+            "transient_lastDdlTime": "1702033666",
+            "output-format": "org.apache.hadoop.hive.ql.io.orc.OrcOutputFormat",
+            "location": "hdfs://0.0.0.0:9000/user/hive/warehouse/my_hive_table",
+            "table-type": "MANAGED_TABLE",
+            "serde-lib": "org.apache.hadoop.hive.ql.io.orc.OrcSerde",
+            "serde-name": "my_hive_table"
+          },
+          "audit": {
+            "creator": "gravitino",
+            "createTime": "2023-12-08T11:07:46.938Z"
+          },
+          "distribution": {
+            "strategy": "hash",
+            "number": 32,
+            "funcArgs": [
+              {
+                "type": "field",
+                "fieldName": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "sortOrders": [
+            {
+              "sortTerm": {
+                "type": "field",
+                "fieldName": [
+                  "age"
+                ]
+              },
+              "direction": "asc",
+              "nullOrdering": "nulls_first"
+            }
+          ],
+          "partitioning": [
+            {
+              "strategy": "identity",
+              "fieldName": [
+                "dt"
+              ]
+            }
+          ],
+          "indexes": [ ]
+        },
+        "tags": [ "tag1", "tag2" ],
+        "columnTags": {
+          "id": [ "tag1" ],
+          "name": [ "tag2" ],
+          "age": [ "tag3" ],
+          "dt": [ "tag4" ]
+        }
+      }
+
+    FilesetWithTagsCreateRequest:
+      value: {
+        "name": "fileset1",
+        "type": "managed",
+        "comment": "This is a comment",
+        "storageLocation": "s3://bucket/path",
+        "properties": {
+          "key1": "value1",
+          "key2": "value2"
+        },
+        "tagsToAdd": [ "tag1", "tag2" ]
+      }
+
+    FilesetWithTagsResponse:
+      value: {
+        "code": 0,
+        "fileset": {
+          "name": "fileset1",
+          "type": "managed",
+          "comment": "This is a comment",
+          "storageLocation": "hdfs://host/user/s_fileset/schema/fileset1",
+          "properties": {
+            "key1": "value1",
+            "key2": "value2"
+          }
+        },
+        "tags": [ "tag1", "tag2" ]
+      }
+
+    TopicWithTagsCreateRequest:
+      value: {
+        "name": "topic1",
+        "comment": "This is a topic",
+        "properties": {
+          "partition-count": "1",
+          "replication-factor": "1"
+        },
+        "tagsToAdd": [ "tag1", "tag2" ]
+      }
+
+    TopicWithTagsResponse:
+      value: {
+        "code": 0,
+        "topic": {
+          "name": "topic1",
+          "comment": "This is a topic",
+          "properties": {
+            "partition-count": "1",
+            "replication-factor": "1"
+          }
+        },
+        "tags": [ "tag1", "tag2" ]
+      }
