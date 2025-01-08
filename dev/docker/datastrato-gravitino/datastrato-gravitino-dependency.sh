@@ -35,6 +35,11 @@ mkdir -p "${gravitino_dir}/packages"
 
 cp -r "${gravitino_home}/distribution/package" "${gravitino_dir}/packages/gravitino"
 
+# make sure bundles are built
+"${gravitino_home}"/gradlew -p gravitino-oss build -x test
+# Copy the all file system bundles to the Hadoop catalog libs
+cp -r ${gravitino_home}/gravitino-oss/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/hadoop/libs"
+
 # Keeping the container running at all times
 cat <<EOF >> "${gravitino_dir}/packages/gravitino/bin/gravitino.sh"
 
