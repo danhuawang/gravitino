@@ -22,6 +22,14 @@ gravitino_dir="$(dirname "${BASH_SOURCE-$0}")"
 gravitino_dir="$(cd "${gravitino_dir}">/dev/null; pwd)"
 gravitino_home="$(cd "${gravitino_dir}/../../..">/dev/null; pwd)"
 
+MYSQL_JDBC_DRIVER_VERSION=${MYSQL_VERSION:-"8.0.26"}
+MYSQL_JDBC_DRIVER_NAME="mysql-connector-java-${MYSQL_JDBC_DRIVER_VERSION}.jar"
+MYSQL_JDBC_DIVER_DOWNLOAD_URL="https://repo1.maven.org/maven2/mysql/mysql-connector-java/${MYSQL_JDBC_DRIVER_VERSION}/${MYSQL_JDBC_DRIVER_NAME}"
+
+POSTGRESQL_JDBC_DRIVER_VERSION=${POSTGRESQL_VERSION:-"42.7.0"}
+POSTGRESQL_JDBC_DRIVER_NAME="postgresql-${POSTGRESQL_JDBC_DRIVER_VERSION}.jar"
+POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL="https://jdbc.postgresql.org/download/${POSTGRESQL_JDBC_DRIVER_NAME}"
+
 # make sure the submodule is initialized
 git -C "${gravitino_home}" submodule update --init --recursive
 
@@ -39,6 +47,14 @@ cp -r "${gravitino_home}/distribution/package" "${gravitino_dir}/packages/gravit
 "${gravitino_home}"/gradlew -p gravitino-oss build -x test
 # Copy the all file system bundles to the Hadoop catalog libs
 cp -r ${gravitino_home}/gravitino-oss/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/hadoop/libs"
+
+if [ ! -f "${gravitino_dir}/packages/${MYSQL_JDBC_DRIVER_NAME}" ]; then
+  curl -L -s -o "${gravitino_dir}/packages/${MYSQL_JDBC_DRIVER_NAME}" "${MYSQL_JDBC_DIVER_DOWNLOAD_URL}"
+fi
+
+if [ ! -f "${gravitino_dir}/packages/${POSTGRESQL_JDBC_DRIVER_NAME}" ]; then
+  curl -L -s -o "${gravitino_dir}/packages/${POSTGRESQL_JDBC_DRIVER_NAME}" "${POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL}"
+fi
 
 # Keeping the container running at all times
 cat <<EOF >> "${gravitino_dir}/packages/gravitino/bin/gravitino.sh"

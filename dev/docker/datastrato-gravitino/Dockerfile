@@ -19,9 +19,35 @@
 FROM openjdk:17-jdk-buster
 LABEL maintainer="support@datastrato.com"
 
+RUN apt-get update && apt-get install -y \
+    vim \
+    less \
+    curl \
+    wget \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG MYSQL_JDBC_DRIVER_NAME
+ARG POSTGRESQL_JDBC_DRIVER_NAME
+
 WORKDIR /root/gravitino
 
 COPY packages/gravitino /root/gravitino
+
+# copy JDBC driver
+COPY packages/${MYSQL_JDBC_DRIVER_NAME} packages/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/libs/
+
+# copy MySQL JDBC driver
+RUN cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-mysql/libs/ && \
+    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-doris/libs/ && \
+    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-oceanbase/libs/ && \
+    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/lakehouse-iceberg/libs/ && \
+    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/iceberg-rest-server/libs/
+
+# copy PostgreSQL JDBC driver
+RUN cp /root/gravitino/libs/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-postgresql/libs/ && \
+    cp /root/gravitino/libs/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/lakehouse-iceberg/libs/ && \
+    cp /root/gravitino/libs/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/iceberg-rest-server/libs/
 
 EXPOSE 8090
 EXPOSE 9001

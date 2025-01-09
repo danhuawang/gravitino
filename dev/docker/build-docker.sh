@@ -87,6 +87,7 @@ fi
 
 if [ "${component_type}" == "datastrato-gravitino" ]; then
   . ${script_dir}/datastrato-gravitino/datastrato-gravitino-dependency.sh
+  build_args="--build-arg MYSQL_JDBC_DRIVER_NAME=${MYSQL_JDBC_DRIVER_NAME} --build-arg POSTGRESQL_JDBC_DRIVER_NAME=${POSTGRESQL_JDBC_DRIVER_NAME}"
 else
   echo "ERROR : ${component_type} is not a valid component type"
   usage
