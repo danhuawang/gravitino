@@ -2,6 +2,10 @@
  * Copyright 2023 Datastrato Pvt Ltd.
  * This software is licensed under the Apache License version 2.
  */
+import com.github.vlsi.gradle.dsl.configureEach
+import org.gradle.internal.os.OperatingSystem
+import java.io.IOException
+import java.util.Locale
 
 plugins {
   `maven-publish`
@@ -65,6 +69,75 @@ allprojects {
       }
     }
   }
+
+  val setTestEnvironment: (Test) -> Unit = { param ->
+    param.doFirst {
+      // Default use MiniGravitino to run integration tests
+      param.environment("GRAVITINO_ROOT_DIR", project.rootDir.path)
+      param.environment("IT_PROJECT_DIR", project.buildDir.path)
+      // If the environment variable `HADOOP_USER_NAME` is not customized in submodule,
+      // then set it to "anonymous"
+      if (param.environment["HADOOP_USER_NAME"] == null) {
+        param.environment("HADOOP_USER_NAME", "anonymous")
+      }
+      param.environment("HADOOP_HOME", "/tmp")
+      param.environment("PROJECT_VERSION", project.version)
+
+      // Gravitino CI Docker image
+      param.environment("GRAVITINO_CI_HIVE_DOCKER_IMAGE", "apache/gravitino-ci:hive-0.1.17")
+      param.environment("GRAVITINO_CI_KERBEROS_HIVE_DOCKER_IMAGE", "apache/gravitino-ci:kerberos-hive-0.1.5")
+      param.environment("GRAVITINO_CI_DORIS_DOCKER_IMAGE", "apache/gravitino-ci:doris-0.1.5")
+      param.environment("GRAVITINO_CI_TRINO_DOCKER_IMAGE", "apache/gravitino-ci:trino-0.1.6")
+      param.environment("GRAVITINO_CI_RANGER_DOCKER_IMAGE", "apache/gravitino-ci:ranger-0.1.1")
+      param.environment("GRAVITINO_CI_KAFKA_DOCKER_IMAGE", "apache/kafka:3.7.0")
+      param.environment("GRAVITINO_CI_LOCALSTACK_DOCKER_IMAGE", "localstack/localstack:latest")
+
+      val dockerRunning = project.rootProject.extra["dockerRunning"] as? Boolean ?: false
+      val macDockerConnector = project.rootProject.extra["macDockerConnector"] as? Boolean ?: false
+      if (OperatingSystem.current().isMacOsX() &&
+        dockerRunning &&
+        macDockerConnector
+      ) {
+        param.environment("NEED_CREATE_DOCKER_NETWORK", "true")
+      }
+
+      // Change poll image pause time from 30s to 60s
+      param.environment("TESTCONTAINERS_PULL_PAUSE_TIMEOUT", "60")
+      val jdbcDatabase = project.properties["jdbcBackend"] as? String ?: "h2"
+      param.environment("jdbcBackend", jdbcDatabase)
+
+      val testMode = project.properties["testMode"] as? String ?: "embedded"
+      param.systemProperty("gravitino.log.path", "build/${project.name}-integration-test.log")
+      project.delete("build/${project.name}-integration-test.log")
+      if (testMode == "deploy") {
+        param.environment("GRAVITINO_HOME", project.rootDir.path + "/distribution/package")
+        param.systemProperty("testMode", "deploy")
+      } else if (testMode == "embedded") {
+        param.environment("GRAVITINO_HOME", project.rootDir.path)
+        param.environment("GRAVITINO_TEST", "true")
+        param.environment("GRAVITINO_WAR", project.rootDir.path + "/web/web/dist/")
+        param.systemProperty("testMode", "embedded")
+      } else {
+        throw GradleException("Gravitino integration tests only support [-PtestMode=embedded] or [-PtestMode=deploy] mode!")
+      }
+
+      param.useJUnitPlatform()
+      val skipUTs = project.hasProperty("skipTests")
+      if (skipUTs) {
+        // Only run integration tests
+        param.include("**/integration/test/**")
+      }
+
+      param.useJUnitPlatform {
+        val dockerTest = project.rootProject.extra["dockerTest"] as? Boolean ?: false
+        if (!dockerTest) {
+          excludeTags("gravitino-docker-test")
+        }
+      }
+    }
+  }
+
+  extra["initTestParam"] = setTestEnvironment
 }
 
 subprojects {
@@ -76,6 +149,11 @@ subprojects {
 
   tasks.test {
     useJUnitPlatform()
+  }
+
+  tasks.withType<Test> {
+    val initTest = project.extra.get("initTestParam") as (Test) -> Unit
+    initTest(this)
   }
 }
 
@@ -135,7 +213,7 @@ tasks {
     group = "datastrato gravitino distribution"
     outputs.dir(projectDir.dir("distribution/package"))
 
-    dependsOn("copyOssDistribution", "copySubprojectDependencies", "copySubprojectLib")
+    dependsOn("copyOssDistribution", "copySubprojectDependencies", "copySubprojectLib", ":authorization-jdbc-enterprise:copyLibAndConfig")
 
     doLast {
       copy {
@@ -189,7 +267,9 @@ tasks {
     group = "datastrato gravitino distribution"
     dependsOn("copyOssDistribution")
     subprojects.forEach {
-      if (it.name != "docs") {
+      println("Subproject: ${it.name}")
+      if (it.name != "docs" && it.name != "authorization-jdbc-enterprise") {
+        println("Subproject: ${it.name} copy .")
         from(it.configurations.runtimeClasspath)
         into("distribution/package/libs")
       }
@@ -200,7 +280,8 @@ tasks {
     group = "datastrato gravitino distribution"
     dependsOn("copyOssDistribution")
     subprojects.forEach {
-      if (it.name != "docs") {
+      println("Subproject: ${it.name}")
+      if (it.name != "docs" && it.name != "authorization-jdbc-enterprise") {
         dependsOn("${it.name}:build")
         from("${it.name}/build/libs")
         into("distribution/package/libs")
@@ -222,3 +303,141 @@ tasks {
     }
   }
 }
+
+project.extra["dockerTest"] = false
+project.extra["dockerRunning"] = false
+project.extra["macDockerConnector"] = false
+project.extra["isOrbStack"] = false
+
+// The following is to check the docker status and print the tip message
+fun printDockerCheckInfo() {
+  checkMacDockerConnector()
+  checkDockerStatus()
+  checkOrbStackStatus()
+
+  val testMode = project.properties["testMode"] as? String ?: "embedded"
+  if (testMode != "deploy" && testMode != "embedded") {
+    return
+  }
+  val dockerRunning = project.extra["dockerRunning"] as? Boolean ?: false
+  val macDockerConnector = project.extra["macDockerConnector"] as? Boolean ?: false
+  val isOrbStack = project.extra["isOrbStack"] as? Boolean ?: false
+  val skipDockerTests = if (extra["skipDockerTests"].toString().toBoolean()) {
+    // Read the environment variable (SKIP_DOCKER_TESTS) when skipDockerTests is true
+    // which means users can enable the docker tests by setting the gradle properties or the environment variable.
+    System.getenv("SKIP_DOCKER_TESTS")?.toBoolean() ?: true
+  } else {
+    false
+  }
+
+  if (skipDockerTests) {
+    project.extra["dockerTest"] = false
+  } else if (OperatingSystem.current().isMacOsX() &&
+    dockerRunning &&
+    (macDockerConnector || isOrbStack)
+  ) {
+    project.extra["dockerTest"] = true
+  } else if (OperatingSystem.current().isLinux() && dockerRunning) {
+    project.extra["dockerTest"] = true
+  }
+
+  println("------------------ Check Docker environment ---------------------")
+  println("Docker server status ............................................ [${if (dockerRunning) "running" else "\u001B[31mstop\u001B[0m"}]")
+  if (OperatingSystem.current().isMacOsX()) {
+    println("mac-docker-connector status ..................................... [${if (macDockerConnector) "running" else "\u001B[31mstop\u001B[0m"}]")
+    println("OrbStack status ................................................. [${if (dockerRunning && isOrbStack) "yes" else "\u001B[31mno\u001B[0m"}]")
+  }
+
+  val dockerTest = project.extra["dockerTest"] as? Boolean ?: false
+  if (dockerTest) {
+    println("Using Docker container to run all tests ......................... [$testMode test]")
+  } else {
+    println("Run test cases without `gravitino-docker-test` tag .............. [$testMode test]")
+  }
+  println("-----------------------------------------------------------------")
+
+  // Print help message if Docker server or mac-docker-connector is not running
+  printDockerServerTip()
+  printMacDockerTip()
+}
+
+fun printDockerServerTip() {
+  val dockerRunning = project.extra["dockerRunning"] as? Boolean ?: false
+  if (!dockerRunning) {
+    val redColor = "\u001B[31m"
+    val resetColor = "\u001B[0m"
+    println("Tip: Please make sure to start the ${redColor}Docker server$resetColor before running the integration tests.")
+  }
+}
+
+fun printMacDockerTip() {
+  val macDockerConnector = project.extra["macDockerConnector"] as? Boolean ?: false
+  val isOrbStack = project.extra["isOrbStack"] as? Boolean ?: false
+  if (OperatingSystem.current().isMacOsX() && !macDockerConnector && !isOrbStack) {
+    val redColor = "\u001B[31m"
+    val resetColor = "\u001B[0m"
+    println(
+      "Tip: Please make sure to use ${redColor}OrbStack$resetColor or execute the " +
+        "$redColor`dev/docker/tools/mac-docker-connector.sh`$resetColor script before running" +
+        " the integration test on macOS."
+    )
+  }
+}
+
+fun checkMacDockerConnector() {
+  if (!OperatingSystem.current().isMacOsX()) {
+    // Only MacOs requires the use of `docker-connector`
+    return
+  }
+
+  try {
+    val processName = "docker-connector"
+    val command = "pgrep -x -q $processName"
+
+    val execResult = project.exec {
+      commandLine("bash", "-c", command)
+    }
+    if (execResult.exitValue == 0) {
+      project.extra["macDockerConnector"] = true
+    }
+  } catch (e: Exception) {
+    println("checkContainerRunning command execution failed: ${e.message}")
+  }
+}
+
+fun checkDockerStatus() {
+  try {
+    val process = ProcessBuilder("docker", "info").start()
+    val exitCode = process.waitFor()
+
+    if (exitCode == 0) {
+      project.extra["dockerRunning"] = true
+    } else {
+      println("checkDockerStatus command execution failed with exit code $exitCode")
+    }
+  } catch (e: IOException) {
+    println("checkDockerStatus command execution failed: ${e.message}")
+  }
+}
+
+fun checkOrbStackStatus() {
+  if (!OperatingSystem.current().isMacOsX()) {
+    return
+  }
+
+  try {
+    val process = ProcessBuilder("docker", "context", "show").start()
+    val exitCode = process.waitFor()
+    if (exitCode == 0) {
+      val currentContext = process.inputStream.bufferedReader().readText()
+      println("Current docker context is: $currentContext")
+      project.extra["isOrbStack"] = currentContext.lowercase(Locale.getDefault()).contains("orbstack")
+    } else {
+      println("checkOrbStackStatus Command execution failed with exit code $exitCode")
+    }
+  } catch (e: IOException) {
+    println("checkOrbStackStatus command execution failed: ${e.message}")
+  }
+}
+
+printDockerCheckInfo()

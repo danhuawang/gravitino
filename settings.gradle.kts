@@ -33,6 +33,12 @@ includeBuild("gravitino-oss") {
 
     substitute(module("org.apache.gravitino:docs"))
       .using(project(":docs"))
+
+    substitute(module("org.apache.gravitino:authorizations:authorization-common"))
+      .using(project(":authorizations:authorization-common"))
+
+    substitute(module("org.apache.gravitino:integration-test-common"))
+      .using(project(":integration-test-common"))
   }
 }
 
@@ -40,3 +46,4 @@ include("common-extension")
 include("core-extension")
 include("datastrato-server")
 include("docs")
+include("authorization-jdbc-enterprise")
