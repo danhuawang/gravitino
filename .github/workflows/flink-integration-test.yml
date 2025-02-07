@@ -60,7 +60,7 @@ jobs:
           ./gradlew -p gravitino-oss -PskipTests -PtestMode=deploy -PjdkVersion=${{ matrix.java-version }} -PskipDockerTests=false :flink-connector:test --tests "org.apache.gravitino.flink.connector.integration.test.**"
 
       - name: Upload integrate tests reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
         with:
           name: flink-connector-integrate-test-reports-${{ matrix.java-version }}

@@ -63,7 +63,7 @@ jobs:
           ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PscalaVersion=${{ matrix.scala-version }} -PskipDockerTests=false :spark-connector:spark-3.4:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
 
       - name: Upload integrate tests reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
         with:
           name: spark-connector-integrate-test-reports-${{ matrix.java-version }}-${{ matrix.test-mode }}
