@@ -14,10 +14,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
+import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
 import com.datastrato.gravitino.dto.responses.TopicListResponse;
@@ -41,6 +43,7 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
@@ -48,6 +51,7 @@ import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
+import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
@@ -57,6 +61,7 @@ import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.FilesetEntity;
+import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
@@ -87,6 +92,7 @@ public class TestEntityOperations extends JerseyTest {
   private final DatastratoFilesetDispatcher filesetDispatcher =
       mock(DatastratoFilesetDispatcher.class);
   private final DatastratoTopicDispatcher topicDispatcher = mock(DatastratoTopicDispatcher.class);
+  private final DatastratoModelDispatcher modelDispatcher = mock(DatastratoModelDispatcher.class);
 
   @BeforeAll
   public static void setup() throws IllegalAccessException {
@@ -117,6 +123,7 @@ public class TestEntityOperations extends JerseyTest {
             bind(tableDispatcher).to(TableDispatcher.class).ranked(2);
             bind(topicDispatcher).to(TopicDispatcher.class).ranked(2);
             bind(filesetDispatcher).to(FilesetDispatcher.class).ranked(2);
+            bind(modelDispatcher).to(ModelDispatcher.class).ranked(2);
             bindFactory(TestEntityOperations.MockServletRequestFactory.class)
                 .to(HttpServletRequest.class);
           }
@@ -375,6 +382,36 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0, filesetResp.getCode());
     Assertions.assertEquals(1, filesetResp.getFilesets().length);
     assertFilesets(filesetResp.getFilesets());
+
+    // test list models
+    Namespace modelNamespace = Namespace.of("testMetalake", "modelCatalog", "modelSchema");
+    NameIdentifier modelIdent = NameIdentifier.of(modelNamespace, "model");
+    NameIdentifier[] modelIdents = {modelIdent};
+    when(modelDispatcher.listEntities(modelNamespace)).thenReturn(buildModelEntity(modelIdents));
+
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake.modelCatalog.modelSchema")
+            .queryParam("catalogType", "model")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    ModelListResponse modelResp = resp.readEntity(ModelListResponse.class);
+    Assertions.assertEquals(0, modelResp.getCode());
+    Assertions.assertEquals(1, modelResp.getModels().length);
+    assertModels(modelResp.getModels());
+  }
+
+  private void assertModels(ModelDTO[] models) {
+    ModelDTO modelDTO = models[0];
+    Assertions.assertEquals("model", modelDTO.name());
+    Assertions.assertEquals("comment", modelDTO.comment());
+    Assertions.assertEquals(1, modelDTO.latestVersion());
+    Assertions.assertEquals("creator", modelDTO.auditInfo().creator());
+    Assertions.assertEquals("value", modelDTO.properties().get("key"));
   }
 
   private void assertFilesets(FilesetDTO[] filesets) {
@@ -427,6 +464,26 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(
         ImmutableMap.of("key", "value", "in-use", "true"), catalogDTO2.properties());
     Assertions.assertEquals("creator", catalogDTO2.auditInfo().creator());
+  }
+
+  private List<ModelEntity> buildModelEntity(NameIdentifier[] modelIdents) {
+    return Arrays.stream(modelIdents)
+        .map(
+            ident ->
+                ModelEntity.builder()
+                    .withId(1L)
+                    .withName(ident.name())
+                    .withNamespace(ident.namespace())
+                    .withComment("comment")
+                    .withLatestVersion(1)
+                    .withProperties(ImmutableMap.of("key", "value"))
+                    .withAuditInfo(
+                        AuditInfo.builder()
+                            .withCreator("creator")
+                            .withCreateTime(Instant.now())
+                            .build())
+                    .build())
+        .collect(Collectors.toList());
   }
 
   private List<FilesetEntity> buildFilesetEntity(NameIdentifier[] filesetIdents) {

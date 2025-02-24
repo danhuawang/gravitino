@@ -8,6 +8,9 @@ import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetOperationDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoModelNormalizeDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoModelOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaNormalizeDispatcher;
@@ -55,6 +58,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private DatastratoTableDispatcher datastratoTableDispatcher;
   private DatastratoFilesetDispatcher datastratoFilesetDispatcher;
   private DatastratoTopicDispatcher datastratoTopicDispatcher;
+  private DatastratoModelDispatcher datastratoModelDispatcher;
 
   public static DatastratoGravitinoEnv getInstance() {
     return INSTANCE;
@@ -106,6 +110,12 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoTopicNormalizeDispatcher(topicHookDispatcher, catalogManager());
     datastratoTopicDispatcher =
         new DatastratoTopicEventDispatcher(eventBus(), topicNormalizeDispatcher);
+
+    // initialize model dispatcher
+    DatastratoModelDispatcher modelOperationDispatcher =
+        new DatastratoModelOperationDispatcher(catalogManager(), entityStore(), idGenerator());
+    datastratoModelDispatcher =
+        new DatastratoModelNormalizeDispatcher(modelOperationDispatcher, catalogManager());
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
@@ -207,7 +217,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
 
   @Override
   public ModelDispatcher modelDispatcher() {
-    return GravitinoEnv.getInstance().modelDispatcher();
+    return datastratoModelDispatcher;
   }
 
   @Override

@@ -7,10 +7,12 @@ package com.datastrato.gravitino.server.web.rest;
 import static org.apache.gravitino.dto.util.DTOConverters.toDTO;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
+import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
 import com.datastrato.gravitino.dto.responses.TopicListResponse;
@@ -35,6 +37,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
@@ -43,6 +46,7 @@ import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
+import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
@@ -50,6 +54,7 @@ import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.lock.LockType;
 import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.FilesetEntity;
+import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
@@ -71,6 +76,7 @@ public class EntityOperations {
   private final DatastratoTableDispatcher tableDispatcher;
   private final DatastratoFilesetDispatcher filesetDispatcher;
   private final DatastratoTopicDispatcher topicDispatcher;
+  private final DatastratoModelDispatcher modelDispatcher;
 
   @Inject
   public EntityOperations(
@@ -78,12 +84,14 @@ public class EntityOperations {
       SchemaDispatcher schemaDispatcher,
       TableDispatcher tableDispatcher,
       FilesetDispatcher filesetDispatcher,
-      TopicDispatcher topicDispatcher) {
+      TopicDispatcher topicDispatcher,
+      ModelDispatcher modelDispatcher) {
     this.catalogDispatcher = catalogDispatcher;
     this.schemaDispatcher = (DatastratoSchemaDispatcher) schemaDispatcher;
     this.tableDispatcher = (DatastratoTableDispatcher) tableDispatcher;
     this.filesetDispatcher = (DatastratoFilesetDispatcher) filesetDispatcher;
     this.topicDispatcher = (DatastratoTopicDispatcher) topicDispatcher;
+    this.modelDispatcher = (DatastratoModelDispatcher) modelDispatcher;
   }
 
   @GET
@@ -162,6 +170,13 @@ public class EntityOperations {
               return listFilesets(namespace, resultLimit);
             } catch (Exception e) {
               return ExceptionHandlers.handleFilesetException(
+                  OperationType.LIST, "", namespace.toString(), e);
+            }
+          case MODEL:
+            try {
+              return listModels(namespace, resultLimit);
+            } catch (Exception e) {
+              return ExceptionHandlers.handleModelException(
                   OperationType.LIST, "", namespace.toString(), e);
             }
           default:
@@ -300,6 +315,29 @@ public class EntityOperations {
 
     Response response = Utils.ok(new FilesetListResponse(filesetDTOs));
     LOG.info("List {} fileset entities under namespace: {}", filesetDTOs.length, namespace);
+    return response;
+  }
+
+  private Response listModels(Namespace namespace, int resultLimit) {
+    // since model is managed by Gravitino, we can directly list them from store
+    List<ModelEntity> modelEntities = modelDispatcher.listEntities(namespace);
+    ModelDTO[] modelDTOs =
+        modelEntities.stream()
+            .sorted(Comparator.comparing(ModelEntity::name))
+            .limit(resultLimit)
+            .map(
+                e ->
+                    ModelDTO.builder()
+                        .withName(e.name())
+                        .withComment(e.comment())
+                        .withLatestVersion(e.latestVersion())
+                        .withProperties(e.properties())
+                        .withAudit(toDTO(e.auditInfo()))
+                        .build())
+            .toArray(ModelDTO[]::new);
+
+    Response response = Utils.ok(new ModelListResponse(modelDTOs));
+    LOG.info("List {} model entities under namespace: {}", modelDTOs.length, namespace);
     return response;
   }
 }
