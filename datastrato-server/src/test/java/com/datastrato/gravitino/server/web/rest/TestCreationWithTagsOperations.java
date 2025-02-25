@@ -16,16 +16,19 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.dto.requests.CatalogWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.requests.FilesetWithTagsCreateRequest;
+import com.datastrato.gravitino.dto.requests.ModelWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.requests.SchemaWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.requests.TableWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.requests.TopicWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.responses.CatalogWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.FilesetWithTagsResponse;
+import com.datastrato.gravitino.dto.responses.ModelWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.SchemaWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.TableWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.TopicWithTagsResponse;
@@ -50,6 +53,7 @@ import org.apache.gravitino.Schema;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
@@ -60,6 +64,7 @@ import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.CatalogAlreadyExistsException;
 import org.apache.gravitino.exceptions.FilesetAlreadyExistsException;
+import org.apache.gravitino.exceptions.ModelAlreadyExistsException;
 import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
 import org.apache.gravitino.exceptions.TableAlreadyExistsException;
 import org.apache.gravitino.exceptions.TagAlreadyAssociatedException;
@@ -69,6 +74,7 @@ import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.messaging.Topic;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.CatalogEntity;
+import org.apache.gravitino.model.Model;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.rel.types.Type;
@@ -101,6 +107,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
   private final DatastratoFilesetDispatcher filesetDispatcher =
       mock(DatastratoFilesetDispatcher.class);
   private final DatastratoTopicDispatcher topicDispatcher = mock(DatastratoTopicDispatcher.class);
+  private final DatastratoModelDispatcher modelDispatcher = mock(DatastratoModelDispatcher.class);
   private final TagDispatcher tagDispatcher = mock(TagDispatcher.class);
 
   @BeforeAll
@@ -132,6 +139,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
             bind(tableDispatcher).to(TableDispatcher.class).ranked(2);
             bind(filesetDispatcher).to(FilesetDispatcher.class).ranked(2);
             bind(topicDispatcher).to(TopicDispatcher.class).ranked(2);
+            bind(modelDispatcher).to(ModelDispatcher.class).ranked(2);
             bind(tagDispatcher).to(TagDispatcher.class).ranked(2);
             bindFactory(TestCreationWithTagsOperations.MockServletRequestFactory.class)
                 .to(HttpServletRequest.class);
@@ -647,6 +655,107 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
     Assertions.assertEquals(
         TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testRegisterModelWithTag() {
+    // test create model without tags
+    Model model = mockModel("model1", "comment", null);
+    when(modelDispatcher.registerModel(any(), any(), any())).thenReturn(model);
+
+    ModelWithTagsCreateRequest req =
+        new ModelWithTagsCreateRequest("model1", "comment", null, null);
+
+    Response resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    ModelWithTagsResponse modelWithTagsResponse = resp.readEntity(ModelWithTagsResponse.class);
+    Assertions.assertEquals(0, modelWithTagsResponse.getCode());
+
+    Model modelDTO = modelWithTagsResponse.getModel();
+    Assertions.assertEquals("model1", modelDTO.name());
+    Assertions.assertEquals(0, modelWithTagsResponse.getTags().length);
+
+    // test create model with tags
+    String[] tags = new String[] {"tag1", "tag2"};
+    req = new ModelWithTagsCreateRequest("model2", "comment", null, tags);
+
+    model = mockModel("model2", "comment", null);
+    when(modelDispatcher.registerModel(any(), any(), any())).thenReturn(model);
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), eq(tags), any()))
+        .thenReturn(tags);
+
+    resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    modelWithTagsResponse = resp.readEntity(ModelWithTagsResponse.class);
+    Assertions.assertEquals(0, modelWithTagsResponse.getCode());
+
+    modelDTO = modelWithTagsResponse.getModel();
+    Assertions.assertEquals("model2", modelDTO.name());
+    Assertions.assertArrayEquals(tags, modelWithTagsResponse.getTags());
+
+    // test create model error
+    doThrow(new ModelAlreadyExistsException("mock error"))
+        .when(modelDispatcher)
+        .registerModel(any(), any(), any());
+    Response errorResp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(CONFLICT.getStatusCode(), errorResp.getStatus());
+
+    ErrorResponse errorResponse = errorResp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
+    Assertions.assertEquals(
+        ModelAlreadyExistsException.class.getSimpleName(), errorResponse.getType());
+
+    // test tag association error
+    model = mockModel("model3", "comment", null);
+    reset(modelDispatcher);
+    when(modelDispatcher.registerModel(any(), any(), any())).thenReturn(model);
+    doThrow(new TagAlreadyAssociatedException("mock error"))
+        .when(tagDispatcher)
+        .associateTagsForMetadataObject(any(), any(), any(), any());
+    errorResp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(CONFLICT.getStatusCode(), errorResp.getStatus());
+    errorResponse = errorResp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
+    Assertions.assertEquals(
+        TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  private Model mockModel(String name, String comment, Map<String, String> properties) {
+    Model mockedModel = mock(Model.class);
+    when(mockedModel.name()).thenReturn(name);
+    when(mockedModel.comment()).thenReturn(comment);
+    when(mockedModel.properties()).thenReturn(properties);
+
+    Audit mockAudit = mock(Audit.class);
+    when(mockAudit.creator()).thenReturn("gravitino");
+    when(mockAudit.createTime()).thenReturn(Instant.now());
+    when(mockedModel.auditInfo()).thenReturn(mockAudit);
+
+    return mockedModel;
   }
 
   private Topic mockTopic(String name, String comment, Map<String, String> properties) {

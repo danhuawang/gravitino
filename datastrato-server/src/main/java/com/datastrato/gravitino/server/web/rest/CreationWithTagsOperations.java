@@ -8,16 +8,19 @@ import static org.apache.gravitino.dto.util.DTOConverters.fromDTO;
 import static org.apache.gravitino.dto.util.DTOConverters.fromDTOs;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.dto.requests.CatalogWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.requests.FilesetWithTagsCreateRequest;
+import com.datastrato.gravitino.dto.requests.ModelWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.requests.SchemaWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.requests.TableWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.requests.TopicWithTagsCreateRequest;
 import com.datastrato.gravitino.dto.responses.CatalogWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.FilesetWithTagsResponse;
+import com.datastrato.gravitino.dto.responses.ModelWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.SchemaWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.TableWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.TopicWithTagsResponse;
@@ -44,6 +47,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Schema;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
@@ -51,12 +55,14 @@ import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
+import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.file.Fileset;
 import org.apache.gravitino.lock.LockType;
 import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.messaging.Topic;
+import org.apache.gravitino.model.Model;
 import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
@@ -80,6 +86,7 @@ public class CreationWithTagsOperations {
   private final DatastratoTableDispatcher tableDispatcher;
   private final DatastratoFilesetDispatcher filesetDispatcher;
   private final DatastratoTopicDispatcher topicDispatcher;
+  private final DatastratoModelDispatcher modelDispatcher;
 
   private final TagDispatcher tagDispatcher;
 
@@ -90,12 +97,14 @@ public class CreationWithTagsOperations {
       TableDispatcher tableDispatcher,
       FilesetDispatcher filesetDispatcher,
       TopicDispatcher topicDispatcher,
+      ModelDispatcher modelDispatcher,
       TagDispatcher tagDispatcher) {
     this.catalogDispatcher = catalogDispatcher;
     this.schemaDispatcher = (DatastratoSchemaDispatcher) schemaDispatcher;
     this.tableDispatcher = (DatastratoTableDispatcher) tableDispatcher;
     this.filesetDispatcher = (DatastratoFilesetDispatcher) filesetDispatcher;
     this.topicDispatcher = (DatastratoTopicDispatcher) topicDispatcher;
+    this.modelDispatcher = (DatastratoModelDispatcher) modelDispatcher;
     this.tagDispatcher = tagDispatcher;
   }
 
@@ -103,7 +112,11 @@ public class CreationWithTagsOperations {
   @Produces("application/vnd.gravitino.v1+json")
   public Response createCatalogWithTag(
       @PathParam("metalake") String metalake, CatalogWithTagsCreateRequest request) {
-    LOG.info("Received create catalog request for metalake: {}", metalake);
+    LOG.info(
+        "Received create catalog with tags request: {}.{}: {}",
+        metalake,
+        request.getName(),
+        Arrays.toString(request.getTagsToAdd()));
 
     AtomicBoolean catalogCreated = new AtomicBoolean(false);
     try {
@@ -153,7 +166,12 @@ public class CreationWithTagsOperations {
       @PathParam("metalake") String metalake,
       @PathParam("catalog") String catalog,
       SchemaWithTagsCreateRequest request) {
-    LOG.info("Received create schema request: {}.{}.{}", metalake, catalog, request.getName());
+    LOG.info(
+        "Received create schema with tags request: {}.{}.{}: {}",
+        metalake,
+        catalog,
+        request.getName(),
+        Arrays.toString(request.getTagsToAdd()));
 
     AtomicBoolean schemaCreated = new AtomicBoolean(false);
     String fullName = String.join(".", catalog, request.getName());
@@ -204,7 +222,12 @@ public class CreationWithTagsOperations {
       @PathParam("schema") String schema,
       TableWithTagsCreateRequest request) {
     LOG.info(
-        "Received create table request: {}.{}.{}.{}", metalake, catalog, schema, request.getName());
+        "Received create table with tags request: {}.{}.{}.{}: {}",
+        metalake,
+        catalog,
+        schema,
+        request.getName(),
+        Arrays.toString(request.getTagsToAdd()));
 
     AtomicBoolean tableCreated = new AtomicBoolean(false);
     String fullName = String.join(".", catalog, schema, request.getName());
@@ -277,11 +300,12 @@ public class CreationWithTagsOperations {
       @PathParam("schema") String schema,
       FilesetWithTagsCreateRequest request) {
     LOG.info(
-        "Received create fileset request: {}.{}.{}.{}",
+        "Received create fileset with tags request: {}.{}.{}.{}: {}",
         metalake,
         catalog,
         schema,
-        request.getName());
+        request.getName(),
+        Arrays.toString(request.getTagsToAdd()));
 
     AtomicBoolean filesetCreated = new AtomicBoolean(false);
     String fullName = String.join(".", catalog, schema, request.getName());
@@ -333,7 +357,12 @@ public class CreationWithTagsOperations {
       @PathParam("schema") String schema,
       TopicWithTagsCreateRequest request) {
     LOG.info(
-        "Received create topic request: {}.{}.{}.{}", metalake, catalog, schema, request.getName());
+        "Received create topic with tags request: {}.{}.{}.{}: {}",
+        metalake,
+        catalog,
+        schema,
+        request.getName(),
+        Arrays.toString(request.getTagsToAdd()));
 
     AtomicBoolean topicCreated = new AtomicBoolean(false);
     String fullName = String.join(".", catalog, schema, request.getName());
@@ -374,6 +403,75 @@ public class CreationWithTagsOperations {
               ExceptionHandlers.handleTopicException(
                   OperationType.CREATE, request.getName(), schema, e));
     }
+  }
+
+  @POST
+  @Path("{catalog}/schemas/{schema}/models")
+  @Produces("application/vnd.gravitino.v1+json")
+  public Response registerModelWithTag(
+      @PathParam("metalake") String metalake,
+      @PathParam("catalog") String catalog,
+      @PathParam("schema") String schema,
+      ModelWithTagsCreateRequest request) {
+    LOG.info(
+        "Received register model with tags request: {}.{}.{}.{}: {}",
+        metalake,
+        catalog,
+        schema,
+        request.getName(),
+        Arrays.toString(request.getTagsToAdd()));
+
+    AtomicBoolean modelRegistered = new AtomicBoolean(false);
+    String fullName = String.join(".", catalog, schema, request.getName());
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            ModelDTO modelDTO = registerModel(metalake, catalog, schema, request);
+            modelRegistered.set(true);
+
+            String[] modelTags =
+                addTags(metalake, fullName, MetadataObject.Type.MODEL, request.getTagsToAdd());
+            LOG.info(
+                "Tags associated with model: {}.{}.{}.{}: {}",
+                metalake,
+                catalog,
+                schema,
+                modelDTO.name(),
+                Arrays.toString(modelTags));
+
+            return Utils.ok(new ModelWithTagsResponse(modelDTO, modelTags));
+          });
+
+    } catch (Exception e) {
+      return rollbackIfNecessary(
+          modelRegistered.get(),
+          fullName,
+          e,
+          () ->
+              TreeLockUtils.doWithTreeLock(
+                  NameIdentifierUtil.ofSchema(metalake, catalog, schema),
+                  LockType.WRITE,
+                  () ->
+                      modelDispatcher.deleteModel(
+                          NameIdentifierUtil.ofModel(
+                              metalake, catalog, schema, request.getName()))),
+          () ->
+              ExceptionHandlers.handleModelException(
+                  OperationType.REGISTER, request.getName(), schema, e));
+    }
+  }
+
+  private ModelDTO registerModel(
+      String metalake, String catalog, String schema, ModelWithTagsCreateRequest request) {
+    request.validate();
+    NameIdentifier ident = NameIdentifierUtil.ofModel(metalake, catalog, schema, request.getName());
+
+    Model model =
+        modelDispatcher.registerModel(ident, request.getComment(), request.getProperties());
+    ModelDTO modelDTO = DTOConverters.toDTO(model);
+    LOG.info("Model registered: {}.{}.{}.{}", metalake, catalog, schema, model.name());
+    return modelDTO;
   }
 
   private TopicDTO createTopic(
