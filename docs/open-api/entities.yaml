@@ -58,6 +58,7 @@ paths:
                   - $ref: "#/components/schemas/TableListResponse"
                   - $ref: "#/components/schemas/FilesetListResponse"
                   - $ref: "#/components/schemas/TopicListResponse"
+                  - $ref: "#/components/schemas/ModelListResponse"
         "400":
           $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "5xx":
@@ -139,3 +140,18 @@ components:
           description: A list of topic objects
           items:
             $ref: "./../../gravitino-oss/docs/open-api/topics.yaml#/components/schemas/Topic"
+
+    ModelListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        models:
+          type: array
+          description: A list of model objects
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/models.yaml#/components/schemas/Model"

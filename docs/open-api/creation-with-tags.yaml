@@ -181,6 +181,39 @@ paths:
         "5xx":
           $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/models:
+    parameters:
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/schema"
+    post:
+      tags:
+        - model
+      summary: Create model with tags
+      operationId: createModelWithTags
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelWithTagsCreateRequest"
+            examples:
+              ModelWithTagsCreate:
+                $ref: "#/components/examples/ModelWithTagsCreateRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/ModelWithTagsResponse"
+        "409":
+          description: Conflict - The target model already exists
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                ModelAlreadyExistsErrorResponse:
+                  $ref: "./../../gravitino-oss/docs/open-api/models.yaml#/components/examples/ModelAlreadyExistsException"
+        "5xx":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
 components:
   schemas:
     CatalogWithTags:
@@ -600,6 +633,61 @@ components:
           items:
               type: string
 
+    ModelWithTagsCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: The name of the model
+        comment:
+          type: string
+          description: The comment of the model
+          nullable: true
+        properties:
+          type: object
+          description: The properties of the model
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        tagsToAdd:
+          type: array
+          description: A list of tags to add to the model
+          nullable: true
+          default: [ ]
+          items:
+              type: string
+
+    ModelWithTags:
+      type: object
+      required:
+        - name
+        - tags
+      properties:
+        name:
+          type: string
+          description: The name of the model
+        comment:
+          type: string
+          description: The comment of the model
+          nullable: true
+        properties:
+          type: object
+          description: The properties of the model
+          nullable: true
+          default: { }
+          additionalProperties:
+            type: string
+        audit:
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/Audit"
+        tags:
+          type: array
+          description: A list of tags for the model
+          items:
+              type: string
+
   responses:
     CatalogWithTagsResponse:
       description: Returns included catalog object with tags
@@ -730,6 +818,30 @@ components:
           examples:
             TopicWithTagsResponse:
               $ref: "#/components/examples/TopicWithTagsResponse"
+
+    ModelWithTagsResponse:
+      description: Returns include the model object
+      content:
+        application/vnd.gravitino.v1+json:
+          schema:
+            type: object
+            properties:
+              code:
+                type: integer
+                format: int32
+                description: Status code of the response
+                enum:
+                  - 0
+              model:
+                $ref: "../../gravitino-oss/docs/open-api/models.yaml#/components/schemas/Model"
+              tags:
+                type: array
+                description: A list of tags for the model
+                items:
+                    type: string
+          examples:
+            ModelWithTagsResponse:
+              $ref: "#/components/examples/ModelWithTagsResponse"
 
   examples:
     CatalogWithTagsCreate:
@@ -1043,6 +1155,38 @@ components:
           "properties": {
             "partition-count": "1",
             "replication-factor": "1"
+          }
+        },
+        "tags": [ "tag1", "tag2" ]
+      }
+
+    ModelWithTagsCreateRequest:
+      value: {
+        "name": "model1",
+        "comment": "This is a comment",
+        "properties": {
+          "key1": "value1",
+          "key2": "value2"
+        },
+        "tagsToAdd": [ "tag1", "tag2" ]
+      }
+
+    ModelWithTagsResponse:
+      value: {
+        "code": 0,
+        "model": {
+          "name": "model1",
+          "latestVersion": 0,
+          "comment": "This is a comment",
+          "properties": {
+            "key1": "value1",
+            "key2": "value2"
+          },
+          "audit": {
+            "creator": "user1",
+            "createTime": "2021-01-01T00:00:00Z",
+            "lastModifier": "user1",
+            "lastModifiedTime": "2021-01-01T00:00:00Z"
           }
         },
         "tags": [ "tag1", "tag2" ]
