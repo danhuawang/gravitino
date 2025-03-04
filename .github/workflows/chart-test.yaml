@@ -77,8 +77,9 @@ jobs:
           sleep 30
           kubectl get pods -A
 
-      - name: Run gravitino
+      - name: Install gravitino chart
         run: |
+          helm dependency update ./dev/charts/gravitino
           helm upgrade --install gravitino ./dev/charts/gravitino -n gravitino --create-namespace
           sleep 30
           kubectl get pods -A
