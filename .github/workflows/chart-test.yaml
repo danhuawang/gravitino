@@ -2,8 +2,6 @@ name: Test Charts
 
 # Controls when the workflow will run
 on:
-  push:
-    branches: [ "main", "branch-*" ]
   pull_request:
     branches: [ "main", "branch-*" ]
 
@@ -69,4 +67,4 @@ jobs:
 
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
-        run: ct install --chart-dirs=dev/charts --charts=gravitino --target-branch ${{ github.event.repository.default_branch }}
+        run: ct install --chart-dirs=dev/charts --target-branch ${{ github.event.repository.default_branch }}
