@@ -1,7 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ .Release.Name }}-pod-reader
+  name: {{ include "gravitino.name" . }}-pod-reader
   namespace: {{ include "gravitino.namespace" . }}
   labels:
     {{- include "gravitino.labels" . | nindent 4 }}
