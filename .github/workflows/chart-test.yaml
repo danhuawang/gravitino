@@ -65,8 +65,6 @@ jobs:
 
       - name: Run chart-testing (lint)
         run: |
-          pwd
-          ls dev/charts/gravitino/charts
           helm repo add bitnami https://charts.bitnami.com/bitnami
           ct lint --chart-dirs=dev/charts --target-branch ${{ github.event.repository.default_branch }}
 
