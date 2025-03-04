@@ -73,7 +73,7 @@ jobs:
 
       - name: Run chart-testing (install)
         run: |
-          ct install --chart-dirs=dev/charts --target-branch ${{ github.event.repository.default_branch }}
+          ct install --chart-dirs=dev/charts/gravitino --target-branch ${{ github.event.repository.default_branch }}
           sleep 30
           kubectl get pods -A
 
