@@ -1,8 +1,6 @@
 apiVersion: v2
 appVersion: "0.8.0-incubating"
-description: Gravitino is a high-performance, geo-distributed, and federated metadata lake. It manages the 
-  metadata directly in different sources, types, and regions. It also provides users with unified metadata access
-  for data and AI assets.
+description: Gravitino is a high-performance, geo-distributed, and federated metadata lake. It manages the metadata directly in different sources, types, and regions. It also provides users with unified metadata access for data and AI assets.
 home: https://gravitino.apache.org
 dependencies:
   - condition: mysql.enabled
@@ -16,4 +14,4 @@ maintainers:
 name: gravitino
 sources:
 - https://github.com/apache/gravitino
-version: 0.1.1
+version: 0.1.2
