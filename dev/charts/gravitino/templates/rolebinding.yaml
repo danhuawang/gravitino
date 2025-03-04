@@ -1,15 +1,15 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ .Release.Name }}-read-pods
+  name: {{ include "gravitino.name" . }}-read-pods
   namespace: {{ include "gravitino.namespace" . }}
   labels:
     {{- include "gravitino.labels" . | nindent 4 }}
 subjects:
   - kind: ServiceAccount
-    name: {{ .Release.Name }}-pod-reader
+    name: {{ include "gravitino.name" . }}-pod-reader
     namespace: {{ include "gravitino.namespace" . }}
 roleRef:
   kind: Role
-  name: {{ .Release.Name }}-pod-reader
+  name: {{ include "gravitino.name" . }}-pod-reader
   apiGroup: rbac.authorization.k8s.io
