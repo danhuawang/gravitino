@@ -81,14 +81,14 @@ jobs:
         run: |
           helm dependency update ./dev/charts/gravitino
           helm upgrade --install gravitino ./dev/charts/gravitino -n gravitino --create-namespace
-          sleep 30
+          sleep 10
           kubectl get pods -A
 
       - name: Install gravitino chart,enable MySQL as gravitino storage backend
         run: |
           helm dependency update ./dev/charts/gravitino
           helm upgrade --install gravitino ./dev/charts/gravitino -n gravitino2 --create-namespace --set mysql.enabled=true
-          sleep 30
+          sleep 10
           kubectl get pods -A
 
       - name: Check all pods running
@@ -98,7 +98,7 @@ jobs:
           elapsedTime=0
           echo "Waiting for all pods in all namespaces to be in 'Running' status..."
           while true; do
-            notRunningPods=$(kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.phase}{"\n"}{end}' | grep -v "Running\|Evicted\|Completed")
+            notRunningPods=$(kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.phase}{"\n"}{end}' | grep -v "Running\|Evicted\|Completed")
             if [ -z "$notRunningPods" ]; then
               echo "All pods are running."
               break
