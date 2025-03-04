@@ -49,7 +49,7 @@ jobs:
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.7.0
 
-      - name: Run chart-testing (list-changed)
+      - name: List changed
         id: list-changed
         run: |
           changed=$(ct list-changed --chart-dirs=dev/charts --target-branch ${{ github.event.repository.default_branch }})
@@ -57,13 +57,11 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Update chart dependencies
+      - name: Lint
         if: steps.list-changed.outputs.changed == 'true'
-        run: helm dependency update ./dev/charts/gravitino
-
-      - name: Run chart-testing (lint)
-        if: steps.list-changed.outputs.changed == 'true'
-        run: ct lint --chart-dirs=dev/charts --target-branch ${{ github.event.repository.default_branch }}
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          ct lint --chart-dirs=dev/charts --target-branch ${{ github.event.repository.default_branch }}
 
       - name: Create kind cluster
         if: steps.list-changed.outputs.changed == 'true'
@@ -71,4 +69,4 @@ jobs:
 
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
-        run: ct install --chart-dirs=dev/charts --target-branch ${{ github.event.repository.default_branch }}
+        run: ct install --chart-dirs=dev/charts --charts=gravitino --target-branch ${{ github.event.repository.default_branch }}
