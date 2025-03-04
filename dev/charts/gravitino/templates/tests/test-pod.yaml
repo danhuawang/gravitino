@@ -5,7 +5,7 @@ metadata:
   annotations:
     "helm.sh/hook": test
 spec:
-  serviceAccountName: {{ .Release.Name }}-pod-reader
+  serviceAccountName: {{ include "gravitino.name" . }}-pod-reader
   containers:
       - name: test-container
         image: bitnami/kubectl:latest
@@ -21,6 +21,22 @@ spec:
             else
               echo "Running pods: $running_pods"
               exit 0
+            fi
+            echo "Checking if metalake_test exists..."
+            response=$(curl -s -o /dev/null -w "%{http_code}" http://{{ .Values.service.name }}:8090/api/metalakes/metalake_test)
+            if [ "$response" -eq 200 ]; then
+            echo "Metalake metalake_test already exists."
+            exit 0
+            else
+            echo "Metalake metalake_test does not exist. Creating..."
+            response=$(curl -s -X POST -H "Content-Type: application/json" -d '{"name":"metalake_test","comment":"comment","properties":{}}' http://{{ .Values.service.name }}:8090/api/metalakes)
+            if echo "$response" | grep -q "\"code\":0"; then
+            echo "Metalake metalake_test created successfully."
+            exit 0
+            else
+            echo "Metalake metalake_test creation failed."
+            exit 1
+            fi
             fi
         resources:
           requests:
