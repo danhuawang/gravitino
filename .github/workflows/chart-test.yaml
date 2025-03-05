@@ -71,7 +71,7 @@ jobs:
         uses: container-tools/kind-action@v2
         with:
           version: v0.27.0
-          kubectl_version: 1.32.2
+          kubectl_version: v1.32.2
           cluster_name: helm-test-cluster
 
       - name: Run chart-testing (install)
