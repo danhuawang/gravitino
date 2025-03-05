@@ -30,6 +30,8 @@ dependencies:
 kubeVersion: '>=1.23.0-0'
 maintainers:
   - name: Apache Gravitino
+    email: dev@gravitino.apache.org
+    url: https://gravitino.apache.org
 name: gravitino
 sources:
 - https://github.com/apache/gravitino
