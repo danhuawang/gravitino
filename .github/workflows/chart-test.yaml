@@ -79,3 +79,7 @@ jobs:
       - name: Run chart-testing (install)
         if: steps.list-changed.outputs.changed == 'true'
         run: ct install --chart-dirs=dev/charts --target-branch ${{ github.event.repository.default_branch }}
+
+      - name: Run chart-testing (install mysql enable)
+        if: steps.list-changed.outputs.changed == 'true'
+        run: ct install --chart-dirs=dev/charts --helm-extra-set-args "--set=mysql.enabled=true" --target-branch ${{ github.event.repository.default_branch }}   
