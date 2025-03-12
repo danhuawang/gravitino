@@ -51,8 +51,6 @@ import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
-import org.apache.gravitino.lock.LockType;
-import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
@@ -118,13 +116,7 @@ public class EntityOperations {
     }
 
     try {
-      return Utils.doAs(
-          httpRequest,
-          () ->
-              TreeLockUtils.doWithTreeLock(
-                  NameIdentifier.of(namespace.levels()),
-                  LockType.READ,
-                  () -> doList(namespace, catalogType, resultLimit)));
+      return Utils.doAs(httpRequest, () -> doList(namespace, catalogType, resultLimit));
     } catch (Exception e) {
       return Utils.internalError("Error while listing entities", e);
     }

@@ -59,8 +59,6 @@ import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.file.Fileset;
-import org.apache.gravitino.lock.LockType;
-import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.messaging.Topic;
 import org.apache.gravitino.model.Model;
 import org.apache.gravitino.rel.Table;
@@ -147,12 +145,8 @@ public class CreationWithTagsOperations {
           request.getName(),
           e,
           () ->
-              TreeLockUtils.doWithTreeLock(
-                  NameIdentifierUtil.ofMetalake(metalake),
-                  LockType.WRITE,
-                  () ->
-                      catalogDispatcher.dropCatalog(
-                          NameIdentifierUtil.ofCatalog(metalake, request.getName()))),
+              catalogDispatcher.dropCatalog(
+                  NameIdentifierUtil.ofCatalog(metalake, request.getName())),
           () ->
               ExceptionHandlers.handleCatalogException(
                   OperationType.CREATE, request.getName(), metalake, e));
@@ -200,13 +194,8 @@ public class CreationWithTagsOperations {
           fullName,
           e,
           () ->
-              TreeLockUtils.doWithTreeLock(
-                  NameIdentifierUtil.ofCatalog(metalake, catalog),
-                  LockType.WRITE,
-                  () ->
-                      schemaDispatcher.dropSchema(
-                          NameIdentifierUtil.ofSchema(metalake, catalog, request.getName()),
-                          false)),
+              schemaDispatcher.dropSchema(
+                  NameIdentifierUtil.ofSchema(metalake, catalog, request.getName()), false),
           () ->
               ExceptionHandlers.handleSchemaException(
                   OperationType.CREATE, request.getName(), catalog, e));
@@ -278,13 +267,8 @@ public class CreationWithTagsOperations {
           fullName,
           e,
           () ->
-              TreeLockUtils.doWithTreeLock(
-                  NameIdentifierUtil.ofSchema(metalake, catalog, schema),
-                  LockType.WRITE,
-                  () ->
-                      tableDispatcher.dropTable(
-                          NameIdentifierUtil.ofTable(
-                              metalake, catalog, schema, request.getName()))),
+              tableDispatcher.dropTable(
+                  NameIdentifierUtil.ofTable(metalake, catalog, schema, request.getName())),
           () ->
               ExceptionHandlers.handleTableException(
                   OperationType.CREATE, request.getName(), schema, e));
@@ -335,13 +319,8 @@ public class CreationWithTagsOperations {
           fullName,
           e,
           () ->
-              TreeLockUtils.doWithTreeLock(
-                  NameIdentifierUtil.ofSchema(metalake, catalog, schema),
-                  LockType.WRITE,
-                  () ->
-                      filesetDispatcher.dropFileset(
-                          NameIdentifierUtil.ofFileset(
-                              metalake, catalog, schema, request.getName()))),
+              filesetDispatcher.dropFileset(
+                  NameIdentifierUtil.ofFileset(metalake, catalog, schema, request.getName())),
           () ->
               ExceptionHandlers.handleFilesetException(
                   OperationType.CREATE, request.getName(), schema, e));
@@ -392,13 +371,8 @@ public class CreationWithTagsOperations {
           fullName,
           e,
           () ->
-              TreeLockUtils.doWithTreeLock(
-                  NameIdentifierUtil.ofSchema(metalake, catalog, schema),
-                  LockType.WRITE,
-                  () ->
-                      topicDispatcher.dropTopic(
-                          NameIdentifierUtil.ofTopic(
-                              metalake, catalog, schema, request.getName()))),
+              topicDispatcher.dropTopic(
+                  NameIdentifierUtil.ofTopic(metalake, catalog, schema, request.getName())),
           () ->
               ExceptionHandlers.handleTopicException(
                   OperationType.CREATE, request.getName(), schema, e));
@@ -449,13 +423,8 @@ public class CreationWithTagsOperations {
           fullName,
           e,
           () ->
-              TreeLockUtils.doWithTreeLock(
-                  NameIdentifierUtil.ofSchema(metalake, catalog, schema),
-                  LockType.WRITE,
-                  () ->
-                      modelDispatcher.deleteModel(
-                          NameIdentifierUtil.ofModel(
-                              metalake, catalog, schema, request.getName()))),
+              modelDispatcher.deleteModel(
+                  NameIdentifierUtil.ofModel(metalake, catalog, schema, request.getName())),
           () ->
               ExceptionHandlers.handleModelException(
                   OperationType.REGISTER, request.getName(), schema, e));
@@ -497,16 +466,12 @@ public class CreationWithTagsOperations {
         NameIdentifierUtil.ofFileset(metalake, catalog, schema, request.getName());
 
     Fileset fileset =
-        TreeLockUtils.doWithTreeLock(
-            NameIdentifierUtil.ofSchema(metalake, catalog, schema),
-            LockType.WRITE,
-            () ->
-                filesetDispatcher.createFileset(
-                    ident,
-                    request.getComment(),
-                    Optional.ofNullable(request.getType()).orElse(Fileset.Type.MANAGED),
-                    request.getStorageLocation(),
-                    request.getProperties()));
+        filesetDispatcher.createFileset(
+            ident,
+            request.getComment(),
+            Optional.ofNullable(request.getType()).orElse(Fileset.Type.MANAGED),
+            request.getStorageLocation(),
+            request.getProperties());
     FilesetDTO filesetDTO = DTOConverters.toDTO(fileset);
     LOG.info("Fileset created: {}.{}.{}.{}", metalake, catalog, schema, request.getName());
     return filesetDTO;
@@ -536,16 +501,12 @@ public class CreationWithTagsOperations {
     request.validate();
     NameIdentifier ident = NameIdentifierUtil.ofCatalog(metalake, request.getName());
     Catalog catalog =
-        TreeLockUtils.doWithTreeLock(
-            NameIdentifierUtil.ofMetalake(metalake),
-            LockType.WRITE,
-            () ->
-                catalogDispatcher.createCatalog(
-                    ident,
-                    request.getType(),
-                    request.getProvider(),
-                    request.getComment(),
-                    request.getProperties()));
+        catalogDispatcher.createCatalog(
+            ident,
+            request.getType(),
+            request.getProvider(),
+            request.getComment(),
+            request.getProperties());
     CatalogDTO catalogDTO = DTOConverters.toDTO(catalog);
     LOG.info("Catalog created: {}.{}", metalake, catalog.name());
     return catalogDTO;
@@ -556,12 +517,7 @@ public class CreationWithTagsOperations {
     request.validate();
     NameIdentifier ident = NameIdentifierUtil.ofSchema(metalake, catalog, request.getName());
     Schema schema =
-        TreeLockUtils.doWithTreeLock(
-            NameIdentifierUtil.ofCatalog(metalake, catalog),
-            LockType.WRITE,
-            () ->
-                schemaDispatcher.createSchema(
-                    ident, request.getComment(), request.getProperties()));
+        schemaDispatcher.createSchema(ident, request.getComment(), request.getProperties());
     SchemaDTO schemaDTO = DTOConverters.toDTO(schema);
     LOG.info("Schema created: {}.{}.{}", metalake, catalog, schema.name());
     return schemaDTO;
