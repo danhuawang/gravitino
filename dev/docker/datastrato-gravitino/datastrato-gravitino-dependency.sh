@@ -35,7 +35,8 @@ git -C "${gravitino_home}" submodule update --init --recursive
 
 # Prepare compile Gravitino packages
 "${gravitino_home}"/gradlew clean
-"${gravitino_home}"/gradlew compileDistribution -x test -x :gravitino-oss:docs:build
+"${gravitino_home}"/gradlew compileDistribution -x test -x :gravitino-oss:docs:build -x :gravitino-oss:clients:client-python:build
+
 
 # Removed old packages, Avoid multiple re-executions using the wrong file
 rm -rf "${gravitino_dir}/packages"
@@ -44,7 +45,7 @@ mkdir -p "${gravitino_dir}/packages"
 cp -r "${gravitino_home}/distribution/package" "${gravitino_dir}/packages/gravitino"
 
 # make sure bundles are built
-"${gravitino_home}"/gradlew -p gravitino-oss build -x test
+"${gravitino_home}"/gradlew -p gravitino-oss build -x test -x clients:client-python:build
 # Copy the all file system bundles to the Hadoop catalog libs
 cp -r ${gravitino_home}/gravitino-oss/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/hadoop/libs"
 
