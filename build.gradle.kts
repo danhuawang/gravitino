@@ -2,7 +2,6 @@
  * Copyright 2023 Datastrato Pvt Ltd.
  * This software is licensed under the Apache License version 2.
  */
-import com.github.vlsi.gradle.dsl.configureEach
 import org.gradle.internal.os.OperatingSystem
 import java.io.IOException
 import java.util.Locale
@@ -15,6 +14,7 @@ plugins {
 
   alias(libs.plugins.gradle.extensions)
   alias(libs.plugins.rat)
+  alias(libs.plugins.tasktree)
 
   // Spotless version < 6.19.0 (https://github.com/diffplug/spotless/issues/1819) has an issue
   // running against JDK21, but we cannot upgrade the spotless to 6.19.0 or later since it only
@@ -209,11 +209,54 @@ tasks {
   val outputDir = projectDir.dir("distribution")
   val submoduleDir = projectDir.dir("gravitino-oss")
 
+  val compileOssDistributionWithoutTest by registering(Exec::class) {
+    group = "datastrato gravitino distribution"
+
+    dependsOn(subprojects.map { ":${it.name}:build" })
+    workingDir = submoduleDir.asFile
+    commandLine("./gradlew", "compileDistribution", "-x", "test")
+  }
+
+  val copySubprojectDependencies by registering(Copy::class) {
+    group = "datastrato gravitino distribution"
+    // dependsOn("copyOssDistribution")
+    subprojects.forEach {
+      println("Copying dependencies from ${it.name}")
+      if (it.name != "docs" && it.name != "authorization-jdbc-enterprise") {
+        from(it.configurations.runtimeClasspath)
+        into("distribution/package/libs")
+      }
+    }
+  }
+
+  val copySubprojectLib by registering(Copy::class) {
+    group = "datastrato gravitino distribution"
+    // dependsOn("copyOssDistribution")
+    subprojects.forEach {
+      if (it.name != "docs" && it.name != "authorization-jdbc-enterprise") {
+        // dependsOn("${it.name}:build")
+        from("${it.name}/build/libs")
+        into("distribution/package/libs")
+        include("*.jar")
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+      }
+    }
+  }
+
+  val copyOssDistribution by registering(Copy::class) {
+    group = "datastrato gravitino distribution"
+    // Use OSS packages as the base directory
+    dependsOn(compileOssDistributionWithoutTest)
+    from(submoduleDir.dir("distribution"))
+    into(outputDir)
+
+    finalizedBy(copySubprojectDependencies, copySubprojectLib, ":authorization-jdbc-enterprise:copyLibAndConfig")
+  }
+
   val compileDistribution by registering {
     group = "datastrato gravitino distribution"
     outputs.dir(projectDir.dir("distribution/package"))
-
-    dependsOn("copyOssDistribution", "copySubprojectDependencies", "copySubprojectLib", ":authorization-jdbc-enterprise:copyLibAndConfig")
+    dependsOn(copyOssDistribution)
 
     doLast {
       copy {
@@ -253,42 +296,6 @@ tasks {
     compression = Compression.GZIP
     archiveFileName.set("${rootProject.name}-$version-bin.tar.gz")
     destinationDirectory.set(projectDir.dir("distribution"))
-  }
-
-  register("copyOssDistribution", Copy::class) {
-    group = "datastrato gravitino distribution"
-    // Use OSS packages as the base directory
-    dependsOn(gradle.includedBuild("gravitino-oss").task(":compileDistribution"))
-    from(submoduleDir.dir("distribution"))
-    into(outputDir)
-  }
-
-  register("copySubprojectDependencies", Copy::class) {
-    group = "datastrato gravitino distribution"
-    dependsOn("copyOssDistribution")
-    subprojects.forEach {
-      println("Subproject: ${it.name}")
-      if (it.name != "docs" && it.name != "authorization-jdbc-enterprise") {
-        println("Subproject: ${it.name} copy .")
-        from(it.configurations.runtimeClasspath)
-        into("distribution/package/libs")
-      }
-    }
-  }
-
-  register("copySubprojectLib", Copy::class) {
-    group = "datastrato gravitino distribution"
-    dependsOn("copyOssDistribution")
-    subprojects.forEach {
-      println("Subproject: ${it.name}")
-      if (it.name != "docs" && it.name != "authorization-jdbc-enterprise") {
-        dependsOn("${it.name}:build")
-        from("${it.name}/build/libs")
-        into("distribution/package/libs")
-        include("*.jar")
-        duplicatesStrategy = DuplicatesStrategy.INCLUDE
-      }
-    }
   }
 
   clean {
@@ -341,7 +348,7 @@ fun printDockerCheckInfo() {
     project.extra["dockerTest"] = true
   }
 
-  println("------------------ Check Docker environment ---------------------")
+  println("------------------ Check Docker environment [enterprise] ---------------------")
   println("Docker server status ............................................ [${if (dockerRunning) "running" else "\u001B[31mstop\u001B[0m"}]")
   if (OperatingSystem.current().isMacOsX()) {
     println("mac-docker-connector status ..................................... [${if (macDockerConnector) "running" else "\u001B[31mstop\u001B[0m"}]")
