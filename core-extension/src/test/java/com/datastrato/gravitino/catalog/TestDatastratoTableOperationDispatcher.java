@@ -100,7 +100,7 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
         () ->
             tableOperationDispatcher.createTable(
                 tableIdent1, columns, "comment", illegalTableProperties, new Transform[0]),
-        "Properties are required and must be set");
+        "Properties or property prefixes are required and must be set");
 
     // Test reserved table properties exception
     illegalTableProperties.put(COMMENT_KEY, "table comment");
@@ -109,7 +109,7 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
         () ->
             tableOperationDispatcher.createTable(
                 tableIdent1, columns, "comment", illegalTableProperties, new Transform[0]),
-        "Properties are reserved and cannot be set",
+        "Properties or property prefixes are reserved and cannot be set",
         "comment",
         "gravitino.identifier");
 

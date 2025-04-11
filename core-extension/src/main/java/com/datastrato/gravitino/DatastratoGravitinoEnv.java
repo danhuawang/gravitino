@@ -9,6 +9,7 @@ import com.datastrato.gravitino.catalog.DatastratoFilesetHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoModelHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoModelNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoModelOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
@@ -114,8 +115,10 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
     // initialize model dispatcher
     DatastratoModelDispatcher modelOperationDispatcher =
         new DatastratoModelOperationDispatcher(catalogManager(), entityStore(), idGenerator());
+    DatastratoModelHookDispatcher modelHookDispatcher =
+        new DatastratoModelHookDispatcher(modelOperationDispatcher);
     datastratoModelDispatcher =
-        new DatastratoModelNormalizeDispatcher(modelOperationDispatcher, catalogManager());
+        new DatastratoModelNormalizeDispatcher(modelHookDispatcher, catalogManager());
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }

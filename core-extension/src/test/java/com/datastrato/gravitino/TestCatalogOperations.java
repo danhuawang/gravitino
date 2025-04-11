@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.gravitino.Catalog;
+import org.apache.gravitino.EntityAlreadyExistsException;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.Schema;
@@ -30,6 +31,7 @@ import org.apache.gravitino.exceptions.FilesetAlreadyExistsException;
 import org.apache.gravitino.exceptions.ModelAlreadyExistsException;
 import org.apache.gravitino.exceptions.ModelVersionAliasesAlreadyExistException;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
+import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchFilesetException;
 import org.apache.gravitino.exceptions.NoSuchModelException;
 import org.apache.gravitino.exceptions.NoSuchModelVersionException;
@@ -49,9 +51,11 @@ import org.apache.gravitino.messaging.TopicCatalog;
 import org.apache.gravitino.messaging.TopicChange;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.FilesetEntity;
+import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.model.Model;
 import org.apache.gravitino.model.ModelCatalog;
+import org.apache.gravitino.model.ModelChange;
 import org.apache.gravitino.model.ModelVersion;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Table;
@@ -832,5 +836,79 @@ public class TestCatalogOperations
     }
 
     return true;
+  }
+
+  @Override
+  public Model alterModel(NameIdentifier ident, ModelChange... changes)
+      throws NoSuchModelException, IllegalArgumentException {
+    if (!models.containsKey(ident)) {
+      throw new NoSuchModelException("Model %s does not exist", ident);
+    }
+
+    TestModel model = models.get(ident);
+
+    String newName = model.name();
+    for (ModelChange change : changes) {
+      if (change instanceof ModelChange.RenameModel) {
+        newName = ((ModelChange.RenameModel) change).newName();
+      } else {
+        throw new IllegalArgumentException(
+            "Unsupported model change: " + change.getClass().getSimpleName());
+      }
+    }
+
+    TestModel testModel =
+        TestModel.builder()
+            .withName(newName)
+            .withComment(model.comment())
+            .withProperties(model.properties())
+            .withLatestVersion(model.latestVersion())
+            .withAuditInfo(model.auditInfo())
+            .build();
+
+    NameIdentifier newIdent = NameIdentifier.of(ident.namespace(), newName);
+    try {
+      models.put(newIdent, testModel);
+      return testModel;
+    } catch (NoSuchEntityException nsee) {
+      throw new NoSuchModelException(nsee, "Model %s does not exist", ident);
+    } catch (EntityAlreadyExistsException eaee) {
+      // This is happened when renaming a model to an existing model name.
+      throw new RuntimeException("Model already exist " + ident.name(), eaee);
+    }
+  }
+
+  private ModelEntity updateModelEntity(
+      NameIdentifier ident, ModelEntity modelEntity, ModelChange... changes) {
+
+    Map<String, String> entityProperties =
+        modelEntity.properties() == null
+            ? Maps.newHashMap()
+            : Maps.newHashMap(modelEntity.properties());
+    String entityName = ident.name();
+    String entityComment = modelEntity.comment();
+    Long entityId = modelEntity.id();
+    AuditInfo entityAuditInfo = modelEntity.auditInfo();
+    Namespace entityNamespace = modelEntity.namespace();
+    Integer entityLatestVersion = modelEntity.latestVersion();
+
+    for (ModelChange change : changes) {
+      if (change instanceof ModelChange.RenameModel) {
+        entityName = ((ModelChange.RenameModel) change).newName();
+      } else {
+        throw new IllegalArgumentException(
+            "Unsupported model change: " + change.getClass().getSimpleName());
+      }
+    }
+
+    return ModelEntity.builder()
+        .withName(entityName)
+        .withId(entityId)
+        .withComment(entityComment)
+        .withAuditInfo(entityAuditInfo)
+        .withNamespace(entityNamespace)
+        .withProperties(entityProperties)
+        .withLatestVersion(entityLatestVersion)
+        .build();
   }
 }

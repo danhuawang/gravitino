@@ -78,7 +78,7 @@ public class TestDatastratoModelOperationDispatcher extends TestDatastratoOperat
     Map<String, String> illegalProps = ImmutableMap.of("k1", "v1", ID_KEY, "test");
     testPropertyException(
         () -> modelOperationDispatcher.registerModel(modelIdent, "comment", illegalProps),
-        "Properties are reserved and cannot be set",
+        "Properties or property prefixes are reserved and cannot be set",
         ID_KEY);
   }
 
@@ -174,7 +174,7 @@ public class TestDatastratoModelOperationDispatcher extends TestDatastratoOperat
         () ->
             modelOperationDispatcher.linkModelVersion(
                 modelIdent, "path", aliases, "comment", illegalProps),
-        "Properties are reserved and cannot be set",
+        "Properties or property prefixes are reserved and cannot be set",
         ID_KEY);
   }
 

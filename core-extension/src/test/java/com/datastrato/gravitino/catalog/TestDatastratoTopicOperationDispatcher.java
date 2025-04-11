@@ -99,12 +99,12 @@ public class TestDatastratoTopicOperationDispatcher extends TestDatastratoOperat
     Map<String, String> illegalProps = ImmutableMap.of("k2", "v2");
     testPropertyException(
         () -> topicOperationDispatcher.createTopic(topicIdent1, "comment", null, illegalProps),
-        "Properties are required and must be set");
+        "Properties or property prefixes are required and must be set");
 
     Map<String, String> illegalProps2 = ImmutableMap.of("k1", "v1", ID_KEY, "test");
     testPropertyException(
         () -> topicOperationDispatcher.createTopic(topicIdent1, "comment", null, illegalProps2),
-        "Properties are reserved and cannot be set",
+        "Properties or property prefixes are reserved and cannot be set",
         "gravitino.identifier");
   }
 
