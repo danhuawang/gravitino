@@ -7,6 +7,7 @@ package com.datastrato.gravitino.server.web.rest;
 import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
+import static org.apache.gravitino.file.Fileset.LOCATION_NAME_UNKNOWN;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -496,7 +497,7 @@ public class TestEntityOperations extends JerseyTest {
                     .withNamespace(ident.namespace())
                     .withComment("comment")
                     .withFilesetType(MANAGED)
-                    .withStorageLocation("location")
+                    .withStorageLocations(ImmutableMap.of(LOCATION_NAME_UNKNOWN, "location"))
                     .withProperties(ImmutableMap.of("key", "value"))
                     .withAuditInfo(
                         AuditInfo.builder()

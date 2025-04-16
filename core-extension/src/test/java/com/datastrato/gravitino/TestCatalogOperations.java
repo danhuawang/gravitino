@@ -4,14 +4,18 @@
  */
 package com.datastrato.gravitino;
 
+import static org.apache.gravitino.file.Fileset.PROPERTY_DEFAULT_LOCATION_NAME;
+
 import com.datastrato.gravitino.catalog.TestDatastratoOperationDispatcher;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -364,16 +368,32 @@ public class TestCatalogOperations
   }
 
   @Override
-  public Fileset createFileset(
+  public Fileset createMultipleLocationFileset(
       NameIdentifier ident,
       String comment,
       Fileset.Type type,
-      String storageLocation,
+      Map<String, String> storageLocations,
       Map<String, String> properties)
       throws NoSuchSchemaException, FilesetAlreadyExistsException {
     AuditInfo auditInfo =
         AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build();
-    storageLocation = storageLocation == null ? "" : storageLocation.trim();
+    if (storageLocations != null && storageLocations.size() == 1) {
+      properties =
+          Optional.ofNullable(properties)
+              .map(
+                  props ->
+                      ImmutableMap.<String, String>builder()
+                          .putAll(props)
+                          .put(
+                              PROPERTY_DEFAULT_LOCATION_NAME,
+                              storageLocations.keySet().iterator().next())
+                          .build())
+              .orElseGet(
+                  () ->
+                      ImmutableMap.of(
+                          PROPERTY_DEFAULT_LOCATION_NAME,
+                          storageLocations.keySet().iterator().next()));
+    }
     TestFileset fileset =
         TestFileset.builder()
             .withName(ident.name())
@@ -381,7 +401,7 @@ public class TestCatalogOperations
             .withProperties(properties)
             .withAuditInfo(auditInfo)
             .withType(type)
-            .withStorageLocation(storageLocation)
+            .withStorageLocations(storageLocations)
             .build();
 
     NameIdentifier schemaIdent = NameIdentifier.of(ident.namespace().levels());
@@ -401,9 +421,8 @@ public class TestCatalogOperations
             .withNamespace(ident.namespace())
             .withComment(comment)
             .withFilesetType(type)
-            // Store the storageLocation to the store. If the "storageLocation" is null,
-            // it will be stored as an empty string.
-            .withStorageLocation(storageLocation)
+            // Store the storageLocation to the store.
+            .withStorageLocations(storageLocations)
             .withProperties(properties)
             .withAuditInfo(auditInfo)
             .build();
@@ -467,7 +486,7 @@ public class TestCatalogOperations
             .withProperties(newProps)
             .withAuditInfo(updatedAuditInfo)
             .withType(fileset.type())
-            .withStorageLocation(fileset.storageLocation())
+            .withStorageLocations(fileset.storageLocations())
             .build();
     filesets.put(newIdent, updatedFileset);
     return updatedFileset;

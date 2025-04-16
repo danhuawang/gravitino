@@ -98,12 +98,12 @@ public class TestDatastratoFilesetOperationDispatcher extends TestDatastratoOper
     NameIdentifier filesetIdent1 = NameIdentifier.of(filesetNs, "fileset11");
     Fileset fileset1 =
         filesetOperationDispatcher.createFileset(
-            filesetIdent1, "comment", Fileset.Type.MANAGED, null, props);
+            filesetIdent1, "comment", Fileset.Type.MANAGED, "/a/b/c", props);
     Assertions.assertEquals("fileset11", fileset1.name());
     Assertions.assertEquals("comment", fileset1.comment());
     testProperties(props, fileset1.properties());
     Assertions.assertEquals(Fileset.Type.MANAGED, fileset1.type());
-    Assertions.assertEquals("", fileset1.storageLocation());
+    Assertions.assertEquals("/a/b/c", fileset1.storageLocation());
 
     Fileset loadedFileset1 = filesetOperationDispatcher.loadFileset(filesetIdent1);
     Assertions.assertEquals(fileset1.name(), loadedFileset1.name());
