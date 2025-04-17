@@ -89,6 +89,7 @@ import org.apache.gravitino.cli.commands.RemoveAllTags;
 import org.apache.gravitino.cli.commands.RemoveCatalogProperty;
 import org.apache.gravitino.cli.commands.RemoveFilesetProperty;
 import org.apache.gravitino.cli.commands.RemoveMetalakeProperty;
+import org.apache.gravitino.cli.commands.RemoveModelProperty;
 import org.apache.gravitino.cli.commands.RemoveRoleFromGroup;
 import org.apache.gravitino.cli.commands.RemoveRoleFromUser;
 import org.apache.gravitino.cli.commands.RemoveSchemaProperty;
@@ -105,6 +106,7 @@ import org.apache.gravitino.cli.commands.ServerVersion;
 import org.apache.gravitino.cli.commands.SetCatalogProperty;
 import org.apache.gravitino.cli.commands.SetFilesetProperty;
 import org.apache.gravitino.cli.commands.SetMetalakeProperty;
+import org.apache.gravitino.cli.commands.SetModelProperty;
 import org.apache.gravitino.cli.commands.SetOwner;
 import org.apache.gravitino.cli.commands.SetSchemaProperty;
 import org.apache.gravitino.cli.commands.SetTableProperty;
@@ -132,6 +134,7 @@ import org.apache.gravitino.cli.commands.UpdateFilesetComment;
 import org.apache.gravitino.cli.commands.UpdateFilesetName;
 import org.apache.gravitino.cli.commands.UpdateMetalakeComment;
 import org.apache.gravitino.cli.commands.UpdateMetalakeName;
+import org.apache.gravitino.cli.commands.UpdateModelName;
 import org.apache.gravitino.cli.commands.UpdateTableComment;
 import org.apache.gravitino.cli.commands.UpdateTableName;
 import org.apache.gravitino.cli.commands.UpdateTagComment;
@@ -870,6 +873,37 @@ public class TestableCommandLine {
       String comment,
       Map<String, String> properties) {
     return new RegisterModel(context, metalake, catalog, schema, model, comment, properties);
+  }
+
+  protected UpdateModelName newUpdateModelName(
+      CommandContext context,
+      String metalake,
+      String catalog,
+      String schema,
+      String model,
+      String rename) {
+    return new UpdateModelName(context, metalake, catalog, schema, model, rename);
+  }
+
+  protected SetModelProperty newSetModelProperty(
+      CommandContext context,
+      String metalake,
+      String catalog,
+      String schema,
+      String model,
+      String property,
+      String value) {
+    return new SetModelProperty(context, metalake, catalog, schema, model, property, value);
+  }
+
+  protected RemoveModelProperty newRemoveModelProperty(
+      CommandContext context,
+      String metalake,
+      String catalog,
+      String schema,
+      String model,
+      String property) {
+    return new RemoveModelProperty(context, metalake, catalog, schema, model, property);
   }
 
   protected DeleteModel newDeleteModel(

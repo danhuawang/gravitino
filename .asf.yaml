@@ -37,6 +37,8 @@ github:
     issues: true
     # Enable projects for project management boards
     projects: true
+    # Enable GitHub Discussions for community discussions
+    discussions: true
   enabled_merge_buttons:
     squash: true
     merge: false
@@ -53,12 +55,16 @@ github:
   protected_tags:
     - "v*.*.*"
   collaborators:
-    - LauraXia123
     - noidname01
-    - caican00
     - orenccl
+    - Abyss-lord
+    - sunxiaojian
+    - tengqm
+    - hdygxsj
+    - unknowntpo
 
 notifications:
   commits: commits@gravitino.apache.org
   issues: commits@gravitino.apache.org
   pullrequests: commits@gravitino.apache.org
+  discussions: dev@gravitino.apache.org

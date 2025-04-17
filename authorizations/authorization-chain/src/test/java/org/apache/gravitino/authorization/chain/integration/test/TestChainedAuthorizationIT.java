@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
@@ -53,16 +52,13 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.kyuubi.plugin.spark.authz.AccessControlException;
-import org.apache.ranger.RangerServiceException;
-import org.apache.ranger.plugin.model.RangerPolicy;
+import org.apache.ranger.plugin.model.RangerService;
 import org.apache.spark.sql.SparkSession;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.platform.commons.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,7 +98,7 @@ public class TestChainedAuthorizationIT extends RangerBaseE2EIT {
             HiveContainer.HDFS_DEFAULTFS_PORT);
     BaseIT.runInEnv(
         "HADOOP_USER_NAME",
-        AuthConstants.ANONYMOUS_USER,
+        "test123",
         () -> {
           sparkSession =
               SparkSession.builder()
@@ -160,27 +156,9 @@ public class TestChainedAuthorizationIT extends RangerBaseE2EIT {
     RangerITEnv.cleanup();
   }
 
-  @AfterEach
-  void clean() {
-    try {
-      List<RangerPolicy> rangerHivePolicies =
-          RangerITEnv.rangerClient.getPoliciesInService(RangerITEnv.RANGER_HIVE_REPO_NAME);
-      List<RangerPolicy> rangerHdfsPolicies =
-          RangerITEnv.rangerClient.getPoliciesInService(RangerITEnv.RANGER_HDFS_REPO_NAME);
-      rangerHivePolicies.stream().forEach(policy -> LOG.info("Ranger Hive policy: {}", policy));
-      rangerHdfsPolicies.stream().forEach(policy -> LOG.info("Ranger HDFS policy: {}", policy));
-      Preconditions.condition(
-          rangerHivePolicies.size() == 0, "Ranger Hive policies should be empty");
-      Preconditions.condition(
-          rangerHdfsPolicies.size() == 0, "Ranger HDFS policies should be empty");
-    } catch (RangerServiceException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   @Override
   protected String testUserName() {
-    return AuthConstants.ANONYMOUS_USER;
+    return "test123";
   }
 
   @Override
@@ -210,6 +188,40 @@ public class TestChainedAuthorizationIT extends RangerBaseE2EIT {
     metalake.createCatalog(catalogName, Catalog.Type.RELATIONAL, "hive", "comment", catalogConf);
     catalog = metalake.loadCatalog(catalogName);
     LOG.info("Catalog created: {}", catalog);
+
+    // Test to create chained authorization plugin automatically
+    Map<String, String> autoProperties = new HashMap<>();
+    autoProperties.put(HiveConstants.METASTORE_URIS, HIVE_METASTORE_URIS);
+    autoProperties.put(IMPERSONATION_ENABLE, "true");
+    autoProperties.put(Catalog.AUTHORIZATION_PROVIDER, "chain");
+    autoProperties.put(ChainedAuthorizationProperties.CHAIN_PLUGINS_PROPERTIES_KEY, "hive1,hdfs1");
+    autoProperties.put("authorization.chain.hive1.provider", "ranger");
+    autoProperties.put("authorization.chain.hive1.ranger.auth.type", RangerContainer.authType);
+    autoProperties.put("authorization.chain.hive1.ranger.admin.url", RangerITEnv.RANGER_ADMIN_URL);
+    autoProperties.put("authorization.chain.hive1.ranger.username", RangerContainer.rangerUserName);
+    autoProperties.put("authorization.chain.hive1.ranger.password", RangerContainer.rangerPassword);
+    autoProperties.put("authorization.chain.hive1.ranger.service.type", "HadoopSQL");
+    autoProperties.put("authorization.chain.hive1.ranger.service.name", "test899");
+    autoProperties.put("authorization.chain.hive1.ranger.service.create-if-absent", "true");
+    autoProperties.put("authorization.chain.hdfs1.provider", "ranger");
+    autoProperties.put("authorization.chain.hdfs1.ranger.auth.type", RangerContainer.authType);
+    autoProperties.put("authorization.chain.hdfs1.ranger.admin.url", RangerITEnv.RANGER_ADMIN_URL);
+    autoProperties.put("authorization.chain.hdfs1.ranger.username", RangerContainer.rangerUserName);
+    autoProperties.put("authorization.chain.hdfs1.ranger.password", RangerContainer.rangerPassword);
+    autoProperties.put("authorization.chain.hdfs1.ranger.service.type", "HDFS");
+    autoProperties.put("authorization.chain.hdfs1.ranger.service.name", "test833");
+    autoProperties.put("authorization.chain.hdfs1.ranger.service.create-if-absent", "true");
+    metalake.createCatalog("test", Catalog.Type.RELATIONAL, "hive", "comment", autoProperties);
+    metalake.addUser(testUserName());
+    try {
+      RangerService rangerService = RangerITEnv.rangerClient.getService("test833");
+      Assertions.assertNotNull(rangerService);
+      rangerService = RangerITEnv.rangerClient.getService("test899");
+      Assertions.assertNotNull(rangerService);
+    } catch (Exception e) {
+      Assertions.fail();
+    }
+    metalake.dropCatalog("test", true);
   }
 
   private String storageLocation(String dirName) {
@@ -258,14 +270,14 @@ public class TestChainedAuthorizationIT extends RangerBaseE2EIT {
 
     // Second, grant the `CREATE_SCHEMA` role
     metalake.createRole(roleName, Collections.emptyMap(), Lists.newArrayList(securableObject));
-    metalake.grantRolesToUser(Lists.newArrayList(roleName), AuthConstants.ANONYMOUS_USER);
+    metalake.grantRolesToUser(Lists.newArrayList(roleName), testUserName());
     waitForUpdatingPolicies();
 
     // Third, succeed to create the schema
     sparkSession.sql(SQL_CREATE_SCHEMA);
     Assertions.assertTrue(fileSystem.exists(schemaPath));
     FileStatus fsSchema = fileSystem.getFileStatus(schemaPath);
-    Assertions.assertEquals(AuthConstants.ANONYMOUS_USER, fsSchema.getOwner());
+    Assertions.assertEquals(testUserName(), fsSchema.getOwner());
 
     // Fourth, fail to create the table
     Assertions.assertThrows(AccessControlException.class, () -> sparkSession.sql(SQL_CREATE_TABLE));
@@ -291,12 +303,11 @@ public class TestChainedAuthorizationIT extends RangerBaseE2EIT {
                 .contains(
                     String.format(
                         "Permission denied: user [%s] does not have [create] privilege",
-                        AuthConstants.ANONYMOUS_USER))
+                        testUserName()))
             || accessControlException2
                 .getMessage()
                 .contains(
-                    String.format(
-                        "Permission denied: user=%s, access=WRITE", AuthConstants.ANONYMOUS_USER)));
+                    String.format("Permission denied: user=%s, access=WRITE", testUserName())));
   }
 
   @Test
@@ -320,22 +331,22 @@ public class TestChainedAuthorizationIT extends RangerBaseE2EIT {
   }
 
   @Test
-  void testReadWriteTableWithMetalakeLevelRole() throws InterruptedException {
+  void testSelectModifyTableWithMetalakeLevelRole() throws InterruptedException {
     // TODO
   }
 
   @Test
-  void testReadWriteTableWithTableLevelRole() throws InterruptedException {
+  void testSelectModifyTableWithTableLevelRole() throws InterruptedException {
     // TODO
   }
 
   @Test
-  void testReadOnlyTable() throws InterruptedException {
+  void testSelectOnlyTable() throws InterruptedException {
     // TODO
   }
 
   @Test
-  void testWriteOnlyTable() throws InterruptedException {
+  void testModifyOnlyTable() throws InterruptedException {
     // TODO
   }
 
@@ -385,32 +396,32 @@ public class TestChainedAuthorizationIT extends RangerBaseE2EIT {
   }
 
   @Override
-  protected void checkUpdateSQLWithReadWritePrivileges() {
+  protected void checkUpdateSQLWithSelectModifyPrivileges() {
     // TODO
   }
 
   @Override
-  protected void checkUpdateSQLWithReadPrivileges() {
+  protected void checkUpdateSQLWithSelectPrivileges() {
     // TODO
   }
 
   @Override
-  protected void checkUpdateSQLWithWritePrivileges() {
+  protected void checkUpdateSQLWithModifyPrivileges() {
     // TODO
   }
 
   @Override
-  protected void checkDeleteSQLWithReadWritePrivileges() {
+  protected void checkDeleteSQLWithSelectModifyPrivileges() {
     // TODO
   }
 
   @Override
-  protected void checkDeleteSQLWithReadPrivileges() {
+  protected void checkDeleteSQLWithSelectPrivileges() {
     // TODO
   }
 
   @Override
-  protected void checkDeleteSQLWithWritePrivileges() {
+  protected void checkDeleteSQLWithModifyPrivileges() {
     // TODO
   }
 

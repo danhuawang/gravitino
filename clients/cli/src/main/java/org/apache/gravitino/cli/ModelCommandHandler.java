@@ -111,6 +111,14 @@ public class ModelCommandHandler extends CommandHandler {
         handleUpdateCommand();
         return true;
 
+      case CommandActions.SET:
+        handleSetCommand();
+        return true;
+
+      case CommandActions.REMOVE:
+        handleRemoveCommand();
+        return true;
+
       default:
         return false;
     }
@@ -152,20 +160,48 @@ public class ModelCommandHandler extends CommandHandler {
 
   /** Handles the "UPDATE" command. */
   private void handleUpdateCommand() {
-    String[] alias = line.getOptionValues(GravitinoOptions.ALIAS);
-    String uri = line.getOptionValue(GravitinoOptions.URI);
-    String linkComment = line.getOptionValue(GravitinoOptions.COMMENT);
-    String[] linkProperties = line.getOptionValues(CommandActions.PROPERTIES);
-    Map<String, String> linkPropertityMap = new Properties().parse(linkProperties);
-    gravitinoCommandLine
-        .newLinkModel(
-            context, metalake, catalog, schema, model, uri, alias, linkComment, linkPropertityMap)
-        .validate()
-        .handle();
+    if (line.hasOption(GravitinoOptions.URI)) {
+      String[] alias = line.getOptionValues(GravitinoOptions.ALIAS);
+      String uri = line.getOptionValue(GravitinoOptions.URI);
+      String linkComment = line.getOptionValue(GravitinoOptions.COMMENT);
+      String[] linkProperties = line.getOptionValues(CommandActions.PROPERTIES);
+      Map<String, String> linkPropertityMap = new Properties().parse(linkProperties);
+      gravitinoCommandLine
+          .newLinkModel(
+              context, metalake, catalog, schema, model, uri, alias, linkComment, linkPropertityMap)
+          .validate()
+          .handle();
+    }
+
+    if (line.hasOption(GravitinoOptions.RENAME)) {
+      String newName = line.getOptionValue(GravitinoOptions.RENAME);
+      gravitinoCommandLine
+          .newUpdateModelName(context, metalake, catalog, schema, model, newName)
+          .validate()
+          .handle();
+    }
   }
 
   /** Handles the "LIST" command. */
   private void handleListCommand() {
     gravitinoCommandLine.newListModel(context, metalake, catalog, schema).validate().handle();
+  }
+
+  /** Handles the "SET" command. */
+  private void handleSetCommand() {
+    String property = line.getOptionValue(GravitinoOptions.PROPERTY);
+    String value = line.getOptionValue(GravitinoOptions.VALUE);
+    gravitinoCommandLine
+        .newSetModelProperty(context, metalake, catalog, schema, model, property, value)
+        .validate()
+        .handle();
+  }
+
+  private void handleRemoveCommand() {
+    String property = line.getOptionValue(GravitinoOptions.PROPERTY);
+    gravitinoCommandLine
+        .newRemoveModelProperty(context, metalake, catalog, schema, model, property)
+        .validate()
+        .handle();
   }
 }

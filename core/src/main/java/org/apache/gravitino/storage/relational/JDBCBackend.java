@@ -203,6 +203,10 @@ public class JDBCBackend implements RelationalBackend {
         return (E) RoleMetaService.getInstance().updateRole(ident, updater);
       case TAG:
         return (E) TagMetaService.getInstance().updateTag(ident, updater);
+      case MODEL:
+        return (E) ModelMetaService.getInstance().updateModel(ident, updater);
+      case MODEL_VERSION:
+        return (E) ModelVersionMetaService.getInstance().updateModelVersion(ident, updater);
       default:
         throw new UnsupportedEntityTypeException(
             "Unsupported entity type: %s for update operation", entityType);
@@ -377,6 +381,7 @@ public class JDBCBackend implements RelationalBackend {
   @Override
   public void close() throws IOException {
     SqlSessionFactoryHelper.getInstance().close();
+    SQLExceptionConverterFactory.close();
 
     if (jdbcDatabase != null) {
       jdbcDatabase.close();

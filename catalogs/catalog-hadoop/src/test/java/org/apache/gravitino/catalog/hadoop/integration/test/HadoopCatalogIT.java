@@ -18,6 +18,9 @@
  */
 package org.apache.gravitino.catalog.hadoop.integration.test;
 
+import static org.apache.gravitino.file.Fileset.LOCATION_NAME_UNKNOWN;
+import static org.apache.gravitino.file.Fileset.PROPERTY_DEFAULT_LOCATION_NAME;
+import static org.apache.gravitino.file.Fileset.PROPERTY_LOCATION_PLACEHOLDER_PREFIX;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
 import com.google.common.collect.ImmutableMap;
@@ -52,6 +55,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -147,8 +151,10 @@ public class HadoopCatalogIT extends BaseIT {
   }
 
   @Test
-  void testAlterCatalogLocation() {
+  void testAlterCatalogLocation() throws IOException {
+    Assumptions.assumeTrue(getClass() == HadoopCatalogIT.class);
     String catalogName = GravitinoITUtils.genRandomName("test_alter_catalog_location");
+    String filesetName = "test_fileset1";
     String location = defaultBaseLocation();
     String newLocation = location + "/new_location";
 
@@ -157,14 +163,26 @@ public class HadoopCatalogIT extends BaseIT {
     Catalog filesetCatalog =
         metalake.createCatalog(
             catalogName, Catalog.Type.FILESET, provider, "comment", catalogProperties);
+    filesetCatalog.asSchemas().createSchema(schemaName, null, null);
+    filesetCatalog
+        .asFilesetCatalog()
+        .createFileset(NameIdentifier.of(schemaName, filesetName), null, MANAGED, null, null);
 
     Assertions.assertEquals(location, filesetCatalog.properties().get("location"));
+    Assertions.assertTrue(
+        fileSystem.exists(new Path(location + "/" + schemaName + "/" + filesetName)));
 
     // Now try to alter the location and change it to `newLocation`.
     Catalog modifiedCatalog =
         metalake.alterCatalog(catalogName, CatalogChange.setProperty("location", newLocation));
+    String newFilesetName = "test_fileset2";
+    modifiedCatalog
+        .asFilesetCatalog()
+        .createFileset(NameIdentifier.of(schemaName, newFilesetName), null, MANAGED, null, null);
 
     Assertions.assertEquals(newLocation, modifiedCatalog.properties().get("location"));
+    Assertions.assertTrue(
+        fileSystem.exists(new Path(newLocation + "/" + schemaName + "/" + newFilesetName)));
 
     metalake.dropCatalog(catalogName, true);
   }
@@ -186,8 +204,11 @@ public class HadoopCatalogIT extends BaseIT {
     Assertions.assertEquals("comment", fileset.comment());
     Assertions.assertEquals(MANAGED, fileset.type());
     Assertions.assertEquals(storageLocation, fileset.storageLocation());
-    Assertions.assertEquals(1, fileset.properties().size());
+    Assertions.assertEquals(storageLocation, fileset.storageLocations().get(LOCATION_NAME_UNKNOWN));
+    Assertions.assertEquals(2, fileset.properties().size());
     Assertions.assertEquals("v1", fileset.properties().get("k1"));
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, fileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
 
     // test create a fileset that already exist
     Assertions.assertThrows(
@@ -208,7 +229,81 @@ public class HadoopCatalogIT extends BaseIT {
         storageLocation(filesetName2),
         fileset2.storageLocation(),
         "storage location should be created");
-    Assertions.assertEquals(ImmutableMap.of(), fileset2.properties(), "properties should be empty");
+    Assertions.assertEquals(
+        storageLocation(filesetName2),
+        fileset2.storageLocations().get(LOCATION_NAME_UNKNOWN),
+        "storage location should be created");
+    Assertions.assertEquals(
+        ImmutableMap.of(PROPERTY_DEFAULT_LOCATION_NAME, LOCATION_NAME_UNKNOWN),
+        fileset2.properties());
+
+    // create fileset with placeholder in storage location
+    String filesetName4 = "test_create_fileset_with_placeholder";
+    String storageLocation4 = defaultBaseLocation() + "/{{fileset}}";
+    String expectedStorageLocation4 = defaultBaseLocation() + "/" + filesetName4;
+    Assertions.assertFalse(
+        fileSystem.exists(new Path(expectedStorageLocation4)),
+        "storage location should not exists");
+    Fileset fileset4 = createFileset(filesetName4, "comment", MANAGED, storageLocation4, null);
+    assertFilesetExists(filesetName4);
+    Assertions.assertNotNull(fileset4, "fileset should be created");
+    Assertions.assertEquals("comment", fileset4.comment());
+    Assertions.assertEquals(MANAGED, fileset4.type());
+    Assertions.assertEquals(expectedStorageLocation4, fileset4.storageLocation());
+    Assertions.assertEquals(
+        expectedStorageLocation4, fileset4.storageLocations().get(LOCATION_NAME_UNKNOWN));
+    Assertions.assertEquals(1, fileset4.properties().size(), "properties should be empty");
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, fileset4.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
+
+    // create fileset with multiple locations
+    String filesetName5 = "test_create_fileset_with_multiple_locations";
+    Map<String, String> storageLocations =
+        ImmutableMap.of(
+            "location1",
+            storageLocation(filesetName5 + "_location1"),
+            "location2",
+            storageLocation(filesetName5 + "_location2"));
+    fileset =
+        createMultipleLocationsFileset(
+            filesetName5,
+            "comment",
+            MANAGED,
+            storageLocations,
+            ImmutableMap.of(PROPERTY_DEFAULT_LOCATION_NAME, "location1"));
+    Assertions.assertNotNull(fileset, "fileset should be created");
+    Assertions.assertEquals("comment", fileset.comment());
+    Assertions.assertEquals(MANAGED, fileset.type());
+    Map<String, String> expectedStorageLocations =
+        new HashMap<String, String>(storageLocations) {
+          {
+            put(LOCATION_NAME_UNKNOWN, storageLocation(filesetName5));
+          }
+        };
+    Assertions.assertEquals(expectedStorageLocations, fileset.storageLocations());
+    Assertions.assertEquals(1, fileset.properties().size());
+    Assertions.assertEquals("location1", fileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
+
+    assertFilesetExists(filesetName5);
+    fileset = catalog.asFilesetCatalog().loadFileset(NameIdentifier.of(schemaName, filesetName5));
+    Assertions.assertNotNull(fileset, "fileset should be created");
+    Assertions.assertEquals("comment", fileset.comment());
+    Assertions.assertEquals(MANAGED, fileset.type());
+    Assertions.assertEquals(expectedStorageLocations, fileset.storageLocations());
+    Assertions.assertEquals(1, fileset.properties().size());
+    Assertions.assertEquals("location1", fileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
+
+    // create fileset with null multiple locations
+    String filesetName6 = "test_create_fileset_with_null_multiple_locations";
+    createMultipleLocationsFileset(filesetName6, "comment", MANAGED, null, null);
+    assertFilesetExists(filesetName6);
+    fileset = catalog.asFilesetCatalog().loadFileset(NameIdentifier.of(schemaName, filesetName6));
+    Assertions.assertNotNull(fileset, "fileset should be created");
+    Assertions.assertEquals("comment", fileset.comment());
+    Assertions.assertEquals(MANAGED, fileset.type());
+    Assertions.assertEquals(
+        ImmutableMap.of(LOCATION_NAME_UNKNOWN, storageLocation(filesetName6)),
+        fileset.storageLocations());
 
     // create fileset with null fileset name
     Assertions.assertThrows(
@@ -223,6 +318,32 @@ public class HadoopCatalogIT extends BaseIT {
         createFileset(filesetName3, "comment", null, storageLocation3, ImmutableMap.of("k1", "v1"));
     assertFilesetExists(filesetName3);
     Assertions.assertEquals(MANAGED, fileset3.type(), "fileset type should be MANAGED by default");
+  }
+
+  @Test
+  public void testAlterFileset() {
+    // create fileset with placeholder in storage location
+    String filesetName = "test_alter_fileset";
+    String storageLocation = storageLocation(filesetName) + "/{{user}}";
+    String placeholderKey = PROPERTY_LOCATION_PLACEHOLDER_PREFIX + "user";
+    createFileset(
+        filesetName, "comment", MANAGED, storageLocation, ImmutableMap.of(placeholderKey, "test"));
+
+    // alter fileset
+    Exception exception =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                catalog
+                    .asFilesetCatalog()
+                    .alterFileset(
+                        NameIdentifier.of(schemaName, filesetName),
+                        FilesetChange.setProperty(placeholderKey, "test2")));
+    Assertions.assertTrue(
+        exception
+            .getMessage()
+            .contains("Property placeholder-user is immutable or reserved, cannot be set"),
+        exception.getMessage());
   }
 
   @Test
@@ -246,10 +367,12 @@ public class HadoopCatalogIT extends BaseIT {
     Assertions.assertEquals("这是中文comment", fileset.comment());
     Assertions.assertEquals(MANAGED, fileset.type());
     Assertions.assertEquals(storageLocation, fileset.storageLocation());
-    Assertions.assertEquals(3, fileset.properties().size());
+    Assertions.assertEquals(4, fileset.properties().size());
     Assertions.assertEquals("v1", fileset.properties().get("k1"));
     Assertions.assertEquals("中文测试test", fileset.properties().get("test"));
     Assertions.assertEquals("test1", fileset.properties().get("中文key"));
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, fileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
   }
 
   @Test
@@ -271,10 +394,12 @@ public class HadoopCatalogIT extends BaseIT {
     Assertions.assertEquals("comment", fileset.comment());
     Assertions.assertEquals(Fileset.Type.EXTERNAL, fileset.type());
     Assertions.assertEquals(storageLocation, fileset.storageLocation());
-    Assertions.assertEquals(1, fileset.properties().size());
+    Assertions.assertEquals(2, fileset.properties().size());
     Assertions.assertEquals("v1", fileset.properties().get("k1"));
     Assertions.assertTrue(
         fileSystem.exists(new Path(storageLocation)), "storage location should be created");
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, fileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
 
     // create fileset with storage location that not exist
     String filesetName2 = "test_external_fileset_no_exist";
@@ -481,9 +606,11 @@ public class HadoopCatalogIT extends BaseIT {
     Assertions.assertEquals(MANAGED, newFileset.type(), "type should not be change");
     Assertions.assertEquals(
         storageLocation, newFileset.storageLocation(), "storage location should not be change");
-    Assertions.assertEquals(1, newFileset.properties().size(), "properties should not be change");
+    Assertions.assertEquals(2, newFileset.properties().size(), "properties should not be change");
     Assertions.assertEquals(
         "v1", newFileset.properties().get("k1"), "properties should not be change");
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, newFileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
   }
 
   @Test
@@ -511,9 +638,11 @@ public class HadoopCatalogIT extends BaseIT {
     Assertions.assertEquals(MANAGED, newFileset.type(), "type should not be change");
     Assertions.assertEquals(
         storageLocation, newFileset.storageLocation(), "storage location should not be change");
-    Assertions.assertEquals(1, newFileset.properties().size(), "properties should not be change");
+    Assertions.assertEquals(2, newFileset.properties().size(), "properties should not be change");
     Assertions.assertEquals(
         "v1", newFileset.properties().get("k1"), "properties should not be change");
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, newFileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
   }
 
   @Test
@@ -539,9 +668,11 @@ public class HadoopCatalogIT extends BaseIT {
     Assertions.assertEquals(MANAGED, newFileset.type(), "type should not be change");
     Assertions.assertEquals(
         storageLocation, newFileset.storageLocation(), "storage location should not be change");
-    Assertions.assertEquals(1, newFileset.properties().size(), "properties should not be change");
+    Assertions.assertEquals(2, newFileset.properties().size(), "properties should not be change");
     Assertions.assertEquals(
         "v2", newFileset.properties().get("k1"), "properties should be updated");
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, newFileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
   }
 
   @Test
@@ -567,7 +698,9 @@ public class HadoopCatalogIT extends BaseIT {
     Assertions.assertEquals(MANAGED, newFileset.type(), "type should not be change");
     Assertions.assertEquals(
         storageLocation, newFileset.storageLocation(), "storage location should not be change");
-    Assertions.assertEquals(0, newFileset.properties().size(), "properties should be removed");
+    Assertions.assertEquals(1, newFileset.properties().size(), "properties should be removed");
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, newFileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
   }
 
   @Test
@@ -593,9 +726,11 @@ public class HadoopCatalogIT extends BaseIT {
     Assertions.assertEquals(MANAGED, newFileset.type(), "type should not be changed");
     Assertions.assertEquals(
         storageLocation, newFileset.storageLocation(), "storage location should not be changed");
-    Assertions.assertEquals(1, newFileset.properties().size(), "properties should not be changed");
+    Assertions.assertEquals(2, newFileset.properties().size(), "properties should not be changed");
     Assertions.assertEquals(
         "v1", newFileset.properties().get("k1"), "properties should not be changed");
+    Assertions.assertEquals(
+        LOCATION_NAME_UNKNOWN, newFileset.properties().get(PROPERTY_DEFAULT_LOCATION_NAME));
   }
 
   @Test
@@ -665,6 +800,68 @@ public class HadoopCatalogIT extends BaseIT {
           catalog.asFilesetCatalog().getFileLocation(filesetIdent, "/test2.par");
 
       Assertions.assertEquals(expectedFileset.storageLocation() + "/test2.par", actualFileLocation);
+    } finally {
+      CallerContext.CallerContextHolder.remove();
+    }
+  }
+
+  @Test
+  public void testGetFileLocationWithMultipleLocations() {
+    String filesetName = GravitinoITUtils.genRandomName("fileset");
+    NameIdentifier filesetIdent = NameIdentifier.of(schemaName, filesetName);
+    Assertions.assertFalse(catalog.asFilesetCatalog().filesetExists(filesetIdent));
+    String locationName1 = "location1";
+    String locationName2 = "location2";
+    Map<String, String> storageLocations =
+        ImmutableMap.of(
+            locationName1,
+            storageLocation(filesetName + "_location1"),
+            locationName2,
+            storageLocation(filesetName + "_location2"));
+    Fileset expectedFileset =
+        catalog
+            .asFilesetCatalog()
+            .createMultipleLocationFileset(
+                filesetIdent,
+                "fileset comment",
+                MANAGED,
+                storageLocations,
+                ImmutableMap.of(PROPERTY_DEFAULT_LOCATION_NAME, locationName1));
+    Assertions.assertTrue(catalog.asFilesetCatalog().filesetExists(filesetIdent));
+    // test without caller context
+    String actualFileLocation1 =
+        catalog.asFilesetCatalog().getFileLocation(filesetIdent, "/test1.par", locationName1);
+    Assertions.assertEquals(
+        expectedFileset.storageLocations().get(locationName1) + "/test1.par", actualFileLocation1);
+
+    String actualFileLocation2 =
+        catalog.asFilesetCatalog().getFileLocation(filesetIdent, "/test2.par", locationName2);
+    Assertions.assertEquals(
+        expectedFileset.storageLocations().get(locationName2) + "/test2.par", actualFileLocation2);
+
+    // test with caller context
+    try {
+      Map<String, String> context = new HashMap<>();
+      context.put(
+          FilesetAuditConstants.HTTP_HEADER_INTERNAL_CLIENT_TYPE,
+          InternalClientType.HADOOP_GVFS.name());
+      context.put(
+          FilesetAuditConstants.HTTP_HEADER_FILESET_DATA_OPERATION,
+          FilesetDataOperation.CREATE.name());
+      CallerContext callerContext = CallerContext.builder().withContext(context).build();
+      CallerContext.CallerContextHolder.set(callerContext);
+
+      actualFileLocation1 =
+          catalog.asFilesetCatalog().getFileLocation(filesetIdent, "/test1.par", locationName1);
+      Assertions.assertEquals(
+          expectedFileset.storageLocations().get(locationName1) + "/test1.par",
+          actualFileLocation1);
+
+      actualFileLocation2 =
+          catalog.asFilesetCatalog().getFileLocation(filesetIdent, "/test2.par", locationName2);
+      Assertions.assertEquals(
+          expectedFileset.storageLocations().get(locationName2) + "/test2.par",
+          actualFileLocation2);
     } finally {
       CallerContext.CallerContextHolder.remove();
     }
@@ -788,6 +985,33 @@ public class HadoopCatalogIT extends BaseIT {
         .asFilesetCatalog()
         .createFileset(
             NameIdentifier.of(schemaName, filesetName), comment, type, storageLocation, properties);
+  }
+
+  private Fileset createMultipleLocationsFileset(
+      String filesetName,
+      String comment,
+      Fileset.Type type,
+      Map<String, String> storageLocations,
+      Map<String, String> properties) {
+    if (storageLocations != null) {
+      for (String location : storageLocations.values()) {
+        Path path = new Path(location);
+        try {
+          fileSystem.deleteOnExit(path);
+        } catch (IOException e) {
+          LOG.warn("Failed to delete location: {}", path, e);
+        }
+      }
+    }
+
+    return catalog
+        .asFilesetCatalog()
+        .createMultipleLocationFileset(
+            NameIdentifier.of(schemaName, filesetName),
+            comment,
+            type,
+            storageLocations,
+            properties);
   }
 
   private void assertFilesetExists(String filesetName) throws IOException {

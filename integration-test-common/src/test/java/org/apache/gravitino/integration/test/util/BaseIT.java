@@ -99,7 +99,7 @@ public class BaseIT {
 
   protected boolean ignoreIcebergRestService = true;
 
-  public static final String DOWNLOAD_MYSQL_JDBC_DRIVER_URL =
+  public String DOWNLOAD_MYSQL_JDBC_DRIVER_URL =
       "https://repo1.maven.org/maven2/mysql/mysql-connector-java/8.0.26/mysql-connector-java-8.0.26.jar";
 
   public static final String DOWNLOAD_POSTGRESQL_JDBC_DRIVER_URL =
@@ -196,7 +196,7 @@ public class BaseIT {
                   gravitinoHome
                       + String.format(
                           "/scripts/postgresql/schema-%s-postgresql.sql",
-                          ConfigConstants.VERSION_0_8_0)),
+                          ConfigConstants.CURRENT_SCRIPT_VERSION)),
               "UTF-8");
 
       String[] initPGBackendSqls =
@@ -241,7 +241,8 @@ public class BaseIT {
               new File(
                   gravitinoHome
                       + String.format(
-                          "/scripts/mysql/schema-%s-mysql.sql", ConfigConstants.VERSION_0_8_0)),
+                          "/scripts/mysql/schema-%s-mysql.sql",
+                          ConfigConstants.CURRENT_SCRIPT_VERSION)),
               "UTF-8");
 
       String[] initMySQLBackendSqls =
@@ -369,6 +370,7 @@ public class BaseIT {
       client.close();
     }
     customConfigs.clear();
+
     LOG.info("Tearing down Gravitino Server");
   }
 
