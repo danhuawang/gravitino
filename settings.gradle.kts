@@ -25,6 +25,9 @@ includeBuild("gravitino-oss") {
     substitute(module("org.apache.gravitino:core"))
       .using(project(":core"))
 
+    substitute(module("org.apache.gravitino:lineage"))
+      .using(project(":lineage"))
+
     substitute(module("org.apache.gravitino:server"))
       .using(project(":server"))
 
@@ -48,3 +51,4 @@ include("datastrato-server")
 include("docs")
 include("authorization-jdbc-enterprise")
 include("search")
+include("lineage-extension")

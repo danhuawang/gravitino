@@ -286,6 +286,11 @@ tasks {
         val newLine = "\n# Comma separated list of REST API packages to expand\n" +
           "gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest,com.datastrato.gravitino.search.rest\n"
         confFile.appendText(newLine)
+        val lineageLine = "\n\n# Lineage sink configuraion\n" +
+          "# gravitino.lineage.sinks = log,marquez\n" +
+          "# gravitino.lineage.marquez.sinkClass = com.datastrato.gravitino.lineage.sink.HTTPLineageSink\n" +
+          "# gravitino.lineage.marquez.url = http://localhost:6000"
+        confFile.appendText(lineageLine)
       }
     }
   }
