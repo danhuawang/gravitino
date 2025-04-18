@@ -13,16 +13,24 @@ dependencies {
   implementation("org.apache.gravitino:api")
   implementation("org.apache.gravitino:core")
   implementation("org.apache.gravitino:common")
-  implementation("org.apache.gravitino:server")
   implementation("org.apache.gravitino:server-common")
 
   implementation(project(":common-extension"))
   implementation(project(":core-extension"))
-  implementation(project(":search"))
 
-  implementation(libs.guava)
   implementation(libs.bundles.jersey)
   implementation(libs.bundles.log4j)
+  implementation(libs.commons.lang3)
+  implementation(libs.guava)
+  implementation(libs.jackson.databind)
+  implementation(libs.jackson.datatype.jdk8)
+  implementation(libs.jackson.datatype.jsr310)
+  implementation(libs.jackson.annotations)
+  implementation(libs.lombok)
+
+  annotationProcessor(libs.lombok)
+
+  testImplementation(project(":core-extension", "testArtifacts"))
 
   testImplementation(libs.commons.lang3)
   testImplementation(libs.jersey.test.framework.core) {
@@ -31,8 +39,8 @@ dependencies {
   testImplementation(libs.jersey.test.framework.provider.jetty) {
     exclude(group = "org.junit.jupiter")
   }
-  testImplementation(libs.mockito.core)
   testImplementation(libs.junit.jupiter.api)
+  testImplementation(libs.mockito.core)
 
   testRuntimeOnly(libs.junit.jupiter.engine)
 }

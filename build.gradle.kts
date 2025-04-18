@@ -284,7 +284,7 @@ tasks {
       val confFile = file(outputDir.dir("package/conf/gravitino.conf"))
       if (confFile.exists()) {
         val newLine = "\n# Comma separated list of REST API packages to expand\n" +
-          "gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest\n"
+          "gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest,com.datastrato.gravitino.search.rest\n"
         confFile.appendText(newLine)
       }
     }
