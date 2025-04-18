@@ -478,7 +478,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(filesetDispatcher.createFileset(any(), any(), any(), any(), any())).thenReturn(fileset);
 
     FilesetWithTagsCreateRequest req =
-        new FilesetWithTagsCreateRequest("fileset1", null, null, null, null, null);
+        new FilesetWithTagsCreateRequest("fileset1", null, null, "/tmp/1/", null, null);
 
     Response resp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
@@ -784,6 +784,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(mockFileset.comment()).thenReturn(comment);
     when(mockFileset.storageLocation()).thenReturn(storageLocation);
     when(mockFileset.properties()).thenReturn(properties);
+    when(mockFileset.storageLocations()).thenReturn(ImmutableMap.of("unknown", storageLocation));
 
     Audit mockAudit = mock(Audit.class);
     when(mockAudit.creator()).thenReturn("gravitino");

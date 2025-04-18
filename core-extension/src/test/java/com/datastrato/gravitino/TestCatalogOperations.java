@@ -61,6 +61,7 @@ import org.apache.gravitino.model.Model;
 import org.apache.gravitino.model.ModelCatalog;
 import org.apache.gravitino.model.ModelChange;
 import org.apache.gravitino.model.ModelVersion;
+import org.apache.gravitino.model.ModelVersionChange;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.rel.TableCatalog;
@@ -423,6 +424,8 @@ public class TestCatalogOperations
             .withFilesetType(type)
             // Store the storageLocation to the store.
             .withStorageLocations(storageLocations)
+            // Store the storageLocation to the store. If the "storageLocation" is null,
+            // it will be stored as an empty string.
             .withProperties(properties)
             .withAuditInfo(auditInfo)
             .build();
@@ -895,6 +898,20 @@ public class TestCatalogOperations
       // This is happened when renaming a model to an existing model name.
       throw new RuntimeException("Model already exist " + ident.name(), eaee);
     }
+  }
+
+  @Override
+  public ModelVersion alterModelVersion(
+      NameIdentifier ident, int version, ModelVersionChange... changes)
+      throws NoSuchModelException, NoSuchModelVersionException, IllegalArgumentException {
+    return null;
+  }
+
+  @Override
+  public ModelVersion alterModelVersion(
+      NameIdentifier ident, String alias, ModelVersionChange... changes)
+      throws NoSuchModelException, IllegalArgumentException {
+    return null;
   }
 
   private ModelEntity updateModelEntity(

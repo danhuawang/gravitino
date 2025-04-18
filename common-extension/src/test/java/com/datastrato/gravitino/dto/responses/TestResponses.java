@@ -8,6 +8,7 @@ import static org.apache.gravitino.file.Fileset.Type.EXTERNAL;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.collect.ImmutableMap;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
@@ -79,12 +80,14 @@ public class TestResponses {
             .comment("comment1")
             .type(MANAGED)
             .audit(AuditDTO.builder().build())
+            .storageLocations(ImmutableMap.of("location", "location1"))
             .build();
     FilesetDTO fileset2 =
         FilesetDTO.builder()
             .name("fileset2")
             .type(EXTERNAL)
             .audit(AuditDTO.builder().build())
+            .storageLocations(ImmutableMap.of("location", "location2"))
             .build();
     FilesetDTO[] filesets = new FilesetDTO[] {fileset1, fileset2};
     FilesetListResponse response = new FilesetListResponse(filesets);

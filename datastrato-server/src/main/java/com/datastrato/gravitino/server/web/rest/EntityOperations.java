@@ -299,7 +299,7 @@ public class EntityOperations {
                         .name(e.name())
                         .comment(e.comment())
                         .type(e.filesetType())
-                        .storageLocation(e.storageLocation())
+                        .storageLocations(e.storageLocations())
                         .properties(e.properties())
                         .audit(toDTO(e.auditInfo()))
                         .build())
