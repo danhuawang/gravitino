@@ -296,6 +296,7 @@ tasks {
   }
 
   val assembleDistribution by registering(Tar::class) {
+    mustRunAfter(copySubprojectDependencies, copySubprojectLib)
     into("${rootProject.name}-$version-bin")
     from(compileDistribution.map { it.outputs.files.single() })
     compression = Compression.GZIP
