@@ -472,10 +472,11 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         mockFileset(
             "fileset1",
             Fileset.Type.MANAGED,
-            "mock com   ment",
+            "mock comment",
             "mock location",
             ImmutableMap.of("k1", "v1"));
-    when(filesetDispatcher.createFileset(any(), any(), any(), any(), any())).thenReturn(fileset);
+    when(filesetDispatcher.createMultipleLocationFileset(any(), any(), any(), any(), any()))
+        .thenReturn(fileset);
 
     FilesetWithTagsCreateRequest req =
         new FilesetWithTagsCreateRequest("fileset1", null, null, "/tmp/1/", null, null);
@@ -497,6 +498,40 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals("fileset1", filesetDTO.name());
     Assertions.assertEquals(0, filesetWithTagsResponse.getTags().length);
 
+    // test create multiple locations fileset without tags
+    Map<String, String> storageLocations =
+        ImmutableMap.of("location1", "/tmp/1/", "location2", "/tmp/2/");
+    fileset =
+        mockMultipleLocationsFileset(
+            "fileset1_1",
+            Fileset.Type.MANAGED,
+            "mock comment",
+            storageLocations,
+            ImmutableMap.of("k1", "v1"));
+    when(filesetDispatcher.createMultipleLocationFileset(any(), any(), any(), any(), any()))
+        .thenReturn(fileset);
+
+    req =
+        new FilesetWithTagsCreateRequest(
+            "fileset1_1", "mock comment", Fileset.Type.MANAGED, null, storageLocations, null);
+
+    resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    filesetWithTagsResponse = resp.readEntity(FilesetWithTagsResponse.class);
+    Assertions.assertEquals(0, filesetWithTagsResponse.getCode());
+
+    filesetDTO = filesetWithTagsResponse.getFileset();
+    Assertions.assertEquals("fileset1_1", filesetDTO.name());
+    Assertions.assertEquals(0, filesetWithTagsResponse.getTags().length);
+    Assertions.assertEquals(storageLocations, filesetDTO.storageLocations());
+
     // test create fileset with tags
     String[] tags = new String[] {"tag1", "tag2"};
     req = new FilesetWithTagsCreateRequest("fileset2", null, null, null, null, tags);
@@ -508,7 +543,8 @@ public class TestCreationWithTagsOperations extends JerseyTest {
             "mock com   ment",
             "mock location",
             ImmutableMap.of("k1", "v1"));
-    when(filesetDispatcher.createFileset(any(), any(), any(), any(), any())).thenReturn(fileset);
+    when(filesetDispatcher.createMultipleLocationFileset(any(), any(), any(), any(), any()))
+        .thenReturn(fileset);
     when(tagDispatcher.associateTagsForMetadataObject(any(), any(), eq(tags), any()))
         .thenReturn(tags);
 
@@ -528,10 +564,40 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals("fileset2", filesetDTO.name());
     Assertions.assertArrayEquals(tags, filesetWithTagsResponse.getTags());
 
+    // test create multiple locations fileset with tags
+    fileset =
+        mockMultipleLocationsFileset(
+            "fileset2_1",
+            Fileset.Type.MANAGED,
+            "mock com   ment",
+            storageLocations,
+            ImmutableMap.of("k1", "v1"));
+    when(filesetDispatcher.createMultipleLocationFileset(any(), any(), any(), any(), any()))
+        .thenReturn(fileset);
+    when(tagDispatcher.associateTagsForMetadataObject(any(), any(), eq(tags), any()))
+        .thenReturn(tags);
+
+    resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    filesetWithTagsResponse = resp.readEntity(FilesetWithTagsResponse.class);
+    Assertions.assertEquals(0, filesetWithTagsResponse.getCode());
+
+    filesetDTO = filesetWithTagsResponse.getFileset();
+    Assertions.assertEquals("fileset2_1", filesetDTO.name());
+    Assertions.assertArrayEquals(tags, filesetWithTagsResponse.getTags());
+    Assertions.assertEquals(storageLocations, filesetDTO.storageLocations());
+
     // test create fileset error
     doThrow(new FilesetAlreadyExistsException("mock error"))
         .when(filesetDispatcher)
-        .createFileset(any(), any(), any(), any(), any());
+        .createMultipleLocationFileset(any(), any(), any(), any(), any());
     Response errorResp =
         target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -554,7 +620,8 @@ public class TestCreationWithTagsOperations extends JerseyTest {
             "mock location",
             ImmutableMap.of("k1", "v1"));
     reset(filesetDispatcher);
-    when(filesetDispatcher.createFileset(any(), any(), any(), any(), any())).thenReturn(fileset);
+    when(filesetDispatcher.createMultipleLocationFileset(any(), any(), any(), any(), any()))
+        .thenReturn(fileset);
     doThrow(new TagAlreadyAssociatedException("mock error"))
         .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
@@ -785,6 +852,27 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(mockFileset.storageLocation()).thenReturn(storageLocation);
     when(mockFileset.properties()).thenReturn(properties);
     when(mockFileset.storageLocations()).thenReturn(ImmutableMap.of("unknown", storageLocation));
+
+    Audit mockAudit = mock(Audit.class);
+    when(mockAudit.creator()).thenReturn("gravitino");
+    when(mockAudit.createTime()).thenReturn(Instant.now());
+    when(mockFileset.auditInfo()).thenReturn(mockAudit);
+
+    return mockFileset;
+  }
+
+  private Fileset mockMultipleLocationsFileset(
+      String filesetName,
+      Fileset.Type type,
+      String comment,
+      Map<String, String> storageLocations,
+      Map<String, String> properties) {
+    Fileset mockFileset = mock(Fileset.class);
+    when(mockFileset.name()).thenReturn(filesetName);
+    when(mockFileset.type()).thenReturn(type);
+    when(mockFileset.comment()).thenReturn(comment);
+    when(mockFileset.properties()).thenReturn(properties);
+    when(mockFileset.storageLocations()).thenReturn(storageLocations);
 
     Audit mockAudit = mock(Audit.class);
     when(mockAudit.creator()).thenReturn("gravitino");

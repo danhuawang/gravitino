@@ -6,6 +6,7 @@ package com.datastrato.gravitino.server.web.rest;
 
 import static org.apache.gravitino.dto.util.DTOConverters.fromDTO;
 import static org.apache.gravitino.dto.util.DTOConverters.fromDTOs;
+import static org.apache.gravitino.file.Fileset.LOCATION_NAME_UNKNOWN;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
@@ -24,7 +25,9 @@ import com.datastrato.gravitino.dto.responses.ModelWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.SchemaWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.TableWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.TopicWithTagsResponse;
+import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -465,12 +468,20 @@ public class CreationWithTagsOperations {
     NameIdentifier ident =
         NameIdentifierUtil.ofFileset(metalake, catalog, schema, request.getName());
 
+    // set storageLocation value as unnamed location if provided
+    Map<String, String> tmpLocations =
+        new HashMap<>(
+            Optional.ofNullable(request.getStorageLocations()).orElse(Collections.emptyMap()));
+    Optional.ofNullable(request.getStorageLocation())
+        .ifPresent(loc -> tmpLocations.put(LOCATION_NAME_UNKNOWN, loc));
+    Map<String, String> storageLocations = ImmutableMap.copyOf(tmpLocations);
+
     Fileset fileset =
-        filesetDispatcher.createFileset(
+        filesetDispatcher.createMultipleLocationFileset(
             ident,
             request.getComment(),
             Optional.ofNullable(request.getType()).orElse(Fileset.Type.MANAGED),
-            request.getStorageLocation(),
+            storageLocations,
             request.getProperties());
     FilesetDTO filesetDTO = DTOConverters.toDTO(fileset);
     LOG.info("Fileset created: {}.{}.{}.{}", metalake, catalog, schema, request.getName());
