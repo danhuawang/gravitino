@@ -7,11 +7,16 @@ package com.datastrato.gravitino.search.operations;
 import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
+import static org.apache.gravitino.MetadataObject.Type.METALAKE;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.search.rest.SearchOperations;
 import com.datastrato.gravitino.search.rest.SynMetadataRequest;
+import com.datastrato.gravitino.search.service.SearchService;
+import com.datastrato.gravitino.search.service.SyncTask;
+import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.client.Entity;
@@ -22,6 +27,7 @@ import javax.ws.rs.core.Response.Status;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.lock.LockManager;
@@ -30,12 +36,15 @@ import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 public class TestSearchOperations extends JerseyTest {
+
+  private static SearchService searchService;
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
 
@@ -77,6 +86,34 @@ public class TestSearchOperations extends JerseyTest {
         });
 
     return resourceConfig;
+  }
+
+  @BeforeAll
+  public static void init() throws IllegalAccessException {
+    Config config = mock(Config.class);
+    when(config.getAllConfig()).thenReturn(ImmutableMap.of());
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
+
+    SearchService service = SearchService.getSearchService();
+    searchService = service;
+
+    SearchService spyService = Mockito.spy(service);
+    doReturn(
+            new SyncTask("test", "test", MetadataObjects.parse("test", METALAKE), true, spyService))
+        .when(spyService)
+        .synchronizeMetadata(Mockito.anyString(), Mockito.any(), Mockito.anyBoolean());
+
+    FieldUtils.writeStaticField(SearchService.class, "searchService", spyService, true);
+  }
+
+  @AfterAll
+  public static void clean() {
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", null, true);
+      FieldUtils.writeStaticField(SearchService.class, "searchService", searchService, true);
+    } catch (IllegalAccessException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @Test

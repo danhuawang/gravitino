@@ -4,7 +4,10 @@
  */
 package com.datastrato.gravitino.search.rest;
 
+import static org.apache.gravitino.MetadataObject.Type.METALAKE;
+
 import com.datastrato.gravitino.search.service.SearchService;
+import com.datastrato.gravitino.search.service.SyncTask;
 import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
@@ -18,7 +21,6 @@ import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
-import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.server.web.Utils;
 
 @Path("/search")
@@ -49,9 +51,20 @@ public class SearchOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
-            SearchService.getSearchService()
-                .synchronizeMetadata(metalake, metadataObject, request.isCascade());
-            return Utils.ok(new BaseResponse());
+            boolean cascade = request.isCascade();
+            // If metadataObject is null, it means we are syncing all objects in the metalake; then
+            // cascade is always true
+            MetadataObject metadataObj = metadataObject;
+            if (metadataObj == null) {
+              cascade = true;
+              metadataObj = MetadataObjects.parse(metalake, METALAKE);
+            }
+
+            SyncTask task =
+                SearchService.getSearchService()
+                    .synchronizeMetadata(metalake, metadataObj, cascade);
+
+            return Utils.ok(new SyncMetadataResponse(task.getTaskId()));
           });
     } catch (Exception e) {
       return Utils.internalError(e.getMessage());
