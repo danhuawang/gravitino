@@ -17,15 +17,13 @@ jobs:
 
   # Integration test for AMD64 architecture
   test-amd64-arch:
-    if: github.event.label.name == 'run-ci'
-    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    runs-on: [self-hosted, linux, x64, ubuntu-latest]
     timeout-minutes: 30
     strategy:
       matrix:
         architecture: [linux/amd64]
         java-version: [ 17 ]
-    env:
-      PLATFORM: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v3
         with:

@@ -14,11 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
-  # Integration test for AMD64 architecture
+  # Integration test for ARM64 architecture
   test-amd64-arch:
-    if: github.event.label.name == 'run-ci'
-    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    runs-on: [self-hosted, linux, arm64, amazon, xlarge]
     timeout-minutes: 90
     strategy:
       matrix:
@@ -26,8 +25,6 @@ jobs:
         java-version: [ 17 ]
         scala-version: [ 2.12 ]
         test-mode: [ deploy ]
-    env:
-      PLATFORM: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v3
         with:
