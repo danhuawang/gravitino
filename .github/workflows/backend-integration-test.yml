@@ -2,9 +2,11 @@ name: Backend Integration Test
 
 # Controls when the workflow will run
 on:
+  workflow_dispatch:
   push:
     branches: [ "main", "branch-*" ]
-  pull_request_target:
+  pull_request:
+    types: [labeled]
     branches: [ "main", "branch-*" ]
 
 concurrency:
@@ -12,50 +14,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  start-runner:
-    timeout-minutes: 5
-    name: Start EC2 runner
-    runs-on: ubuntu-latest
-    outputs:
-      label: ${{ steps.start-ec2-runner.outputs.label }}
-      ec2-instance-id: ${{ steps.start-ec2-runner.outputs.ec2-instance-id }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.RUNNER_AK }}
-          aws-secret-access-key: ${{ secrets.RUNNER_SK }}
-          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
-
-      - name: Get resource ID
-        id: get-resource-id
-        run: |
-          echo "ec2_image_id=$(aws ec2 describe-images --filters "Name=tag:Name,Values=gravitino_action_runner_basic" --query 'Images[*].[ImageId]' --output text)" >> "$GITHUB_ENV"
-          echo "security_group_id=$(aws ec2 describe-security-groups --filters Name=tag:Name,Values=gravitino_test_action_runner_sg_basic --query "SecurityGroups[*].[GroupId]" --output text)" >> "$GITHUB_ENV"
-          all_subnets=$(aws ec2 describe-subnets --filter Name=tag:Name,Values=gravitino_test_action_runner_subnet_basic1 --query 'Subnets[*].SubnetId' --output text)
-          subnet_id=$(echo "$all_subnets" | tr '\t' '\n' | awk 'BEGIN { srand() } { print rand(), $0 }' | sort -k1,1n | head -n1 | cut -d' ' -f2)
-          echo "subnet_id=${subnet_id}"  >> "$GITHUB_ENV"
-
-      - name: Start EC2 runner
-        id: start-ec2-runner
-        uses: machulav/ec2-github-runner@v2
-        with:
-          mode: start
-          github-token: ${{ secrets.GH_ACCESS_TOKEN }}
-          ec2-image-id: ${{ env.ec2_image_id }}
-          ec2-instance-type: ${{ vars.AMI_TYPE_XLARGE }}
-          subnet-id: ${{ env.subnet_id }}
-          security-group-id: ${{ env.security_group_id }}
-          aws-resource-tags: >
-            [
-              {"Key": "Name", "Value": "ec2-github-runner"},
-              {"Key": "GitHubRepository", "Value": "${{ github.repository }}"}
-            ]
   # Integration test for AMD64 architecture
   test-amd64-arch:
-    needs: start-runner
-    runs-on: ${{ needs.start-runner.outputs.label }}
-    timeout-minutes: 90
+    if: github.event.label.name == 'run-ci'
+    runs-on: [self-hosted, linux, x64, amazon, xlarge]
+    timeout-minutes: 120
     strategy:
       matrix:
         architecture: [linux/amd64]
@@ -68,8 +31,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
 
       - uses: actions/setup-java@v4
         with:
@@ -125,25 +86,3 @@ jobs:
             gravitino-oss/catalogs/**/*.tar
             gravitino-oss/distribution/**/*.log
 
-  stop-runner:
-    name: Stop EC2 runner
-    needs:
-      - start-runner
-      - test-amd64-arch
-    runs-on: ubuntu-latest
-    if: ${{ always() }}
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.RUNNER_AK }}
-          aws-secret-access-key: ${{ secrets.RUNNER_SK }}
-          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
-
-      - name: Stop EC2 runner
-        uses: machulav/ec2-github-runner@v2
-        with:
-          mode: stop
-          github-token: ${{ secrets.GH_ACCESS_TOKEN }}
-          label: ${{ needs.start-runner.outputs.label }}
-          ec2-instance-id: ${{ needs.start-runner.outputs.ec2-instance-id }}
