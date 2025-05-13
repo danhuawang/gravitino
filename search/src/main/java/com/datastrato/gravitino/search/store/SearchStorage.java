@@ -43,8 +43,8 @@ public interface SearchStorage extends Closeable {
    * transaction, we need to call this method to begin a transaction. This is helpful when you are
    * doing rolling upgrades or when you want to switch the alias of the indices to a new one.
    */
-  void beginTransaction();
+  default void beginTransaction() {};
 
   /** Commit the changes in a transaction to the storage */
-  void commit();
+  default void commit() {};
 }

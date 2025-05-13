@@ -5,10 +5,12 @@
 package com.datastrato.gravitino.search.service;
 
 import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY;
+import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH;
 
 import com.datastrato.gravitino.search.config.SearchConfig;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
 import com.datastrato.gravitino.search.store.SearchStorage;
+import com.datastrato.gravitino.search.store.opensearch.OpenSearchStorage;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
@@ -48,7 +50,9 @@ public class SearchService implements Closeable {
   private static volatile SearchService searchService;
 
   private static final Map<String, Class<? extends SearchStorage>> STORAGE_MAP =
-      ImmutableMap.of(GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY, InMemorySearchStorage.class);
+      ImmutableMap.of(
+          GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY, InMemorySearchStorage.class,
+          GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH, OpenSearchStorage.class);
 
   private final ExecutorService syncMetadataExecutor;
   boolean stop = false;

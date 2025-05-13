@@ -21,12 +21,15 @@ dependencies {
   implementation(libs.bundles.jersey)
   implementation(libs.bundles.log4j)
   implementation(libs.commons.lang3)
+  implementation(libs.commons.io)
   implementation(libs.guava)
   implementation(libs.jackson.databind)
   implementation(libs.jackson.datatype.jdk8)
   implementation(libs.jackson.datatype.jsr310)
   implementation(libs.jackson.annotations)
   implementation(libs.lombok)
+  implementation(libs.open.search.java)
+  implementation(libs.open.search.rest)
 
   annotationProcessor(libs.lombok)
 

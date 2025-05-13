@@ -24,6 +24,8 @@ public class SearchConfig extends Config {
 
   // In memory implementation in this PR is only for testing purpose.
   public static final String GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY = "memory";
+  public static final String GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH = "opensearch";
+
   public static final int DEFAULT_MAX_TASK_QUEUE_SIZE = 100;
   public static final int DEFAULT_MAX_BACKGROUND_THREAD = 10;
   public static final int DEFAULT_SYNC_BATCH_SIZE = 100;
@@ -34,7 +36,7 @@ public class SearchConfig extends Config {
           .doc("The implementation of the search storage engine")
           .version(ConfigConstants.VERSION_0_9_0)
           .stringConf()
-          .createWithDefault(GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY);
+          .createWithDefault(GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH);
 
   public static final ConfigEntry<Integer> ENTITY_GRAVITINO_SEARCH_MAX_TASK_QUEUE_SIZE =
       new ConfigBuilder(GRAVITINO_SEARCH_MAX_TASK_QUEUE_SIZE)

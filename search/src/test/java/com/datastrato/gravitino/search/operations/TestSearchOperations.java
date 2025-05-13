@@ -91,7 +91,8 @@ public class TestSearchOperations extends JerseyTest {
   @BeforeAll
   public static void init() throws IllegalAccessException {
     Config config = mock(Config.class);
-    when(config.getAllConfig()).thenReturn(ImmutableMap.of());
+    when(config.getAllConfig())
+        .thenReturn(ImmutableMap.of("gravitino.datastrato.search.storage.impl", "memory"));
     FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
 
     SearchService service = SearchService.getSearchService();

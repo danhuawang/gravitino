@@ -11,7 +11,7 @@ import lombok.ToString;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
 @Getter
-@EqualsAndHashCode
+@EqualsAndHashCode(callSuper = true)
 @ToString
 public class SyncMetadataResponse extends BaseResponse {
 

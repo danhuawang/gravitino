@@ -77,6 +77,8 @@ sun-activation-version = "1.2.0"
 error-prone = "3.1.0"
 openlineage = "1.29.0"
 jakarta = "2.1.6"
+open-search-java = "2.19.0"
+open-search-rest = "2.19.0"
 
 [libraries]
 protobuf-java = { group = "com.google.protobuf", name = "protobuf-java", version.ref = "protoc" }
@@ -188,6 +190,8 @@ awaitility = { group = "org.awaitility", name = "awaitility", version.ref = "awa
 servlet = { group = "javax.servlet", name = "javax.servlet-api", version.ref = "servlet" }
 openlineage-java = { group = "io.openlineage", name = "openlineage-java", version.ref = "openlineage" }
 jakarta-rs-api = { group = "jakarta.ws.rs", name = "jakarta.ws.rs-api", version.ref = "jakarta" }
+open-search-java = {group='org.opensearch.client',name='opensearch-java', version.ref='open-search-java'}
+open-search-rest = {group='org.opensearch.client',name='opensearch-rest-client', version.ref='open-search-rest'}
 
 [bundles]
 log4j = ["slf4j-api", "log4j-slf4j2-impl", "log4j-api", "log4j-core", "log4j-12-api"]
