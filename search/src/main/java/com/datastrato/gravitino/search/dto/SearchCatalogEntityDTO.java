@@ -4,12 +4,16 @@
  */
 package com.datastrato.gravitino.search.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
 
 @EqualsAndHashCode(callSuper = true)
+@Getter
+@JsonDeserialize(builder = SearchCatalogEntityDTO.SearchCatalogEntityDTOBuilder.class)
 public class SearchCatalogEntityDTO extends SearchEntityDTO {
 
   private final String provider;

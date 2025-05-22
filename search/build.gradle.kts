@@ -28,7 +28,10 @@ dependencies {
   implementation(libs.jackson.datatype.jsr310)
   implementation(libs.jackson.annotations)
   implementation(libs.lombok)
-  implementation(libs.open.search.java)
+  implementation(libs.open.search.java) {
+    exclude(group = "com.fasterxml.jackson.core", module = "jackson-core")
+    exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")
+  }
   implementation(libs.open.search.rest)
 
   annotationProcessor(libs.lombok)
@@ -42,6 +45,7 @@ dependencies {
   testImplementation(libs.jersey.test.framework.provider.jetty) {
     exclude(group = "org.junit.jupiter")
   }
+  testImplementation(libs.testcontainers)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.mockito.core)
 

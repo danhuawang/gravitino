@@ -291,6 +291,20 @@ tasks {
           "# gravitino.lineage.marquez.sinkClass = com.datastrato.gravitino.lineage.sink.HTTPLineageSink\n" +
           "# gravitino.lineage.marquez.url = http://localhost:6000"
         confFile.appendText(lineageLine)
+
+        // Add the following line to the end of the file
+        val defaultSearchStorage = "\n# Default search storage, the default value of this configuration: opensearch\n" +
+          "#gravitino.search.storage.impl = opensearch"
+        val openSearchUrl = "\n# OpenSearch URL\n" +
+          "#gravitino.search.opensearch.url = https://localhost:9200"
+        val openSearchUsername = "\n# OpenSearch username\n" +
+          "#gravitino.search.opensearch.username = admin"
+        val openSearchPassword = "\n# OpenSearch password\n" +
+          "#gravitino.search.opensearch.password = ----\n"
+        confFile.appendText(defaultSearchStorage)
+        confFile.appendText(openSearchUrl)
+        confFile.appendText(openSearchUsername)
+        confFile.appendText(openSearchPassword)
       }
     }
   }

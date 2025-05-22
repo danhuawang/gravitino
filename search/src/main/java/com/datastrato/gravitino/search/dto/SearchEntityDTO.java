@@ -4,13 +4,17 @@
  */
 package com.datastrato.gravitino.search.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity.EntityType;
 
+@Getter
+@JsonDeserialize(builder = SearchEntityDTO.SearchEntityDTOBuilder.class)
 public class SearchEntityDTO {
 
   private final long entityId;
@@ -39,7 +43,7 @@ public class SearchEntityDTO {
 
   private final List<SearchRolePermissionDTO> rolePermissions;
 
-  protected SearchEntityDTO(Builder<?, ?> builder) {
+  public SearchEntityDTO(Builder<?, ?> builder) {
     this.entityId = builder.entityId;
     this.entityType = builder.entityType;
     this.inUse = builder.inUse;
@@ -174,6 +178,7 @@ public class SearchEntityDTO {
     }
   }
 
+  @JsonDeserialize(builder = SearchTagDTO.Builder.class)
   public static class SearchTagDTO {
 
     private final String tagName;
@@ -221,6 +226,7 @@ public class SearchEntityDTO {
     }
   }
 
+  @JsonDeserialize(builder = SearchAuditDTO.Builder.class)
   public static class SearchAuditDTO {
 
     private final LocalDateTime createTime;
@@ -276,6 +282,7 @@ public class SearchEntityDTO {
     }
   }
 
+  @JsonDeserialize(builder = SearchUserPermissionDTO.Builder.class)
   public static class SearchUserPermissionDTO {
 
     private final String name;
@@ -314,6 +321,7 @@ public class SearchEntityDTO {
     }
   }
 
+  @JsonDeserialize(builder = SearchRolePermissionDTO.Builder.class)
   public static class SearchRolePermissionDTO {
     private final String name;
 

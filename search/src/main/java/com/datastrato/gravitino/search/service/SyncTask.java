@@ -60,7 +60,7 @@ public class SyncTask {
     // split the task into subtasks by entity count
     int entityCount = source.approximateEntityCount(searchEntityIdentifier);
     int numChildTask =
-        Math.min(entityCount / service.getEntityProcessBatchSize(), service.getMaxThreadNnm());
+        Math.min(entityCount / service.getEntityProcessBatchSize(), service.getMaxThreadNnm() - 1);
 
     if (numChildTask == 0) {
       // entityCount is not enough, no need to split child sync task, just process it in this task

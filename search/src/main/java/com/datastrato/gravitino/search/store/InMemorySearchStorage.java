@@ -45,7 +45,7 @@ public class InMemorySearchStorage implements SearchStorage {
 
   @Override
   public List<SearchEntitiesDTO> search(
-      String keyword, Condition filter, int pageSize, int pageNum) {
+      String metalake, String keyword, Condition filter, int pageSize, int pageNum) {
     return null;
   }
 

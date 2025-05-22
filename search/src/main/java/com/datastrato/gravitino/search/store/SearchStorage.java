@@ -31,12 +31,14 @@ public interface SearchStorage extends Closeable {
   /**
    * Search the storage for entities that match the given keyword and filter.
    *
+   * @param metalake The metalake to search in.
    * @param keyword The keyword to search for.
    * @param filter The filter to apply to the search.
    * @param pageSize The number of results to return per a page.
    * @param pageNum The page number to return.
    */
-  List<SearchEntitiesDTO> search(String keyword, Condition filter, int pageSize, int pageNum);
+  List<SearchEntitiesDTO> search(
+      String metalake, String keyword, Condition filter, int pageSize, int pageNum);
 
   /**
    * Begin a transaction. By default, the storage is in auto-commit mode. If we want to do a

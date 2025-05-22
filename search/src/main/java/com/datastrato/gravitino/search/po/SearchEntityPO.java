@@ -6,6 +6,7 @@
 package com.datastrato.gravitino.search.po;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,6 +16,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity.EntityType;
 
 @Getter
+@JsonDeserialize(builder = SearchEntityPO.SearchEntityPOBuilder.class)
 public class SearchEntityPO {
 
   @JsonProperty("entity_id")
@@ -56,7 +58,7 @@ public class SearchEntityPO {
   @JsonProperty("role_permissions")
   private final List<SearchRolePermissionPO> rolePermissions;
 
-  protected SearchEntityPO(Builder<?, ?> builder) {
+  public SearchEntityPO(Builder<?, ?> builder) {
     this.entityId = builder.entityId;
     this.entityType = builder.entityType;
     this.inUse = builder.inUse;
@@ -186,6 +188,7 @@ public class SearchEntityPO {
     }
   }
 
+  @JsonDeserialize(builder = SearchTagPO.Builder.class)
   public static class SearchTagPO {
     @JsonProperty("tag_name")
     private final String tagName;
@@ -235,6 +238,7 @@ public class SearchEntityPO {
     }
   }
 
+  @JsonDeserialize(builder = SearchAuditPO.Builder.class)
   public static class SearchAuditPO {
     @JsonProperty("create_time")
     private final LocalDateTime createTime;
@@ -293,6 +297,7 @@ public class SearchEntityPO {
     }
   }
 
+  @JsonDeserialize(builder = SearchUserPermissionPO.Builder.class)
   public static class SearchUserPermissionPO {
     @JsonProperty("name")
     private final String name;
@@ -331,6 +336,7 @@ public class SearchEntityPO {
     }
   }
 
+  @JsonDeserialize(builder = SearchRolePermissionPO.Builder.class)
   public static class SearchRolePermissionPO {
     @JsonProperty("name")
     private final String name;

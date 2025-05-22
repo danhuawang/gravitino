@@ -6,15 +6,21 @@ package com.datastrato.gravitino.search.rest;
 
 import static org.apache.gravitino.MetadataObject.Type.METALAKE;
 
+import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.service.SearchService;
 import com.datastrato.gravitino.search.service.SyncTask;
+import com.google.common.collect.ImmutableList;
+import java.util.List;
 import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DefaultValue;
+import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -22,11 +28,14 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.server.web.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Path("/search")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class SearchOperations {
+  private static final Logger LOG = LoggerFactory.getLogger(SearchOperations.class);
 
   @Context private HttpServletRequest httpRequest;
 
@@ -68,6 +77,29 @@ public class SearchOperations {
           });
     } catch (Exception e) {
       return Utils.internalError(e.getMessage());
+    }
+  }
+
+  @GET
+  @Path("/query")
+  @Produces("application/vnd.gravitino.v1+json")
+  public Response query(
+      @QueryParam("metalake") String metalake,
+      @QueryParam("keyword") String keyword,
+      @DefaultValue("0") @QueryParam("pageNumber") int pageNumber,
+      @DefaultValue("10") @QueryParam("pageSize") int pageSize) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            List<SearchEntitiesDTO> result =
+                SearchService.getSearchService().query(metalake, keyword, pageNumber, pageSize);
+            return Utils.ok(new SearchQueryResponse(result));
+          });
+
+    } catch (Exception e) {
+      LOG.warn("Failed to query the data", e);
+      return Utils.ok(new SearchQueryResponse(ImmutableList.of()));
     }
   }
 

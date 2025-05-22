@@ -5,11 +5,13 @@
 package com.datastrato.gravitino.search.po;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import lombok.EqualsAndHashCode;
 import org.apache.gravitino.Catalog;
 
 @EqualsAndHashCode(callSuper = true)
+@JsonDeserialize(builder = SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.class)
 public class SearchCatalogEntityPO extends SearchEntityPO {
 
   @JsonProperty("provider")

@@ -8,6 +8,9 @@ import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEAR
 import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH;
 
 import com.datastrato.gravitino.search.config.SearchConfig;
+import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
+import com.datastrato.gravitino.search.parser.Condition;
+import com.datastrato.gravitino.search.parser.QueryParser;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
 import com.datastrato.gravitino.search.store.SearchStorage;
 import com.datastrato.gravitino.search.store.opensearch.OpenSearchStorage;
@@ -19,12 +22,15 @@ import java.io.Closeable;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
@@ -166,6 +172,17 @@ public class SearchService implements Closeable {
     SyncTask syncTask = new SyncTask(taskId, metalake, metadataObject, cascade, this);
     addTask(syncTask);
     return syncTask;
+  }
+
+  public List<SearchEntitiesDTO> query(
+      String metalake, String query, int pageNumber, int pageSize) {
+    Pair<String, String> keywordAndFilter = QueryParser.parserQuery(query);
+    Condition condition =
+        StringUtils.isBlank(keywordAndFilter.getRight())
+            ? null
+            : QueryParser.parse(keywordAndFilter.getRight());
+    String keyword = keywordAndFilter.getLeft();
+    return storage.search(metalake, keyword, condition, pageSize, pageNumber);
   }
 
   protected void addTask(SyncTask syncTask) {

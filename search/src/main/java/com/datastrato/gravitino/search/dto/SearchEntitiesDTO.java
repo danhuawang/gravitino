@@ -7,8 +7,10 @@ package com.datastrato.gravitino.search.dto;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 import org.apache.gravitino.Entity.EntityType;
 
+@Getter
 @AllArgsConstructor
 public class SearchEntitiesDTO {
 

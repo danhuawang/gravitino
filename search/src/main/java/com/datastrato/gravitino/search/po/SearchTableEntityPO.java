@@ -5,12 +5,14 @@
 package com.datastrato.gravitino.search.po;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import lombok.EqualsAndHashCode;
 import org.apache.commons.lang3.StringUtils;
 
 @EqualsAndHashCode(callSuper = true)
+@JsonDeserialize(builder = SearchTableEntityPO.SearchTableEntityPOBuilder.class)
 public class SearchTableEntityPO extends SearchEntityPO {
 
   @JsonProperty("columns")
@@ -53,6 +55,7 @@ public class SearchTableEntityPO extends SearchEntityPO {
     }
   }
 
+  @JsonDeserialize(builder = SearchColumn.Builder.class)
   public static class SearchColumn {
     @JsonProperty("column_name")
     private final String columnName;

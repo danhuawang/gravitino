@@ -4,11 +4,13 @@
  */
 package com.datastrato.gravitino.search.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import lombok.EqualsAndHashCode;
 
 @EqualsAndHashCode(callSuper = true)
+@JsonDeserialize(builder = SearchTableEntityDTO.SearchTableEntityDTOBuilder.class)
 public class SearchTableEntityDTO extends SearchEntityDTO {
 
   private final List<SearchColumnDTO> columns;
@@ -49,6 +51,7 @@ public class SearchTableEntityDTO extends SearchEntityDTO {
     }
   }
 
+  @JsonDeserialize(builder = SearchColumnDTO.Builder.class)
   public static class SearchColumnDTO {
     private String columnName;
 
