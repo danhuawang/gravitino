@@ -9,12 +9,16 @@ import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableMap;
+import java.util.Map;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
+import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.json.JsonUtils;
+import org.apache.gravitino.rel.Column;
+import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -129,5 +133,26 @@ public class TestResponses {
     Exception exception =
         Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
     Assertions.assertEquals("\"topics\" cannot be null", exception.getMessage());
+  }
+
+  @Test
+  public void testPreviewResponse() throws JsonProcessingException {
+    DataPreviewResponse response =
+        new DataPreviewResponse(
+            1,
+            "ok",
+            DTOConverters.toDTOs(new Column[] {Column.of("a", Types.ByteType.get())}),
+            new Map[] {});
+    Assertions.assertDoesNotThrow(response::validate);
+
+    String serJson = JsonUtils.objectMapper().writeValueAsString(response);
+    DataPreviewResponse deserialized =
+        JsonUtils.objectMapper().readValue(serJson, DataPreviewResponse.class);
+    Assertions.assertEquals(response, deserialized);
+
+    DataPreviewResponse illegalResp = new DataPreviewResponse();
+    Exception exception =
+        Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
+    Assertions.assertEquals("\"message\" can't be blank", exception.getMessage());
   }
 }

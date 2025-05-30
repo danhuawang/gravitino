@@ -14,12 +14,15 @@ import static org.apache.gravitino.StringIdentifier.ID_KEY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.TestColumn;
+import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.time.Instant;
@@ -51,13 +54,16 @@ import org.junit.jupiter.api.Test;
 public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperationDispatcher {
   static DatastratoTableOperationDispatcher tableOperationDispatcher;
   static DatastratoSchemaOperationDispatcher schemaOperationDispatcher;
+  static TrinoJdbcDataPreviewOperator trinoJdbcDataPreviewOperator;
 
   @BeforeAll
   public static void initialize() throws IllegalAccessException {
     schemaOperationDispatcher =
         new DatastratoSchemaOperationDispatcher(catalogManager, entityStore, idGenerator);
+    trinoJdbcDataPreviewOperator = mock(TrinoJdbcDataPreviewOperator.class);
     tableOperationDispatcher =
-        new DatastratoTableOperationDispatcher(catalogManager, entityStore, idGenerator);
+        new DatastratoTableOperationDispatcher(
+            catalogManager, entityStore, idGenerator, trinoJdbcDataPreviewOperator);
 
     Config config = mock(Config.class);
     doReturn(100000L).when(config).get(TREE_LOCK_MAX_NODE_IN_MEMORY);
@@ -329,5 +335,18 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
     doThrow(new IOException()).when(entityStore).delete(any(), any(), anyBoolean());
     Assertions.assertThrows(
         RuntimeException.class, () -> tableOperationDispatcher.dropTable(tableIdent));
+  }
+
+  @Test
+  public void testPreviewTableData() {
+    NameIdentifier tableIdent = NameIdentifier.of(metalake, catalog, "schema99", "table84");
+    when(trinoJdbcDataPreviewOperator.preview(any(), any(), anyInt())).thenReturn(new Map[0]);
+    Map<String, Object>[] results = tableOperationDispatcher.preview(tableIdent, TABLE, 100);
+    Assertions.assertEquals(results.length, 0);
+
+    when(trinoJdbcDataPreviewOperator.preview(any(), any(), anyInt()))
+        .thenThrow(new RuntimeException("mock error"));
+    Assertions.assertThrows(
+        RuntimeException.class, () -> tableOperationDispatcher.preview(tableIdent, TABLE, 100));
   }
 }

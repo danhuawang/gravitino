@@ -28,6 +28,7 @@ import com.datastrato.gravitino.listener.DatastratoFilesetEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
+import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
@@ -84,7 +85,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
 
     // initialize table dispatcher
     DatastratoTableDispatcher tableOperationDispatcher =
-        new DatastratoTableOperationDispatcher(catalogManager(), entityStore(), idGenerator());
+        new DatastratoTableOperationDispatcher(
+            catalogManager(),
+            entityStore(),
+            idGenerator(),
+            new TrinoJdbcDataPreviewOperator(config, tagDispatcher()));
     DatastratoTableHookDispatcher tableHookDispatcher =
         new DatastratoTableHookDispatcher(tableOperationDispatcher);
     DatastratoTableDispatcher tableNormalizeDispatcher =

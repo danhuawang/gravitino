@@ -5,7 +5,11 @@
 package com.datastrato.gravitino.listener;
 
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
+import com.datastrato.gravitino.preview.DataPreviewSensitiveTableException;
 import java.util.List;
+import java.util.Map;
+import org.apache.gravitino.Entity;
+import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.TableEventDispatcher;
@@ -42,5 +46,13 @@ public class DatastratoTableEventDispatcher extends TableEventDispatcher
           new ListTableFailureEvent(PrincipalUtils.getCurrentUserName(), namespace, e));
       throw e;
     }
+  }
+
+  @Override
+  public Map<String, Object>[] preview(
+      NameIdentifier identifier, Entity.EntityType type, int resultLimit)
+      throws DataPreviewSensitiveTableException {
+    // TODO: Add preview table event
+    return dispatcher.preview(identifier, type, resultLimit);
   }
 }

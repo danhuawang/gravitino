@@ -286,6 +286,18 @@ tasks {
         val newLine = "\n# Comma separated list of REST API packages to expand\n" +
           "gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest,com.datastrato.gravitino.search.rest\n"
         confFile.appendText(newLine)
+
+        val previewLine = "\n\n# Trino preview configuration\n" +
+          "# Default value of `gravitino.datastrato.preview.jdbcUrl` is null\n" +
+          "gravitino.datastrato.preview.jdbcUrl=jdbc:trino://trino:8080\n" +
+          "gravitino.datastrato.preview.jdbcDriver=io.trino.jdbc.TrinoDriver\n" +
+          "gravitino.datastrato.preview.jdbcUsername=admin\n" +
+          "gravitino.datastrato.preview.timeoutInSec=300\n" +
+          "gravitino.datastrato.preview.maxRowCount=100\n" +
+          "# Default value of `gravitino.datastrato.preview.jdbcPassword` is null.\n" +
+          "# Default value of `gravitino.datastrato.preview.sensitiveTags` is empty collection.\n"
+        confFile.appendText(previewLine)
+
         val lineageLine = "\n\n# Lineage sink configuraion\n" +
           "# gravitino.lineage.sinks = log,marquez\n" +
           "# gravitino.lineage.marquez.sinkClass = com.datastrato.gravitino.lineage.sink.HTTPLineageSink\n" +

@@ -6,8 +6,12 @@ package com.datastrato.gravitino.catalog;
 
 import static org.apache.gravitino.Entity.EntityType.TABLE;
 
+import com.datastrato.gravitino.preview.DataPreviewSensitiveTableException;
+import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
@@ -22,6 +26,7 @@ import org.apache.gravitino.storage.IdGenerator;
 
 public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
     implements DatastratoTableDispatcher {
+  private final TrinoJdbcDataPreviewOperator trinoJdbcDataPreviewOperator;
 
   /**
    * Creates a new TableOperationDispatcher instance.
@@ -29,10 +34,16 @@ public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
    * @param catalogManager The CatalogManager instance to be used for table operations.
    * @param store The EntityStore instance to be used for table operations.
    * @param idGenerator The IdGenerator instance to be used for table operations.
+   * @param trinoJdbcDataPreviewOperator The trino jdbc preview operator to be used for preview
+   *     operations.
    */
   public DatastratoTableOperationDispatcher(
-      CatalogManager catalogManager, EntityStore store, IdGenerator idGenerator) {
+      CatalogManager catalogManager,
+      EntityStore store,
+      IdGenerator idGenerator,
+      TrinoJdbcDataPreviewOperator trinoJdbcDataPreviewOperator) {
     super(catalogManager, store, idGenerator);
+    this.trinoJdbcDataPreviewOperator = trinoJdbcDataPreviewOperator;
   }
 
   @Override
@@ -49,5 +60,14 @@ public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
             throw new RuntimeException(e);
           }
         });
+  }
+
+  @Override
+  public Map<String, Object>[] preview(
+      NameIdentifier identifier, Entity.EntityType type, int resultLimit)
+      throws DataPreviewSensitiveTableException {
+    // If we use the table read lock, the trino connector will load table, it will cause
+    // the dead lock.
+    return trinoJdbcDataPreviewOperator.preview(identifier, type, resultLimit);
   }
 }

@@ -1,0 +1,108 @@
+# Copyright 2025 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# Copyright 2024 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+---
+
+paths:
+
+  /web/preview/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+    parameters:
+      - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/catalog"
+      - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/schema"
+      - $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/parameters/table"
+    get:
+      tags:
+        - table
+      summary: Preview table data
+      operationId: previewTableData
+      description: |
+        Preview table data
+
+      responses:
+        "200":
+          description: Returns the table data preview
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/PreviewResponse"
+        "400":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The target table does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "./../../gravitino-oss/docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchCatalogException:
+                  $ref: "./../../gravitino-oss/docs/open-api/catalogs.yaml#/components/examples/NoSuchCatalogException"
+                NoSuchSchemaException:
+                  $ref: "./../../gravitino-oss/docs/open-api/schemas.yaml#/components/examples/NoSuchSchemaException"
+                NoSuchTableException:
+                  $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/examples/NoSuchTableException"
+        "5xx":
+          $ref: "./../../gravitino-oss/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    PreviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        statusCode:
+          type: integer
+          format: int32
+          description: Status code of the preview result
+          enum:
+            - 0
+            - 1
+            - 2
+        message:
+          type: string
+          description: Message of the response
+        columns:
+          type: array
+          description: A list of column objects
+          items:
+            $ref: "./../../gravitino-oss/docs/open-api/tables.yaml#/components/schemas/Column"
+        result:
+          type: array
+          description: A list of table data preview
+          items:
+            type: object
+            additionalProperties:
+              type: object
+
