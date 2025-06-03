@@ -298,25 +298,56 @@ tasks {
           "# Default value of `gravitino.datastrato.preview.sensitiveTags` is empty collection.\n"
         confFile.appendText(previewLine)
 
-        val lineageLine = "\n\n# Lineage sink configuraion\n" +
+        val lineageLine = "\n\n# Lineage sink configuration\n" +
           "# gravitino.lineage.sinks = log,marquez\n" +
           "# gravitino.lineage.marquez.sinkClass = com.datastrato.gravitino.lineage.sink.HTTPLineageSink\n" +
           "# gravitino.lineage.marquez.url = http://localhost:6000"
         confFile.appendText(lineageLine)
 
         // Add the following line to the end of the file
-        val defaultSearchStorage = "\n# Default search storage, the default value of this configuration: opensearch\n" +
-          "#gravitino.search.storage.impl = opensearch"
+        val defaultSearchStorage = "\n\n# Default search storage, the default value of this configuration: opensearch\n" +
+          "# gravitino.search.storage.impl = opensearch"
         val openSearchUrl = "\n# OpenSearch URL\n" +
-          "#gravitino.search.opensearch.url = https://localhost:9200"
+          "# gravitino.search.opensearch.url = https://localhost:9200"
         val openSearchUsername = "\n# OpenSearch username\n" +
-          "#gravitino.search.opensearch.username = admin"
+          "# gravitino.search.opensearch.username = admin"
         val openSearchPassword = "\n# OpenSearch password\n" +
-          "#gravitino.search.opensearch.password = ----\n"
+          "# gravitino.search.opensearch.password = ----\n"
         confFile.appendText(defaultSearchStorage)
         confFile.appendText(openSearchUrl)
         confFile.appendText(openSearchUsername)
         confFile.appendText(openSearchPassword)
+      }
+      // Modify log4j2.properties
+      val log4jFile = file(outputDir.dir("package/conf/log4j2.properties"))
+      if (log4jFile.exists()) {
+        val extraContent = """
+            ## use separate file for search log
+            appender.search_file.type=RollingFile
+            appender.search_file.name=search_file
+            appender.search_file.fileName=${'$'}{basePath}/gravitino_search.log
+            appender.search_file.filePattern=${'$'}{basePath}/gravitino_search_%d{yyyyMMdd}.log.gz
+            appender.search_file.layout.type=PatternLayout
+            appender.search_file.layout.pattern=[%d{yyyy-MM-dd HH:mm:ss}] %m%n
+            appender.search_file.policies.type=Policies
+
+            appender.search_file.policies.time.type=TimeBasedTriggeringPolicy
+            appender.search_file.policies.time.interval=1
+            appender.search_file.policies.time.modulate=true
+            appender.search_file.strategy.type=DefaultRolloverStrategy
+            appender.search_file.strategy.delete.type=Delete
+            appender.search_file.strategy.delete.basePath=${'$'}{basePath}
+            appender.search_file.strategy.delete.maxDepth=10
+            appender.search_file.strategy.delete.ifLastModified.type=IfLastModified
+            appender.search_file.strategy.delete.ifLastModified.age=30d
+
+            ## logger for com.datastrato.gravitino.search.*
+            logger.search.name=com.datastrato.gravitino.search
+            logger.search.level=info
+            logger.search.appenderRef.search_file.ref=search_file
+            logger.search.additivity=false
+        """.trimIndent()
+        log4jFile.appendText(extraContent)
       }
     }
   }

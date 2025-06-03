@@ -108,7 +108,9 @@ public class SearchService implements Closeable {
       }
 
     } catch (Exception e) {
-      throw new RuntimeException("Failed to create storage instance", e);
+      String errorMessage = "Failed to initialize SearchService";
+      LOG.error(errorMessage, e);
+      throw new RuntimeException(errorMessage, e);
     }
   }
 
