@@ -400,30 +400,30 @@ public class OpenSearchStorage implements SearchStorage {
     for (Map.Entry<EntityType, String> entry : ENTITY_TYPE_TO_INDEX_SUFFIX.entrySet()) {
       EntityType entityType = entry.getKey();
       String indexName = getIndicesName(entityType, metalake);
-      if (createdIndices.contains(indexName)) {
-        SearchRequest searchRequest =
-            new SearchRequest.Builder()
-                .index(indexName)
-                .query(query -> query.bool(buildBoolQuery(keyword, filter, entityType)))
-                .source(src -> src.fetch(true))
-                .from(pageNum * pageSize)
-                .size(pageSize)
-                .build();
+      SearchRequest searchRequest =
+          new SearchRequest.Builder()
+              .index(indexName)
+              .query(query -> query.bool(buildBoolQuery(keyword, filter, entityType)))
+              .source(src -> src.fetch(true))
+              .from(pageNum * pageSize)
+              .size(pageSize)
+              // Ignore unavailable indices to avoid errors if the index does not exist
+              .ignoreUnavailable(true)
+              .build();
 
-        futures.add(
-            queryExecutor.submit(
-                () -> {
-                  try {
-                    LOG.info("Query: {}", searchRequest.toJsonString());
-                    return Pair.of(
-                        entityType,
-                        client.search(searchRequest, ENTITY_TYPE_TO_CLASS.get(entityType)));
-                  } catch (Exception e) {
-                    LOG.error("Failed to query OpenSearch", e);
-                    throw new RuntimeException(e);
-                  }
-                }));
-      }
+      futures.add(
+          queryExecutor.submit(
+              () -> {
+                try {
+                  LOG.info("Query: {}", searchRequest.toJsonString());
+                  return Pair.of(
+                      entityType,
+                      client.search(searchRequest, ENTITY_TYPE_TO_CLASS.get(entityType)));
+                } catch (Exception e) {
+                  LOG.error("Failed to query OpenSearch", e);
+                  throw new RuntimeException(e);
+                }
+              }));
     }
 
     for (Future<Pair<EntityType, SearchResponse<? extends SearchEntityPO>>> future : futures) {
