@@ -505,7 +505,8 @@ public class OpenSearchStorage implements SearchStorage {
         MultiMatchQuery.of(
             m ->
                 m.query(word)
-                    .fields("entity_name.ngram^3.5", "entity_comment.ngram^3.0")
+                    .fields("entity_name.ngram^4.0", "entity_comment.ngram^3.0")
+                    .analyzer("standard")
                     .type(TextQueryType.Phrase)
                     .slop(0));
     queries.add(Query.of(q -> q.multiMatch(phraseQuery)));
@@ -517,11 +518,15 @@ public class OpenSearchStorage implements SearchStorage {
     List<Query> shouldQueries =
         ImmutableList.of(
             Query.of(
-                q -> q.match(m -> m.field("tags.tag_name").query(FieldValue.of(word)).boost(4.0f))),
+                q -> q.match(m -> m.field("tags.tag_name").query(FieldValue.of(word)).boost(2.0f))),
             Query.of(
                 q ->
-                    q.matchPhrase(
-                        mp -> mp.field("tags.tag_name.ngram").query(word).slop(0).boost(3.5f))));
+                    q.match(
+                        mp ->
+                            mp.field("tags.tag_name.ngram")
+                                .analyzer("standard")
+                                .query(FieldValue.of(word))
+                                .boost(2.0f))));
 
     return Query.of(
         q -> q.nested(n -> n.path("tags").query(qb -> qb.bool(b -> b.should(shouldQueries)))));
@@ -534,7 +539,7 @@ public class OpenSearchStorage implements SearchStorage {
                 q ->
                     q.match(
                         m ->
-                            m.field("columns.column_name").query(FieldValue.of(word)).boost(4.0f))),
+                            m.field("columns.column_name").query(FieldValue.of(word)).boost(2.0f))),
             Query.of(
                 q ->
                     q.matchPhrase(
@@ -542,7 +547,7 @@ public class OpenSearchStorage implements SearchStorage {
                             mp.field("columns.column_name.ngram")
                                 .query(word)
                                 .slop(0)
-                                .boost(3.5f))));
+                                .boost(2.5f))));
 
     return Query.of(
         q -> q.nested(n -> n.path("columns").query(qb -> qb.bool(b -> b.should(shouldQueries)))));
