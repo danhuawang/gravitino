@@ -178,6 +178,7 @@ public class SearchEntityDTO {
     }
   }
 
+  @Getter
   @JsonDeserialize(builder = SearchTagDTO.Builder.class)
   public static class SearchTagDTO {
 
@@ -227,6 +228,7 @@ public class SearchEntityDTO {
   }
 
   @JsonDeserialize(builder = SearchAuditDTO.Builder.class)
+  @Getter
   public static class SearchAuditDTO {
 
     private final LocalDateTime createTime;
@@ -283,6 +285,7 @@ public class SearchEntityDTO {
   }
 
   @JsonDeserialize(builder = SearchUserPermissionDTO.Builder.class)
+  @Getter
   public static class SearchUserPermissionDTO {
 
     private final String name;
@@ -322,6 +325,7 @@ public class SearchEntityDTO {
   }
 
   @JsonDeserialize(builder = SearchRolePermissionDTO.Builder.class)
+  @Getter
   public static class SearchRolePermissionDTO {
     private final String name;
 
