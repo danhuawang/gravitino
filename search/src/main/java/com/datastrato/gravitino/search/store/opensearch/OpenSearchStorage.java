@@ -484,6 +484,9 @@ public class OpenSearchStorage implements SearchStorage {
       if (entityType == EntityType.TABLE) {
         allQueries.add(buildColumnNestedQuery(word));
       }
+
+      // Query word match content in properties.
+      allQueries.add(buildPropertiesNestedQuery(word));
     }
 
     return Query.of(q -> q.bool(b -> b.should(allQueries).minimumShouldMatch("1")));
@@ -518,7 +521,12 @@ public class OpenSearchStorage implements SearchStorage {
     List<Query> shouldQueries =
         ImmutableList.of(
             Query.of(
-                q -> q.match(m -> m.field("tags.tag_name").query(FieldValue.of(word)).boost(2.0f))),
+                q ->
+                    q.match(
+                        m ->
+                            m.field("tags.tag_name.keyword")
+                                .query(FieldValue.of(word))
+                                .boost(2.0f))),
             Query.of(
                 q ->
                     q.match(
@@ -532,6 +540,48 @@ public class OpenSearchStorage implements SearchStorage {
         q -> q.nested(n -> n.path("tags").query(qb -> qb.bool(b -> b.should(shouldQueries)))));
   }
 
+  private static Query buildPropertiesNestedQuery(String word) {
+    List<Query> shouldQueries =
+        ImmutableList.of(
+            Query.of(
+                q ->
+                    q.match(
+                        m ->
+                            m.field("entity_properties.key.keyword")
+                                .query(FieldValue.of(word))
+                                .boost(1.0f))),
+            Query.of(
+                q ->
+                    q.match(
+                        mp ->
+                            mp.field("entity_properties.key.ngram")
+                                .query(FieldValue.of(word))
+                                .analyzer("standard")
+                                .boost(1.0f))),
+            Query.of(
+                q ->
+                    q.match(
+                        m ->
+                            m.field("entity_properties.value.keyword")
+                                .query(FieldValue.of(word))
+                                .boost(1.0f))),
+            Query.of(
+                q ->
+                    q.match(
+                        mp ->
+                            mp.field("entity_properties.value.ngram")
+                                .query(FieldValue.of(word))
+                                .analyzer("standard")
+                                .boost(1.0f))));
+
+    return Query.of(
+        q ->
+            q.nested(
+                n ->
+                    n.path("entity_properties")
+                        .query(qb -> qb.bool(b -> b.should(shouldQueries)))));
+  }
+
   private static Query buildColumnNestedQuery(String word) {
     List<Query> shouldQueries =
         ImmutableList.of(
@@ -539,14 +589,16 @@ public class OpenSearchStorage implements SearchStorage {
                 q ->
                     q.match(
                         m ->
-                            m.field("columns.column_name").query(FieldValue.of(word)).boost(2.0f))),
+                            m.field("columns.column_name.keyword")
+                                .query(FieldValue.of(word))
+                                .boost(2.0f))),
             Query.of(
                 q ->
-                    q.matchPhrase(
+                    q.match(
                         mp ->
                             mp.field("columns.column_name.ngram")
-                                .query(word)
-                                .slop(0)
+                                .query(FieldValue.of(word))
+                                .analyzer("standard")
                                 .boost(2.5f))));
 
     return Query.of(

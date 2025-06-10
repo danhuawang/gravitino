@@ -37,7 +37,10 @@
         },
         "ngram_analyzer": {
           "type": "custom",
-          "tokenizer": "ngram_tokenizer"
+          "tokenizer": "ngram_tokenizer",
+          "filter": [
+            "lowercase"
+          ]
         }
       }
     }
@@ -217,6 +220,41 @@
                 "type": "text",
                 "analyzer": "ngram_analyzer",
                 "search_analyzer": "ngram_analyzer"
+              }
+            }
+          }
+        }
+      },
+      "entity_properties": {
+        "type": "nested",
+        "properties": {
+          "key": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              },
+              "ngram": {
+                "type": "text",
+                "analyzer": "ngram_analyzer"
+              }
+            }
+          },
+          "value": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              },
+              "ngram": {
+                "type": "text",
+                "analyzer": "ngram_analyzer"
               }
             }
           }

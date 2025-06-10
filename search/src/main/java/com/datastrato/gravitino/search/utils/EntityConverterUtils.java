@@ -6,6 +6,7 @@ package com.datastrato.gravitino.search.utils;
 
 import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.datastrato.gravitino.search.po.SearchEntityPO.PropertyPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO.SearchTagPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import java.time.LocalDateTime;
@@ -16,8 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.gravitino.Audit;
-import org.apache.gravitino.Auditable;
 import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
@@ -45,26 +46,6 @@ public class EntityConverterUtils {
 
   private EntityConverterUtils() {
     // Prevent instantiation
-  }
-
-  public static SearchEntityPO toSearchEntityPO(
-      Auditable entity, Tag[] tags, NameIdentifier nameIdentifier) {
-    if (entity instanceof CatalogEntity) {
-      return toCatalogSearchEntityPO((CatalogEntity) entity, tags, nameIdentifier);
-    } else if (entity instanceof EntityCombinedSchema) {
-      return toSchemaSearchEntityPO((EntityCombinedSchema) entity, tags, nameIdentifier);
-    } else if (entity instanceof EntityCombinedTopic) {
-      return toTopicSearchEntityPO((EntityCombinedTopic) entity, tags, nameIdentifier);
-    } else if (entity instanceof EntityCombinedModel) {
-      return toModelSearchEntityPO((EntityCombinedModel) entity, tags, nameIdentifier);
-    } else if (entity instanceof EntityCombinedFileset) {
-      return toFilesetSearchEntityPO((EntityCombinedFileset) entity, tags, nameIdentifier);
-    } else if (entity instanceof EntityCombinedTable) {
-      return toTableSearchEntityPO((EntityCombinedTable) entity, tags, nameIdentifier);
-    }
-
-    throw new UnsupportedOperationException(
-        String.format("Unsupported entity type: %s", entity.getClass().getName()));
   }
 
   @Nullable
@@ -111,7 +92,14 @@ public class EntityConverterUtils {
         .withOwner(owner)
         .withUserPermissions(null)
         .withRolePermissions(null)
+        .withEntityProperties(mapToKeyValueObjects(catalog.getProperties()))
         .build();
+  }
+
+  private static List<PropertyPO> mapToKeyValueObjects(Map<String, String> map) {
+    return map.entrySet().stream()
+        .map(entry -> new PropertyPO(entry.getKey(), entry.getValue()))
+        .collect(Collectors.toList());
   }
 
   private static long getEntityIdFromProperties(
@@ -153,6 +141,7 @@ public class EntityConverterUtils {
         .withOwner(owner)
         .withUserPermissions(null)
         .withRolePermissions(null)
+        .withEntityProperties(mapToKeyValueObjects(schema.properties()))
         .build();
   }
 
@@ -188,6 +177,7 @@ public class EntityConverterUtils {
         .withOwner(owner)
         .withUserPermissions(null)
         .withRolePermissions(null)
+        .withEntityProperties(mapToKeyValueObjects(topic.properties()))
         .build();
   }
 
@@ -222,6 +212,7 @@ public class EntityConverterUtils {
         .withOwner(owner)
         .withUserPermissions(null)
         .withRolePermissions(null)
+        .withEntityProperties(mapToKeyValueObjects(model.properties()))
         .build();
   }
 
@@ -257,6 +248,7 @@ public class EntityConverterUtils {
         .withOwner(owner)
         .withUserPermissions(null)
         .withRolePermissions(null)
+        .withEntityProperties(mapToKeyValueObjects(fileset.properties()))
         .build();
   }
 
@@ -301,11 +293,12 @@ public class EntityConverterUtils {
         .withOwner(owner)
         .withUserPermissions(null)
         .withRolePermissions(null)
+        .withEntityProperties(mapToKeyValueObjects(table.properties()))
         .build();
   }
 
   private static List<SearchTagPO> toSearchTag(Tag[] tags) {
-    if (tags == null) {
+    if (ArrayUtils.isEmpty(tags)) {
       return Collections.emptyList();
     }
 

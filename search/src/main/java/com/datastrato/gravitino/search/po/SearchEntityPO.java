@@ -11,6 +11,7 @@ import com.google.common.base.Preconditions;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity.EntityType;
@@ -58,6 +59,9 @@ public class SearchEntityPO {
   @JsonProperty("role_permissions")
   private final List<SearchRolePermissionPO> rolePermissions;
 
+  @JsonProperty("entity_properties")
+  private final List<PropertyPO> entityProperties;
+
   public SearchEntityPO(Builder<?, ?> builder) {
     this.entityId = builder.entityId;
     this.entityType = builder.entityType;
@@ -72,6 +76,7 @@ public class SearchEntityPO {
     this.owner = builder.owner;
     this.userPermissions = builder.userPermissions;
     this.rolePermissions = builder.rolePermissions;
+    this.entityProperties = builder.entityProperties;
   }
 
   public abstract static class Builder<SELF extends Builder<SELF, T>, T> {
@@ -88,6 +93,7 @@ public class SearchEntityPO {
     protected String owner;
     protected List<SearchUserPermissionPO> userPermissions;
     protected List<SearchRolePermissionPO> rolePermissions;
+    protected List<PropertyPO> entityProperties;
 
     public SELF withEntityId(long entityId) {
       this.entityId = entityId;
@@ -151,6 +157,11 @@ public class SearchEntityPO {
 
     public SELF withRolePermissions(List<SearchRolePermissionPO> rolePermissions) {
       this.rolePermissions = rolePermissions;
+      return self();
+    }
+
+    public SELF withEntityProperties(List<PropertyPO> entityProperties) {
+      this.entityProperties = entityProperties;
       return self();
     }
 
@@ -373,5 +384,17 @@ public class SearchEntityPO {
     public static Builder builder() {
       return new Builder();
     }
+  }
+
+  @AllArgsConstructor
+  @Getter
+  @lombok.Builder(toBuilder = true, setterPrefix = "with")
+  @JsonDeserialize(builder = PropertyPO.PropertyPOBuilder.class)
+  public static class PropertyPO {
+    static final String KEY_NAME = "key";
+    static final String VALUE_NAME = "value";
+
+    private final String key;
+    private final String value;
   }
 }

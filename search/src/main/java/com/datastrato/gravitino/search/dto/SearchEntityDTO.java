@@ -9,6 +9,7 @@ import com.google.common.base.Preconditions;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity.EntityType;
@@ -43,6 +44,8 @@ public class SearchEntityDTO {
 
   private final List<SearchRolePermissionDTO> rolePermissions;
 
+  private final List<PropertyDTO> entityProperties;
+
   public SearchEntityDTO(Builder<?, ?> builder) {
     this.entityId = builder.entityId;
     this.entityType = builder.entityType;
@@ -57,6 +60,7 @@ public class SearchEntityDTO {
     this.owner = builder.owner;
     this.userPermissions = builder.userPermissions;
     this.rolePermissions = builder.rolePermissions;
+    this.entityProperties = builder.entityProperties;
   }
 
   public abstract static class Builder<SELF extends Builder<SELF, T>, T extends SearchEntityDTO> {
@@ -73,6 +77,7 @@ public class SearchEntityDTO {
     private String owner;
     private List<SearchUserPermissionDTO> userPermissions;
     private List<SearchRolePermissionDTO> rolePermissions;
+    private List<PropertyDTO> entityProperties;
 
     public SELF withEntityId(long entityId) {
       this.entityId = entityId;
@@ -136,6 +141,11 @@ public class SearchEntityDTO {
 
     public SELF withRolePermissions(List<SearchRolePermissionDTO> rolePermissions) {
       this.rolePermissions = rolePermissions;
+      return self();
+    }
+
+    public SELF withEntityProperties(List<PropertyDTO> entityProperties) {
+      this.entityProperties = entityProperties;
       return self();
     }
 
@@ -361,5 +371,17 @@ public class SearchEntityDTO {
         return new SearchRolePermissionDTO(name, permission);
       }
     }
+  }
+
+  @AllArgsConstructor
+  @Getter
+  @lombok.Builder(toBuilder = true, setterPrefix = "with")
+  @JsonDeserialize(builder = PropertyDTO.PropertyDTOBuilder.class)
+  public static class PropertyDTO {
+    static final String KEY_NAME = "key";
+    static final String VALUE_NAME = "value";
+
+    private final String key;
+    private final String value;
   }
 }
