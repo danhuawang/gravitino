@@ -234,6 +234,11 @@ public class TestCatalogOperations
   }
 
   @Override
+  public ModelVersion[] listModelVersionInfos(NameIdentifier ident) throws NoSuchModelException {
+    return new ModelVersion[0];
+  }
+
+  @Override
   public boolean dropTable(NameIdentifier ident) {
     if (tables.containsKey(ident)) {
       tables.remove(ident);
