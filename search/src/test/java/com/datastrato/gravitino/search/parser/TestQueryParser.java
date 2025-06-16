@@ -205,4 +205,53 @@ public class TestQueryParser {
     Assertions.assertEquals("good hello great nice", keywords5);
     Assertions.assertEquals("-entity_type:MODEL,CATALOG AND -catalog_name:model_catalog", filter5);
   }
+
+  @Test
+  void testNoAnd() {
+    String query = "field1:value1 field2:value2";
+    Condition condition = QueryParser.parse(query);
+    Assertions.assertInstanceOf(AndCondition.class, condition);
+    AndCondition andCondition = (AndCondition) condition;
+    Assertions.assertEquals(andCondition.getConditions().size(), 2);
+    TermCondition termCondition1 = (TermCondition) andCondition.getConditions().get(0);
+    Assertions.assertEquals(termCondition1.getField(), "field1");
+    Assertions.assertEquals(termCondition1.getValue(), "value1");
+    TermCondition termCondition2 = (TermCondition) andCondition.getConditions().get(1);
+    Assertions.assertEquals(termCondition2.getField(), "field2");
+    Assertions.assertEquals(termCondition2.getValue(), "value2");
+
+    query = "field1:value1 OR field2:value2 field3:value3";
+    condition = QueryParser.parse(query);
+    Assertions.assertInstanceOf(OrCondition.class, condition);
+    OrCondition orCondition = (OrCondition) condition;
+    Assertions.assertEquals(orCondition.getConditions().size(), 2);
+    TermCondition termCondition = (TermCondition) orCondition.getConditions().get(0);
+    Assertions.assertEquals(termCondition.getField(), "field1");
+    Assertions.assertEquals(termCondition.getValue(), "value1");
+    Assertions.assertInstanceOf(AndCondition.class, orCondition.getConditions().get(1));
+    AndCondition andCondition2 = (AndCondition) orCondition.getConditions().get(1);
+    Assertions.assertEquals(andCondition2.getConditions().size(), 2);
+    TermCondition termCondition3 = (TermCondition) andCondition2.getConditions().get(0);
+    Assertions.assertEquals(termCondition3.getField(), "field2");
+    Assertions.assertEquals(termCondition3.getValue(), "value2");
+    TermCondition termCondition4 = (TermCondition) andCondition2.getConditions().get(1);
+    Assertions.assertEquals(termCondition4.getField(), "field3");
+    Assertions.assertEquals(termCondition4.getValue(), "value3");
+
+    query = "field1:value1 OR field2:value2 OR field3:value3";
+    condition = QueryParser.parse(query);
+    Assertions.assertInstanceOf(OrCondition.class, condition);
+    OrCondition orCondition3 = (OrCondition) condition;
+    Assertions.assertEquals(orCondition3.getConditions().size(), 3);
+
+    TermCondition termCondition5 = (TermCondition) orCondition3.getConditions().get(0);
+    Assertions.assertEquals(termCondition5.getField(), "field1");
+    Assertions.assertEquals(termCondition5.getValue(), "value1");
+    TermCondition termCondition6 = (TermCondition) orCondition3.getConditions().get(1);
+    Assertions.assertEquals(termCondition6.getField(), "field2");
+    Assertions.assertEquals(termCondition6.getValue(), "value2");
+    TermCondition termCondition7 = (TermCondition) orCondition3.getConditions().get(2);
+    Assertions.assertEquals(termCondition7.getField(), "field3");
+    Assertions.assertEquals(termCondition7.getValue(), "value3");
+  }
 }

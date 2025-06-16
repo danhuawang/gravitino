@@ -60,8 +60,10 @@ public class QueryParser {
   private static Condition parseAndExpression(Tokenizer tokenizer) {
     List<Condition> conditions = new ArrayList<>();
     conditions.add(parsePrimary(tokenizer));
-    while (isNextToken(tokenizer, AND)) {
-      tokenizer.consume();
+    while (tokenizer.lookahead != null && !OR.equalsIgnoreCase(tokenizer.lookahead)) {
+      if (AND.equalsIgnoreCase(tokenizer.lookahead)) {
+        tokenizer.consume(); // consume AND
+      }
       conditions.add(parsePrimary(tokenizer));
     }
     return conditions.size() == 1 ? conditions.get(0) : new AndCondition(conditions);
