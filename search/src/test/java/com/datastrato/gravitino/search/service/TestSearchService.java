@@ -9,6 +9,7 @@ import static org.apache.gravitino.Entity.EntityType.CATALOG;
 import static org.apache.gravitino.Entity.EntityType.METALAKE;
 import static org.apache.gravitino.Entity.EntityType.SCHEMA;
 
+import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
 import com.google.common.collect.ImmutableMap;
@@ -183,7 +184,18 @@ public class TestSearchService {
     MetadataObject testObj = NameIdentifierUtil.toMetadataObject(nameIdentifier, type);
 
     SyncTask task = searchService.synchronizeMetadata(metalake, testObj, cascading);
+    TaskStatusDTO taskStatus = searchService.getTaskStatus(task.getTaskId());
+    Assertions.assertNotNull(taskStatus);
+    Assertions.assertEquals(task.getTaskId(), taskStatus.getTaskId());
+
     task.waitToFinished();
+
+    Thread.sleep(10);
+    taskStatus = searchService.getTaskStatus(task.getTaskId());
+    Assertions.assertNotNull(taskStatus);
+    Assertions.assertEquals(task.getTaskId(), taskStatus.getTaskId());
+    Assertions.assertEquals(TaskStatus.TaskStatusEnum.COMPLETED.name(), taskStatus.getTaskStatus());
+
     List<SearchEntityPO> searchEntityList = inMemorySearchStorage.getSearchEntities();
     Assertions.assertEquals(expectedCount, searchEntityList.size());
     searchEntityList.forEach(

@@ -9,6 +9,7 @@ import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEAR
 
 import com.datastrato.gravitino.search.config.SearchConfig;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
+import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.parser.QueryParser;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
@@ -49,6 +50,8 @@ public class SearchService implements Closeable {
   private final int entityProcessBatchSize;
 
   @VisibleForTesting final SearchStorage storage;
+
+  private final TaskStatusStorage taskStatusStorage;
 
   private final Deque<SyncTask> syncTasks = new ArrayDeque<>();
   private final Object backoffLock = new Object();
@@ -107,6 +110,10 @@ public class SearchService implements Closeable {
         syncMetadataExecutor.execute(this::handleSyncTask);
       }
 
+      // Initialize the task status storage, currently, we use in-memory storage for
+      // simplicity, but it can be replaced with a persistent storage like a database.
+      this.taskStatusStorage = new InMemoryTaskStatusStorage();
+      taskStatusStorage.initialize(searchConfig);
     } catch (Exception e) {
       String errorMessage = "Failed to initialize SearchService";
       LOG.error(errorMessage, e);
@@ -120,6 +127,11 @@ public class SearchService implements Closeable {
 
   public int getEntityProcessBatchSize() {
     return entityProcessBatchSize;
+  }
+
+  @VisibleForTesting
+  public TaskStatusStorage getTaskStatusStorage() {
+    return taskStatusStorage;
   }
 
   /**
@@ -173,6 +185,7 @@ public class SearchService implements Closeable {
 
     SyncTask syncTask = new SyncTask(taskId, metalake, metadataObject, cascade, this);
     addTask(syncTask);
+
     return syncTask;
   }
 
@@ -192,6 +205,8 @@ public class SearchService implements Closeable {
       syncTasks.add(syncTask);
       notify();
     }
+
+    syncTask.saveTaskStatus();
   }
 
   // The function called by multiple threads to handle SyncTasks
@@ -208,6 +223,7 @@ public class SearchService implements Closeable {
         }
 
         try {
+          syncTask.prepare();
           while (syncTask.processOnBatch()) {
             if (needBackoff()) {
               synchronized (backoffLock) {
@@ -230,6 +246,26 @@ public class SearchService implements Closeable {
   private boolean needBackoff() {
     // todo Work on later
     return false;
+  }
+
+  public TaskStatusDTO getTaskStatus(String taskId) {
+    TaskStatus taskStatus = taskStatusStorage.getTaskStatus(taskId);
+    if (taskStatus == null) {
+      return null;
+    }
+
+    // Convert TaskStatus to TaskStatusDTO
+    return TaskStatusDTO.builder()
+        .withTaskId(taskStatus.getTaskId())
+        .withSubTaskNum(taskStatus.getSubTaskNum())
+        .withTaskStatus(taskStatus.getTaskStatus())
+        .withMessage(taskStatus.getMessage())
+        .withTaskCreateTime(taskStatus.getTaskCreateTime())
+        .withTaskUpdateTime(taskStatus.getTaskUpdateTime())
+        .withMetadataObject(taskStatus.getMetadataObject())
+        .withMetalake(taskStatus.getMetalake())
+        .withCascade(taskStatus.isCascade())
+        .build();
   }
 
   @Override

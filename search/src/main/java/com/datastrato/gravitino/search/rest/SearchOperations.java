@@ -7,6 +7,7 @@ package com.datastrato.gravitino.search.rest;
 import static org.apache.gravitino.MetadataObject.Type.METALAKE;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
+import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.service.SearchService;
 import com.datastrato.gravitino.search.service.SyncTask;
 import com.google.common.collect.ImmutableList;
@@ -100,6 +101,27 @@ public class SearchOperations {
     } catch (Exception e) {
       LOG.warn("Failed to query the data", e);
       return Utils.ok(new SearchQueryResponse(ImmutableList.of()));
+    }
+  }
+
+  @GET
+  @Path("/task/{taskId}/status")
+  @Produces("application/vnd.gravitino.v1+json")
+  public Response getTaskStatus(@PathParam("taskId") String taskId) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            TaskStatusDTO taskStatus = SearchService.getSearchService().getTaskStatus(taskId);
+            if (taskStatus == null) {
+              return Utils.illegalArguments("Task not found: " + taskId);
+            }
+            return Utils.ok(new TaskStatusResponse(taskStatus));
+          });
+
+    } catch (Exception e) {
+      LOG.error("Failed to get task status for taskId: {}", taskId, e);
+      return Utils.internalError(e.getMessage());
     }
   }
 

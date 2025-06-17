@@ -5,6 +5,7 @@
 package com.datastrato.gravitino.search.service;
 
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.datastrato.gravitino.search.service.TaskStatus.TaskStatusEnum;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -28,6 +29,8 @@ public class SyncTask {
 
   private final List<SyncTask> subTasks = new ArrayList<>();
 
+  private final TaskStatus taskStatus;
+
   public SyncTask(
       String taskId,
       String metalake,
@@ -42,18 +45,33 @@ public class SyncTask {
     this.source = SearchEntitySource.createSearchEntitySource(searchEntityIdentifier, cascade);
 
     splitTask();
+
+    this.taskStatus =
+        TaskStatus.builder()
+            .withTaskId(taskId)
+            .withMetadataObject(metadataObject.toString())
+            .withMetalake(metalake)
+            .withSubTaskNum(subTasks.size())
+            .withCascade(cascade)
+            .withTaskStatus(TaskStatusEnum.SUBMITTED.name())
+            .withMessage("Task created")
+            .withTaskCreateTime(System.currentTimeMillis())
+            .withTaskUpdateTime(System.currentTimeMillis())
+            .build();
   }
 
   private SyncTask(
       String taskId,
       SearchEntityIdentifier identifier,
       SearchEntitySource source,
-      SearchService service) {
+      SearchService service,
+      TaskStatus taskStatus) {
     this.taskId = taskId;
     this.searchEntityIdentifier = identifier;
     this.source = source;
     this.service = service;
     this.isRootTask = false;
+    this.taskStatus = taskStatus;
   }
 
   public void splitTask() {
@@ -68,7 +86,16 @@ public class SyncTask {
     }
 
     for (int i = 0; i < numChildTask; i++) {
-      SyncTask syncTask = new SyncTask(taskId + "_" + i, searchEntityIdentifier, source, service);
+      String taskId = this.taskId + "_" + i;
+      TaskStatus taskStatus =
+          TaskStatus.builder()
+              .withTaskId(taskId)
+              .withTaskCreateTime(System.currentTimeMillis())
+              .withTaskUpdateTime(System.currentTimeMillis())
+              .withSubTaskNum(0)
+              .build();
+
+      SyncTask syncTask = new SyncTask(taskId, searchEntityIdentifier, source, service, taskStatus);
       subTasks.add(syncTask);
       service.addTask(syncTask);
     }
@@ -96,6 +123,10 @@ public class SyncTask {
     return true;
   }
 
+  public void prepare() {
+    updateTaskStatus(TaskStatusEnum.RUNNING, "Task is prepared and running.");
+  }
+
   public String getTaskId() {
     return taskId;
   }
@@ -108,14 +139,18 @@ public class SyncTask {
 
   private void handleTaskFinished() {
     if (!isRootTask) {
+      updateTaskStatus(TaskStatusEnum.COMPLETED, "Subtask finished.");
       return;
     }
 
+    TaskStatus.TaskStatusEnum status = TaskStatus.TaskStatusEnum.COMPLETED;
     for (SyncTask subTask : subTasks) {
       if (!subTask.finished()) {
         try {
           subTask.waitToFinished();
         } catch (InterruptedException e) {
+          // Handle exception
+          status = TaskStatusEnum.INTERRUPTED;
           LOG.error("Error waiting for subtask to finish", e);
         }
       }
@@ -131,12 +166,33 @@ public class SyncTask {
         source.getProcessFailedEntities();
       }
     }
-    LOG.info(stringBuilder.toString());
+
+    // Add to be polished, this is rather hacky and should be improved later.
+    String message = stringBuilder.toString();
+
+    updateTaskStatus(status, message);
+
+    LOG.info(message);
   }
 
   public void waitToFinished() throws InterruptedException {
     synchronized (finishedLock) {
       finishedLock.wait();
     }
+  }
+
+  public void saveTaskStatus() {
+    service.getTaskStatusStorage().save(taskStatus, true);
+  }
+
+  private void updateTaskStatus(TaskStatusEnum taskStatusEnum, String message) {
+    TaskStatus newStatus =
+        taskStatus
+            .toBuilder()
+            .withTaskStatus(taskStatusEnum.name())
+            .withMessage(message)
+            .withTaskUpdateTime(System.currentTimeMillis())
+            .build();
+    service.getTaskStatusStorage().update(newStatus);
   }
 }

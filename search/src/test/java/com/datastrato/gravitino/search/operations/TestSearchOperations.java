@@ -12,10 +12,13 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.rest.SearchOperations;
 import com.datastrato.gravitino.search.rest.SynMetadataRequest;
+import com.datastrato.gravitino.search.rest.TaskStatusResponse;
 import com.datastrato.gravitino.search.service.SearchService;
 import com.datastrato.gravitino.search.service.SyncTask;
+import com.datastrato.gravitino.search.service.TaskStatus;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import javax.servlet.http.HttpServletRequest;
@@ -214,5 +217,79 @@ public class TestSearchOperations extends JerseyTest {
     Assertions.assertEquals(
         "If the length of names is 3, it must be FILESET, TABLE, TOPIC or MODEL",
         errorResp.getMessage());
+  }
+
+  @Test
+  void testGetTaskStatus() {
+    long taskCreateTime = System.currentTimeMillis();
+    String taskId = "test-task-id";
+    TaskStatus taskStatus =
+        TaskStatus.builder()
+            .withTaskId(taskId)
+            .withMetadataObject("")
+            .withMetalake("test-metalake")
+            .withCascade(true)
+            .withTaskStatus(TaskStatus.TaskStatusEnum.RUNNING.name())
+            .withMessage("Task is running")
+            .withTaskCreateTime(taskCreateTime)
+            .withTaskUpdateTime(taskCreateTime)
+            .build();
+
+    searchService.getTaskStatusStorage().save(taskStatus, false);
+
+    Response resp =
+        target(String.format("/search/task/%s/status", taskId))
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    TaskStatusResponse response = resp.readEntity(TaskStatusResponse.class);
+    TaskStatusDTO dto = response.getTaskStatusDTO();
+    Assertions.assertNotNull(dto);
+    Assertions.assertTrue(equals(taskStatus, dto));
+
+    // Update the task status
+    taskStatus =
+        taskStatus
+            .toBuilder()
+            .withTaskStatus(TaskStatus.TaskStatusEnum.COMPLETED.name())
+            .withMessage("Task completed successfully")
+            .withTaskUpdateTime(System.currentTimeMillis())
+            .build();
+    searchService.getTaskStatusStorage().update(taskStatus);
+
+    resp =
+        target(String.format("/search/task/%s/status/", taskId))
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+    response = resp.readEntity(TaskStatusResponse.class);
+    dto = response.getTaskStatusDTO();
+    Assertions.assertNotNull(dto);
+    Assertions.assertTrue(equals(taskStatus, dto));
+  }
+
+  private boolean equals(TaskStatus taskStatus, TaskStatusDTO taskStatusDTO) {
+    if (taskStatus == null && taskStatusDTO == null) {
+      return true;
+    }
+
+    if (taskStatus == null || taskStatusDTO == null) {
+      return false;
+    }
+
+    return taskStatus.getTaskId().equals(taskStatusDTO.getTaskId())
+        && taskStatus.getTaskStatus().equals(taskStatusDTO.getTaskStatus())
+        && taskStatus.getMessage().equals(taskStatusDTO.getMessage())
+        && taskStatus.getMetalake().equals(taskStatusDTO.getMetalake())
+        && taskStatus.getMetadataObject().equals(taskStatusDTO.getMetadataObject())
+        && taskStatus.isCascade() == taskStatusDTO.isCascade()
+        && taskStatus.getTaskCreateTime().equals(taskStatusDTO.getTaskCreateTime())
+        && taskStatus.getTaskUpdateTime().equals(taskStatusDTO.getTaskUpdateTime());
   }
 }
