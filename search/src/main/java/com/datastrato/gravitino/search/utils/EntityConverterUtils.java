@@ -268,7 +268,7 @@ public class EntityConverterUtils {
     String schema = nameIdentifier.namespace().levels()[2];
     String owner =
         getMetadataObjectOwner(
-            NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.TOPIC), metalakeName);
+            NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.TABLE), metalakeName);
 
     return SearchTableEntityPO.SearchTableEntityPOBuilder.builder()
         .withEntityId(id)
