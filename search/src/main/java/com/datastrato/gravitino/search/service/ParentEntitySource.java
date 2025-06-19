@@ -19,7 +19,7 @@ abstract class ParentEntitySource implements SearchEntitySource {
   // It is initially empty and populated after the first sync, so the count may be inaccurate.
   // The sync task splits based on this number and task concurrency.
   // todo Need to improve it by using Gravitino server metrics, if available.
-  private static final TreeMap<String, Integer> entityCountMap = new TreeMap<>();
+  protected static final TreeMap<String, Integer> entityCountMap = new TreeMap<>();
   private static long lastCleanupTime = System.currentTimeMillis();
   private static final int ENTITY_COUNT_MAP_CLEAN_INTERVAL = 24 * 3600 * 1000; // 24 hours
 
@@ -93,14 +93,14 @@ abstract class ParentEntitySource implements SearchEntitySource {
 
   // Initialize the child entity sources, if there is an exception return false, otherwise return
   // true
-  private boolean addChildEntitySources() {
+  protected boolean addChildEntitySources() {
     try {
       childSources = createChildEntitySources();
       currentChildIndex = 0;
       synchronized (entityCountMap) {
         entityCountMap.put(searchEntityIdentifier.entityIdent().toString(), childSources.size());
       }
-      return true;
+      return !childSources.isEmpty();
     } catch (Exception e) {
       processFailedList.add(searchEntityIdentifier);
       LOG.error(
@@ -136,7 +136,7 @@ abstract class ParentEntitySource implements SearchEntitySource {
   }
 
   @Override
-  public int approximateEntityCount(SearchEntityIdentifier searchEntityIdentifier) {
+  public int approximateEntityCount() {
     synchronized (entityCountMap) {
       String key = searchEntityIdentifier.entityIdent().toString();
       int total = entityCountMap.getOrDefault(key, Integer.MAX_VALUE);

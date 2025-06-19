@@ -56,10 +56,9 @@ interface SearchEntitySource {
   /**
    * Returns the approximate count of entities is used to calculate the number of sync tasks
    *
-   * @param identifier the identifier of the search entity
    * @return the approximate total number of entities
    */
-  int approximateEntityCount(SearchEntityIdentifier identifier);
+  int approximateEntityCount();
 
   /** Returns the source is finished processing. */
   boolean finished();

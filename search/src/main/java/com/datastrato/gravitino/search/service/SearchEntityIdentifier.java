@@ -43,7 +43,7 @@ class SearchEntityIdentifier {
   public String fullName() {
     String nameIdentString = entityIdent.toString();
     return entityType != Entity.EntityType.METALAKE
-        ? nameIdentString.substring(nameIdentString.indexOf("." + 1))
+        ? nameIdentString.substring(nameIdentString.indexOf(".") + 1)
         : "";
   }
 

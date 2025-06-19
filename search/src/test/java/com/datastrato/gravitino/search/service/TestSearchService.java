@@ -5,15 +5,23 @@
 package com.datastrato.gravitino.search.service;
 
 import static com.datastrato.gravitino.search.config.SearchConfig.ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL;
+import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
+import static java.util.Collections.emptyList;
 import static org.apache.gravitino.Entity.EntityType.CATALOG;
 import static org.apache.gravitino.Entity.EntityType.METALAKE;
 import static org.apache.gravitino.Entity.EntityType.SCHEMA;
+import static org.apache.gravitino.Entity.EntityType.TABLE;
 
+import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
+import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
@@ -25,6 +33,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.mockito.Mockito;
+import org.testcontainers.shaded.org.awaitility.Awaitility;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TestSearchService {
@@ -52,18 +61,20 @@ public class TestSearchService {
      *   test_metalake
      *    ├── test_catalog1
      *    │   ├── test_schema1
-     *    │   │   ├── test_table1
+     *    │   │   ├── test_table1 (test_tag)
      *    │   │   └── test_table2
      *    │   └── test_schema2
      *    │       └── test_table2
-     *    |── test_catalog2
+     *    |── test_catalog2 (test_tag)
      *    │   ├── test_schema1
      *    │   └── test_schema2
+     *    |── test_catalog3
      * </pre>
      */
     gravitinoService.createMetalake("test_metalake");
     gravitinoService.createCatalog(NameIdentifier.of("test_metalake", "test_catalog1"));
     gravitinoService.createCatalog(NameIdentifier.of("test_metalake", "test_catalog2"));
+    gravitinoService.createCatalog(NameIdentifier.of("test_metalake", "test_catalog3"));
     gravitinoService.createSchema(
         NameIdentifier.of("test_metalake", "test_catalog1", "test_schema1"));
     gravitinoService.createSchema(
@@ -78,6 +89,13 @@ public class TestSearchService {
         NameIdentifier.of("test_metalake", "test_catalog1", "test_schema1", "test_table2"));
     gravitinoService.createTable(
         NameIdentifier.of("test_metalake", "test_catalog1", "test_schema2", "test_table2"));
+
+    gravitinoService.addTagsToObject(
+        NameIdentifier.of("test_metalake", "test_catalog1", "test_schema1", "test_table1"),
+        ImmutableSet.of("test_tag"));
+
+    gravitinoService.addTagsToObject(
+        NameIdentifier.of("test_metalake", "test_catalog2"), ImmutableSet.of("test_tag"));
   }
 
   @Test
@@ -85,7 +103,7 @@ public class TestSearchService {
     try {
       // Synchronize all metadata
       NameIdentifier identifier = NameIdentifier.of("test_metalake");
-      testSyncTask(identifier, METALAKE, true, 9);
+      testSyncTask(identifier, METALAKE, true, 10);
 
       // Sync a non-existing metalake
       Assertions.assertThrows(
@@ -177,6 +195,161 @@ public class TestSearchService {
     }
   }
 
+  @Test
+  void testQuery() throws Exception {
+    String metalake = "test_metalake";
+    NameIdentifier nameIdentifier = NameIdentifier.of(metalake);
+    MetadataObject testObj = NameIdentifierUtil.toMetadataObject(nameIdentifier, METALAKE);
+    SyncTask task = searchService.synchronizeMetadata(metalake, testObj, true);
+    task.waitToFinished();
+
+    // test query catalog
+    nameIdentifier = NameIdentifier.of(metalake, "test_catalog1");
+    List<SearchEntitiesDTO> dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, CATALOG).getEntities().size());
+
+    // test query schema
+    nameIdentifier = NameIdentifier.of(metalake, "test_catalog1", "test_schema1");
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, SCHEMA).getEntities().size());
+
+    // test query table
+    nameIdentifier = NameIdentifier.of(metalake, "test_catalog1", "test_schema1", "test_table1");
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, TABLE).getEntities().size());
+
+    // query metalake
+    dto = searchService.query(metalake, null, null, emptyList(), 0, Integer.MAX_VALUE);
+    Assertions.assertEquals(3, getSearchEntitiesDTOByType(dto, CATALOG).getEntities().size());
+    Assertions.assertEquals(4, getSearchEntitiesDTOByType(dto, SCHEMA).getEntities().size());
+    Assertions.assertEquals(3, getSearchEntitiesDTOByType(dto, TABLE).getEntities().size());
+
+    // test query catalog with cascading
+    nameIdentifier = NameIdentifier.of(metalake, "test_catalog1");
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(nameIdentifier, true),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, CATALOG).getEntities().size());
+    Assertions.assertEquals(2, getSearchEntitiesDTOByType(dto, SCHEMA).getEntities().size());
+    Assertions.assertEquals(3, getSearchEntitiesDTOByType(dto, TABLE).getEntities().size());
+
+    // test query schema with cascading
+    nameIdentifier = NameIdentifier.of(metalake, "test_catalog1", "test_schema1");
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(nameIdentifier, true),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, SCHEMA).getEntities().size());
+    Assertions.assertEquals(2, getSearchEntitiesDTOByType(dto, TABLE).getEntities().size());
+
+    // test query by tag
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            new Condition.InCondition("tag_name", ImmutableList.of("test_tag")),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, TABLE).getEntities().size());
+
+    // test remove table
+    nameIdentifier = NameIdentifier.of(metalake, "test_catalog1", "test_schema1", "test_table1");
+    searchService.removeMetadata(nameIdentifier, Entity.EntityType.TABLE, false).get();
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(0, dto.size());
+
+    // test remove test_schema1 with cascade
+    nameIdentifier = NameIdentifier.of(metalake, "test_catalog1", "test_schema1");
+    searchService.removeMetadata(nameIdentifier, Entity.EntityType.SCHEMA, true).get();
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(0, dto.size());
+
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(nameIdentifier, true),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+    Assertions.assertEquals(0, dto.size());
+
+    dto =
+        searchService.query(
+            metalake,
+            null,
+            SearchService.createEntityNameQueryCondition(
+                NameIdentifier.of(metalake, "test_catalog1"), true),
+            emptyList(),
+            0,
+            Integer.MAX_VALUE);
+
+    Assertions.assertEquals(3, dto.size());
+    SearchEntitiesDTO catalogDTOs = getSearchEntitiesDTOByType(dto, CATALOG);
+    Assertions.assertNotNull(catalogDTOs);
+    Assertions.assertEquals(1, catalogDTOs.getEntities().size());
+    Assertions.assertEquals(
+        "test_catalog1", catalogDTOs.getEntities().get(0).getFullQualifiedName());
+
+    SearchEntitiesDTO schemaDTOs = getSearchEntitiesDTOByType(dto, SCHEMA);
+    Assertions.assertNotNull(schemaDTOs);
+    Assertions.assertEquals(1, schemaDTOs.getEntities().size());
+    Assertions.assertEquals(
+        "test_catalog1.test_schema2", schemaDTOs.getEntities().get(0).getFullQualifiedName());
+
+    SearchEntitiesDTO tableDTOs = getSearchEntitiesDTOByType(dto, TABLE);
+    Assertions.assertNotNull(tableDTOs);
+    Assertions.assertEquals(1, tableDTOs.getEntities().size());
+    Assertions.assertEquals(
+        "test_catalog1.test_schema2.test_table2",
+        tableDTOs.getEntities().get(0).getFullQualifiedName());
+  }
+
   void testSyncTask(
       NameIdentifier nameIdentifier, Entity.EntityType type, boolean cascading, int expectedCount)
       throws Exception {
@@ -194,6 +367,17 @@ public class TestSearchService {
     taskStatus = searchService.getTaskStatus(task.getTaskId());
     Assertions.assertNotNull(taskStatus);
     Assertions.assertEquals(task.getTaskId(), taskStatus.getTaskId());
+
+    Awaitility.await()
+        .atMost(10, TimeUnit.SECONDS)
+        .pollInterval(10, TimeUnit.MILLISECONDS)
+        .until(
+            () -> {
+              TaskStatusDTO status = searchService.getTaskStatus(task.getTaskId());
+              return status != null
+                  && status.getTaskStatus().equals(TaskStatus.TaskStatusEnum.COMPLETED.name());
+            });
+
     Assertions.assertEquals(TaskStatus.TaskStatusEnum.COMPLETED.name(), taskStatus.getTaskStatus());
 
     List<SearchEntityPO> searchEntityList = inMemorySearchStorage.getSearchEntities();
@@ -212,7 +396,18 @@ public class TestSearchService {
             Assertions.assertTrue(searchEntityPO.getFullQualifiedName().startsWith(fullName));
           }
         });
-    searchEntityList.clear();
+    inMemorySearchStorage.clear();
+  }
+
+  @Test
+  void synchronizeEntityDataByTag() throws Exception {
+    inMemorySearchStorage.clear();
+    SyncTask task = searchService.synchronizeEntityDataByTag("test_metalake", "test_tag");
+    task.waitToFinished();
+
+    List<SearchEntityPO> searchEntityList = inMemorySearchStorage.getSearchEntities();
+    Assertions.assertEquals(4, searchEntityList.size());
+    inMemorySearchStorage.clear();
   }
 
   protected NameIdentifier getIdentifier(SearchEntityPO searchEntityPO) {

@@ -4,6 +4,8 @@
  */
 package com.datastrato.gravitino.search.store.opensearch;
 
+import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
+
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
@@ -69,7 +71,8 @@ public class TestOpenSearchStorage {
               .build();
       storage.write(ImmutableList.of(tablePO1), true);
 
-      List<SearchEntitiesDTO> result = storage.search("test", null, null, 10, 0);
+      List<SearchEntitiesDTO> result =
+          storage.search("test", null, null, ImmutableList.of(), 10, 0);
       SearchEntitiesDTO dto = getSearchEntitiesDTOByType(result, Entity.EntityType.TABLE);
       Assertions.assertNotNull(dto);
       Assertions.assertEquals(1, dto.getTotalSize());
@@ -88,7 +91,7 @@ public class TestOpenSearchStorage {
               .withEntityComment("demo schema")
               .build();
       storage.write(ImmutableList.of(schemaPO), true);
-      result = storage.search("test", null, null, 10, 0);
+      result = storage.search("test", null, null, ImmutableList.of(), 10, 0);
       dto = getSearchEntitiesDTOByType(result, Entity.EntityType.SCHEMA);
       Assertions.assertNotNull(dto);
       Assertions.assertEquals(1, dto.getTotalSize());
@@ -109,7 +112,7 @@ public class TestOpenSearchStorage {
               .withProvider("hive")
               .build();
       storage.write(ImmutableList.of(catalogEntityPO), true);
-      result = storage.search("test", null, null, 10, 0);
+      result = storage.search("test", null, null, ImmutableList.of(), 10, 0);
       dto = getSearchEntitiesDTOByType(result, Entity.EntityType.CATALOG);
       Assertions.assertNotNull(dto);
       Assertions.assertEquals(1, dto.getTotalSize());
@@ -121,10 +124,5 @@ public class TestOpenSearchStorage {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
-  }
-
-  private SearchEntitiesDTO getSearchEntitiesDTOByType(
-      List<SearchEntitiesDTO> dtos, Entity.EntityType type) {
-    return dtos.stream().filter(dto -> dto.getType() == type).findFirst().orElse(null);
   }
 }

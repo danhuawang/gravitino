@@ -6,9 +6,9 @@ package com.datastrato.gravitino.search.rest;
 
 import static org.apache.gravitino.MetadataObject.Type.METALAKE;
 
+import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
-import com.datastrato.gravitino.search.service.SearchService;
 import com.datastrato.gravitino.search.service.SyncTask;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
@@ -71,7 +71,8 @@ public class SearchOperations {
             }
 
             SyncTask task =
-                SearchService.getSearchService()
+                ExtendedDatastratoGravitinoEnv.getInstance()
+                    .getSearchService()
                     .synchronizeMetadata(metalake, metadataObj, cascade);
 
             return Utils.ok(new SyncMetadataResponse(task.getTaskId()));
@@ -94,7 +95,9 @@ public class SearchOperations {
           httpRequest,
           () -> {
             List<SearchEntitiesDTO> result =
-                SearchService.getSearchService().query(metalake, keyword, pageNumber, pageSize);
+                ExtendedDatastratoGravitinoEnv.getInstance()
+                    .getSearchService()
+                    .query(metalake, keyword, pageNumber, pageSize);
             return Utils.ok(new SearchQueryResponse(result));
           });
 
@@ -112,7 +115,10 @@ public class SearchOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
-            TaskStatusDTO taskStatus = SearchService.getSearchService().getTaskStatus(taskId);
+            TaskStatusDTO taskStatus =
+                ExtendedDatastratoGravitinoEnv.getInstance()
+                    .getSearchService()
+                    .getTaskStatus(taskId);
             if (taskStatus == null) {
               return Utils.illegalArguments("Task not found: " + taskId);
             }

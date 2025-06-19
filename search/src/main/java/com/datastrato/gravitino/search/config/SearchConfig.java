@@ -49,6 +49,7 @@ public class SearchConfig extends Config {
           .doc("The maximum number of background threads for syncing search data")
           .version(ConfigConstants.VERSION_0_9_0)
           .intConf()
+          .checkValue(v -> v > 1, "The number of threads for search service must be greater than 1")
           .createWithDefault(DEFAULT_MAX_BACKGROUND_THREAD);
   public static final ConfigEntry<Integer> ENTITY_GRAVITINO_SEARCH_MAX_BACK_OFF_MS =
       new ConfigBuilder(GRAVITINO_SEARCH_MAX_BACK_OFF_TIME)

@@ -6,9 +6,11 @@ package com.datastrato.gravitino.search.service;
 
 import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY;
 import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH;
+import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
 
 import com.datastrato.gravitino.search.config.SearchConfig;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
+import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.parser.QueryParser;
@@ -17,36 +19,43 @@ import com.datastrato.gravitino.search.store.SearchStorage;
 import com.datastrato.gravitino.search.store.opensearch.OpenSearchStorage;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.Closeable;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Entity;
+import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SearchService implements Closeable {
 
   private static final Logger LOG = LoggerFactory.getLogger(SearchService.class);
+  private static final int REMOVE_METADATA_THREAD_NUM = 1;
+  private static final int THREAD_POOL_QUEUE_SIZE = 100;
 
   private final int maxQueueSize;
   private final int backoffTime;
-  private final int maxThreadNum;
+  private final int maxSyncMetadataThreadNum;
   private final int entityProcessBatchSize;
 
   @VisibleForTesting final SearchStorage storage;
@@ -63,19 +72,8 @@ public class SearchService implements Closeable {
           GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY, InMemorySearchStorage.class,
           GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH, OpenSearchStorage.class);
 
-  private final ExecutorService syncMetadataExecutor;
+  private final ExecutorService executorService;
   boolean stop = false;
-
-  public static SearchService getSearchService() {
-    if (searchService == null) {
-      synchronized (SearchService.class) {
-        if (searchService == null) {
-          searchService = new SearchService(GravitinoEnv.getInstance().config());
-        }
-      }
-    }
-    return searchService;
-  }
 
   public SearchService(Config config) {
     try {
@@ -88,26 +86,27 @@ public class SearchService implements Closeable {
 
       this.maxQueueSize = searchConfig.getMaxTaskQueueSize();
       this.entityProcessBatchSize = searchConfig.getSyncBatchSize();
-      this.maxThreadNum = searchConfig.getMaxBackgroundThread();
+      int maxThreadNum = searchConfig.getMaxBackgroundThread();
+      this.maxSyncMetadataThreadNum = maxThreadNum - REMOVE_METADATA_THREAD_NUM;
       this.backoffTime = searchConfig.getMaxBackoffMs();
 
       this.storage = clazz.getDeclaredConstructor().newInstance();
       this.storage.initialize(config);
 
-      this.syncMetadataExecutor =
+      this.executorService =
           new ThreadPoolExecutor(
               maxThreadNum,
               maxThreadNum,
               0L,
               TimeUnit.MILLISECONDS,
-              new LinkedBlockingDeque<>(maxThreadNum),
+              new LinkedBlockingDeque<>(THREAD_POOL_QUEUE_SIZE),
               new ThreadFactoryBuilder()
                   .setNameFormat("SearchService-SyncMetadataExecutor-%d")
                   .setDaemon(true)
                   .build());
 
-      for (int i = 0; i < maxThreadNum; i++) {
-        syncMetadataExecutor.execute(this::handleSyncTask);
+      for (int i = 0; i < maxSyncMetadataThreadNum; i++) {
+        executorService.execute(this::handleSyncTask);
       }
 
       // Initialize the task status storage, currently, we use in-memory storage for
@@ -121,8 +120,8 @@ public class SearchService implements Closeable {
     }
   }
 
-  public int getMaxThreadNnm() {
-    return maxThreadNum;
+  public int getMaxSyncMetadataThreadNnm() {
+    return maxSyncMetadataThreadNum;
   }
 
   public int getEntityProcessBatchSize() {
@@ -179,14 +178,73 @@ public class SearchService implements Closeable {
               syncTasks.size(), maxQueueSize));
     }
 
-    String taskId =
-        String.format("Task-%s.%s-%s", metalake, metadataObject.fullName(), UUID.randomUUID());
-    LOG.info("TaskId: {}, start synchronize metadata...", taskId);
-
-    SyncTask syncTask = new SyncTask(taskId, metalake, metadataObject, cascade, this);
+    SyncTask syncTask = new SyncTask(metalake, metadataObject, cascade, this);
+    LOG.info("TaskId: {}, start synchronize metadata...", syncTask.getTaskId());
     addTask(syncTask);
 
     return syncTask;
+  }
+
+  public SyncTask synchronizeMetadata(
+      NameIdentifier nameIdentifier, Entity.EntityType type, boolean cascade) {
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    MetadataObject metadataObject = NameIdentifierUtil.toMetadataObject(nameIdentifier, type);
+    return synchronizeMetadata(metalake, metadataObject, cascade);
+  }
+
+  public SyncTask synchronizeEntityDataByTag(String metalake, String tagName) {
+    if (syncTasks.size() > maxQueueSize) {
+      throw new RuntimeException(
+          String.format(
+              "The number of sync tasks is too large, "
+                  + "please wait for the previous tasks to finish. Current size: %d MaxQueueSize: %d",
+              syncTasks.size(), maxQueueSize));
+    }
+
+    TagSearchEntitySource source = new TagSearchEntitySource(metalake, tagName);
+
+    // As Tag is not a metadata object, we create a SearchEntityIdentifier using the metalake name.
+    SearchEntityIdentifier searchEntityIdentifier =
+        SearchEntityIdentifier.of(NameIdentifier.of(metalake), EntityType.METALAKE);
+    SyncTask syncTask = new SyncTask(searchEntityIdentifier, source, this);
+    LOG.info("TaskId: {}, start synchronize metadata by tag ...", syncTask.getTaskId());
+    addTask(syncTask);
+    return syncTask;
+  }
+
+  public Future<?> removeMetadata(
+      NameIdentifier nameIdentifier, Entity.EntityType entityType, boolean cascade) {
+    return executorService.submit(
+        () -> {
+          String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+          List<SearchEntitiesDTO> entities =
+              storage.search(
+                  metalake,
+                  null,
+                  entityType == Entity.EntityType.METALAKE
+                      ? null
+                      : createEntityNameQueryCondition(nameIdentifier, cascade),
+                  ImmutableList.of("id"),
+                  Integer.MAX_VALUE,
+                  0);
+
+          if (cascade) {
+            for (SearchEntitiesDTO searchEntitiesDTO : entities) {
+              List<Long> entityIds = new ArrayList<>();
+              for (SearchEntityDTO entity : searchEntitiesDTO.getEntities()) {
+                entityIds.add(entity.getEntityId());
+              }
+              storage.delete(metalake, entityIds, searchEntitiesDTO.getType());
+            }
+          } else {
+            SearchEntitiesDTO dto = getSearchEntitiesDTOByType(entities, entityType);
+            List<Long> entityIds = new ArrayList<>();
+            for (SearchEntityDTO entity : dto.getEntities()) {
+              entityIds.add(entity.getEntityId());
+            }
+            storage.delete(metalake, entityIds, entityType);
+          }
+        });
   }
 
   public List<SearchEntitiesDTO> query(
@@ -197,7 +255,17 @@ public class SearchService implements Closeable {
             ? null
             : QueryParser.parse(keywordAndFilter.getRight());
     String keyword = keywordAndFilter.getLeft();
-    return storage.search(metalake, keyword, condition, pageSize, pageNumber);
+    return storage.search(metalake, keyword, condition, ImmutableList.of(), pageSize, pageNumber);
+  }
+
+  public List<SearchEntitiesDTO> query(
+      String metalake,
+      String keywords,
+      Condition condition,
+      List<String> fields,
+      int pageNumber,
+      int pageSize) {
+    return storage.search(metalake, null, condition, ImmutableList.of(), pageSize, pageNumber);
   }
 
   protected void addTask(SyncTask syncTask) {
@@ -275,9 +343,29 @@ public class SearchService implements Closeable {
         storage.close();
       }
       stop = true;
-      syncMetadataExecutor.shutdownNow();
+      executorService.shutdownNow();
     } catch (Exception e) {
       LOG.error("Failed to close SearchService", e);
+    }
+  }
+
+  protected static Condition createEntityNameQueryCondition(
+      NameIdentifier nameIdentifier, boolean cascade) {
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    String fqName = nameIdentifier.toString().replace(metalake + ".", "");
+
+    Condition fullQualifiedNameCondition =
+        new Condition.TermCondition("full_qualified_name", fqName);
+
+    if (!cascade) {
+      // search entity with cascade false
+      return fullQualifiedNameCondition;
+    } else {
+      // search entity with cascade true
+      Condition prefixCondition =
+          new Condition.PrefixCondition("full_qualified_name", fqName + ".");
+      return new Condition.OrCondition(
+          ImmutableList.of(fullQualifiedNameCondition, prefixCondition));
     }
   }
 }

@@ -306,17 +306,22 @@ tasks {
 
         // Add the following line to the end of the file
         val defaultSearchStorage = "\n\n# Default search storage, the default value of this configuration: opensearch\n" +
-          "# gravitino.search.storage.impl = opensearch"
+          "# gravitino.datastrato.search.storage.impl = opensearch"
         val openSearchUrl = "\n# OpenSearch URL\n" +
-          "# gravitino.search.opensearch.url = https://localhost:9200"
+          "# gravitino.datastrato.search.opensearch.url = https://localhost:9200"
         val openSearchUsername = "\n# OpenSearch username\n" +
-          "# gravitino.search.opensearch.username = admin"
+          "# gravitino.datastrato.search.opensearch.username = admin"
         val openSearchPassword = "\n# OpenSearch password\n" +
-          "# gravitino.search.opensearch.password = ----\n"
+          "# gravitino.datastrato.search.opensearch.password = ----\n"
         confFile.appendText(defaultSearchStorage)
         confFile.appendText(openSearchUrl)
         confFile.appendText(openSearchUsername)
         confFile.appendText(openSearchPassword)
+
+        val searchListenerLine = "\n# Search listener configuration\n" +
+          "gravitino.eventListener.names = search\n" +
+          "gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener\n"
+        confFile.appendText(searchListenerLine)
       }
       // Modify log4j2.properties
       val log4jFile = file(outputDir.dir("package/conf/log4j2.properties"))

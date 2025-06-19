@@ -4,7 +4,7 @@
  */
 package org.apache.gravitino.server;
 
-import com.datastrato.gravitino.DatastratoGravitinoEnv;
+import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import org.apache.gravitino.GravitinoEnv;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +21,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
     String confPath = System.getenv("GRAVITINO_TEST") == null ? "" : args[0];
     ServerConfig serverConfig = loadConfig(confPath);
     DatastratoGravitinoServer server =
-        new DatastratoGravitinoServer(serverConfig, DatastratoGravitinoEnv.getInstance());
+        new DatastratoGravitinoServer(serverConfig, ExtendedDatastratoGravitinoEnv.getInstance());
     server.initialize();
 
     try {

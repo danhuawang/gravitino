@@ -12,6 +12,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.rest.SearchOperations;
 import com.datastrato.gravitino.search.rest.SynMetadataRequest;
@@ -98,16 +99,17 @@ public class TestSearchOperations extends JerseyTest {
         .thenReturn(ImmutableMap.of("gravitino.datastrato.search.storage.impl", "memory"));
     FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
 
-    SearchService service = SearchService.getSearchService();
+    SearchService service = new SearchService(config);
     searchService = service;
 
     SearchService spyService = Mockito.spy(service);
-    doReturn(
-            new SyncTask("test", "test", MetadataObjects.parse("test", METALAKE), true, spyService))
+    doReturn(new SyncTask("test", MetadataObjects.parse("test", METALAKE), true, spyService))
         .when(spyService)
         .synchronizeMetadata(Mockito.anyString(), Mockito.any(), Mockito.anyBoolean());
 
     FieldUtils.writeStaticField(SearchService.class, "searchService", spyService, true);
+    FieldUtils.writeField(
+        ExtendedDatastratoGravitinoEnv.getInstance(), "searchService", spyService, true);
   }
 
   @AfterAll

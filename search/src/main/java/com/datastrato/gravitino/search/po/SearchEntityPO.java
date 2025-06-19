@@ -199,6 +199,7 @@ public class SearchEntityPO {
     }
   }
 
+  @Getter
   @JsonDeserialize(builder = SearchTagPO.Builder.class)
   public static class SearchTagPO {
     @JsonProperty("tag_name")

@@ -43,7 +43,7 @@ abstract class LeafSearchEntitySource implements SearchEntitySource {
     }
 
     List<SearchEntityPO> batch = new ArrayList<>();
-    for (int i = startIndex; i < Math.min(currentIndex, metadataList.size()); i++) {
+    for (int i = startIndex; i < Math.min(startIndex + batchSize, metadataList.size()); i++) {
       SearchEntityIdentifier searchEntityIdentifier = metadataList.get(i);
       try {
         batch.add(getSearchEntityPO(searchEntityIdentifier));
@@ -59,7 +59,7 @@ abstract class LeafSearchEntitySource implements SearchEntitySource {
   }
 
   @Override
-  public int approximateEntityCount(SearchEntityIdentifier identifier) {
+  public int approximateEntityCount() {
     return metadataList.size();
   }
 

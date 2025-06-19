@@ -16,10 +16,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObject.Type;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
@@ -202,6 +205,50 @@ public class MockedGravitinoService {
               }
               return null;
             });
+
+    Mockito.when(tagDispatcher.listMetadataObjectsForTag(anyString(), anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              String tagName = args.getArgument(1);
+              return objTags.entrySet().stream()
+                  .filter(
+                      entry -> entry.getValue().stream().anyMatch(t -> t.name().equals(tagName)))
+                  .map(
+                      entry -> {
+                        // This is a simple mock, so we assume the metadata object is just metalake,
+                        // catalog, schema, and table
+                        String[] parts = entry.getKey().split("\\.");
+                        Type type;
+                        switch (parts.length) {
+                          case 1:
+                            type = Type.CATALOG;
+                            break;
+                          case 2:
+                            type = Type.CATALOG;
+                            break;
+                          case 3:
+                            type = Type.SCHEMA;
+                            break;
+                          case 4:
+                            type = Type.TABLE;
+                            break;
+                          default:
+                            throw new IllegalArgumentException(
+                                "Unexpected metadata object key: " + entry.getKey());
+                        }
+
+                        String fullName = parts[0];
+                        if (parts.length > 1) {
+                          parts = ArrayUtils.remove(parts, 0); // Remove metalake part
+                          fullName = String.join(".", parts);
+                        }
+
+                        return MetadataObjects.parse(fullName, type);
+                      })
+                  .toArray(MetadataObject[]::new);
+            });
+
     return tagDispatcher;
   }
 

@@ -8,6 +8,7 @@ import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.service.TaskStatus.TaskStatusEnum;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.gravitino.MetadataObject;
 import org.slf4j.Logger;
@@ -32,16 +33,11 @@ public class SyncTask {
   private final TaskStatus taskStatus;
 
   public SyncTask(
-      String taskId,
-      String metalake,
-      MetadataObject metadataObject,
-      boolean cascade,
-      SearchService service) {
-    this.taskId = taskId;
+      String metalake, MetadataObject metadataObject, boolean cascade, SearchService service) {
+    this.searchEntityIdentifier = new SearchEntityIdentifier(metadataObject, metalake);
+    this.taskId = createTaskId();
     this.service = service;
     this.isRootTask = true;
-
-    this.searchEntityIdentifier = new SearchEntityIdentifier(metadataObject, metalake);
     this.source = SearchEntitySource.createSearchEntitySource(searchEntityIdentifier, cascade);
 
     splitTask();
@@ -60,6 +56,30 @@ public class SyncTask {
             .build();
   }
 
+  public SyncTask(
+      SearchEntityIdentifier identifier, SearchEntitySource source, SearchService service) {
+    this.searchEntityIdentifier = identifier;
+    this.taskId = createTaskId();
+    this.service = service;
+    this.isRootTask = true;
+    this.source = source;
+
+    this.taskStatus =
+        TaskStatus.builder()
+            .withTaskId(taskId)
+            .withMetadataObject(identifier.entityIdent().toString())
+            .withMetalake(identifier.metalake())
+            .withSubTaskNum(subTasks.size())
+            .withCascade(true)
+            .withTaskStatus(TaskStatusEnum.SUBMITTED.name())
+            .withMessage("Task created")
+            .withTaskCreateTime(System.currentTimeMillis())
+            .withTaskUpdateTime(System.currentTimeMillis())
+            .build();
+
+    splitTask();
+  }
+
   private SyncTask(
       String taskId,
       SearchEntityIdentifier identifier,
@@ -74,11 +94,19 @@ public class SyncTask {
     this.taskStatus = taskStatus;
   }
 
+  private String createTaskId() {
+    return String.format(
+        "Task-%s.%s-%s",
+        searchEntityIdentifier.metalake(), searchEntityIdentifier.fullName(), UUID.randomUUID());
+  }
+
   public void splitTask() {
     // split the task into subtasks by entity count
-    int entityCount = source.approximateEntityCount(searchEntityIdentifier);
+    int entityCount = source.approximateEntityCount();
     int numChildTask =
-        Math.min(entityCount / service.getEntityProcessBatchSize(), service.getMaxThreadNnm() - 1);
+        Math.min(
+            entityCount / service.getEntityProcessBatchSize(),
+            service.getMaxSyncMetadataThreadNnm() - 1);
 
     if (numChildTask == 0) {
       // entityCount is not enough, no need to split child sync task, just process it in this task

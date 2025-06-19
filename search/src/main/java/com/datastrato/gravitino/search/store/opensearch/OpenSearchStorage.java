@@ -15,6 +15,7 @@ import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.store.SearchStorage;
 import com.datastrato.gravitino.search.utils.FilterConditionUtils;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
+import com.google.common.base.Function;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -65,8 +66,10 @@ import org.opensearch.client.opensearch.core.BulkResponse;
 import org.opensearch.client.opensearch.core.SearchRequest;
 import org.opensearch.client.opensearch.core.SearchResponse;
 import org.opensearch.client.opensearch.core.bulk.BulkResponseItem;
+import org.opensearch.client.opensearch.core.search.SourceConfig;
 import org.opensearch.client.transport.endpoints.BooleanResponse;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
+import org.opensearch.client.util.ObjectBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -392,8 +395,20 @@ public class OpenSearchStorage implements SearchStorage {
 
   @Override
   public List<SearchEntitiesDTO> search(
-      String metalake, String keyword, Condition filter, int pageSize, int pageNum) {
+      String metalake,
+      String keyword,
+      Condition filter,
+      List<String> fields,
+      int pageSize,
+      int pageNum) {
     List<SearchEntitiesDTO> result = new ArrayList<>();
+
+    Function<SourceConfig.Builder, ObjectBuilder<SourceConfig>> sourceConfig;
+    if (fields != null && !fields.isEmpty()) {
+      sourceConfig = src -> src.filter(f -> f.includes(fields));
+    } else {
+      sourceConfig = src -> src.fetch(true);
+    }
 
     List<Future<Pair<EntityType, SearchResponse<? extends SearchEntityPO>>>> futures =
         Lists.newArrayList();
@@ -404,7 +419,7 @@ public class OpenSearchStorage implements SearchStorage {
           new SearchRequest.Builder()
               .index(indexName)
               .query(query -> query.bool(buildBoolQuery(keyword, filter, entityType)))
-              .source(src -> src.fetch(true))
+              .source(sourceConfig)
               .from(pageNum * pageSize)
               .size(pageSize)
               // Ignore unavailable indices to avoid errors if the index does not exist
@@ -459,6 +474,25 @@ public class OpenSearchStorage implements SearchStorage {
     }
 
     return result;
+  }
+
+  @Override
+  public void delete(String metalake, List<Long> entityIds, EntityType entityType) {
+    try {
+      BulkRequest.Builder bulkRequestBuilder = new BulkRequest.Builder();
+      String indexName = getIndicesName(entityType, metalake);
+      for (Long entityId : entityIds) {
+        bulkRequestBuilder.operations(
+            op -> op.delete(del -> del.index(indexName).id(String.valueOf(entityId))));
+      }
+      client.bulk(bulkRequestBuilder.build());
+    } catch (Exception e) {
+      LOG.error(
+          "Delete request failed for entity type {} in metalake {}: {}",
+          entityType,
+          metalake,
+          e.getMessage());
+    }
   }
 
   private static BoolQuery buildBoolQuery(String keyword, Condition filter, EntityType entityType) {

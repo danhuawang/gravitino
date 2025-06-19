@@ -41,7 +41,9 @@ jobs:
         id: integrationTest
         run: |
           ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
-
+          
+          sed -i '/= *opensearch/d' ./distribution/package/conf/gravitino.conf
+          echo "gravitino.datastrato.search.storage.impl = memory" >> ./distribution/package/conf/gravitino.conf 
           cp -r -f ./distribution ./gravitino-oss
           
           ./gradlew -p gravitino-oss -PjdkVersion=${{ matrix.java-version }} -PpythonVersion=3.8 -PskipDockerTests=false :clients:client-python:test

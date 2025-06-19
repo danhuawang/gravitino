@@ -10,6 +10,7 @@ import com.datastrato.gravitino.search.po.SearchEntityPO;
 import java.io.Closeable;
 import java.util.List;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Entity;
 
 public interface SearchStorage extends Closeable {
 
@@ -34,11 +35,27 @@ public interface SearchStorage extends Closeable {
    * @param metalake The metalake to search in.
    * @param keyword The keyword to search for.
    * @param filter The filter to apply to the search.
+   * @param fields The fields to return in the search results. If null or empty, all fields will be
+   *     returned.
    * @param pageSize The number of results to return per a page.
    * @param pageNum The page number to return.
    */
   List<SearchEntitiesDTO> search(
-      String metalake, String keyword, Condition filter, int pageSize, int pageNum);
+      String metalake,
+      String keyword,
+      Condition filter,
+      List<String> fields,
+      int pageSize,
+      int pageNum);
+
+  /**
+   * Delete entities from the storage based on their IDs, metalake, and entity type.
+   *
+   * @param metalake The metalake from which to delete entities.
+   * @param entityIds The list of entity IDs to be deleted.
+   * @param entityType The type of entities to be deleted, such as TABLE, CATALOG, SCHEMA, etc.
+   */
+  void delete(String metalake, List<Long> entityIds, Entity.EntityType entityType);
 
   /**
    * Begin a transaction. By default, the storage is in auto-commit mode. If we want to do a

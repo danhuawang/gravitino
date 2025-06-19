@@ -8,6 +8,7 @@ import com.google.common.base.Preconditions;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.Entity.EntityType;
 
 @Getter
@@ -49,6 +50,11 @@ public class SearchEntitiesDTO {
       Preconditions.checkArgument(type != null, "Type must not be null");
       Preconditions.checkArgument(entities != null, "Entities must not be null");
       return new SearchEntitiesDTO(totalSize, type, entities);
+    }
+
+    public static SearchEntitiesDTO getSearchEntitiesDTOByType(
+        List<SearchEntitiesDTO> dtos, Entity.EntityType type) {
+      return dtos.stream().filter(dto -> dto.getType() == type).findFirst().orElse(null);
     }
   }
 }
