@@ -52,7 +52,7 @@ public class DataDiscoveryListener implements EventListenerPlugin {
       } else if (event instanceof CatalogEvent) {
         handler = eventHandlers.get(CatalogEvent.class);
       } else if (event instanceof TagEvent) {
-        handler = eventHandlers.get(TableEvent.class);
+        handler = eventHandlers.get(TagEvent.class);
       }
       if (handler != null) {
         handler.handleEvent(event);

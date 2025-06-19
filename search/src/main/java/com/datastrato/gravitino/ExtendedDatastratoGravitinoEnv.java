@@ -25,8 +25,8 @@ public class ExtendedDatastratoGravitinoEnv extends DatastratoGravitinoEnv {
 
   @Override
   public void initializeFullComponents(Config config) {
-    super.initializeFullComponents(config);
     this.searchService = new SearchService(config);
+    super.initializeFullComponents(config);
   }
 
   @Override
