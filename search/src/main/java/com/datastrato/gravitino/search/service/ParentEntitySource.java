@@ -5,6 +5,7 @@
 package com.datastrato.gravitino.search.service;
 
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.google.common.collect.Lists;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -169,7 +170,17 @@ abstract class ParentEntitySource implements SearchEntitySource {
 
   @Override
   public List<SearchEntityIdentifier> getProcessFailedEntities() {
-    return processFailedList;
+    List<SearchEntityIdentifier> totalFailedNameIdentifier = Lists.newArrayList();
+
+    // Add all children first.
+    for (SearchEntitySource childSource : childSources) {
+      totalFailedNameIdentifier.addAll(childSource.getProcessFailedEntities());
+    }
+
+    // Then add the current entity identifier if it has failed.
+    totalFailedNameIdentifier.addAll(processFailedList);
+
+    return totalFailedNameIdentifier;
   }
 
   protected boolean hasSelfSearchEntityPO() {
