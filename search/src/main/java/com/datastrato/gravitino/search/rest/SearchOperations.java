@@ -90,6 +90,11 @@ public class SearchOperations {
       @QueryParam("keyword") String keyword,
       @DefaultValue("0") @QueryParam("pageNumber") int pageNumber,
       @DefaultValue("10") @QueryParam("pageSize") int pageSize) {
+
+    if (StringUtils.isBlank(metalake)) {
+      return Utils.illegalArguments("Metalake cannot be null or empty");
+    }
+
     try {
       return Utils.doAs(
           httpRequest,
