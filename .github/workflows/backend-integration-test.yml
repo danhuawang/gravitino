@@ -17,7 +17,7 @@ jobs:
   # Integration test for AMD64 architecture
   test-amd64-arch:
     if: contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: [self-hosted, linux, x64, amazon, xlarge]
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
     timeout-minutes: 120
     strategy:
       matrix:
