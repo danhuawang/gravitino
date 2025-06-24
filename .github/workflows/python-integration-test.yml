@@ -43,6 +43,8 @@ jobs:
           ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
           
           sed -i '/= *opensearch/d' ./distribution/package/conf/gravitino.conf
+          sed -i '/= *search/d' ./distribution/package/conf/gravitino.conf
+
           echo "gravitino.datastrato.search.storage.impl = memory" >> ./distribution/package/conf/gravitino.conf 
           cp -r -f ./distribution ./gravitino-oss
           

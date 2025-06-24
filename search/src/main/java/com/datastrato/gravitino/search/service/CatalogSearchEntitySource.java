@@ -32,7 +32,7 @@ class CatalogSearchEntitySource extends ParentEntitySource {
             searchEntityIdentifier.entityIdent(), searchEntityIdentifier.entityType());
     this.catalogType = catalog.type();
     return EntityConverterUtils.toCatalogSearchEntityPO(
-        ((BaseCatalog<? extends BaseCatalog<?>>) catalog).entity(),
+        (BaseCatalog<? extends BaseCatalog<?>>) catalog,
         metadataTags,
         searchEntityIdentifier.entityIdent());
   }

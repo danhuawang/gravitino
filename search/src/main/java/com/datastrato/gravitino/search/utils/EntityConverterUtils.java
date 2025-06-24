@@ -30,7 +30,7 @@ import org.apache.gravitino.catalog.EntityCombinedModel;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
 import org.apache.gravitino.catalog.EntityCombinedTable;
 import org.apache.gravitino.catalog.EntityCombinedTopic;
-import org.apache.gravitino.meta.CatalogEntity;
+import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
@@ -68,8 +68,8 @@ public class EntityConverterUtils {
   }
 
   public static SearchEntityPO toCatalogSearchEntityPO(
-      CatalogEntity catalog, Tag[] tags, NameIdentifier nameIdentifier) {
-    String inUseString = catalog.getProperties().get("in-use");
+      BaseCatalog catalog, Tag[] tags, NameIdentifier nameIdentifier) {
+    String inUseString = catalog.entity().getProperties().get("in-use");
     boolean inUse = inUseString == null || Boolean.parseBoolean(inUseString);
     String[] levels = nameIdentifier.namespace().levels();
 
@@ -77,22 +77,22 @@ public class EntityConverterUtils {
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.CATALOG), levels[0]);
     return SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
-        .withEntityId(catalog.id())
+        .withEntityId(catalog.entity().id())
         .withEntityType(EntityType.CATALOG)
         .withInUse(inUse)
         .withMetalake(levels[0])
         .withEntityName(catalog.name())
-        .withEntityComment(catalog.getComment())
+        .withEntityComment(catalog.comment())
         .withCatalogName(nameIdentifier.name())
         .withFullQualifiedName(nameIdentifier.name())
-        .withProvider(catalog.getProvider())
-        .withType(catalog.getType())
+        .withProvider(catalog.provider())
+        .withType(catalog.type())
         .withTags(toSearchTag(tags))
         .withSearchAudit(toSearchAudit(catalog.auditInfo()))
         .withOwner(owner)
         .withUserPermissions(null)
         .withRolePermissions(null)
-        .withEntityProperties(mapToKeyValueObjects(catalog.getProperties()))
+        .withEntityProperties(mapToKeyValueObjects(catalog.properties()))
         .build();
   }
 
