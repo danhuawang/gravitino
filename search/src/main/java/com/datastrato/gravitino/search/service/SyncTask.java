@@ -205,7 +205,9 @@ public class SyncTask {
 
   public void waitToFinished() throws InterruptedException {
     synchronized (finishedLock) {
-      finishedLock.wait();
+      if (!finished) {
+        finishedLock.wait();
+      }
     }
   }
 
