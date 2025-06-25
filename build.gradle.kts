@@ -253,80 +253,60 @@ tasks {
     finalizedBy(copySubprojectDependencies, copySubprojectLib, ":authorization-jdbc-enterprise:copyLibAndConfig")
   }
 
-  val compileDistribution by registering {
-    group = "datastrato gravitino distribution"
-    outputs.dir(projectDir.dir("distribution/package"))
-    dependsOn(copyOssDistribution)
+  fun updateFileForServer(file: File) {
+    val content = file.readText()
+    val updatedContent = content.replace(
+      "GRAVITINO_SERVER_NAME=org.apache.gravitino.server.GravitinoServer",
+      "GRAVITINO_SERVER_NAME=org.apache.gravitino.server.DatastratoGravitinoServer"
+    )
+    file.writeText(updatedContent)
+  }
 
-    doLast {
-      copy {
-        from(submoduleDir.dir("conf")) { into("package/conf") }
-        from(submoduleDir.dir("bin")) { into("package/bin") }
-        into(outputDir)
-        rename { fileName ->
-          fileName.replace(".template", "")
-        }
-        fileMode = 0b111101101
-      }
+  fun updateFileForRESTPackages(file: File) {
+    val newLine = "\n# Comma separated list of REST API packages to expand\n" +
+      "gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest,com.datastrato.gravitino.search.rest\n"
+    file.appendText(newLine)
+  }
 
-      // Modify gravitino.sh
-      val shellFile = file(outputDir.dir("package/bin/gravitino.sh"))
-      if (shellFile.exists()) {
-        val content = shellFile.readText()
-        val updatedContent = content.replace(
-          "GRAVITINO_SERVER_NAME=org.apache.gravitino.server.GravitinoServer",
-          "GRAVITINO_SERVER_NAME=org.apache.gravitino.server.DatastratoGravitinoServer"
-        )
-        shellFile.writeText(updatedContent)
-      }
+  fun updateFileForDataPreview(file: File) {
+    val previewLine = "\n\n# Trino preview configuration\n" +
+      "# Default value of `gravitino.datastrato.preview.jdbcUrl` is null\n" +
+      "gravitino.datastrato.preview.jdbcUrl=jdbc:trino://trino:8080\n" +
+      "gravitino.datastrato.preview.jdbcDriver=io.trino.jdbc.TrinoDriver\n" +
+      "gravitino.datastrato.preview.jdbcUsername=admin\n" +
+      "gravitino.datastrato.preview.timeoutInSec=300\n" +
+      "gravitino.datastrato.preview.maxRowCount=100\n" +
+      "# Default value of `gravitino.datastrato.preview.jdbcPassword` is null.\n" +
+      "# Default value of `gravitino.datastrato.preview.sensitiveTags` is empty collection.\n"
+    file.appendText(previewLine)
+  }
 
-      // Modify gravitino.conf
-      val confFile = file(outputDir.dir("package/conf/gravitino.conf"))
-      if (confFile.exists()) {
-        val newLine = "\n# Comma separated list of REST API packages to expand\n" +
-          "gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest,com.datastrato.gravitino.search.rest\n"
-        confFile.appendText(newLine)
+  fun updateFileForLineage(file: File) {
+    val lineageLine = "\n\n# Lineage sink configuration\n" +
+      "# gravitino.lineage.sinks = log,marquez\n" +
+      "# gravitino.lineage.marquez.sinkClass = com.datastrato.gravitino.lineage.sink.HTTPLineageSink\n" +
+      "# gravitino.lineage.marquez.url = http://localhost:6000"
+    file.appendText(lineageLine)
+  }
 
-        val previewLine = "\n\n# Trino preview configuration\n" +
-          "# Default value of `gravitino.datastrato.preview.jdbcUrl` is null\n" +
-          "gravitino.datastrato.preview.jdbcUrl=jdbc:trino://trino:8080\n" +
-          "gravitino.datastrato.preview.jdbcDriver=io.trino.jdbc.TrinoDriver\n" +
-          "gravitino.datastrato.preview.jdbcUsername=admin\n" +
-          "gravitino.datastrato.preview.timeoutInSec=300\n" +
-          "gravitino.datastrato.preview.maxRowCount=100\n" +
-          "# Default value of `gravitino.datastrato.preview.jdbcPassword` is null.\n" +
-          "# Default value of `gravitino.datastrato.preview.sensitiveTags` is empty collection.\n"
-        confFile.appendText(previewLine)
+  fun updateFileForSearch(file: File) {
+    // Add the following line to the end of the file
+    val searchLine = "\n\n# Default search storage, the default value of this configuration: opensearch\n" +
+      "gravitino.datastrato.search.storage.impl = opensearch\n" +
+      "# OpenSearch URL\n" +
+      "gravitino.datastrato.search.opensearch.url = https://localhost:9200\n" +
+      "# OpenSearch username\n" +
+      "gravitino.datastrato.search.opensearch.username = admin\n" +
+      "# OpenSearch password\n" +
+      "gravitino.datastrato.search.opensearch.password = ----\n" +
+      "# Search listener configuration\n" +
+      "gravitino.eventListener.names = search\n" +
+      "gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener\n"
+    file.appendText(searchLine)
+  }
 
-        val lineageLine = "\n\n# Lineage sink configuration\n" +
-          "# gravitino.lineage.sinks = log,marquez\n" +
-          "# gravitino.lineage.marquez.sinkClass = com.datastrato.gravitino.lineage.sink.HTTPLineageSink\n" +
-          "# gravitino.lineage.marquez.url = http://localhost:6000"
-        confFile.appendText(lineageLine)
-
-        // Add the following line to the end of the file
-        val defaultSearchStorage = "\n\n# Default search storage, the default value of this configuration: opensearch\n" +
-          "# gravitino.datastrato.search.storage.impl = opensearch"
-        val openSearchUrl = "\n# OpenSearch URL\n" +
-          "# gravitino.datastrato.search.opensearch.url = https://localhost:9200"
-        val openSearchUsername = "\n# OpenSearch username\n" +
-          "# gravitino.datastrato.search.opensearch.username = admin"
-        val openSearchPassword = "\n# OpenSearch password\n" +
-          "# gravitino.datastrato.search.opensearch.password = ----\n"
-        confFile.appendText(defaultSearchStorage)
-        confFile.appendText(openSearchUrl)
-        confFile.appendText(openSearchUsername)
-        confFile.appendText(openSearchPassword)
-
-        val searchListenerLine = "\n# Search listener configuration\n" +
-          "gravitino.eventListener.names = search\n" +
-          "gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener\n"
-        confFile.appendText(searchListenerLine)
-      }
-      // Modify log4j2.properties
-      val log4jFile = file(outputDir.dir("package/conf/log4j2.properties"))
-      if (log4jFile.exists()) {
-        val extraContent = """
+  fun updateFileForLog(file: File) {
+    val extraContent = """
             ## use separate file for search log
             appender.search_file.type=RollingFile
             appender.search_file.name=search_file
@@ -351,8 +331,73 @@ tasks {
             logger.search.level=info
             logger.search.appenderRef.search_file.ref=search_file
             logger.search.additivity=false
-        """.trimIndent()
-        log4jFile.appendText(extraContent)
+    """.trimIndent()
+    file.appendText(extraContent)
+  }
+
+  fun appendScriptsToPackage(outputDir: Directory) {
+    val scriptsSourceDir = projectDir.dir("scripts")
+    val scriptsTargetDir = outputDir.dir("package/scripts")
+
+    if (scriptsSourceDir.asFile.exists() && scriptsTargetDir.asFile.exists()) {
+      scriptsSourceDir.asFile.walkTopDown()
+        .filter { it.isFile }
+        .forEach { sourceFile ->
+          val relativePath = sourceFile.relativeTo(scriptsSourceDir.asFile)
+          val targetFile = scriptsTargetDir.file(relativePath.path).asFile
+
+          if (targetFile.exists()) {
+            // If the target file exists, append the content.
+            println("Appending content from Datastrato ${sourceFile.name} to ${targetFile.name}")
+            targetFile.appendText("\n-- Content from ${sourceFile.name}\n")
+            targetFile.appendText(sourceFile.readText())
+          } else {
+            // If the target file does not exist, directly copy.
+            println("Copying ${sourceFile.name} to ${targetFile.name}")
+            targetFile.parentFile.mkdirs()
+            sourceFile.copyTo(targetFile)
+          }
+        }
+    }
+  }
+
+  val compileDistribution by registering {
+    group = "datastrato gravitino distribution"
+    outputs.dir(projectDir.dir("distribution/package"))
+    dependsOn(copyOssDistribution)
+
+    doLast {
+      copy {
+        from(submoduleDir.dir("conf")) { into("package/conf") }
+        from(submoduleDir.dir("bin")) { into("package/bin") }
+        into(outputDir)
+        rename { fileName ->
+          fileName.replace(".template", "")
+        }
+        fileMode = 0b111101101
+      }
+
+      // Modify gravitino.sh
+      val shellFile = file(outputDir.dir("package/bin/gravitino.sh"))
+      if (shellFile.exists()) {
+        updateFileForServer(shellFile)
+      }
+
+      // Modify gravitino.conf
+      val confFile = file(outputDir.dir("package/conf/gravitino.conf"))
+      if (confFile.exists()) {
+        updateFileForRESTPackages(confFile)
+
+        updateFileForDataPreview(confFile)
+
+        updateFileForLineage(confFile)
+
+        updateFileForSearch(confFile)
+      }
+      // Modify log4j2.properties
+      val log4jFile = file(outputDir.dir("package/conf/log4j2.properties"))
+      if (log4jFile.exists()) {
+        updateFileForLog(log4jFile)
       }
     }
   }
