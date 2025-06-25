@@ -50,6 +50,7 @@ jobs:
             build/reports
             catalogs/**/*.log
             catalogs/**/*.tar
+            search/build/reports
 
       - name: Jacoco Report to PR
         id: jacoco
