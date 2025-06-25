@@ -67,6 +67,7 @@ import org.opensearch.client.opensearch.core.SearchRequest;
 import org.opensearch.client.opensearch.core.SearchResponse;
 import org.opensearch.client.opensearch.core.bulk.BulkResponseItem;
 import org.opensearch.client.opensearch.core.search.SourceConfig;
+import org.opensearch.client.opensearch.core.search.TrackHits;
 import org.opensearch.client.transport.endpoints.BooleanResponse;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
 import org.opensearch.client.util.ObjectBuilder;
@@ -423,6 +424,7 @@ public class OpenSearchStorage implements SearchStorage {
               .from(pageNum * pageSize)
               .size(pageSize)
               // Ignore unavailable indices to avoid errors if the index does not exist
+              .trackTotalHits(TrackHits.of(t -> t.enabled(true)))
               .ignoreUnavailable(true)
               .build();
 
