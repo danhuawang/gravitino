@@ -11,9 +11,12 @@ import java.util.Map;
 import org.apache.gravitino.listener.api.EventListenerPlugin;
 import org.apache.gravitino.listener.api.event.CatalogEvent;
 import org.apache.gravitino.listener.api.event.Event;
+import org.apache.gravitino.listener.api.event.FilesetEvent;
+import org.apache.gravitino.listener.api.event.ModelEvent;
 import org.apache.gravitino.listener.api.event.SchemaEvent;
 import org.apache.gravitino.listener.api.event.TableEvent;
 import org.apache.gravitino.listener.api.event.TagEvent;
+import org.apache.gravitino.listener.api.event.TopicEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,7 +35,10 @@ public class DataDiscoveryListener implements EventListenerPlugin {
             TableEvent.class, new TableEventHandler(searchService),
             SchemaEvent.class, new SchemaEventHandler(searchService),
             CatalogEvent.class, new CatalogEventHandler(searchService),
-            TagEvent.class, new TagEventHandler(searchService));
+            TagEvent.class, new TagEventHandler(searchService),
+            TopicEvent.class, new TopicEventHandler(searchService),
+            FilesetEvent.class, new FilesetEventHandler(searchService),
+            ModelEvent.class, new ModelEventHandler(searchService));
   }
 
   @Override
@@ -53,7 +59,14 @@ public class DataDiscoveryListener implements EventListenerPlugin {
         handler = eventHandlers.get(CatalogEvent.class);
       } else if (event instanceof TagEvent) {
         handler = eventHandlers.get(TagEvent.class);
+      } else if (event instanceof TopicEvent) {
+        handler = eventHandlers.get(TopicEvent.class);
+      } else if (event instanceof FilesetEvent) {
+        handler = eventHandlers.get(FilesetEvent.class);
+      } else if (event instanceof ModelEvent) {
+        handler = eventHandlers.get(ModelEvent.class);
       }
+
       if (handler != null) {
         handler.handleEvent(event);
       }
