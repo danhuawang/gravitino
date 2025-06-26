@@ -8,6 +8,8 @@ import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO.PropertyPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO.SearchTagPO;
+import com.datastrato.gravitino.search.po.SearchModelEntityPO;
+import com.datastrato.gravitino.search.po.SearchModelEntityPO.SearchModelVersionPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -182,7 +184,10 @@ public class EntityConverterUtils {
   }
 
   public static SearchEntityPO toModelSearchEntityPO(
-      EntityCombinedModel model, Tag[] tags, NameIdentifier nameIdentifier) {
+      EntityCombinedModel model,
+      Tag[] tags,
+      NameIdentifier nameIdentifier,
+      List<SearchModelVersionPO> searchModelVersionPOS) {
     String inUseString = model.properties().get("in-use");
     boolean inUse = inUseString == null || Boolean.parseBoolean(inUseString);
     ModelEntity modelEntity = model.modelEntity();
@@ -198,7 +203,7 @@ public class EntityConverterUtils {
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.MODEL), metalakeName);
 
-    return SearchEntityPO.SearchEntityPOBuilder.builder()
+    return SearchModelEntityPO.SearchModelEntityPOBuilder.builder()
         .withEntityId(id)
         .withEntityType(EntityType.MODEL)
         .withInUse(inUse)
@@ -213,6 +218,8 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(model.properties()))
+        .withModelVersions(searchModelVersionPOS)
+        .withLatestVersion(model.latestVersion())
         .build();
   }
 

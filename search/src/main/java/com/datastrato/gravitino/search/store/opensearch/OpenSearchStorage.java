@@ -7,10 +7,12 @@ package com.datastrato.gravitino.search.store.opensearch;
 import com.datastrato.gravitino.search.dto.SearchCatalogEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
+import com.datastrato.gravitino.search.dto.SearchModelEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.datastrato.gravitino.search.po.SearchModelEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.store.SearchStorage;
 import com.datastrato.gravitino.search.utils.FilterConditionUtils;
@@ -107,7 +109,7 @@ public class OpenSearchStorage implements SearchStorage {
           EntityType.CATALOG, SearchCatalogEntityPO.class,
           EntityType.SCHEMA, SearchEntityPO.class,
           EntityType.FILESET, SearchEntityPO.class,
-          EntityType.MODEL, SearchEntityPO.class,
+          EntityType.MODEL, SearchModelEntityPO.class,
           EntityType.TOPIC, SearchEntityPO.class,
           EntityType.TABLE, SearchTableEntityPO.class);
 
@@ -116,7 +118,7 @@ public class OpenSearchStorage implements SearchStorage {
           EntityType.CATALOG, SearchCatalogEntityDTO.class,
           EntityType.SCHEMA, SearchEntityDTO.class,
           EntityType.FILESET, SearchEntityDTO.class,
-          EntityType.MODEL, SearchEntityDTO.class,
+          EntityType.MODEL, SearchModelEntityDTO.class,
           EntityType.TOPIC, SearchEntityDTO.class,
           EntityType.TABLE, SearchTableEntityDTO.class);
 
@@ -158,12 +160,13 @@ public class OpenSearchStorage implements SearchStorage {
     String entityJson = loadIndexDefFile("indices/opensearch/entity_indices.json");
     String tableJson = loadIndexDefFile("indices/opensearch/table_entity_indices.json");
     String catalogJson = loadIndexDefFile("indices/opensearch/catalog_entity_indices.json");
+    String modelJson = loadIndexDefFile("indices/opensearch/model_entity_indices.json");
 
     entityTypeToIndicesJsonMap.put(EntityType.TABLE, tableJson);
     entityTypeToIndicesJsonMap.put(EntityType.CATALOG, catalogJson);
     entityTypeToIndicesJsonMap.put(EntityType.SCHEMA, entityJson);
     entityTypeToIndicesJsonMap.put(EntityType.FILESET, entityJson);
-    entityTypeToIndicesJsonMap.put(EntityType.MODEL, entityJson);
+    entityTypeToIndicesJsonMap.put(EntityType.MODEL, modelJson);
     entityTypeToIndicesJsonMap.put(EntityType.TOPIC, entityJson);
   }
 
@@ -518,7 +521,12 @@ public class OpenSearchStorage implements SearchStorage {
       allQueries.add(buildTagNestedQuery(word));
 
       if (entityType == EntityType.TABLE) {
-        allQueries.add(buildColumnNestedQuery(word));
+        allQueries.add(
+            buildStringNestedQuery("columns", "column_name", word)); // Match column names in tables
+      }
+
+      if (entityType == EntityType.MODEL) {
+        allQueries.add(buildStringNestedQuery("model_versions", "aliases", word));
       }
 
       // Query word match content in properties.
@@ -618,27 +626,28 @@ public class OpenSearchStorage implements SearchStorage {
                         .query(qb -> qb.bool(b -> b.should(shouldQueries)))));
   }
 
-  private static Query buildColumnNestedQuery(String word) {
+  private static Query buildStringNestedQuery(
+      String columnName, String columnNestedField, String word) {
     List<Query> shouldQueries =
         ImmutableList.of(
             Query.of(
                 q ->
                     q.match(
                         m ->
-                            m.field("columns.column_name.keyword")
+                            m.field(columnName + "." + columnNestedField + ".keyword")
                                 .query(FieldValue.of(word))
                                 .boost(2.0f))),
             Query.of(
                 q ->
                     q.match(
                         mp ->
-                            mp.field("columns.column_name.ngram")
+                            mp.field(columnName + "." + columnNestedField + ".ngram")
                                 .query(FieldValue.of(word))
                                 .analyzer("standard")
                                 .boost(2.5f))));
 
     return Query.of(
-        q -> q.nested(n -> n.path("columns").query(qb -> qb.bool(b -> b.should(shouldQueries)))));
+        q -> q.nested(n -> n.path(columnName).query(qb -> qb.bool(b -> b.should(shouldQueries)))));
   }
 
   private static List<Query> buildConditionPart(Condition filter) {

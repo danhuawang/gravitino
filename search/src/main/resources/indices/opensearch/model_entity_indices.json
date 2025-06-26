@@ -1,0 +1,236 @@
+{
+  "settings": {
+    "index.max_ngram_diff": 10,
+    "analysis": {
+      "tokenizer": {
+        "ngram_tokenizer": {
+          "type": "ngram",
+          "min_gram": 1,
+          "max_gram": 10,
+          "token_chars": [
+            "letter",
+            "digit",
+            "symbol",
+            "whitespace"
+          ]
+        }
+      },
+      "char_filter": {
+        "symbol_replace": {
+          "type": "mapping",
+          "mappings": [
+            "_ => \\u0020",
+            "- => \\u0020"
+          ]
+        }
+      },
+      "analyzer": {
+        "ik_smart_analyzer": {
+          "type": "custom",
+          "tokenizer": "ik_smart",
+          "char_filter": [
+            "symbol_replace"
+          ],
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "ngram_analyzer": {
+          "type": "custom",
+          "tokenizer": "ngram_tokenizer",
+          "filter": [
+            "lowercase"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "entity_id": { "type": "long" },
+      "entity_type": { "type": "keyword" },
+      "in_use": { "type": "boolean" },
+      "metalake": { "type": "keyword" },
+      "owner": { "type": "keyword" },
+      "entity_name": {
+        "type": "text",
+        "analyzer": "ik_smart_analyzer",
+        "boost": 8.0,
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          },
+          "ngram": {
+            "type": "text",
+            "analyzer": "ngram_analyzer",
+            "search_analyzer": "ngram_analyzer"
+          }
+        }
+      },
+      "entity_comment": {
+        "type": "text",
+        "analyzer": "ik_smart_analyzer",
+        "boost": 4.0,
+        "fields": {
+          "ngram": {
+            "type": "text",
+            "analyzer": "ngram_analyzer",
+            "search_analyzer": "ngram_analyzer"
+          }
+        }
+      },
+      "catalog_name": {
+        "type": "text",
+        "analyzer": "ik_smart_analyzer",
+        "boost": 2.5,
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "full_qualified_name": {
+        "type": "text",
+        "analyzer": "ik_smart_analyzer",
+        "boost": 4.0,
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          },
+          "ngram": {
+            "type": "text",
+            "analyzer": "ngram_analyzer",
+            "search_analyzer": "ngram_analyzer"
+          }
+        }
+      },
+      "tags": {
+        "type": "nested",
+        "properties": {
+          "tag_name": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              },
+              "ngram": {
+                "type": "text",
+                "analyzer": "ngram_analyzer",
+                "search_analyzer": "ngram_analyzer"
+              }
+            }
+          },
+          "tag_comment": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              }
+            }
+          },
+          "properties": {
+            "type": "object"
+          }
+        }
+      },
+      "search_audit": {
+        "type": "object",
+        "properties": {
+          "create_time": { "type": "date" },
+          "creator":     { "type": "keyword" },
+          "last_modified_time": { "type": "date" },
+          "last_modifier": { "type": "keyword" }
+        }
+      },
+      "user_permissions": {
+        "type": "nested",
+        "properties": {
+          "name":       { "type": "keyword" },
+          "permission": { "type": "keyword" }
+        }
+      },
+      "role_permissions": {
+        "type": "nested",
+        "properties": {
+          "name":       { "type": "keyword" },
+          "permission": { "type": "keyword" }
+        }
+      },
+      "entity_properties": {
+        "type": "nested",
+        "properties": {
+          "key": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              },
+              "ngram": {
+                "type": "text",
+                "analyzer": "ngram_analyzer",
+                "search_analyzer": "ngram_analyzer"
+              }
+            }
+          },
+          "value": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              },
+              "ngram": {
+                "type": "text",
+                "analyzer": "ngram_analyzer",
+                "search_analyzer": "ngram_analyzer"
+              }
+            }
+          }
+        }
+      },
+      "latest_version": {
+        "type": "long"
+      },
+      "model_versions": {
+        "type": "nested",
+        "properties": {
+          "version": { "type": "long" },
+          "aliases": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              },
+              "ngram": {
+                "type": "text",
+                "analyzer": "ngram_analyzer",
+                "search_analyzer": "ngram_analyzer"
+              }
+            }
+          },
+          "uri": {
+            "type": "keyword"
+          }
+        }
+      }
+    }
+  }
+}
