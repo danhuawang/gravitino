@@ -4,16 +4,24 @@
  */
 package org.apache.gravitino.server;
 
+import com.datastrato.gravitino.DatastratoGravitinoEnv;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
+import com.datastrato.gravitino.metrics.MetricDataService;
+import com.datastrato.gravitino.server.web.metric.MetricsCollector;
 import org.apache.gravitino.GravitinoEnv;
+import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class DatastratoGravitinoServer extends GravitinoServer {
   private static final Logger LOG = LoggerFactory.getLogger(DatastratoGravitinoServer.class);
 
+  private final DatastratoGravitinoEnv datastratoGravitinoEnv;
+  private MetricsCollector metricsCollector;
+
   public DatastratoGravitinoServer(ServerConfig config, GravitinoEnv gravitinoEnv) {
     super(config, gravitinoEnv);
+    this.datastratoGravitinoEnv = (DatastratoGravitinoEnv) gravitinoEnv;
   }
 
   public static void main(String[] args) {
@@ -57,5 +65,42 @@ public class DatastratoGravitinoServer extends GravitinoServer {
     } catch (Exception e) {
       LOG.error("Error while stopping Datastrato Gravitino Server", e);
     }
+  }
+
+  @Override
+  public void initialize() {
+    super.initialize();
+
+    this.metricsCollector =
+        new MetricsCollector(
+            serverConfig(),
+            datastratoGravitinoEnv.metalakeDispatcher(),
+            datastratoGravitinoEnv.catalogDispatcher(),
+            datastratoGravitinoEnv.schemaDispatcher(),
+            datastratoGravitinoEnv.tableDispatcher(),
+            datastratoGravitinoEnv.filesetDispatcher(),
+            datastratoGravitinoEnv.topicDispatcher(),
+            datastratoGravitinoEnv.modelDispatcher(),
+            datastratoGravitinoEnv.tagDispatcher(),
+            datastratoGravitinoEnv.accessControlDispatcher(),
+            datastratoGravitinoEnv.metricDataService());
+
+    // initialize extra rest api resources
+    register(
+        new AbstractBinder() {
+          @Override
+          protected void configure() {
+            bind(datastratoGravitinoEnv.metricDataService()).to(MetricDataService.class).ranked(1);
+            bind(metricsCollector).to(MetricsCollector.class).ranked(1);
+          }
+        });
+  }
+
+  @Override
+  public void start() throws Exception {
+    super.start();
+
+    // start metrics collector after the server is started
+    metricsCollector.start();
   }
 }

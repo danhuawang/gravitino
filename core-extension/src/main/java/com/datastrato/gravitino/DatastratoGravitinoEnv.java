@@ -28,6 +28,7 @@ import com.datastrato.gravitino.listener.DatastratoFilesetEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
+import com.datastrato.gravitino.metrics.MetricDataService;
 import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
@@ -62,6 +63,8 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private DatastratoTopicDispatcher datastratoTopicDispatcher;
   private DatastratoModelDispatcher datastratoModelDispatcher;
 
+  private MetricDataService metricDataService;
+
   public static DatastratoGravitinoEnv getInstance() {
     return INSTANCE;
   }
@@ -80,7 +83,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoSchemaHookDispatcher(schemaOperationDispatcher);
     DatastratoSchemaDispatcher schemaNormalizeDispatcher =
         new DatastratoSchemaNormalizeDispatcher(schemaHookDispatcher, catalogManager());
-    datastratoSchemaDispatcher =
+    this.datastratoSchemaDispatcher =
         new DatastratoSchemaEventDispatcher(eventBus(), schemaNormalizeDispatcher);
 
     // initialize table dispatcher
@@ -94,7 +97,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoTableHookDispatcher(tableOperationDispatcher);
     DatastratoTableDispatcher tableNormalizeDispatcher =
         new DatastratoTableNormalizeDispatcher(tableHookDispatcher, catalogManager());
-    datastratoTableDispatcher =
+    this.datastratoTableDispatcher =
         new DatastratoTableEventDispatcher(eventBus(), tableNormalizeDispatcher);
 
     // initialize fileset dispatcher
@@ -104,7 +107,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoFilesetHookDispatcher(filesetOperationDispatcher);
     DatastratoFilesetDispatcher filesetNormalizeDispatcher =
         new DatastratoFilesetNormalizeDispatcher(filesetHookDispatcher, catalogManager());
-    datastratoFilesetDispatcher =
+    this.datastratoFilesetDispatcher =
         new DatastratoFilesetEventDispatcher(eventBus(), filesetNormalizeDispatcher);
 
     // initialize topic dispatcher
@@ -114,7 +117,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoTopicHookDispatcher(topicOperationDispatcher);
     DatastratoTopicDispatcher topicNormalizeDispatcher =
         new DatastratoTopicNormalizeDispatcher(topicHookDispatcher, catalogManager());
-    datastratoTopicDispatcher =
+    this.datastratoTopicDispatcher =
         new DatastratoTopicEventDispatcher(eventBus(), topicNormalizeDispatcher);
 
     // initialize model dispatcher
@@ -122,8 +125,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoModelOperationDispatcher(catalogManager(), entityStore(), idGenerator());
     DatastratoModelHookDispatcher modelHookDispatcher =
         new DatastratoModelHookDispatcher(modelOperationDispatcher);
-    datastratoModelDispatcher =
+    this.datastratoModelDispatcher =
         new DatastratoModelNormalizeDispatcher(modelHookDispatcher, catalogManager());
+
+    // initialize metric data service
+    this.metricDataService = new MetricDataService(config);
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
@@ -161,6 +167,10 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public PartitionDispatcher partitionDispatcher() {
     return GravitinoEnv.getInstance().partitionDispatcher();
+  }
+
+  public MetricDataService metricDataService() {
+    return metricDataService;
   }
 
   @Override

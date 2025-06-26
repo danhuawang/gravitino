@@ -7,6 +7,7 @@ package com.datastrato.gravitino.dto.responses;
 import static org.apache.gravitino.file.Fileset.Type.EXTERNAL;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
+import com.datastrato.gravitino.dto.metrics.MetricDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
@@ -154,5 +155,37 @@ public class TestResponses {
     Exception exception =
         Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
     Assertions.assertEquals("\"message\" can't be blank", exception.getMessage());
+  }
+
+  @Test
+  public void testMetricsResponse() throws JsonProcessingException {
+    Map<String, MetricDTO> metrics =
+        ImmutableMap.of(
+            "metric1",
+            MetricDTO.builder()
+                .withName("metric1")
+                .withValues(new double[] {1, 2, 3})
+                .withTimestamps(new long[] {1000, 2000, 3000})
+                .build(),
+            "metric2",
+            MetricDTO.builder()
+                .withName("metric2")
+                .withValues(new double[] {4, 5, 6})
+                .withTimestamps(new long[] {4000, 5000, 6000})
+                .build());
+
+    MetricsResponse response = new MetricsResponse(metrics);
+    Assertions.assertDoesNotThrow(response::validate);
+
+    String serJson = JsonUtils.objectMapper().writeValueAsString(response);
+    MetricsResponse deserialized =
+        JsonUtils.objectMapper().readValue(serJson, MetricsResponse.class);
+    Assertions.assertEquals(response, deserialized);
+    Assertions.assertEquals(metrics, deserialized.getMetrics());
+
+    MetricsResponse illegalResp = new MetricsResponse();
+    Exception exception =
+        Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
+    Assertions.assertEquals("\"metrics\" cannot be null", exception.getMessage());
   }
 }

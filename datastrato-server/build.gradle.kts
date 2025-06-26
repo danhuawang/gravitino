@@ -24,6 +24,10 @@ dependencies {
   implementation(libs.bundles.jersey)
   implementation(libs.bundles.log4j)
 
+  annotationProcessor(libs.lombok)
+
+  compileOnly(libs.lombok)
+
   testImplementation(libs.commons.lang3)
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")

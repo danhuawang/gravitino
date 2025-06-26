@@ -13,6 +13,8 @@ dependencies {
   implementation("org.apache.gravitino:api")
   implementation("org.apache.gravitino:core")
 
+  implementation(project(":common-extension"))
+
   implementation(libs.bundles.log4j)
   implementation(libs.commons.codec)
   implementation(libs.commons.dbcp2)
