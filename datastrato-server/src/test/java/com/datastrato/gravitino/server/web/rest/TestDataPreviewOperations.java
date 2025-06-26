@@ -95,7 +95,7 @@ public class TestDataPreviewOperations extends JerseyTest {
   public void testPreviewTable() {
     Table table = mock(Table.class);
     when(tableDispatcher.loadTable(any())).thenReturn(table);
-    when(tableDispatcher.preview(any(), any(), anyInt())).thenReturn(new Map[0]);
+    when(tableDispatcher.preview(any(), any(), anyInt(), any())).thenReturn(new Map[0]);
     when(table.columns()).thenReturn(new Column[0]);
     Response resp =
         target("/web/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
@@ -112,7 +112,7 @@ public class TestDataPreviewOperations extends JerseyTest {
     // test to preview the sensitive table
     doThrow(new DataPreviewSensitiveTableException("mock error"))
         .when(tableDispatcher)
-        .preview(any(), any(), anyInt());
+        .preview(any(), any(), anyInt(), any());
     resp =
         target("/web/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -128,7 +128,7 @@ public class TestDataPreviewOperations extends JerseyTest {
     // test to preview not-existed table
     doThrow(new NoSuchTableException("mock error"))
         .when(tableDispatcher)
-        .preview(any(), any(), anyInt());
+        .preview(any(), any(), anyInt(), any());
     Response errorResp =
         target("/web/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -144,7 +144,7 @@ public class TestDataPreviewOperations extends JerseyTest {
     // test with runtime exception
     doThrow(new RuntimeException("mock error"))
         .when(tableDispatcher)
-        .preview(any(), any(), anyInt());
+        .preview(any(), any(), anyInt(), any());
     errorResp =
         target("/web/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
             .request(MediaType.APPLICATION_JSON_TYPE)

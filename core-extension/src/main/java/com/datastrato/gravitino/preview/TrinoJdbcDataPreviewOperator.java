@@ -5,8 +5,12 @@
 package com.datastrato.gravitino.preview;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import io.trino.jdbc.Row;
+import io.trino.jdbc.RowField;
+import io.trino.jdbc.TrinoArray;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -16,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.dbcp2.BasicDataSource;
 import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
 import org.apache.gravitino.Config;
@@ -23,6 +28,9 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.exceptions.NoSuchTagException;
+import org.apache.gravitino.rel.Column;
+import org.apache.gravitino.rel.types.Type;
+import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.tag.TagDispatcher;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
@@ -71,7 +79,8 @@ public class TrinoJdbcDataPreviewOperator {
     this.tagDispatcher = tagDispatcher;
   }
 
-  public Map<String, Object>[] preview(NameIdentifier ident, Entity.EntityType type, int limit) {
+  public Map<String, Object>[] preview(
+      NameIdentifier ident, Entity.EntityType type, int limit, Column[] columns) {
     try (Connection connection = getConnection()) {
       Statement statement = connection.createStatement();
       statement.setQueryTimeout(timeoutSec);
@@ -81,7 +90,7 @@ public class TrinoJdbcDataPreviewOperator {
 
       extractSensitiveColumns(ident, type, sensitiveColumns);
 
-      return convertToRecords(result, realRowCount, sensitiveColumns);
+      return convertToRecords(result, realRowCount, sensitiveColumns, columns);
     } catch (SQLException se) {
       throw new RuntimeException(se);
     }
@@ -139,12 +148,18 @@ public class TrinoJdbcDataPreviewOperator {
   }
 
   private Map<String, Object>[] convertToRecords(
-      ResultSet resultSet, int limit, List<String> sensitiveColumns) throws SQLException {
+      ResultSet resultSet, int limit, List<String> sensitiveColumns, Column[] columns)
+      throws SQLException {
     ResultSetMetaData metaData = resultSet.getMetaData();
     int numCols = metaData.getColumnCount();
     List<String> colNames = Lists.newArrayList();
     for (int colIndex = 0; colIndex < numCols; colIndex++) {
       colNames.add(metaData.getColumnName(colIndex + 1));
+    }
+
+    Map<String, Type> columnTypes = Maps.newHashMap();
+    for (Column column : columns) {
+      columnTypes.put(column.name(), column.dataType());
     }
 
     List<Map<String, Object>> recordList = Lists.newArrayList();
@@ -156,7 +171,8 @@ public class TrinoJdbcDataPreviewOperator {
         if (sensitiveColumns.contains(colName)) {
           record.put(colName, "*");
         } else {
-          record.put(colName, resultSet.getObject(colName));
+          Type type = columnTypes.get(colName);
+          record.put(colName, convertToValue(resultSet.getObject(colName), type));
         }
       }
 
@@ -172,5 +188,58 @@ public class TrinoJdbcDataPreviewOperator {
     }
 
     return records;
+  }
+
+  @VisibleForTesting
+  Object convertToValue(Object object, Type type) {
+    if (object instanceof TrinoArray) {
+      Preconditions.checkArgument(
+          type.name() == Type.Name.LIST, "Expected type to be a list, but got: %s", type.name());
+      TrinoArray trinoArray = (TrinoArray) object;
+      List<Object> values = Lists.newArrayList();
+      for (Object value : (Object[]) trinoArray.getArray()) {
+        values.add(convertToValue(value, ((Types.ListType) type).elementType()));
+      }
+      return values;
+    } else if (object instanceof Map) {
+      Preconditions.checkArgument(
+          type.name() == Type.Name.MAP, "Expected type to be a struct, but got: %s", type.name());
+      Map<Object, Object> map = (Map<Object, Object>) object;
+      Map<Object, Object> convertedMap = Maps.newHashMap();
+      Types.MapType mapType = (Types.MapType) type;
+      for (Object key : map.keySet()) {
+        convertedMap.put(
+            convertToValue(key, mapType.keyType()),
+            convertToValue(map.get(key), mapType.valueType()));
+      }
+      return convertedMap;
+    } else if (object instanceof Row) {
+      Preconditions.checkArgument(
+          type.name() == Type.Name.STRUCT,
+          "Expected type to be a struct, but got: %s",
+          type.name());
+      Row row = (Row) object;
+      Map<String, Object> convertedRow = Maps.newHashMap();
+      Map<String, Type> fieldTypes = Maps.newHashMap();
+      Types.StructType structType = (Types.StructType) type;
+      for (Types.StructType.Field field : structType.fields()) {
+        fieldTypes.put(field.name(), field.type());
+      }
+      for (RowField field : row.getFields()) {
+        field
+            .getName()
+            .ifPresent(
+                name -> {
+                  convertedRow.put(name, convertToValue(field.getValue(), fieldTypes.get(name)));
+                });
+      }
+      return convertedRow;
+    } else if (object instanceof byte[]) {
+      return String.format("x'%s'", Hex.encodeHexString((byte[]) object));
+    } else if (type.name() == Type.Name.TIMESTAMP && ((Types.TimestampType) type).hasTimeZone()) {
+      return String.format("%s UTC", object.toString());
+    } else {
+      return object;
+    }
   }
 }

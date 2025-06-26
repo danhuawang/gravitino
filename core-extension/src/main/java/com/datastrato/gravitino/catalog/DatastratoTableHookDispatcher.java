@@ -12,6 +12,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.hook.TableHookDispatcher;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.rel.Column;
 
 public class DatastratoTableHookDispatcher extends TableHookDispatcher
     implements DatastratoTableDispatcher {
@@ -29,8 +30,8 @@ public class DatastratoTableHookDispatcher extends TableHookDispatcher
 
   @Override
   public Map<String, Object>[] preview(
-      NameIdentifier identifier, Entity.EntityType type, int resultLimit)
+      NameIdentifier identifier, Entity.EntityType type, int resultLimit, Column[] columns)
       throws DataPreviewSensitiveTableException {
-    return dispatcher.preview(identifier, type, resultLimit);
+    return dispatcher.preview(identifier, type, resultLimit, columns);
   }
 }

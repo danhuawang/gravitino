@@ -16,6 +16,7 @@ import org.apache.gravitino.listener.TableEventDispatcher;
 import org.apache.gravitino.listener.api.event.ListTableEvent;
 import org.apache.gravitino.listener.api.event.ListTableFailureEvent;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.utils.PrincipalUtils;
 
 public class DatastratoTableEventDispatcher extends TableEventDispatcher
@@ -50,9 +51,9 @@ public class DatastratoTableEventDispatcher extends TableEventDispatcher
 
   @Override
   public Map<String, Object>[] preview(
-      NameIdentifier identifier, Entity.EntityType type, int resultLimit)
+      NameIdentifier identifier, Entity.EntityType type, int resultLimit, Column[] columns)
       throws DataPreviewSensitiveTableException {
     // TODO: Add preview table event
-    return dispatcher.preview(identifier, type, resultLimit);
+    return dispatcher.preview(identifier, type, resultLimit, columns);
   }
 }

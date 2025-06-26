@@ -340,13 +340,16 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
   @Test
   public void testPreviewTableData() {
     NameIdentifier tableIdent = NameIdentifier.of(metalake, catalog, "schema99", "table84");
-    when(trinoJdbcDataPreviewOperator.preview(any(), any(), anyInt())).thenReturn(new Map[0]);
-    Map<String, Object>[] results = tableOperationDispatcher.preview(tableIdent, TABLE, 100);
+    when(trinoJdbcDataPreviewOperator.preview(any(), any(), anyInt(), any()))
+        .thenReturn(new Map[0]);
+    Map<String, Object>[] results =
+        tableOperationDispatcher.preview(tableIdent, TABLE, 100, new Column[0]);
     Assertions.assertEquals(results.length, 0);
 
-    when(trinoJdbcDataPreviewOperator.preview(any(), any(), anyInt()))
+    when(trinoJdbcDataPreviewOperator.preview(any(), any(), anyInt(), any()))
         .thenThrow(new RuntimeException("mock error"));
     Assertions.assertThrows(
-        RuntimeException.class, () -> tableOperationDispatcher.preview(tableIdent, TABLE, 100));
+        RuntimeException.class,
+        () -> tableOperationDispatcher.preview(tableIdent, TABLE, 100, new Column[0]));
   }
 }

@@ -22,6 +22,7 @@ import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.lock.LockType;
 import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.storage.IdGenerator;
 
 public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
@@ -64,10 +65,10 @@ public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
 
   @Override
   public Map<String, Object>[] preview(
-      NameIdentifier identifier, Entity.EntityType type, int resultLimit)
+      NameIdentifier identifier, Entity.EntityType type, int resultLimit, Column[] columns)
       throws DataPreviewSensitiveTableException {
     // If we use the table read lock, the trino connector will load table, it will cause
     // the dead lock.
-    return trinoJdbcDataPreviewOperator.preview(identifier, type, resultLimit);
+    return trinoJdbcDataPreviewOperator.preview(identifier, type, resultLimit, columns);
   }
 }

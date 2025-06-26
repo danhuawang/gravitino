@@ -17,6 +17,7 @@ import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.TableNormalizeDispatcher;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.rel.Column;
 
 public class DatastratoTableNormalizeDispatcher extends TableNormalizeDispatcher
     implements DatastratoTableDispatcher {
@@ -40,12 +41,12 @@ public class DatastratoTableNormalizeDispatcher extends TableNormalizeDispatcher
 
   @Override
   public Map<String, Object>[] preview(
-      NameIdentifier identifier, Entity.EntityType type, int resultLimit)
+      NameIdentifier identifier, Entity.EntityType type, int resultLimit, Column[] columns)
       throws DataPreviewSensitiveTableException {
     Capability capabilities = getCapability(identifier, catalogManager);
     NameIdentifier caseSensitiveIdentifier =
         applyCaseSensitive(identifier, Capability.Scope.TABLE, capabilities);
 
-    return dispatcher.preview(caseSensitiveIdentifier, type, resultLimit);
+    return dispatcher.preview(caseSensitiveIdentifier, type, resultLimit, columns);
   }
 }

@@ -14,6 +14,7 @@ dependencies {
   implementation("org.apache.gravitino:core")
 
   implementation(libs.bundles.log4j)
+  implementation(libs.commons.codec)
   implementation(libs.commons.dbcp2)
   implementation(libs.commons.lang3)
   implementation(libs.guava)

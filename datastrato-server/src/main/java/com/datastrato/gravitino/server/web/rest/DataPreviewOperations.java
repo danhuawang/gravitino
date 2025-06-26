@@ -74,7 +74,7 @@ public class DataPreviewOperations {
             Column[] columns = tableDispatcher.loadTable(identifier).columns();
 
             Map<String, Object>[] results =
-                tableDispatcher.preview(identifier, Entity.EntityType.TABLE, resultLimit);
+                tableDispatcher.preview(identifier, Entity.EntityType.TABLE, resultLimit, columns);
 
             return Utils.ok(
                 new DataPreviewResponse(

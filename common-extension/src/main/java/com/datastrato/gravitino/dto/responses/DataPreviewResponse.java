@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino.dto.responses;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.Map;
@@ -31,6 +32,7 @@ public class DataPreviewResponse extends BaseResponse {
   private ColumnDTO[] columns;
 
   @Nullable
+  @JsonInclude
   @JsonProperty("results")
   private Map<String, Object>[] results;
 

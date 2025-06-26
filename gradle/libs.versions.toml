@@ -24,6 +24,7 @@ httpclient5 = "5.2.1"
 mockserver = "5.15.0"
 commons-lang3 = "3.14.0"
 commons-io = "2.15.0"
+commons-codec = "1.16.0"
 commons-collections4 = "4.4"
 commons-dbcp2 = "2.11.0"
 caffeine = "2.9.3"
@@ -150,6 +151,7 @@ trino-memory= { group = "io.trino", name = "trino-memory", version.ref = "trino"
 trino-cli= { group = "io.trino", name = "trino-cli", version.ref = "trino" }
 trino-client= { group = "io.trino", name = "trino-client", version.ref = "trino" }
 sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqlite-jdbc" }
+commons-codec = { group = "commons-codec", name = "commons-codec", version.ref = "commons-codec" }
 commons-dbcp2 = { group = "org.apache.commons", name = "commons-dbcp2", version.ref = "commons-dbcp2" }
 testcontainers = { group = "org.testcontainers", name = "testcontainers", version.ref = "testcontainers" }
 testcontainers-mysql = { group = "org.testcontainers", name = "mysql", version.ref = "testcontainers" }
