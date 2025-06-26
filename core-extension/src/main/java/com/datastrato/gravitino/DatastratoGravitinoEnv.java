@@ -25,6 +25,7 @@ import com.datastrato.gravitino.catalog.DatastratoTopicHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicOperationDispatcher;
 import com.datastrato.gravitino.listener.DatastratoFilesetEventDispatcher;
+import com.datastrato.gravitino.listener.DatastratoModelEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
@@ -125,8 +126,10 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoModelOperationDispatcher(catalogManager(), entityStore(), idGenerator());
     DatastratoModelHookDispatcher modelHookDispatcher =
         new DatastratoModelHookDispatcher(modelOperationDispatcher);
-    this.datastratoModelDispatcher =
+    DatastratoModelNormalizeDispatcher datastratoModelNormalizeDispatcher =
         new DatastratoModelNormalizeDispatcher(modelHookDispatcher, catalogManager());
+    datastratoModelDispatcher =
+        new DatastratoModelEventDispatcher(eventBus(), datastratoModelNormalizeDispatcher);
 
     // initialize metric data service
     this.metricDataService = new MetricDataService(config);
