@@ -236,7 +236,9 @@ public class TrinoJdbcDataPreviewOperator {
       return convertedRow;
     } else if (object instanceof byte[]) {
       return String.format("x'%s'", Hex.encodeHexString((byte[]) object));
-    } else if (type.name() == Type.Name.TIMESTAMP && ((Types.TimestampType) type).hasTimeZone()) {
+    } else if (type.name() == Type.Name.TIMESTAMP
+        && ((Types.TimestampType) type).hasTimeZone()
+        && object != null) {
       return String.format("%s UTC", object.toString());
     } else {
       return object;

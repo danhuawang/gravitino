@@ -147,5 +147,8 @@ public class TestTrinoJdbcDataPreviewOperator {
     String dateString = "2024-01-01";
     Object dateValue = operator.convertToValue(dateString, Types.TimestampType.withTimeZone());
     Assertions.assertEquals("2024-01-01 UTC", dateValue);
+
+    // ISSUE-295: Convert null date
+    Assertions.assertNull(operator.convertToValue(null, Types.TimestampType.withTimeZone()));
   }
 }
