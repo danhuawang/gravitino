@@ -21,7 +21,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
@@ -33,7 +32,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.mockito.Mockito;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TestSearchService {
@@ -363,21 +361,9 @@ public class TestSearchService {
 
     task.waitToFinished();
 
-    Thread.sleep(10);
     taskStatus = searchService.getTaskStatus(task.getTaskId());
     Assertions.assertNotNull(taskStatus);
     Assertions.assertEquals(task.getTaskId(), taskStatus.getTaskId());
-
-    Awaitility.await()
-        .atMost(10, TimeUnit.SECONDS)
-        .pollInterval(10, TimeUnit.MILLISECONDS)
-        .until(
-            () -> {
-              TaskStatusDTO status = searchService.getTaskStatus(task.getTaskId());
-              return status != null
-                  && status.getTaskStatus().equals(TaskStatus.TaskStatusEnum.COMPLETED.name());
-            });
-
     Assertions.assertEquals(TaskStatus.TaskStatusEnum.COMPLETED.name(), taskStatus.getTaskStatus());
 
     List<SearchEntityPO> searchEntityList = inMemorySearchStorage.getSearchEntities();

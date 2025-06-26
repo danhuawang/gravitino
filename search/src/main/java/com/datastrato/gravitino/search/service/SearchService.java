@@ -269,12 +269,11 @@ public class SearchService implements Closeable {
   }
 
   protected void addTask(SyncTask syncTask) {
+    syncTask.saveTaskStatus();
     synchronized (this) {
       syncTasks.add(syncTask);
       notify();
     }
-
-    syncTask.saveTaskStatus();
   }
 
   // The function called by multiple threads to handle SyncTasks

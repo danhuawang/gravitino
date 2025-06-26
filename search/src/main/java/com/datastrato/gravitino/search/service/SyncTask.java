@@ -131,24 +131,51 @@ public class SyncTask {
         "Task {} split into {} subtasks, Sub tasks: {}",
         taskId,
         subTasks.size(),
-        subTasks.stream().map(SyncTask::getTaskId).collect(Collectors.joining()));
+        subTasks.stream().map(SyncTask::getTaskId).collect(Collectors.joining(",")));
   }
 
   public boolean processOnBatch() {
-    if (source.finished()) {
+    try {
+      if (source.finished()) {
+        handleTaskFinished();
+        synchronized (finishedLock) {
+          finished = true;
+          LOG.debug("Task {} success and notify finished", taskId);
+          finishedLock.notifyAll();
+        }
+        return false;
+      }
+
+      List<SearchEntityPO> searchEntityPOs = source.nextBatch(service.getEntityProcessBatchSize());
+
+      if (LOG.isDebugEnabled()) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Task ").append(taskId).append(" Processing entities: ");
+        for (int i = 0; i < searchEntityPOs.size(); i++) {
+          sb.append(searchEntityPOs.get(i).getFullQualifiedName());
+          if (i < searchEntityPOs.size() - 1) {
+            sb.append(", ");
+          }
+        }
+        LOG.debug(sb.toString());
+      }
+
+      if (!searchEntityPOs.isEmpty()) {
+        service.storage.write(searchEntityPOs);
+      }
+      return true;
+
+    } catch (Exception e) {
+      LOG.error("Error processing batch for task {}", taskId, e);
+      // todo need to handle retry logic
       handleTaskFinished();
       synchronized (finishedLock) {
         finished = true;
+        LOG.debug("Task {} failed and notify finished", taskId);
         finishedLock.notifyAll();
       }
       return false;
     }
-
-    List<SearchEntityPO> searchEntityPOs = source.nextBatch(service.getEntityProcessBatchSize());
-    if (!searchEntityPOs.isEmpty()) {
-      service.storage.write(searchEntityPOs);
-    }
-    return true;
   }
 
   public void prepare() {
@@ -207,6 +234,7 @@ public class SyncTask {
     synchronized (finishedLock) {
       if (!finished) {
         finishedLock.wait();
+        LOG.debug("Task {} wait finished", taskId);
       }
     }
   }

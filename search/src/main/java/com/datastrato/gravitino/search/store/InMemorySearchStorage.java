@@ -15,10 +15,10 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.apache.gravitino.Config;
@@ -40,7 +40,7 @@ public class InMemorySearchStorage implements SearchStorage {
               Entity.EntityType.TOPIC, SearchEntityDTO.class,
               Entity.EntityType.TABLE, SearchTableEntityDTO.class);
 
-  private Map<Long, SearchEntityPO> searchEntityMap = new HashMap<>();
+  private Map<Long, SearchEntityPO> searchEntityMap = new ConcurrentHashMap<>();
   private SearchEntityCodec codec;
 
   public List<SearchEntityPO> getSearchEntities() {

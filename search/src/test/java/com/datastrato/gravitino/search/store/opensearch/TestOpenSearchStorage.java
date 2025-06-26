@@ -19,9 +19,11 @@ import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+@Tag("gravitino-docker-test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TestOpenSearchStorage {
   private OpenSearchStorage storage;
