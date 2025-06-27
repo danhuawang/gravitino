@@ -1,5 +1,6 @@
 {
   "settings": {
+    "max_result_window": 1000000,
     "index.max_ngram_diff": 10,
     "analysis": {
       "tokenizer": {
