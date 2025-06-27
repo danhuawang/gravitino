@@ -6,6 +6,7 @@ package com.datastrato.gravitino.search.service;
 
 import static com.datastrato.gravitino.search.config.SearchConfig.ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL;
 import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
+import static com.datastrato.gravitino.search.utils.FilterConditionUtils.createEntityNameQueryCondition;
 import static java.util.Collections.emptyList;
 import static org.apache.gravitino.Entity.EntityType.CATALOG;
 import static org.apache.gravitino.Entity.EntityType.METALAKE;
@@ -20,11 +21,16 @@ import com.datastrato.gravitino.search.store.InMemorySearchStorage;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Maps;
 import java.util.List;
+import java.util.Map;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.catalog.EntityCombinedSchema;
+import org.apache.gravitino.catalog.EntityCombinedTable;
+import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.junit.jupiter.api.Assertions;
@@ -207,7 +213,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -219,7 +225,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -231,7 +237,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -249,7 +255,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(nameIdentifier, true),
+            createEntityNameQueryCondition(nameIdentifier, true),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -263,7 +269,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(nameIdentifier, true),
+            createEntityNameQueryCondition(nameIdentifier, true),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -288,7 +294,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -301,7 +307,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -311,7 +317,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(nameIdentifier, true),
+            createEntityNameQueryCondition(nameIdentifier, true),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -321,8 +327,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            SearchService.createEntityNameQueryCondition(
-                NameIdentifier.of(metalake, "test_catalog1"), true),
+            createEntityNameQueryCondition(NameIdentifier.of(metalake, "test_catalog1"), true),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -394,6 +399,111 @@ public class TestSearchService {
     List<SearchEntityPO> searchEntityList = inMemorySearchStorage.getSearchEntities();
     Assertions.assertEquals(4, searchEntityList.size());
     inMemorySearchStorage.clear();
+  }
+
+  void testSyncTaskWithoutCleanData(
+      NameIdentifier nameIdentifier, Entity.EntityType type, boolean cascading, int expectedCount)
+      throws Exception {
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    MetadataObject testObj = NameIdentifierUtil.toMetadataObject(nameIdentifier, type);
+
+    SyncTask task = searchService.synchronizeMetadata(metalake, testObj, cascading);
+    task.waitToFinished();
+
+    TaskStatusDTO taskStatus = searchService.getTaskStatus(task.getTaskId());
+    Assertions.assertNotNull(taskStatus);
+    Assertions.assertEquals(task.getTaskId(), taskStatus.getTaskId());
+    Assertions.assertEquals(TaskStatus.TaskStatusEnum.COMPLETED.name(), taskStatus.getTaskStatus());
+
+    List<SearchEntityPO> searchEntityList = inMemorySearchStorage.getSearchEntities();
+    Assertions.assertEquals(expectedCount, searchEntityList.size());
+    searchEntityList.forEach(
+        searchEntityPO -> {
+          Assertions.assertEquals(
+              gravitinoService.getEntityId(getIdentifier(searchEntityPO)),
+              searchEntityPO.getEntityId());
+          Assertions.assertEquals(
+              NameIdentifierUtil.getMetalake(nameIdentifier), searchEntityPO.getMetalake());
+          if (!cascading) {
+            Assertions.assertEquals(nameIdentifier.name(), searchEntityPO.getEntityName());
+          } else {
+            String fullName = type != METALAKE ? testObj.fullName() : "";
+            Assertions.assertTrue(searchEntityPO.getFullQualifiedName().startsWith(fullName));
+          }
+        });
+  }
+
+  @Test
+  void testSyncWithDelete() throws Exception {
+    // Synchronize all metadata
+    NameIdentifier metalakeIdent = NameIdentifier.of("test_metalake");
+    testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 10);
+
+    // The memory search storage should have 10 entities now.
+
+    // Simulate catalog1 has been removed
+    Map<String, BaseCatalog> original = gravitinoService.catalogs;
+
+    Map<String, Integer> removeCatalogAndExpectMap = Maps.newHashMap();
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog1", 4);
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog2", 7);
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog3", 9);
+
+    for (Map.Entry<String, Integer> entry : removeCatalogAndExpectMap.entrySet()) {
+      String key = entry.getKey();
+      BaseCatalog catalog = original.get(key);
+      try {
+        gravitinoService.catalogs.remove(key);
+
+        Thread.sleep(100);
+        testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, entry.getValue());
+      } finally {
+        original.put(key, catalog);
+      }
+
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 10);
+    }
+
+    // Now test remove schema
+    Map<String, EntityCombinedSchema> originalSchemas = gravitinoService.schemas;
+    Map<String, Integer> removeSchemaAndExpectMap = Maps.newHashMap();
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema1", 7);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema2", 8);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema1", 9);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema2", 9);
+
+    for (Map.Entry<String, Integer> entry : removeSchemaAndExpectMap.entrySet()) {
+      String key = entry.getKey();
+      EntityCombinedSchema schema = originalSchemas.get(key);
+      try {
+        gravitinoService.schemas.remove(key);
+        testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, entry.getValue());
+      } finally {
+        originalSchemas.put(key, schema);
+      }
+
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 10);
+    }
+
+    // Start to test table
+    Map<String, EntityCombinedTable> originalTables = gravitinoService.tables;
+    Map<String, Integer> removeTableAndExpectMap = Maps.newHashMap();
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table1", 9);
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table2", 9);
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema2.test_table2", 9);
+
+    for (Map.Entry<String, Integer> entry : removeTableAndExpectMap.entrySet()) {
+      String key = entry.getKey();
+      EntityCombinedTable table = originalTables.get(key);
+      try {
+        gravitinoService.tables.remove(key);
+        testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, entry.getValue());
+      } finally {
+        originalTables.put(key, table);
+      }
+
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 10);
+    }
   }
 
   protected NameIdentifier getIdentifier(SearchEntityPO searchEntityPO) {

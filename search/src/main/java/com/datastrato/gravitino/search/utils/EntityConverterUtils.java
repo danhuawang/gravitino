@@ -95,6 +95,7 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(catalog.properties()))
+        .withUpdateTime(System.currentTimeMillis())
         .build();
   }
 
@@ -144,6 +145,7 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(schema.properties()))
+        .withUpdateTime(System.currentTimeMillis())
         .build();
   }
 
@@ -180,6 +182,7 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(topic.properties()))
+        .withUpdateTime(System.currentTimeMillis())
         .build();
   }
 
@@ -218,6 +221,7 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(model.properties()))
+        .withUpdateTime(System.currentTimeMillis())
         .withModelVersions(searchModelVersionPOS)
         .withLatestVersion(model.latestVersion())
         .build();
@@ -256,6 +260,7 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(fileset.properties()))
+        .withUpdateTime(System.currentTimeMillis())
         .build();
   }
 
@@ -301,6 +306,7 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(table.properties()))
+        .withUpdateTime(System.currentTimeMillis())
         .build();
   }
 

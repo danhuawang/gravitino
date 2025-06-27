@@ -50,4 +50,13 @@ class SearchEntityIdentifier {
   public String metalake() {
     return NameIdentifierUtil.getMetalake(entityIdent);
   }
+
+  @Override
+  public String toString() {
+    final StringBuilder sb = new StringBuilder("SearchEntityIdentifier{");
+    sb.append("entityIdent=").append(entityIdent);
+    sb.append(", entityType=").append(entityType);
+    sb.append('}');
+    return sb.toString();
+  }
 }

@@ -259,7 +259,8 @@
             }
           }
         }
-      }
+      },
+      "update_time": { "type": "long" }
     }
   }
 }

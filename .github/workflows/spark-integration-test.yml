@@ -58,6 +58,7 @@ jobs:
         run: |
           gravitino-oss/dev/ci/util_free_space.sh
 
+
       - name: Copy distribution package
         run: |
           sed -i '/= *opensearch/d' ./distribution/package/conf/gravitino.conf

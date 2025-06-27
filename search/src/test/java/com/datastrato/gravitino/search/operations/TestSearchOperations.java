@@ -107,7 +107,6 @@ public class TestSearchOperations extends JerseyTest {
         .when(spyService)
         .synchronizeMetadata(Mockito.anyString(), Mockito.any(), Mockito.anyBoolean());
 
-    FieldUtils.writeStaticField(SearchService.class, "searchService", spyService, true);
     FieldUtils.writeField(
         ExtendedDatastratoGravitinoEnv.getInstance(), "searchService", spyService, true);
   }
@@ -116,7 +115,6 @@ public class TestSearchOperations extends JerseyTest {
   public static void clean() {
     try {
       FieldUtils.writeField(GravitinoEnv.getInstance(), "config", null, true);
-      FieldUtils.writeStaticField(SearchService.class, "searchService", searchService, true);
     } catch (IllegalAccessException e) {
       throw new RuntimeException(e);
     }

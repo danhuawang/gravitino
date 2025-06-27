@@ -43,6 +43,7 @@ class SearchEntityCodecTest {
             + "\"metalake\":\"test\","
             + "\"entity_name\":\"TestEntity\","
             + "\"catalog_name\":\"c1\","
+            + "\"update_time\":0,"
             + "\"provider\":\"hive\","
             + "\"type\":\"relational\""
             + "}";

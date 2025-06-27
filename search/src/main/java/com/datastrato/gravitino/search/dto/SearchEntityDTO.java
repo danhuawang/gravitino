@@ -46,6 +46,8 @@ public class SearchEntityDTO {
 
   private final List<PropertyDTO> entityProperties;
 
+  private final long updateTime;
+
   public SearchEntityDTO(Builder<?, ?> builder) {
     this.entityId = builder.entityId;
     this.entityType = builder.entityType;
@@ -61,6 +63,7 @@ public class SearchEntityDTO {
     this.userPermissions = builder.userPermissions;
     this.rolePermissions = builder.rolePermissions;
     this.entityProperties = builder.entityProperties;
+    this.updateTime = builder.updateTime;
   }
 
   public abstract static class Builder<SELF extends Builder<SELF, T>, T extends SearchEntityDTO> {
@@ -78,6 +81,7 @@ public class SearchEntityDTO {
     private List<SearchUserPermissionDTO> userPermissions;
     private List<SearchRolePermissionDTO> rolePermissions;
     private List<PropertyDTO> entityProperties;
+    private long updateTime;
 
     public SELF withEntityId(long entityId) {
       this.entityId = entityId;
@@ -146,6 +150,11 @@ public class SearchEntityDTO {
 
     public SELF withEntityProperties(List<PropertyDTO> entityProperties) {
       this.entityProperties = entityProperties;
+      return self();
+    }
+
+    public SELF withUpdateTime(long updateTime) {
+      this.updateTime = updateTime;
       return self();
     }
 

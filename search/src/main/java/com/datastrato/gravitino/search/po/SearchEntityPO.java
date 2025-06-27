@@ -62,6 +62,9 @@ public class SearchEntityPO {
   @JsonProperty("entity_properties")
   private final List<PropertyPO> entityProperties;
 
+  @JsonProperty("update_time")
+  private final long updateTime;
+
   public SearchEntityPO(Builder<?, ?> builder) {
     this.entityId = builder.entityId;
     this.entityType = builder.entityType;
@@ -77,6 +80,7 @@ public class SearchEntityPO {
     this.userPermissions = builder.userPermissions;
     this.rolePermissions = builder.rolePermissions;
     this.entityProperties = builder.entityProperties;
+    this.updateTime = builder.updateTime;
   }
 
   public abstract static class Builder<SELF extends Builder<SELF, T>, T> {
@@ -94,6 +98,7 @@ public class SearchEntityPO {
     protected List<SearchUserPermissionPO> userPermissions;
     protected List<SearchRolePermissionPO> rolePermissions;
     protected List<PropertyPO> entityProperties;
+    protected long updateTime;
 
     public SELF withEntityId(long entityId) {
       this.entityId = entityId;
@@ -162,6 +167,11 @@ public class SearchEntityPO {
 
     public SELF withEntityProperties(List<PropertyPO> entityProperties) {
       this.entityProperties = entityProperties;
+      return self();
+    }
+
+    public SELF withUpdateTime(long updateTime) {
+      this.updateTime = updateTime;
       return self();
     }
 

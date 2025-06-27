@@ -7,6 +7,8 @@ package com.datastrato.gravitino.search.service;
 import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY;
 import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH;
 import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
+import static com.datastrato.gravitino.search.service.SyncTask.MAX_DELETE_BATCH_SIZE;
+import static com.datastrato.gravitino.search.utils.FilterConditionUtils.createEntityNameQueryCondition;
 
 import com.datastrato.gravitino.search.config.SearchConfig;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
@@ -64,8 +66,6 @@ public class SearchService implements Closeable {
 
   private final Deque<SyncTask> syncTasks = new ArrayDeque<>();
   private final Object backoffLock = new Object();
-
-  private static volatile SearchService searchService;
 
   private static final Map<String, Class<? extends SearchStorage>> STORAGE_MAP =
       ImmutableMap.of(
@@ -217,33 +217,40 @@ public class SearchService implements Closeable {
     return executorService.submit(
         () -> {
           String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
-          List<SearchEntitiesDTO> entities =
-              storage.search(
-                  metalake,
-                  null,
-                  entityType == Entity.EntityType.METALAKE
-                      ? null
-                      : createEntityNameQueryCondition(nameIdentifier, cascade),
-                  ImmutableList.of("id"),
-                  Integer.MAX_VALUE,
-                  0);
+          List<SearchEntitiesDTO> entities;
 
-          if (cascade) {
-            for (SearchEntitiesDTO searchEntitiesDTO : entities) {
-              List<Long> entityIds = new ArrayList<>();
-              for (SearchEntityDTO entity : searchEntitiesDTO.getEntities()) {
-                entityIds.add(entity.getEntityId());
+          do {
+            // TODO we could only fetch entity_id instead of getting all fields.
+            entities =
+                storage.search(
+                    metalake,
+                    null,
+                    entityType == Entity.EntityType.METALAKE
+                        ? null
+                        : createEntityNameQueryCondition(nameIdentifier, cascade),
+                    null,
+                    MAX_DELETE_BATCH_SIZE,
+                    0);
+
+            if (cascade) {
+              for (SearchEntitiesDTO searchEntitiesDTO : entities) {
+                List<Long> entityIds = new ArrayList<>();
+                for (SearchEntityDTO entity : searchEntitiesDTO.getEntities()) {
+                  entityIds.add(entity.getEntityId());
+                }
+                storage.delete(metalake, entityIds, searchEntitiesDTO.getType());
               }
-              storage.delete(metalake, entityIds, searchEntitiesDTO.getType());
+            } else {
+              SearchEntitiesDTO dto = getSearchEntitiesDTOByType(entities, entityType);
+              List<Long> entityIds = new ArrayList<>();
+              if (dto != null) {
+                for (SearchEntityDTO entity : dto.getEntities()) {
+                  entityIds.add(entity.getEntityId());
+                }
+                storage.delete(metalake, entityIds, entityType);
+              }
             }
-          } else {
-            SearchEntitiesDTO dto = getSearchEntitiesDTOByType(entities, entityType);
-            List<Long> entityIds = new ArrayList<>();
-            for (SearchEntityDTO entity : dto.getEntities()) {
-              entityIds.add(entity.getEntityId());
-            }
-            storage.delete(metalake, entityIds, entityType);
-          }
+          } while (!entities.isEmpty());
         });
   }
 
@@ -345,26 +352,6 @@ public class SearchService implements Closeable {
       executorService.shutdownNow();
     } catch (Exception e) {
       LOG.error("Failed to close SearchService", e);
-    }
-  }
-
-  protected static Condition createEntityNameQueryCondition(
-      NameIdentifier nameIdentifier, boolean cascade) {
-    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
-    String fqName = nameIdentifier.toString().replace(metalake + ".", "");
-
-    Condition fullQualifiedNameCondition =
-        new Condition.TermCondition("full_qualified_name", fqName);
-
-    if (!cascade) {
-      // search entity with cascade false
-      return fullQualifiedNameCondition;
-    } else {
-      // search entity with cascade true
-      Condition prefixCondition =
-          new Condition.PrefixCondition("full_qualified_name", fqName + ".");
-      return new Condition.OrCondition(
-          ImmutableList.of(fullQualifiedNameCondition, prefixCondition));
     }
   }
 }

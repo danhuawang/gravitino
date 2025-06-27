@@ -52,9 +52,9 @@ import org.mockito.Mockito;
 
 public class MockedGravitinoService {
   private Map<String, BaseMetalake> metalakes = new HashMap<>();
-  private Map<String, BaseCatalog> catalogs = new HashMap<>();
-  private Map<String, EntityCombinedSchema> schemas = new HashMap<>();
-  private Map<String, EntityCombinedTable> tables = new HashMap<>();
+  public Map<String, BaseCatalog> catalogs = new HashMap<>();
+  public Map<String, EntityCombinedSchema> schemas = new HashMap<>();
+  public Map<String, EntityCombinedTable> tables = new HashMap<>();
 
   private Map<String, Tag> tags = new HashMap<>();
   private Map<String, Set<Tag>> objTags = new HashMap<>();

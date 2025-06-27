@@ -9,8 +9,14 @@ import com.datastrato.gravitino.search.parser.Condition.AndCondition;
 import com.datastrato.gravitino.search.parser.Condition.InCondition;
 import com.datastrato.gravitino.search.parser.Condition.NotCondition;
 import com.datastrato.gravitino.search.parser.Condition.OrCondition;
+import com.datastrato.gravitino.search.parser.Condition.RangeCondition;
+import com.datastrato.gravitino.search.parser.Condition.RangeType;
 import com.datastrato.gravitino.search.parser.Condition.TermCondition;
+import com.google.common.collect.ImmutableList;
 import java.util.Map;
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.utils.NameIdentifierUtil;
+import org.opensearch.client.json.JsonData;
 import org.opensearch.client.opensearch._types.FieldValue;
 import org.opensearch.client.opensearch._types.query_dsl.BoolQuery;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
@@ -33,6 +39,8 @@ public class FilterConditionUtils {
       return convertAnd((AndCondition) condition, nestedFields, keywordFields);
     } else if (condition instanceof OrCondition) {
       return convertOr((OrCondition) condition, nestedFields, keywordFields);
+    } else if (condition instanceof RangeCondition) {
+      return convertRange((RangeCondition) condition, nestedFields, keywordFields);
     }
 
     throw new IllegalArgumentException("Unsupported condition type: " + condition.getClass());
@@ -62,6 +70,37 @@ public class FilterConditionUtils {
             .term(t -> t.field(exactField).value(FieldValue.of(term.getValue())))
             .build();
     return wrapNestedIfNeeded(term.getField(), exactField, termQuery, nestedFieldMap);
+  }
+
+  private static Query convertRange(
+      RangeCondition range,
+      Map<String, String> nestedFieldMap,
+      Map<String, String> keywordFieldMap) {
+    String exactField = keywordFieldMap.getOrDefault(range.getField(), range.getField());
+
+    BoolQuery.Builder bool = new BoolQuery.Builder();
+
+    RangeType rangeType = range.getRangeType();
+    long value = Long.valueOf(range.getValue());
+    switch (rangeType) {
+      case GREATER:
+        bool.must(m -> m.range(r -> r.field(exactField).gt(JsonData.of(value))));
+        break;
+      case GRATER_EQUAL:
+        bool.must(m -> m.range(r -> r.field(exactField).gte(JsonData.of(value))));
+        break;
+      case LESS:
+        bool.must(m -> m.range(r -> r.field(exactField).lt(JsonData.of(value))));
+        break;
+      case LESS_EQUAL:
+        bool.must(m -> m.range(r -> r.field(exactField).lte(JsonData.of(value))));
+        break;
+      default:
+        throw new IllegalArgumentException("Unsupported range type: " + rangeType);
+    }
+
+    Query rangeQuery = new Query.Builder().bool(bool.build()).build();
+    return wrapNestedIfNeeded(range.getField(), exactField, rangeQuery, nestedFieldMap);
   }
 
   private static Query convertIn(
@@ -97,5 +136,36 @@ public class FilterConditionUtils {
     or.getConditions().forEach(cond -> bool.should(convert(cond, nestedFieldMap, keywordFieldMap)));
 
     return new Query.Builder().bool(bool.minimumShouldMatch("1").build()).build();
+  }
+
+  public static Condition createEntityNameQueryCondition(
+      NameIdentifier nameIdentifier, boolean cascade) {
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    String fqName = nameIdentifier.toString().replace(metalake + ".", "");
+
+    Condition fullQualifiedNameCondition =
+        new Condition.TermCondition("full_qualified_name", fqName);
+
+    if (!cascade) {
+      // search entity with cascade false
+      return fullQualifiedNameCondition;
+    } else {
+      // search entity with cascade true
+      Condition prefixCondition =
+          new Condition.PrefixCondition("full_qualified_name", fqName + ".");
+      return new Condition.OrCondition(
+          ImmutableList.of(fullQualifiedNameCondition, prefixCondition));
+    }
+  }
+
+  public static Condition createUpdateTimeCondition(long updateTime) {
+    return Condition.less("update_time", String.valueOf(updateTime));
+  }
+
+  public static Condition createRemovedEntityCondition(
+      NameIdentifier nameIdentifier, boolean cascade, long lastUpdateTime) {
+    Condition entityCondition = createEntityNameQueryCondition(nameIdentifier, cascade);
+    return new Condition.AndCondition(
+        ImmutableList.of(entityCondition, createUpdateTimeCondition(lastUpdateTime)));
   }
 }

@@ -5,6 +5,7 @@
 package com.datastrato.gravitino.search.parser;
 
 import java.util.List;
+import lombok.Getter;
 
 public interface Condition {
 
@@ -96,5 +97,41 @@ public interface Condition {
     public List<Condition> getConditions() {
       return conditions;
     }
+  }
+
+  enum RangeType {
+    GREATER,
+    GRATER_EQUAL,
+    LESS,
+    LESS_EQUAL,
+  }
+
+  @Getter
+  class RangeCondition implements Condition {
+    private final String field;
+    private final RangeType rangeType;
+    private final String value;
+
+    public RangeCondition(String field, String value, RangeType rangeType) {
+      this.field = field;
+      this.value = value;
+      this.rangeType = rangeType;
+    }
+  }
+
+  static RangeCondition greater(String field, String value) {
+    return new RangeCondition(field, value, RangeType.GREATER);
+  }
+
+  static RangeCondition greaterEqual(String field, String value) {
+    return new RangeCondition(field, value, RangeType.GRATER_EQUAL);
+  }
+
+  static RangeCondition less(String field, String value) {
+    return new RangeCondition(field, value, RangeType.LESS);
+  }
+
+  static RangeCondition lessEqual(String field, String value) {
+    return new RangeCondition(field, value, RangeType.LESS_EQUAL);
   }
 }

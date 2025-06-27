@@ -9,6 +9,7 @@ import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
 import com.datastrato.gravitino.search.parser.Condition;
+import com.datastrato.gravitino.search.parser.Condition.RangeType;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
 import com.google.common.annotations.VisibleForTesting;
@@ -191,6 +192,30 @@ public class InMemorySearchStorage implements SearchStorage {
                   .map(SearchEntityPO.SearchTagPO::getTagName)
                   .collect(Collectors.toSet());
           return tags.containsAll(values);
+        };
+      }
+    }
+
+    if (condition instanceof Condition.RangeCondition) {
+      Condition.RangeCondition rangeCondition = (Condition.RangeCondition) condition;
+      String field = rangeCondition.getField();
+      RangeType rangeType = rangeCondition.getRangeType();
+
+      if (field.equals("update_time")) {
+        long value = Long.valueOf(rangeCondition.getValue());
+        return entity -> {
+          switch (rangeType) {
+            case GRATER_EQUAL:
+              return entity.getUpdateTime() >= value;
+            case GREATER:
+              return entity.getUpdateTime() > value;
+            case LESS_EQUAL:
+              return entity.getUpdateTime() <= value;
+            case LESS:
+              return entity.getUpdateTime() < value;
+            default:
+              throw new IllegalArgumentException("Unsupported range type: " + rangeType);
+          }
         };
       }
     }

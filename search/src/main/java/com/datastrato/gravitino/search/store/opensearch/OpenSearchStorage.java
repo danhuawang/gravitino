@@ -220,6 +220,20 @@ public class OpenSearchStorage implements SearchStorage {
         saveToIndex(metalakeName, entityType, entityList, flush);
       }
     }
+
+    // flush the indices after all entities are saved
+    if (flush) {
+      for (String metalakeName : metalakeToEntitiesMap.keySet()) {
+        for (EntityType entityType : ENTITY_TYPE_TO_INDEX_SUFFIX.keySet()) {
+          String indicesName = createIndicesIfNotExists(entityType, metalakeName);
+          try {
+            client.indices().refresh(r -> r.index(indicesName));
+          } catch (Exception e) {
+            LOG.error("Failed to refresh index {}", indicesName, e);
+          }
+        }
+      }
+    }
   }
 
   private void saveToIndex(
@@ -335,7 +349,7 @@ public class OpenSearchStorage implements SearchStorage {
 
   @Override
   public void write(List<SearchEntityPO> entities) {
-    saveToStorage(entities, false);
+    saveToStorage(entities, true);
   }
 
   public void write(List<SearchEntityPO> entities, boolean flush) {
