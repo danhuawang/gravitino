@@ -79,6 +79,10 @@ paths:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./preview.yaml#/paths/~1web~1preview~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables~1%7Btable%7D"
 
+  /web/metrics/metalakes/{metalake}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./metrics.yaml#/paths/~1web~1metrics~1metalakes~1%7Bmetalake%7D"
+
 components:
   securitySchemes:
 
