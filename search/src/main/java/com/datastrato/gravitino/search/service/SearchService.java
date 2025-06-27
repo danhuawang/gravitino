@@ -120,7 +120,7 @@ public class SearchService implements Closeable {
     }
   }
 
-  public int getMaxSyncMetadataThreadNnm() {
+  public int getMaxSyncMetadataThreadNum() {
     return maxSyncMetadataThreadNum;
   }
 
@@ -216,23 +216,63 @@ public class SearchService implements Closeable {
       NameIdentifier nameIdentifier, Entity.EntityType entityType, boolean cascade) {
     return executorService.submit(
         () -> {
-          String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
-          List<SearchEntitiesDTO> entities;
+          try {
+            String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+            List<SearchEntitiesDTO> entities;
 
-          do {
+            do {
+              // TODO we could only fetch entity_id instead of getting all fields.
+              entities =
+                  storage.search(
+                      metalake,
+                      null,
+                      entityType == Entity.EntityType.METALAKE
+                          ? null
+                          : createEntityNameQueryCondition(nameIdentifier, cascade),
+                      null,
+                      MAX_DELETE_BATCH_SIZE,
+                      0);
+
+              if (cascade) {
+                for (SearchEntitiesDTO searchEntitiesDTO : entities) {
+                  List<Long> entityIds = new ArrayList<>();
+                  for (SearchEntityDTO entity : searchEntitiesDTO.getEntities()) {
+                    entityIds.add(entity.getEntityId());
+                  }
+                  storage.delete(metalake, entityIds, searchEntitiesDTO.getType());
+                }
+              } else {
+                SearchEntitiesDTO dto = getSearchEntitiesDTOByType(entities, entityType);
+                List<Long> entityIds = new ArrayList<>();
+                if (dto != null) {
+                  for (SearchEntityDTO entity : dto.getEntities()) {
+                    entityIds.add(entity.getEntityId());
+                  }
+                  storage.delete(metalake, entityIds, entityType);
+                }
+              }
+            } while (!entities.isEmpty());
+          } catch (Exception e) {
+            LOG.error("Failed to remove metadata for {}: {}", nameIdentifier, e.getMessage(), e);
+          }
+        });
+  }
+
+  public Future<?> removeMetadataByTag(String metalake, String tagName) {
+    return executorService.submit(
+        () -> {
+          try {
             // TODO we could only fetch entity_id instead of getting all fields.
-            entities =
-                storage.search(
-                    metalake,
-                    null,
-                    entityType == Entity.EntityType.METALAKE
-                        ? null
-                        : createEntityNameQueryCondition(nameIdentifier, cascade),
-                    null,
-                    MAX_DELETE_BATCH_SIZE,
-                    0);
-
-            if (cascade) {
+            List<SearchEntitiesDTO> entities;
+            do {
+              entities =
+                  storage.search(
+                      metalake,
+                      null,
+                      new Condition.InCondition("tag_name", ImmutableList.of(tagName)),
+                      ImmutableList.of(),
+                      MAX_DELETE_BATCH_SIZE,
+                      0);
               for (SearchEntitiesDTO searchEntitiesDTO : entities) {
                 List<Long> entityIds = new ArrayList<>();
                 for (SearchEntityDTO entity : searchEntitiesDTO.getEntities()) {
@@ -240,17 +280,10 @@ public class SearchService implements Closeable {
                 }
                 storage.delete(metalake, entityIds, searchEntitiesDTO.getType());
               }
-            } else {
-              SearchEntitiesDTO dto = getSearchEntitiesDTOByType(entities, entityType);
-              List<Long> entityIds = new ArrayList<>();
-              if (dto != null) {
-                for (SearchEntityDTO entity : dto.getEntities()) {
-                  entityIds.add(entity.getEntityId());
-                }
-                storage.delete(metalake, entityIds, entityType);
-              }
-            }
-          } while (!entities.isEmpty());
+            } while (!entities.isEmpty());
+          } catch (Exception e) {
+            LOG.error("Failed to remove metadata by tag {}: {}", tagName, e.getMessage(), e);
+          }
         });
   }
 

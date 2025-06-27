@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino.search.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -13,6 +14,7 @@ import org.apache.gravitino.Entity.EntityType;
 
 @Getter
 @AllArgsConstructor
+@JsonDeserialize(builder = SearchEntitiesDTO.Builder.class)
 public class SearchEntitiesDTO {
 
   private final int totalSize;

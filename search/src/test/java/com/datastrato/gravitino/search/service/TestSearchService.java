@@ -38,9 +38,13 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.mockito.Mockito;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TestSearchService {
+  private static final Logger LOG = LoggerFactory.getLogger(TestSearchService.class);
+
   private MockedGravitinoService gravitinoService;
   private SearchService searchService;
   private InMemorySearchStorage inMemorySearchStorage;

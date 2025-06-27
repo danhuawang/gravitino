@@ -19,6 +19,9 @@ includeBuild("gravitino-oss") {
     substitute(module("org.apache.gravitino:client-java-runtime"))
       .using(project(":clients:client-java-runtime"))
 
+    substitute(module("org.apache.gravitino:client-java"))
+      .using(project(":clients:client-java"))
+
     substitute(module("org.apache.gravitino:common"))
       .using(project(":common"))
 
@@ -52,3 +55,4 @@ include("docs")
 include("authorization-jdbc-enterprise")
 include("search")
 include("lineage-extension")
+include("test:search-integration-test", "test:test-common")

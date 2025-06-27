@@ -212,7 +212,11 @@ tasks {
   val compileOssDistributionWithoutTest by registering(Exec::class) {
     group = "datastrato gravitino distribution"
 
-    dependsOn(subprojects.map { ":${it.name}:build" })
+    dependsOn(
+      subprojects
+        .filter { !it.path.startsWith(":test:") }
+        .map { "${it.path}:build" }
+    )
     workingDir = submoduleDir.asFile
     commandLine("./gradlew", "compileDistribution", "-x", "test")
   }

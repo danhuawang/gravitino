@@ -32,7 +32,7 @@ public class TagEventHandler implements EventHandler {
 
     } else if (event instanceof DeleteTagEvent) {
       String metalake = event.identifier().namespace().level(0);
-      searchService.synchronizeEntityDataByTag(metalake, event.identifier().name());
+      searchService.removeMetadataByTag(metalake, event.identifier().name());
 
     } else if (event instanceof AlterTagEvent) {
       AlterTagEvent alterTag = (AlterTagEvent) event;

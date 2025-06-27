@@ -1,0 +1,87 @@
+name: Search Integration Test
+
+# Controls when the workflow will run
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    types: [labeled]
+    branches: [ "main", "branch-*" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Integration test for AMD64 architecture
+  test-amd64-arch:
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [ 17 ]
+        test-mode: [ deploy ]
+    env:
+      PLATFORM: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Check required command
+        run: |
+          gravitino-oss/dev/ci/check_commands.sh
+
+      - name: Package Gravitino
+        if : ${{ matrix.test-mode == 'deploy' }}
+        run: |
+           ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
+
+      - name: Free up disk space
+        run: |
+          gravitino-oss/dev/ci/util_free_space.sh
+
+      - name: Run Search Integration Test
+        id: integrationTest
+        run: >
+          ./gradlew :test:search-integration-test:test  -PskipTests -PtestMode=deploy -PjdkVersion=17 -PskipDockerTests=false
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v4
+        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
+        with:
+          name: integrate-test-reports-${{ matrix.java-version }}-${{ matrix.test-mode }}-${{ matrix.backend }}
+          path: |
+            gravitino-oss/build/reports
+            gravitino-oss/iceberg/iceberg-rest-server/build/*.log
+            gravitino-oss/integration-test/build/*.log
+            gravitino-oss/integration-test/build/*.tar
+            gravitino-oss/integration-test/build/trino-ci-container-log/hive/*.*
+            gravitino-oss/integration-test/build/trino-ci-container-log/hdfs/*.*
+            gravitino-oss/distribution/package/logs/*.out
+            gravitino-oss/distribution/package/logs/*.log
+            gravitino-oss/catalogs/**/*.log
+            gravitino-oss/catalogs/**/*.tar
+            gravitino-oss/distribution/**/*.log
+            test/search-integration-test/build/reports
+            distribution/package/logs/*.out
+            distribution/package/logs/*.log
+

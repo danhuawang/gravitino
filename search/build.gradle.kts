@@ -37,7 +37,9 @@ dependencies {
   annotationProcessor(libs.lombok)
 
   testImplementation(project(":core-extension", "testArtifacts"))
+  testImplementation(project(":test:test-common"))
 
+  testImplementation(libs.awaitility)
   testImplementation(libs.commons.lang3)
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")

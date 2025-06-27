@@ -9,6 +9,7 @@ import com.datastrato.gravitino.search.parser.Condition.AndCondition;
 import com.datastrato.gravitino.search.parser.Condition.InCondition;
 import com.datastrato.gravitino.search.parser.Condition.NotCondition;
 import com.datastrato.gravitino.search.parser.Condition.OrCondition;
+import com.datastrato.gravitino.search.parser.Condition.PrefixCondition;
 import com.datastrato.gravitino.search.parser.Condition.RangeCondition;
 import com.datastrato.gravitino.search.parser.Condition.RangeType;
 import com.datastrato.gravitino.search.parser.Condition.TermCondition;
@@ -19,6 +20,7 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.opensearch.client.json.JsonData;
 import org.opensearch.client.opensearch._types.FieldValue;
 import org.opensearch.client.opensearch._types.query_dsl.BoolQuery;
+import org.opensearch.client.opensearch._types.query_dsl.PrefixQuery;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
 
 public class FilterConditionUtils {
@@ -39,6 +41,8 @@ public class FilterConditionUtils {
       return convertAnd((AndCondition) condition, nestedFields, keywordFields);
     } else if (condition instanceof OrCondition) {
       return convertOr((OrCondition) condition, nestedFields, keywordFields);
+    } else if (condition instanceof PrefixCondition) {
+      return convertPrefix((PrefixCondition) condition, nestedFields, keywordFields);
     } else if (condition instanceof RangeCondition) {
       return convertRange((RangeCondition) condition, nestedFields, keywordFields);
     }
@@ -136,6 +140,20 @@ public class FilterConditionUtils {
     or.getConditions().forEach(cond -> bool.should(convert(cond, nestedFieldMap, keywordFieldMap)));
 
     return new Query.Builder().bool(bool.minimumShouldMatch("1").build()).build();
+  }
+
+  private static Query convertPrefix(
+      PrefixCondition prefixCondition,
+      Map<String, String> nestedFieldMap,
+      Map<String, String> keywordFieldMap) {
+    String exactField =
+        keywordFieldMap.getOrDefault(prefixCondition.getField(), prefixCondition.getField());
+    PrefixQuery.Builder prefix = new PrefixQuery.Builder();
+    prefix
+        .field(keywordFieldMap.getOrDefault(prefixCondition.getField(), prefixCondition.getField()))
+        .value(prefixCondition.getValue());
+    return wrapNestedIfNeeded(
+        prefixCondition.getField(), exactField, prefix.build().toQuery(), nestedFieldMap);
   }
 
   public static Condition createEntityNameQueryCondition(

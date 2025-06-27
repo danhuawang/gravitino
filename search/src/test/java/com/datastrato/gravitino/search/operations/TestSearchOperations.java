@@ -8,7 +8,7 @@ import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.apache.gravitino.MetadataObject.Type.METALAKE;
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -103,7 +103,9 @@ public class TestSearchOperations extends JerseyTest {
     searchService = service;
 
     SearchService spyService = Mockito.spy(service);
-    doReturn(new SyncTask("test", MetadataObjects.parse("test", METALAKE), true, spyService))
+    doAnswer(
+            invocation ->
+                new SyncTask("test", MetadataObjects.parse("test", METALAKE), true, spyService))
         .when(spyService)
         .synchronizeMetadata(Mockito.anyString(), Mockito.any(), Mockito.anyBoolean());
 

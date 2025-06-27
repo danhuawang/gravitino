@@ -2,7 +2,7 @@
  * Copyright 2024 Datastrato Pvt Ltd.
  * This software is licensed under the Apache License version 2.
  */
-package com.datastrato.gravitino.search.store.opensearch;
+package com.datastrato.gravitino.test;
 
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -27,10 +27,10 @@ public class OpenSearchContainer extends GenericContainer<OpenSearchContainer> {
   public static final String DEFAULT_IMAGE = "opensearchproject/opensearch:2.17.1";
   public static final int PORT = 9200;
 
-  protected static final String DEFAULT_USERNAME = "admin";
-  protected static final String DEFAULT_PASSWORD = "axzin1S3?@A";
+  public static final String DEFAULT_USERNAME = "admin";
+  public static final String DEFAULT_PASSWORD = "axzin1S3?@A";
 
-  protected OpenSearchContainer(String hostName, Map<String, String> envVars) {
+  public OpenSearchContainer(String hostName, Map<String, String> envVars) {
     super(
         new ImageFromDockerfile()
             .withDockerfileFromBuilder(

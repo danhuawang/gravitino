@@ -42,8 +42,8 @@ public class SearchModelEntityDTO extends SearchEntityDTO {
       return this;
     }
 
-    public SearchModelEntityDTOBuilder withCurrentVersion(int currentVersion) {
-      this.latestVersion = currentVersion;
+    public SearchModelEntityDTOBuilder withLatestVersion(int latestVersion) {
+      this.latestVersion = latestVersion;
       return this;
     }
 
