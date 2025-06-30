@@ -28,6 +28,7 @@ dependencies {
 
   compileOnly(libs.lombok)
 
+  testImplementation("org.apache.gravitino:server-common")
   testImplementation(libs.commons.lang3)
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")
