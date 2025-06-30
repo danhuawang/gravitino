@@ -161,7 +161,7 @@ public class InMemorySearchStorage implements SearchStorage {
       Condition.TermCondition termCondition = (Condition.TermCondition) condition;
       String field = termCondition.getField();
       String value = termCondition.getValue();
-      if (field.equals("full_qualified_name")) {
+      if (field.startsWith("full_qualified_name")) {
         return entity -> value.equals(entity.getFullQualifiedName());
       }
       if (field.equals("entity_type")) {
@@ -176,7 +176,7 @@ public class InMemorySearchStorage implements SearchStorage {
       Condition.PrefixCondition prefixCondition = (Condition.PrefixCondition) condition;
       String field = prefixCondition.getField();
       String value = prefixCondition.getValue();
-      if (field.equals("full_qualified_name")) {
+      if (field.startsWith("full_qualified_name")) {
         return entity -> entity.getFullQualifiedName().startsWith(value);
       }
     }

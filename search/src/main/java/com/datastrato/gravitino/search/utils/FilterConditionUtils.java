@@ -162,7 +162,7 @@ public class FilterConditionUtils {
     String fqName = nameIdentifier.toString().replace(metalake + ".", "");
 
     Condition fullQualifiedNameCondition =
-        new Condition.TermCondition("full_qualified_name", fqName);
+        new Condition.TermCondition("full_qualified_name.keyword", fqName);
 
     if (!cascade) {
       // search entity with cascade false
@@ -170,7 +170,7 @@ public class FilterConditionUtils {
     } else {
       // search entity with cascade true
       Condition prefixCondition =
-          new Condition.PrefixCondition("full_qualified_name", fqName + ".");
+          new Condition.PrefixCondition("full_qualified_name.keyword", fqName + ".");
       return new Condition.OrCondition(
           ImmutableList.of(fullQualifiedNameCondition, prefixCondition));
     }
