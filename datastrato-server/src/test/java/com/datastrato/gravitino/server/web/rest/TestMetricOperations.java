@@ -18,8 +18,8 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.dto.metrics.MetricDTO;
 import com.datastrato.gravitino.dto.responses.MetricsResponse;
-import com.datastrato.gravitino.metrics.MetricDataService;
 import com.datastrato.gravitino.server.web.metric.MetricsCollector;
+import com.datastrato.gravitino.storage.relational.service.MetricDataService;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import javax.servlet.http.HttpServletRequest;

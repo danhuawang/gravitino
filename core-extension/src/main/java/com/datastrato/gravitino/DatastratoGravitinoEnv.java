@@ -29,9 +29,10 @@ import com.datastrato.gravitino.listener.DatastratoModelEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
-import com.datastrato.gravitino.metrics.MetricDataService;
 import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
+import com.datastrato.gravitino.storage.relational.service.MetricDataService;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Configs;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
@@ -132,7 +133,8 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoModelEventDispatcher(eventBus(), datastratoModelNormalizeDispatcher);
 
     // initialize metric data service
-    this.metricDataService = new MetricDataService(config);
+    boolean enableAuthorization = config.get(Configs.ENABLE_AUTHORIZATION);
+    this.metricDataService = new MetricDataService(enableAuthorization);
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }

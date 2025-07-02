@@ -12,6 +12,7 @@ import java.util.List;
 import org.apache.gravitino.client.ObjectMapperProvider;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.net.URIBuilder;
@@ -38,7 +39,7 @@ public class SearchClient {
             .build();
 
     HttpGet get = new HttpGet(uri);
-    try (var response = client.execute(get)) {
+    try (CloseableHttpResponse response = client.execute(get)) {
       String json = EntityUtils.toString(response.getEntity());
       SearchQueryResponse responseObj = mapper.readValue(json, SearchQueryResponse.class);
       return responseObj.getEntities();

@@ -6,8 +6,8 @@ package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.dto.metrics.MetricDTO;
 import com.datastrato.gravitino.dto.responses.MetricsResponse;
-import com.datastrato.gravitino.metrics.MetricDataService;
 import com.datastrato.gravitino.server.web.metric.MetricsCollector;
+import com.datastrato.gravitino.storage.relational.service.MetricDataService;
 import com.google.common.collect.Maps;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -23,6 +23,7 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.apache.logging.log4j.util.Strings;
@@ -79,8 +80,11 @@ public class MetricOperations {
       return Utils.ok(
           new MetricsResponse(Maps.uniqueIndex(Arrays.asList(metricValues), MetricDTO::name)));
     } catch (NoSuchMetalakeException e) {
-      LOG.error("Metalake not found: {}", metalakeName, e);
+      LOG.warn("Metalake not found: {}", metalakeName, e);
       return Utils.notFound("Metalake not found: " + metalakeName, e);
+    } catch (NoSuchUserException e) {
+      LOG.warn("User not found: {} for metalake: {}", userName, metalakeName, e);
+      return Utils.notFound("User not found: " + userName + " for metalake: " + metalakeName, e);
     }
   }
 }

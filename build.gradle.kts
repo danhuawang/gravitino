@@ -415,6 +415,9 @@ tasks {
       if (log4jFile.exists()) {
         updateFileForLog(log4jFile)
       }
+
+      // append scripts
+      appendScriptsToPackage(outputDir)
     }
   }
 

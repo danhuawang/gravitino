@@ -6,8 +6,8 @@ package org.apache.gravitino.server;
 
 import com.datastrato.gravitino.DatastratoGravitinoEnv;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
-import com.datastrato.gravitino.metrics.MetricDataService;
 import com.datastrato.gravitino.server.web.metric.MetricsCollector;
+import com.datastrato.gravitino.storage.relational.service.MetricDataService;
 import org.apache.gravitino.GravitinoEnv;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.slf4j.Logger;

@@ -9,27 +9,11 @@
 // server-common.
 package com.datastrato.gravitino.server.web.metric;
 
-import static com.datastrato.gravitino.metrics.MetricDataService.DUMMY_TIMESTAMP;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.ASSET_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.ASSET_WITHOUT_TAG_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.ASSET_WITH_CONFIDENTIAL_TAG_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.ASSET_WITH_OWNER_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.ASSET_WITH_PII_TAG_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.ASSET_WITH_PRIVATE_TAG_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.ASSET_WITH_PUBLIC_TAG_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.ASSET_WITH_TAG_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.CATALOG_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.FILESET_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.MODEL_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.SCHEMA_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.TABLE_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.TAG_COUNT;
-import static com.datastrato.gravitino.metrics.MetricDataService.Metric.TOPIC_COUNT;
 import static com.datastrato.gravitino.server.web.metric.MetricsCalculator.EMPTY_STRING_ARRAY;
 
-import com.datastrato.gravitino.dto.metrics.MetricDTO;
-import com.datastrato.gravitino.metrics.MetricDataService;
 import com.datastrato.gravitino.metrics.MetricsConfig;
+import com.datastrato.gravitino.storage.relational.MetricPO;
+import com.datastrato.gravitino.storage.relational.service.MetricDataService;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.sun.security.auth.UserPrincipal;
 import java.io.Closeable;
@@ -64,7 +48,6 @@ import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
-import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.server.ServerConfig;
 import org.apache.gravitino.tag.TagDispatcher;
@@ -230,12 +213,9 @@ public class MetricsCollector implements Closeable {
     // ensure the metalake exists before proceeding
     metalakeDispatcher.loadMetalake(metalakeIdent);
 
-    if (enableAuthorization && !userExists(metalakeName, userName)) {
-      LOG.warn(
-          "skipping metrics refresh for user: {} in metalake: {} because user does not exist",
-          userName,
-          metalakeName);
-      return;
+    if (enableAuthorization) {
+      // ensure the user exists in the metalake
+      accessControlDispatcher.getUser(metalakeName, userName);
     }
 
     if (!enableAuthorization) {
@@ -353,65 +333,76 @@ public class MetricsCollector implements Closeable {
   private void calculateMetricsForUser(String metalake, String userName) {
     UserPrincipal principal = new UserPrincipal(userName);
     Catalog[] catalogs = getCatalogInfos(principal, metalake);
-    List<MetricDTO> metrics = new ArrayList<>();
+    List<MetricPO> metrics = new ArrayList<>();
 
     long catalogCount = catalogs.length;
-    metrics.add(createMetricDTO(CATALOG_COUNT, catalogCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.CATALOG_COUNT, catalogCount));
 
     MetricsCalculator.AssetCounts assetCounts =
         metricsCalculator.calculateAssetCountsByCatalogs(principal, metalake, catalogs);
     long assetCount = assetCounts.getTotalAssetCount(catalogCount);
-    metrics.add(createMetricDTO(ASSET_COUNT, assetCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.ASSET_COUNT, assetCount));
 
     long schemaCount = assetCounts.getSchemaCount();
-    metrics.add(createMetricDTO(SCHEMA_COUNT, schemaCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.SCHEMA_COUNT, schemaCount));
 
     long tableCount = assetCounts.getTableCount();
-    metrics.add(createMetricDTO(TABLE_COUNT, tableCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.TABLE_COUNT, tableCount));
 
     long filesetCount = assetCounts.getFilesetCount();
-    metrics.add(createMetricDTO(FILESET_COUNT, filesetCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.FILESET_COUNT, filesetCount));
 
     long topicCount = assetCounts.getTopicCount();
-    metrics.add(createMetricDTO(TOPIC_COUNT, topicCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.TOPIC_COUNT, topicCount));
 
     long modelCount = assetCounts.getModelCount();
-    metrics.add(createMetricDTO(MODEL_COUNT, modelCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.MODEL_COUNT, modelCount));
 
     String[] tagNames = getTagNames(principal, metalake);
     long tagCount = tagNames.length;
-    metrics.add(createMetricDTO(TAG_COUNT, tagCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.TAG_COUNT, tagCount));
 
     long taggedAssetCount =
         metricsCalculator.getTaggedAssetCount(metalake, principal, catalogs, tagNames);
-    metrics.add(createMetricDTO(ASSET_WITH_TAG_COUNT, taggedAssetCount));
-    metrics.add(createMetricDTO(ASSET_WITHOUT_TAG_COUNT, assetCount - taggedAssetCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.ASSET_WITH_TAG_COUNT, taggedAssetCount));
+    metrics.add(
+        createMetricPO(
+            MetricDataService.Metric.ASSET_WITHOUT_TAG_COUNT, assetCount - taggedAssetCount));
 
     long taggedPiiAssetCount =
         metricsCalculator.getTaggedAssetCount(
             metalake, principal, catalogs, piiTags.toArray(EMPTY_STRING_ARRAY));
-    metrics.add(createMetricDTO(ASSET_WITH_PII_TAG_COUNT, taggedPiiAssetCount));
+    metrics.add(
+        createMetricPO(MetricDataService.Metric.ASSET_WITH_PII_TAG_COUNT, taggedPiiAssetCount));
 
     long taggedPublicAssetCount =
         metricsCalculator.getTaggedAssetCount(
             metalake, principal, catalogs, publicTags.toArray(EMPTY_STRING_ARRAY));
-    metrics.add(createMetricDTO(ASSET_WITH_PUBLIC_TAG_COUNT, taggedPublicAssetCount));
+    metrics.add(
+        createMetricPO(
+            MetricDataService.Metric.ASSET_WITH_PUBLIC_TAG_COUNT, taggedPublicAssetCount));
 
     long taggedConfidentialAssetCount =
         metricsCalculator.getTaggedAssetCount(
             metalake, principal, catalogs, confidentialTags.toArray(EMPTY_STRING_ARRAY));
-    metrics.add(createMetricDTO(ASSET_WITH_CONFIDENTIAL_TAG_COUNT, taggedConfidentialAssetCount));
+    metrics.add(
+        createMetricPO(
+            MetricDataService.Metric.ASSET_WITH_CONFIDENTIAL_TAG_COUNT,
+            taggedConfidentialAssetCount));
 
     long taggedPrivateAssetCount =
         metricsCalculator.getTaggedAssetCount(
             metalake, principal, catalogs, privateTags.toArray(EMPTY_STRING_ARRAY));
-    metrics.add(createMetricDTO(ASSET_WITH_PRIVATE_TAG_COUNT, taggedPrivateAssetCount));
+    metrics.add(
+        createMetricPO(
+            MetricDataService.Metric.ASSET_WITH_PRIVATE_TAG_COUNT, taggedPrivateAssetCount));
 
     long assetWithOwnerCount =
         (enableAuthorization && serviceAdmins.contains(userName))
             ? metricDataService.getAssetWithOwnerCount(metalake)
             : 0;
-    metrics.add(createMetricDTO(ASSET_WITH_OWNER_COUNT, assetWithOwnerCount));
+    metrics.add(
+        createMetricPO(MetricDataService.Metric.ASSET_WITH_OWNER_COUNT, assetWithOwnerCount));
 
     persistMetrics(metalake, userName, metrics);
   }
@@ -441,38 +432,15 @@ public class MetricsCollector implements Closeable {
     }
   }
 
-  private boolean userExists(String metalakeName, String userName) {
-    if (accessControlDispatcher == null) {
-      LOG.warn("AccessControlDispatcher is not initialized");
-      return false;
-    }
-
-    try {
-      accessControlDispatcher.getUser(metalakeName, userName);
-    } catch (NoSuchUserException e) {
-      LOG.warn("User: {} does not exist in metalake: {}", userName, metalakeName);
-      return false;
-    } catch (Exception e) {
-      LOG.error("Failed to check if user: {} exists in metalake: {}", userName, metalakeName, e);
-      return false;
-    }
-
-    return true;
-  }
-
-  private void persistMetrics(String metalakeName, String user, List<MetricDTO> metrics) {
+  private void persistMetrics(String metalakeName, String user, List<MetricPO> metrics) {
     if (metrics.isEmpty()) {
       LOG.warn("No metrics to persist for metalake: {} and user: {}", metalakeName, user);
       return;
     }
-    metricDataService.insertMetrics(metalakeName, user, metrics.toArray(new MetricDTO[0]));
+    metricDataService.insertMetrics(metalakeName, user, metrics);
   }
 
-  private MetricDTO createMetricDTO(MetricDataService.Metric metric, double value) {
-    return MetricDTO.builder()
-        .withName(metric.getName())
-        .withValues(new double[] {value})
-        .withTimestamps(new long[] {DUMMY_TIMESTAMP})
-        .build();
+  private MetricPO createMetricPO(MetricDataService.Metric metric, double value) {
+    return MetricPO.builder().withMetricName(metric.getName()).withMetricValue(value).build();
   }
 }

@@ -10,14 +10,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.datastrato.gravitino.dto.metrics.MetricDTO;
-import com.datastrato.gravitino.metrics.MetricDataService;
 import com.datastrato.gravitino.metrics.MetricsConfig;
+import com.datastrato.gravitino.storage.relational.MetricPO;
+import com.datastrato.gravitino.storage.relational.service.MetricDataService;
+import com.google.common.collect.Maps;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.MetadataObject;
@@ -129,49 +129,67 @@ class TestMetricsCollector {
 
     collector.refreshMetricsForUser(metalakeName, "user1");
 
-    ArgumentCaptor<MetricDTO[]> metricsCaptor = ArgumentCaptor.forClass(MetricDTO[].class);
+    ArgumentCaptor<List<MetricPO>> metricsCaptor = ArgumentCaptor.forClass(List.class);
     // Since enableAuthorization is false, ANONYMOUS_USER will be used
     verify(metricDataService)
         .insertMetrics(eq(metalakeName), eq(AuthConstants.ANONYMOUS_USER), metricsCaptor.capture());
 
-    MetricDTO[] capturedMetrics = metricsCaptor.getValue();
-    Map<String, MetricDTO> actualMetrics =
-        Arrays.stream(capturedMetrics).collect(Collectors.toMap(MetricDTO::name, m -> m));
+    List<MetricPO> capturedMetrics = metricsCaptor.getValue();
+    Map<String, MetricPO> actualMetrics =
+        Maps.uniqueIndex(capturedMetrics, MetricPO::getMetricName);
 
     assertEquals(MetricDataService.Metric.values().length, actualMetrics.size());
-    assertEquals(12, actualMetrics.get(MetricDataService.Metric.ASSET_COUNT.getName()).values()[0]);
-    assertEquals(1, actualMetrics.get(MetricDataService.Metric.TAG_COUNT.getName()).values()[0]);
     assertEquals(
-        4, actualMetrics.get(MetricDataService.Metric.CATALOG_COUNT.getName()).values()[0]);
-    assertEquals(4, actualMetrics.get(MetricDataService.Metric.SCHEMA_COUNT.getName()).values()[0]);
-    assertEquals(1, actualMetrics.get(MetricDataService.Metric.TABLE_COUNT.getName()).values()[0]);
+        12, actualMetrics.get(MetricDataService.Metric.ASSET_COUNT.getName()).getMetricValue());
     assertEquals(
-        1, actualMetrics.get(MetricDataService.Metric.FILESET_COUNT.getName()).values()[0]);
-    assertEquals(1, actualMetrics.get(MetricDataService.Metric.TOPIC_COUNT.getName()).values()[0]);
-    assertEquals(1, actualMetrics.get(MetricDataService.Metric.MODEL_COUNT.getName()).values()[0]);
+        1, actualMetrics.get(MetricDataService.Metric.TAG_COUNT.getName()).getMetricValue());
     assertEquals(
-        3, actualMetrics.get(MetricDataService.Metric.ASSET_WITH_TAG_COUNT.getName()).values()[0]);
+        4, actualMetrics.get(MetricDataService.Metric.CATALOG_COUNT.getName()).getMetricValue());
+    assertEquals(
+        4, actualMetrics.get(MetricDataService.Metric.SCHEMA_COUNT.getName()).getMetricValue());
+    assertEquals(
+        1, actualMetrics.get(MetricDataService.Metric.TABLE_COUNT.getName()).getMetricValue());
+    assertEquals(
+        1, actualMetrics.get(MetricDataService.Metric.FILESET_COUNT.getName()).getMetricValue());
+    assertEquals(
+        1, actualMetrics.get(MetricDataService.Metric.TOPIC_COUNT.getName()).getMetricValue());
+    assertEquals(
+        1, actualMetrics.get(MetricDataService.Metric.MODEL_COUNT.getName()).getMetricValue());
+    assertEquals(
+        3,
+        actualMetrics
+            .get(MetricDataService.Metric.ASSET_WITH_TAG_COUNT.getName())
+            .getMetricValue());
     assertEquals(
         9,
-        actualMetrics.get(MetricDataService.Metric.ASSET_WITHOUT_TAG_COUNT.getName()).values()[0]);
+        actualMetrics
+            .get(MetricDataService.Metric.ASSET_WITHOUT_TAG_COUNT.getName())
+            .getMetricValue());
     assertEquals(
         0,
-        actualMetrics.get(MetricDataService.Metric.ASSET_WITH_PII_TAG_COUNT.getName()).values()[0]);
+        actualMetrics
+            .get(MetricDataService.Metric.ASSET_WITH_PII_TAG_COUNT.getName())
+            .getMetricValue());
     assertEquals(
         0,
-        actualMetrics.get(MetricDataService.Metric.ASSET_WITH_PUBLIC_TAG_COUNT.getName())
-            .values()[0]);
+        actualMetrics
+            .get(MetricDataService.Metric.ASSET_WITH_PUBLIC_TAG_COUNT.getName())
+            .getMetricValue());
     assertEquals(
         0,
-        actualMetrics.get(MetricDataService.Metric.ASSET_WITH_CONFIDENTIAL_TAG_COUNT.getName())
-            .values()[0]);
+        actualMetrics
+            .get(MetricDataService.Metric.ASSET_WITH_CONFIDENTIAL_TAG_COUNT.getName())
+            .getMetricValue());
     assertEquals(
         0,
-        actualMetrics.get(MetricDataService.Metric.ASSET_WITH_PRIVATE_TAG_COUNT.getName())
-            .values()[0]);
+        actualMetrics
+            .get(MetricDataService.Metric.ASSET_WITH_PRIVATE_TAG_COUNT.getName())
+            .getMetricValue());
     assertEquals(
         0,
-        actualMetrics.get(MetricDataService.Metric.ASSET_WITH_OWNER_COUNT.getName()).values()[0]);
+        actualMetrics
+            .get(MetricDataService.Metric.ASSET_WITH_OWNER_COUNT.getName())
+            .getMetricValue());
   }
 
   private void mockMetalakeDispatcher() {
