@@ -57,6 +57,7 @@ import org.opensearch.client.json.jackson.JacksonJsonpMapper;
 import org.opensearch.client.opensearch.OpenSearchClient;
 import org.opensearch.client.opensearch._types.ErrorCause;
 import org.opensearch.client.opensearch._types.FieldValue;
+import org.opensearch.client.opensearch._types.OpenSearchException;
 import org.opensearch.client.opensearch._types.Refresh;
 import org.opensearch.client.opensearch._types.query_dsl.BoolQuery;
 import org.opensearch.client.opensearch._types.query_dsl.MultiMatchQuery;
@@ -70,7 +71,8 @@ import org.opensearch.client.opensearch.core.SearchResponse;
 import org.opensearch.client.opensearch.core.bulk.BulkResponseItem;
 import org.opensearch.client.opensearch.core.search.SourceConfig;
 import org.opensearch.client.opensearch.core.search.TrackHits;
-import org.opensearch.client.transport.endpoints.BooleanResponse;
+import org.opensearch.client.opensearch.indices.GetAliasResponse;
+import org.opensearch.client.opensearch.indices.PutAliasResponse;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
 import org.opensearch.client.util.ObjectBuilder;
 import org.slf4j.Logger;
@@ -187,6 +189,7 @@ public class OpenSearchStorage implements SearchStorage {
   }
 
   private synchronized String createIndicesIfNotExists(EntityType entityType, String metalakeName) {
+    // getIndicesName will return an alias name, we will treat the alias name as the index name here
     String indicesName = getIndicesName(entityType, metalakeName);
     if (createdIndices.contains(indicesName)) {
       return indicesName;
@@ -363,30 +366,54 @@ public class OpenSearchStorage implements SearchStorage {
     }
   }
 
-  private void createEntityIndices(EntityType entityType, String indicesName) {
+  private void createEntityIndices(EntityType entityType, String indicesAliasName) {
     String entityJson = entityTypeToIndicesJsonMap.get(entityType);
     if (entityJson == null) {
       throw new IllegalArgumentException("No JSON definition found for entity type: " + entityType);
     }
 
     try {
-      BooleanResponse exists = client.indices().exists(e -> e.index(indicesName));
-      if (exists.value()) {
-        LOG.info("Index {} already exists, skipping creation.", indicesName);
+      // Check alias with `indicesAliasName` can be found
+      GetAliasResponse response = client.indices().getAlias(g -> g.name(indicesAliasName));
+      if (!response.result().isEmpty()) {
+        // indicesAliasName exists, no need to create the index
         return;
       }
+    } catch (OpenSearchException e) {
+      if (e.getMessage().contains(String.format("alias [%s] missing", indicesAliasName))) {
+        // Alias does not exist, continue to create the index
+      } else {
+        LOG.error("Failed to check if index alias {} exists: {}", indicesAliasName, e.getMessage());
+        throw e;
+      }
+
     } catch (Exception e) {
-      LOG.error("Failed to check if index {} exists: {}", indicesName, e.getMessage());
-      throw new RuntimeException("Failed to check if index " + indicesName + " exists", e);
+      LOG.error("Failed to check if index alias {} exists: {}", indicesAliasName, e.getMessage());
+      throw new RuntimeException("Failed to check if index " + indicesAliasName + " exists", e);
     }
 
-    Request request = new Request("PUT", "/" + indicesName);
+    String realIndicesName = indicesAliasName + "_" + System.currentTimeMillis();
+    Request request = new Request("PUT", "/" + realIndicesName);
     request.setJsonEntity(entityJson);
 
     try {
       sendHttpRequestWithRetry(request);
+
+      // Add alias to the newly created index
+      PutAliasResponse aliasResponse =
+          client
+              .indices()
+              .putAlias(r -> r.index(realIndicesName).name(indicesAliasName).isWriteIndex(true));
+
+      if (aliasResponse.acknowledged()) {
+        LOG.info("Successfully created index {} with alias {}", realIndicesName, indicesAliasName);
+      } else {
+        LOG.error("Failed to create alias {} for index {}", indicesAliasName, realIndicesName);
+        throw new RuntimeException(
+            "Failed to create alias " + indicesAliasName + " for index " + realIndicesName);
+      }
     } catch (Exception e) {
-      LOG.error("Failed to create index {}: {}", indicesName, e.getMessage());
+      LOG.error("Failed to create index alias {}: {}", realIndicesName, e.getMessage());
     }
   }
 
