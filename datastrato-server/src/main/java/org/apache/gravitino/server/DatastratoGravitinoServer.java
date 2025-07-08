@@ -83,6 +83,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
             datastratoGravitinoEnv.modelDispatcher(),
             datastratoGravitinoEnv.tagDispatcher(),
             datastratoGravitinoEnv.accessControlDispatcher(),
+            datastratoGravitinoEnv.ownerManager(),
             datastratoGravitinoEnv.metricDataService());
 
     // initialize extra rest api resources

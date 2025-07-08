@@ -37,10 +37,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
+import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
+import org.apache.gravitino.authorization.Owner;
+import org.apache.gravitino.authorization.OwnerManager;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
@@ -67,6 +71,7 @@ public class MetricsCollector implements Closeable {
   private final AccessControlDispatcher accessControlDispatcher;
   private final MetricDataService metricDataService;
   private final MetricsCalculator metricsCalculator;
+  private final OwnerManager ownerManager;
 
   // Scheduled executor for periodic metric collection
   private final ScheduledThreadPoolExecutor scheduledExecutor;
@@ -79,7 +84,6 @@ public class MetricsCollector implements Closeable {
   private final long metricsCalculationKeepAliveTimeSec = 60L;
   private final int metricsCalculationQueueSize = 50;
 
-  private final Set<String> serviceAdmins;
   private final Set<String> piiTags;
   private final Set<String> publicTags;
   private final Set<String> confidentialTags;
@@ -101,11 +105,13 @@ public class MetricsCollector implements Closeable {
       ModelDispatcher modelDispatcher,
       TagDispatcher tagDispatcher,
       AccessControlDispatcher accessControlDispatcher,
+      OwnerManager ownerManager,
       MetricDataService metricDataService) {
     this.metalakeDispatcher = dispatcher;
     this.catalogDispatcher = catalogDispatcher;
     this.tagDispatcher = tagDispatcher;
     this.accessControlDispatcher = accessControlDispatcher;
+    this.ownerManager = ownerManager;
     this.metricDataService = metricDataService;
     this.metricsCalculator =
         new MetricsCalculator(
@@ -156,11 +162,6 @@ public class MetricsCollector implements Closeable {
 
     this.privateTags =
         serverConfig.get(MetricsConfig.PRIVATE_TAGS_CONFIG).stream()
-            .map(String::trim)
-            .collect(Collectors.toSet());
-
-    this.serviceAdmins =
-        serverConfig.get(Configs.SERVICE_ADMINS).stream()
             .map(String::trim)
             .collect(Collectors.toSet());
 
@@ -364,30 +365,29 @@ public class MetricsCollector implements Closeable {
 
     long taggedAssetCount =
         metricsCalculator.getTaggedAssetCount(metalake, principal, catalogs, tagNames);
-    metrics.add(createMetricPO(MetricDataService.Metric.ASSET_WITH_TAG_COUNT, taggedAssetCount));
+    metrics.add(createMetricPO(MetricDataService.Metric.TAGGED_ASSET_COUNT, taggedAssetCount));
     metrics.add(
         createMetricPO(
-            MetricDataService.Metric.ASSET_WITHOUT_TAG_COUNT, assetCount - taggedAssetCount));
+            MetricDataService.Metric.UNTAGGED_ASSET_COUNT, assetCount - taggedAssetCount));
 
     long taggedPiiAssetCount =
         metricsCalculator.getTaggedAssetCount(
             metalake, principal, catalogs, piiTags.toArray(EMPTY_STRING_ARRAY));
     metrics.add(
-        createMetricPO(MetricDataService.Metric.ASSET_WITH_PII_TAG_COUNT, taggedPiiAssetCount));
+        createMetricPO(MetricDataService.Metric.PII_TAGGED_ASSET_COUNT, taggedPiiAssetCount));
 
     long taggedPublicAssetCount =
         metricsCalculator.getTaggedAssetCount(
             metalake, principal, catalogs, publicTags.toArray(EMPTY_STRING_ARRAY));
     metrics.add(
-        createMetricPO(
-            MetricDataService.Metric.ASSET_WITH_PUBLIC_TAG_COUNT, taggedPublicAssetCount));
+        createMetricPO(MetricDataService.Metric.PUBLIC_TAGGED_ASSET_COUNT, taggedPublicAssetCount));
 
     long taggedConfidentialAssetCount =
         metricsCalculator.getTaggedAssetCount(
             metalake, principal, catalogs, confidentialTags.toArray(EMPTY_STRING_ARRAY));
     metrics.add(
         createMetricPO(
-            MetricDataService.Metric.ASSET_WITH_CONFIDENTIAL_TAG_COUNT,
+            MetricDataService.Metric.CONFIDENTIAL_TAGGED_ASSET_COUNT,
             taggedConfidentialAssetCount));
 
     long taggedPrivateAssetCount =
@@ -395,16 +395,35 @@ public class MetricsCollector implements Closeable {
             metalake, principal, catalogs, privateTags.toArray(EMPTY_STRING_ARRAY));
     metrics.add(
         createMetricPO(
-            MetricDataService.Metric.ASSET_WITH_PRIVATE_TAG_COUNT, taggedPrivateAssetCount));
+            MetricDataService.Metric.PRIVATE_TAGGED_ASSET_COUNT, taggedPrivateAssetCount));
 
-    long assetWithOwnerCount =
-        (enableAuthorization && serviceAdmins.contains(userName))
-            ? metricDataService.getAssetWithOwnerCount(metalake)
-            : 0;
-    metrics.add(
-        createMetricPO(MetricDataService.Metric.ASSET_WITH_OWNER_COUNT, assetWithOwnerCount));
+    if (isMetalakeOwner(userName, metalake)) {
+      long assetWithOwnerCount = metricDataService.getAssetWithOwnerCount(metalake);
+      metrics.add(createMetricPO(MetricDataService.Metric.OWNED_ASSET_COUNT, assetWithOwnerCount));
+    }
 
     persistMetrics(metalake, userName, metrics);
+  }
+
+  private boolean isMetalakeOwner(String userName, String metalakeName) {
+    if (enableAuthorization) {
+      MetadataObject metalakeObject =
+          MetadataObjects.of(null, metalakeName, MetadataObject.Type.METALAKE);
+      try {
+        return ownerManager
+            .getOwner(metalakeName, metalakeObject)
+            .map(
+                owner -> owner.type() == Owner.Type.USER && owner.name().equals(userName)
+                // The case for Owner.Type.GROUP will implicitly return false,
+                // check whether the user belongs to the group after OSS support.
+                )
+            .orElse(false);
+      } catch (Exception e) {
+        LOG.error(
+            "Failed to check if user: {} is owner of metalake: {}", userName, metalakeName, e);
+      }
+    }
+    return false;
   }
 
   private Catalog[] getCatalogInfos(UserPrincipal principal, String metalakeName) {

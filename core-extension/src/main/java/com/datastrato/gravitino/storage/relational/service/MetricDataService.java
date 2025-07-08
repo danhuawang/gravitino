@@ -35,13 +35,13 @@ public class MetricDataService {
     FILESET_COUNT("fileset_count"),
     TOPIC_COUNT("topic_count"),
     MODEL_COUNT("model_count"),
-    ASSET_WITH_TAG_COUNT("asset_with_tag_count"),
-    ASSET_WITHOUT_TAG_COUNT("asset_without_tag_count"),
-    ASSET_WITH_PII_TAG_COUNT("asset_with_pii_tag_count"),
-    ASSET_WITH_PUBLIC_TAG_COUNT("asset_with_public_tag_count"),
-    ASSET_WITH_CONFIDENTIAL_TAG_COUNT("asset_with_confidential_tag_count"),
-    ASSET_WITH_PRIVATE_TAG_COUNT("asset_with_private_tag_count"),
-    ASSET_WITH_OWNER_COUNT("asset_with_owner_count");
+    TAGGED_ASSET_COUNT("tagged_asset_count"),
+    UNTAGGED_ASSET_COUNT("untagged_asset_count"),
+    PII_TAGGED_ASSET_COUNT("pii_tagged_asset_count"),
+    PUBLIC_TAGGED_ASSET_COUNT("public_tagged_asset_count"),
+    CONFIDENTIAL_TAGGED_ASSET_COUNT("confidential_tagged_asset_count"),
+    PRIVATE_TAGGED_ASSET_COUNT("private_tagged_asset_count"),
+    OWNED_ASSET_COUNT("owned_asset_count");
 
     private final String name;
 

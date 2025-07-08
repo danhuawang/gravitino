@@ -12,6 +12,7 @@ import com.google.common.collect.Maps;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.DefaultValue;
@@ -57,34 +58,46 @@ public class MetricOperations {
       @QueryParam("endTimestamp") Long endTimestamp,
       @QueryParam("refresh") @DefaultValue("false") boolean refresh) {
     LOG.info("Received request to get metrics for metalake: {}", metalakeName);
-
     String[] metricNames = Strings.isBlank(metrics) ? new String[] {} : metrics.split(",");
-    String userName = PrincipalUtils.getCurrentUserName();
 
+    AtomicReference<String> currentUserName = new AtomicReference<>("");
     try {
-      if (refresh) {
-        LOG.info("Refreshing metrics for metalake: {}, user: {}", metalakeName, userName);
-        metricsCollector.refreshMetricsForUser(metalakeName, userName);
-        LOG.info("Metrics refreshed for metalake: {}, user: {}", metalakeName, userName);
-      }
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            String userName = PrincipalUtils.getCurrentUserName();
+            currentUserName.set(userName);
+            if (refresh) {
+              LOG.info("Refreshing metrics for metalake: {}, user: {}", metalakeName, userName);
+              metricsCollector.refreshMetricsForUser(metalakeName, userName);
+              LOG.info("Metrics refreshed for metalake: {}, user: {}", metalakeName, userName);
+            }
 
-      long start =
-          startTimestamp == null
-              ? LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-              : startTimestamp;
-      long end = endTimestamp == null ? System.currentTimeMillis() : endTimestamp;
+            long start =
+                startTimestamp == null
+                    ? LocalDate.now()
+                        .atStartOfDay(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli()
+                    : startTimestamp;
+            long end = endTimestamp == null ? System.currentTimeMillis() : endTimestamp;
 
-      MetricDTO[] metricValues =
-          metricDataService.getMetricsByNameAndTimestamp(
-              metalakeName, userName, metricNames, start, end);
-      return Utils.ok(
-          new MetricsResponse(Maps.uniqueIndex(Arrays.asList(metricValues), MetricDTO::name)));
+            MetricDTO[] metricValues =
+                metricDataService.getMetricsByNameAndTimestamp(
+                    metalakeName, userName, metricNames, start, end);
+            return Utils.ok(
+                new MetricsResponse(
+                    Maps.uniqueIndex(Arrays.asList(metricValues), MetricDTO::name)));
+          });
     } catch (NoSuchMetalakeException e) {
       LOG.warn("Metalake not found: {}", metalakeName, e);
       return Utils.notFound("Metalake not found: " + metalakeName, e);
     } catch (NoSuchUserException e) {
-      LOG.warn("User not found: {} for metalake: {}", userName, metalakeName, e);
-      return Utils.notFound("User not found: " + userName + " for metalake: " + metalakeName, e);
+      LOG.warn("User not found: {} for metalake: {}", currentUserName.get(), metalakeName, e);
+      return Utils.notFound(
+          "User not found: " + currentUserName.get() + " for metalake: " + metalakeName, e);
+    } catch (Exception e) {
+      return Utils.internalError("Failed to get metrics for metalake: " + metalakeName, e);
     }
   }
 }
