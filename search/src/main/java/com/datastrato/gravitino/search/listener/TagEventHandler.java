@@ -65,6 +65,8 @@ public class TagEventHandler implements EventHandler {
         return Entity.EntityType.TOPIC;
       case FILESET:
         return Entity.EntityType.FILESET;
+      case MODEL:
+        return Entity.EntityType.MODEL;
     }
     throw new GravitinoRuntimeException("Unsupported metadata object type: " + type);
   }
