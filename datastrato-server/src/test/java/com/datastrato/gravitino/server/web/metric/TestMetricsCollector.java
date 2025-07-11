@@ -132,13 +132,14 @@ class TestMetricsCollector {
     ArgumentCaptor<List<MetricPO>> metricsCaptor = ArgumentCaptor.forClass(List.class);
     // Since enableAuthorization is false, ANONYMOUS_USER will be used
     verify(metricDataService)
-        .insertMetrics(eq(metalakeName), eq(AuthConstants.ANONYMOUS_USER), metricsCaptor.capture());
+        .insertMetrics(
+            eq(metalakeName), eq(AuthConstants.ANONYMOUS_USER), metricsCaptor.capture(), eq(false));
 
     List<MetricPO> capturedMetrics = metricsCaptor.getValue();
     Map<String, MetricPO> actualMetrics =
         Maps.uniqueIndex(capturedMetrics, MetricPO::getMetricName);
 
-    assertEquals(MetricDataService.Metric.values().length, actualMetrics.size());
+    assertEquals(MetricDataService.Metric.values().length - 1, actualMetrics.size());
     assertEquals(
         12, actualMetrics.get(MetricDataService.Metric.ASSET_COUNT.getName()).getMetricValue());
     assertEquals(
@@ -183,9 +184,6 @@ class TestMetricsCollector {
         actualMetrics
             .get(MetricDataService.Metric.PRIVATE_TAGGED_ASSET_COUNT.getName())
             .getMetricValue());
-    assertEquals(
-        0,
-        actualMetrics.get(MetricDataService.Metric.OWNED_ASSET_COUNT.getName()).getMetricValue());
   }
 
   private void mockMetalakeDispatcher() {

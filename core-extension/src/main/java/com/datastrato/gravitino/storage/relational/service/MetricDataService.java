@@ -8,8 +8,13 @@ import com.datastrato.gravitino.dto.metrics.MetricDTO;
 import com.datastrato.gravitino.storage.relational.MetricPO;
 import com.datastrato.gravitino.storage.relational.mapper.MetricDataMapper;
 import com.datastrato.gravitino.storage.relational.utils.DatastratoPOConverters;
+import com.google.common.base.Preconditions;
 import java.sql.Timestamp;
 import java.util.List;
+import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
+import org.apache.gravitino.authorization.Owner;
+import org.apache.gravitino.authorization.OwnerManager;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
@@ -21,9 +26,11 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 public class MetricDataService {
   public static final long DUMMY_TIMESTAMP = 0;
 
+  private final OwnerManager ownerManager;
   private final boolean enableAuthorization;
 
-  public MetricDataService(boolean enableAuthorization) {
+  public MetricDataService(OwnerManager ownerManager, boolean enableAuthorization) {
+    this.ownerManager = ownerManager;
     this.enableAuthorization = enableAuthorization;
   }
 
@@ -96,7 +103,8 @@ public class MetricDataService {
                     metricNames,
                     new Timestamp(startTimestamp),
                     new Timestamp(endTimestamp),
-                    enableAuthorization));
+                    enableAuthorization,
+                    enableAuthorization && isMetalakeOwner(metalakeName, userName)));
     return DatastratoPOConverters.fromMetricPOs(metricPOs);
   }
 
@@ -105,14 +113,21 @@ public class MetricDataService {
         MetricDataMapper.class, mapper -> mapper.getAssetWithOwnerCount(metalakeName));
   }
 
-  public void insertMetrics(String metalakeName, String userName, List<MetricPO> metrics) {
+  public void insertMetrics(
+      String metalakeName, String userName, List<MetricPO> metrics, boolean forMetalakeOwner) {
     if (metrics == null || metrics.isEmpty()) {
       return;
     }
 
+    Preconditions.checkArgument(
+        enableAuthorization || !forMetalakeOwner,
+        "enableAuthorization cannot be false when forMetalakeOwner is true");
+
     SessionUtils.doWithCommit(
         MetricDataMapper.class,
-        mapper -> mapper.insertMetricsData(metalakeName, userName, metrics, enableAuthorization));
+        mapper ->
+            mapper.insertMetricsData(
+                metalakeName, userName, metrics, enableAuthorization, forMetalakeOwner));
   }
 
   public void cleanMetricsByTimestamp(long oldestTimestamp) {
@@ -123,5 +138,31 @@ public class MetricDataService {
 
   public void cleanInvalidMetrics() {
     SessionUtils.doWithCommit(MetricDataMapper.class, MetricDataMapper::cleanInvalidMetrics);
+  }
+
+  public boolean isMetalakeOwner(String metalakeName, String userName) {
+    if (!enableAuthorization) {
+      return false;
+    }
+
+    Owner metalakeOwner = getMetalakeOwner(metalakeName);
+    if (metalakeOwner != null && metalakeOwner.type() == Owner.Type.GROUP) {
+      throw new UnsupportedOperationException(
+          "Metalake owned by a group is not supported yet: " + metalakeName);
+    }
+    return metalakeOwner != null
+        && metalakeOwner.type() == Owner.Type.USER
+        && metalakeOwner.name().equals(userName);
+  }
+
+  public Owner getMetalakeOwner(String metalakeName) {
+    MetadataObject metalakeObject =
+        MetadataObjects.of(null, metalakeName, MetadataObject.Type.METALAKE);
+    return ownerManager
+        .getOwner(metalakeName, metalakeObject)
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "No owner found for metalake: " + metalakeName + ". This should not happen."));
   }
 }

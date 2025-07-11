@@ -24,7 +24,8 @@ public interface MetricDataMapper {
       @Param("metricNames") String[] metricNames,
       @Param("startTimestamp") Timestamp startTimestamp,
       @Param("endTimestamp") Timestamp endTimestamp,
-      @Param("enableAuthorization") boolean enableAuthorization);
+      @Param("enableAuthorization") boolean enableAuthorization,
+      @Param("forMetalakeOwner") boolean forMetalakeOwner);
 
   @SelectProvider(type = MetricDataSQLProviderFactory.class, method = "getAssetWithOwnerCount")
   Long getAssetWithOwnerCount(@Param("metalakeName") String metalakeName);
@@ -34,7 +35,8 @@ public interface MetricDataMapper {
       @Param("metalakeName") String metalakeName,
       @Param("userName") String userName,
       @Param("metrics") List<MetricPO> metrics,
-      @Param("enableAuthorization") boolean enableAuthorization);
+      @Param("enableAuthorization") boolean enableAuthorization,
+      @Param("forMetalakeOwner") boolean forMetalakeOwner);
 
   @DeleteProvider(type = MetricDataSQLProviderFactory.class, method = "cleanInvalidMetrics")
   void cleanInvalidMetrics();

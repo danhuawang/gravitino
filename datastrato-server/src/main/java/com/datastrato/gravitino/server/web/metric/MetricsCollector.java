@@ -221,7 +221,8 @@ public class MetricsCollector implements Closeable {
 
     LOG.info(
         "Starting to refresh metrics data for user: {} in metalake: {}", userName, metalakeName);
-    calculateMetricsForUser(metalakeName, userName);
+    calculateMetricsForUser(
+        metalakeName, userName, metricDataService.isMetalakeOwner(metalakeName, userName));
     LOG.info(
         "Metrics data refreshed successfully for user: {} in metalake: {}", userName, metalakeName);
   }
@@ -297,6 +298,25 @@ public class MetricsCollector implements Closeable {
                 .toArray(String[]::new)
             : new String[] {AuthConstants.ANONYMOUS_USER};
 
+    if (enableAuthorization) {
+      // calculate metrics for metalake owner
+      try {
+        String metalakeOwner = metricDataService.getMetalakeOwner(metalakeName).name();
+        String actionDesc =
+            String.format(
+                "[batch: %s] Calculating metrics for metalake owner: %s in metalake: %s",
+                batchDate, metalakeOwner, metalakeName);
+        executeWithRetry(
+            () -> calculateMetricsForUser(metalakeName, metalakeOwner, true), actionDesc);
+      } catch (Exception e) {
+        LOG.error(
+            "[batch: {}] Failed to calculate metrics for metalake owner in metalake: {}",
+            batchDate,
+            metalakeName,
+            e);
+      }
+    }
+
     if (users.length == 0) {
       LOG.warn("[batch: {}] No users found in metalake: {}", batchDate, metalakeName);
       return;
@@ -307,7 +327,7 @@ public class MetricsCollector implements Closeable {
           String.format(
               "[batch: %s] Calculating metrics for user: %s in metalake: %s",
               batchDate, userName, metalakeName);
-      executeWithRetry(() -> calculateMetricsForUser(metalakeName, userName), actionDesc);
+      executeWithRetry(() -> calculateMetricsForUser(metalakeName, userName, false), actionDesc);
     }
     LOG.info("[batch: {}] Metrics for metalake {} processed successfully", batchDate, metalakeName);
   }
@@ -352,7 +372,8 @@ public class MetricsCollector implements Closeable {
     }
   }
 
-  private void calculateMetricsForUser(String metalake, String userName) throws Exception {
+  private void calculateMetricsForUser(String metalake, String userName, boolean forMetalakeOwner)
+      throws Exception {
     UserPrincipal principal = new UserPrincipal(userName);
     Catalog[] catalogs = getCatalogInfos(principal, metalake);
     List<MetricPO> metrics = new ArrayList<>();
@@ -418,14 +439,12 @@ public class MetricsCollector implements Closeable {
         createMetricPO(
             MetricDataService.Metric.PRIVATE_TAGGED_ASSET_COUNT, taggedPrivateAssetCount));
 
-    // calculate owned assets for all users, regardless of whether they are the metalake owner or
-    // not. This is useful for the case where the metalake owner changed and the new owner also can
-    // see the historical owned assets.
-    // The frontend will use the owner information to filter the owned assets metric.
-    long assetWithOwnerCount = metricDataService.getAssetWithOwnerCount(metalake);
-    metrics.add(createMetricPO(MetricDataService.Metric.OWNED_ASSET_COUNT, assetWithOwnerCount));
+    if (forMetalakeOwner) {
+      long assetWithOwnerCount = metricDataService.getAssetWithOwnerCount(metalake);
+      metrics.add(createMetricPO(MetricDataService.Metric.OWNED_ASSET_COUNT, assetWithOwnerCount));
+    }
 
-    persistMetrics(metalake, userName, metrics);
+    persistMetrics(metalake, userName, metrics, forMetalakeOwner);
   }
 
   private Catalog[] getCatalogInfos(UserPrincipal principal, String metalakeName) throws Exception {
@@ -437,12 +456,13 @@ public class MetricsCollector implements Closeable {
     return PrincipalUtils.doAs(principal, () -> tagDispatcher.listTags(metalakeName));
   }
 
-  private void persistMetrics(String metalakeName, String user, List<MetricPO> metrics) {
+  private void persistMetrics(
+      String metalakeName, String user, List<MetricPO> metrics, boolean forMetalakeOwner) {
     if (metrics.isEmpty()) {
       LOG.warn("No metrics to persist for metalake: {} and user: {}", metalakeName, user);
       return;
     }
-    metricDataService.insertMetrics(metalakeName, user, metrics);
+    metricDataService.insertMetrics(metalakeName, user, metrics, forMetalakeOwner);
   }
 
   private MetricPO createMetricPO(MetricDataService.Metric metric, double value) {

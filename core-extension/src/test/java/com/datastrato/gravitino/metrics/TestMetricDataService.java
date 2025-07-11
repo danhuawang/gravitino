@@ -28,6 +28,7 @@ import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
+import org.apache.gravitino.authorization.OwnerManager;
 import org.apache.gravitino.config.ConfigConstants;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper;
@@ -58,7 +59,8 @@ class TestMetricDataService {
 
     initTables();
     SqlSessionFactoryHelper.getInstance().init(config);
-    service = new MetricDataService(false);
+    OwnerManager ownerManager = mock(OwnerManager.class);
+    service = new MetricDataService(ownerManager, false);
   }
 
   @Test
@@ -68,7 +70,7 @@ class TestMetricDataService {
         MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(1.0).build();
     List<MetricPO> metrics = Lists.newArrayList(assetCount);
 
-    service.insertMetrics(metalakeName1, user, metrics);
+    service.insertMetrics(metalakeName1, user, metrics, false);
     MetricDTO[] result =
         service.getMetricsByNameAndTimestamp(
             metalakeName1, user, new String[0], 1, System.currentTimeMillis() + 2_000);
@@ -90,7 +92,7 @@ class TestMetricDataService {
             .withMetricValue(1.0)
             .withCreatedTime(new Timestamp(now - 10_000))
             .build();
-    service.insertMetrics(metalakeName2, user, Lists.newArrayList(assetCount));
+    service.insertMetrics(metalakeName2, user, Lists.newArrayList(assetCount), false);
     MetricDTO[] result =
         service.getMetricsByNameAndTimestamp(metalakeName2, user, new String[0], 0, now);
     assertNotNull(result);
@@ -110,7 +112,7 @@ class TestMetricDataService {
         MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(1.0).build();
     List<MetricPO> metrics = Lists.newArrayList(assetCount);
 
-    service.insertMetrics(metalakeName3, user, metrics);
+    service.insertMetrics(metalakeName3, user, metrics, false);
     MetricDTO[] result =
         service.getMetricsByNameAndTimestamp(
             metalakeName3, user, new String[0], 0, System.currentTimeMillis() + 2_000);

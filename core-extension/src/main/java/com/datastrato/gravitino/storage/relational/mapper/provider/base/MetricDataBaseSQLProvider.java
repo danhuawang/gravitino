@@ -31,6 +31,7 @@ import org.apache.ibatis.annotations.Param;
 
 public class MetricDataBaseSQLProvider {
   private static final String MOCK_ANONYMOUS_USER_ID = "0";
+  private static final String MOCK_METALAKE_OWNER_ID = "1";
 
   public String getMetricPOsByNameAndTimestamp(
       @Param("metalakeName") String metalakeName,
@@ -38,7 +39,8 @@ public class MetricDataBaseSQLProvider {
       @Param("metricNames") String[] metricNames,
       @Param("startTimestamp") Timestamp startTimestamp,
       @Param("endTimestamp") Timestamp endTimestamp,
-      @Param("enableAuthorization") boolean enableAuthorization) {
+      @Param("enableAuthorization") boolean enableAuthorization,
+      @Param("forMetalakeOwner") boolean forMetalakeOwner) {
     return "<script>"
         + "SELECT metricName, createdTime, metricValue FROM ("
         + "SELECT dm.metric_name as metricName, dm.created_time as createdTime, dm.metric_value as metricValue, "
@@ -50,6 +52,11 @@ public class MetricDataBaseSQLProvider {
         + MetalakeMetaMapper.TABLE_NAME
         + " mm ON dm.metalake_id = mm.metalake_id "
         + "<choose>"
+        + "<when test='forMetalakeOwner == true'>"
+        + "WHERE mm.metalake_name = #{metalakeName} "
+        + "AND dm.user_id = "
+        + MOCK_METALAKE_OWNER_ID
+        + "</when>"
         + "<when test='enableAuthorization == true'>"
         + "JOIN "
         + UserRoleRelMapper.USER_TABLE_NAME
@@ -92,7 +99,8 @@ public class MetricDataBaseSQLProvider {
       @Param("metalakeName") String metalakeName,
       @Param("userName") String userName,
       @Param("metrics") List<MetricPO> metrics,
-      @Param("enableAuthorization") boolean enableAuthorization) {
+      @Param("enableAuthorization") boolean enableAuthorization,
+      @Param("forMetalakeOwner") boolean forMetalakeOwner) {
     return "<script>"
         + "INSERT INTO "
         + METRICS_TABLE_NAME
@@ -104,6 +112,10 @@ public class MetricDataBaseSQLProvider {
         + MetalakeMetaMapper.TABLE_NAME
         + " WHERE metalake_name = #{metalakeName} AND deleted_at = 0), "
         + "<choose>"
+        + "<when test='forMetalakeOwner == true'>"
+        + MOCK_METALAKE_OWNER_ID
+        + ", "
+        + "</when>"
         + "<when test='enableAuthorization == true'>"
         + "(SELECT user_id FROM "
         + UserRoleRelMapper.USER_TABLE_NAME

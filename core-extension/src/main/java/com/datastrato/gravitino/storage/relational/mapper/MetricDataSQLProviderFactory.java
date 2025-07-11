@@ -57,10 +57,17 @@ public class MetricDataSQLProviderFactory {
       @Param("metricNames") String[] metricNames,
       @Param("startTimestamp") Timestamp startTimestamp,
       @Param("endTimestamp") Timestamp endTimestamp,
-      @Param("enableAuthorization") boolean enableAuthorization) {
+      @Param("enableAuthorization") boolean enableAuthorization,
+      @Param("forMetalakeOwner") boolean forMetalakeOwner) {
     return getProvider()
         .getMetricPOsByNameAndTimestamp(
-            metalakeName, userName, metricNames, startTimestamp, endTimestamp, enableAuthorization);
+            metalakeName,
+            userName,
+            metricNames,
+            startTimestamp,
+            endTimestamp,
+            enableAuthorization,
+            forMetalakeOwner);
   }
 
   public static String getAssetWithOwnerCount(@Param("metalakeName") String metalakeName) {
@@ -71,8 +78,10 @@ public class MetricDataSQLProviderFactory {
       @Param("metalakeName") String metalakeName,
       @Param("userName") String userName,
       @Param("metrics") List<MetricPO> metrics,
-      @Param("enableAuthorization") boolean enableAuthorization) {
-    return getProvider().insertMetricsData(metalakeName, userName, metrics, enableAuthorization);
+      @Param("enableAuthorization") boolean enableAuthorization,
+      @Param("forMetalakeOwner") boolean forMetalakeOwner) {
+    return getProvider()
+        .insertMetricsData(metalakeName, userName, metrics, enableAuthorization, forMetalakeOwner);
   }
 
   public static String cleanInvalidMetrics() {

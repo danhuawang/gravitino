@@ -134,7 +134,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
 
     // initialize metric data service
     boolean enableAuthorization = config.get(Configs.ENABLE_AUTHORIZATION);
-    this.metricDataService = new MetricDataService(enableAuthorization);
+    this.metricDataService = new MetricDataService(ownerManager(), enableAuthorization);
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
