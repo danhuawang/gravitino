@@ -71,7 +71,7 @@ class TestMetricDataService {
     service.insertMetrics(metalakeName1, user, metrics);
     MetricDTO[] result =
         service.getMetricsByNameAndTimestamp(
-            metalakeName1, user, new String[0], 0, System.currentTimeMillis() + 2_000);
+            metalakeName1, user, new String[0], 1, System.currentTimeMillis() + 2_000);
 
     assertNotNull(result);
     assertEquals(metrics.size(), result.length);

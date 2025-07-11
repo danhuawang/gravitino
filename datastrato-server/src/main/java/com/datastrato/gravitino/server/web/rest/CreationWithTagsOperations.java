@@ -333,7 +333,7 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/topics")
   @Produces("application/vnd.gravitino.v1+json")
-  public Response createFilesetWithTag(
+  public Response createTopicWithTag(
       @PathParam("metalake") String metalake,
       @PathParam("catalog") String catalog,
       @PathParam("schema") String schema,

@@ -21,9 +21,5 @@ package com.datastrato.gravitino.storage.relational.mapper.provider.postgresql;
 import com.datastrato.gravitino.storage.relational.mapper.provider.base.MetricDataBaseSQLProvider;
 
 public class MetricDataPostgreSQLProvider extends MetricDataBaseSQLProvider {
-
-  @Override
-  protected String millisToTimestamp(String value) {
-    return "to_timestamp(" + value + " / 1000.0)";
-  }
+  // // no additional methods or overrides needed for PostgreSQL
 }

@@ -110,12 +110,13 @@ public class MetricPO {
     public MetricPO build() {
       validate();
       MetricPO metricPO = new MetricPO();
-      metricPO.id = this.id;
-      metricPO.metalakeId = this.metalakeId;
-      metricPO.userId = this.userId;
-      metricPO.metricName = this.metricName;
-      metricPO.metricValue = this.metricValue;
-      metricPO.createdTime = this.createdTime;
+      metricPO.id = id;
+      metricPO.metalakeId = metalakeId;
+      metricPO.userId = userId;
+      metricPO.metricName = metricName;
+      metricPO.metricValue = metricValue;
+      metricPO.createdTime =
+          createdTime == null ? new Timestamp(System.currentTimeMillis()) : createdTime;
       return metricPO;
     }
   }

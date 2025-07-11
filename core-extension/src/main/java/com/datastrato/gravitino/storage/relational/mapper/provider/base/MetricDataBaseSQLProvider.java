@@ -22,6 +22,7 @@ package com.datastrato.gravitino.storage.relational.mapper.provider.base;
 import static com.datastrato.gravitino.storage.relational.mapper.MetricDataMapper.METRICS_TABLE_NAME;
 
 import com.datastrato.gravitino.storage.relational.MetricPO;
+import java.sql.Timestamp;
 import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper;
@@ -31,15 +32,19 @@ import org.apache.ibatis.annotations.Param;
 public class MetricDataBaseSQLProvider {
   private static final String MOCK_ANONYMOUS_USER_ID = "0";
 
-  public String getMetricDTOsByNameAndTimestamp(
+  public String getMetricPOsByNameAndTimestamp(
       @Param("metalakeName") String metalakeName,
       @Param("userName") String userName,
       @Param("metricNames") String[] metricNames,
-      @Param("startTimestamp") long startTimestamp,
-      @Param("endTimestamp") long endTimestamp,
+      @Param("startTimestamp") Timestamp startTimestamp,
+      @Param("endTimestamp") Timestamp endTimestamp,
       @Param("enableAuthorization") boolean enableAuthorization) {
     return "<script>"
-        + "SELECT dm.metric_name as metricName, dm.created_time as createdTime, dm.metric_value as metricValue FROM "
+        + "SELECT metricName, createdTime, metricValue FROM ("
+        + "SELECT dm.metric_name as metricName, dm.created_time as createdTime, dm.metric_value as metricValue, "
+        // only select the latest metric for each metric_name and date
+        + "ROW_NUMBER() OVER (PARTITION BY dm.metric_name, DATE(dm.created_time) ORDER BY dm.created_time DESC) as rn "
+        + "FROM "
         + METRICS_TABLE_NAME
         + " dm JOIN "
         + MetalakeMetaMapper.TABLE_NAME
@@ -58,16 +63,15 @@ public class MetricDataBaseSQLProvider {
         + MOCK_ANONYMOUS_USER_ID
         + "</otherwise>"
         + "</choose>"
-        + " AND dm.created_time &gt;= "
-        + millisToTimestamp("#{startTimestamp}")
-        + " AND dm.created_time &lt;= "
-        + millisToTimestamp("#{endTimestamp}")
-        + "<if test='metricNames != null and metricNames.length > 0'>"
+        + " AND dm.created_time &gt;= #{startTimestamp, jdbcType=TIMESTAMP}"
+        + " AND dm.created_time &lt;= #{endTimestamp, jdbcType=TIMESTAMP}"
+        + " <if test='metricNames != null and metricNames.length > 0'>"
         + " AND dm.metric_name IN "
         + "<foreach item='name' collection='metricNames' open='(' separator=',' close=')'>"
         + "#{name}"
         + "</foreach>"
         + "</if>"
+        + ") AS ranked_metrics WHERE rn = 1"
         + "</script>";
   }
 
@@ -116,14 +120,7 @@ public class MetricDataBaseSQLProvider {
         + "</choose>"
         + "#{metric.metricName}, "
         + "#{metric.metricValue}, "
-        + "<choose>"
-        + "<when test='metric.createdTime == null'>"
-        + "DEFAULT"
-        + "</when>"
-        + "<otherwise>"
         + "#{metric.createdTime, jdbcType=TIMESTAMP}"
-        + "</otherwise>"
-        + "</choose>"
         + ")"
         + "</foreach>"
         + "</script>";
@@ -142,14 +139,9 @@ public class MetricDataBaseSQLProvider {
         + " WHERE deleted_at = 0))";
   }
 
-  public String cleanMetricsByTimestamp(@Param("oldestTimestamp") long oldestTimestamp) {
+  public String cleanMetricsByTimestamp(@Param("oldestTimestamp") Timestamp oldestTimestamp) {
     return "DELETE FROM "
         + METRICS_TABLE_NAME
-        + " WHERE created_time < "
-        + millisToTimestamp("#{oldestTimestamp}");
-  }
-
-  protected String millisToTimestamp(String value) {
-    return "FROM_UNIXTIME(" + value + " / 1000.0)";
+        + " WHERE created_time < #{oldestTimestamp, jdbcType=TIMESTAMP}";
   }
 }

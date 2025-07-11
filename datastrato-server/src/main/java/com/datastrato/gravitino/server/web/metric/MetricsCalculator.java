@@ -95,7 +95,7 @@ public class MetricsCalculator {
   }
 
   public AssetCounts calculateAssetCountsByCatalogs(
-      UserPrincipal principal, String metalake, Catalog[] catalogs) {
+      UserPrincipal principal, String metalake, Catalog[] catalogs) throws Exception {
     long schemaCount = 0;
     Map<Catalog.Type, Long> objectCounter =
         new HashMap<Catalog.Type, Long>() {
@@ -156,7 +156,7 @@ public class MetricsCalculator {
             modelCount += count;
             break;
           default:
-            LOG.warn("Unsupported catalog type: {}", catalog.type());
+            throw new IllegalStateException("Unexpected catalog type: " + catalog.type());
         }
       }
     }
@@ -164,7 +164,8 @@ public class MetricsCalculator {
   }
 
   public long getTaggedAssetCount(
-      String metalakeName, UserPrincipal principal, Catalog[] catalogs, String[] tagNames) {
+      String metalakeName, UserPrincipal principal, Catalog[] catalogs, String[] tagNames)
+      throws Exception {
     if (tagNames == null || tagNames.length == 0) {
       return 0;
     }
@@ -172,7 +173,14 @@ public class MetricsCalculator {
     Map<MetadataObject.Type, Set<MetadataObject>> taggedObjects =
         Arrays.stream(tagNames)
             // todo: using batch API to get metadata objects for tags
-            .flatMap(t -> Arrays.stream(listMetadataObjectsForTag(principal, metalakeName, t)))
+            .flatMap(
+                t -> {
+                  try {
+                    return Arrays.stream(listMetadataObjectsForTag(principal, metalakeName, t));
+                  } catch (Exception e) {
+                    throw new RuntimeException(e);
+                  }
+                })
             .filter(o -> assetTypes.contains(o.type()))
             .collect(Collectors.groupingBy(MetadataObject::type, Collectors.toSet()));
     removeOverlappingTaggedObjects(taggedObjects);
@@ -242,145 +250,118 @@ public class MetricsCalculator {
         + taggedModelCount;
   }
 
-  private String[] getSchemaNames(
-      UserPrincipal principal, String metalakeName, String catalogName) {
-    try {
-      return PrincipalUtils.doAs(
-          principal,
-          () ->
-              Arrays.stream(
-                      schemaDispatcher.listSchemas(
-                          NamespaceUtil.ofSchema(metalakeName, catalogName)))
-                  .map(NameIdentifier::name)
-                  .toArray(String[]::new));
-    } catch (Exception e) {
-      LOG.error(
-          "Failed to list schemas for catalogName: {} in metalakeName: {}",
-          catalogName,
-          metalakeName,
-          e);
-      return EMPTY_STRING_ARRAY;
-    }
+  private String[] getSchemaNames(UserPrincipal principal, String metalakeName, String catalogName)
+      throws Exception {
+    return PrincipalUtils.doAs(
+        principal,
+        () ->
+            Arrays.stream(
+                    schemaDispatcher.listSchemas(NamespaceUtil.ofSchema(metalakeName, catalogName)))
+                .map(NameIdentifier::name)
+                .toArray(String[]::new));
   }
 
   private MetadataObject[] listMetadataObjectsForTag(
-      UserPrincipal principal, String metalakeName, String tagName) {
-    try {
-      return PrincipalUtils.doAs(
-          principal, () -> tagDispatcher.listMetadataObjectsForTag(metalakeName, tagName));
-    } catch (Exception e) {
-      LOG.error(
-          "Failed to list metadata objects for tag: {} in metalake: {}", tagName, metalakeName, e);
-      return new MetadataObject[0];
-    }
+      UserPrincipal principal, String metalakeName, String tagName) throws Exception {
+    return PrincipalUtils.doAs(
+        principal, () -> tagDispatcher.listMetadataObjectsForTag(metalakeName, tagName));
   }
 
   private long getTableCountFromSchemas(
       UserPrincipal principal, String metalakeName, String catalogName, String[] schemaNames) {
     return Arrays.stream(schemaNames)
-        .mapToLong(s -> getTableCountFromSchema(principal, metalakeName, catalogName, s))
+        .mapToLong(
+            s -> {
+              try {
+                return getTableCountFromSchema(principal, metalakeName, catalogName, s);
+              } catch (Exception e) {
+                throw new RuntimeException(e);
+              }
+            })
         .sum();
   }
 
   private long getTableCountFromSchema(
-      UserPrincipal principal, String metalakeName, String catalogName, String schemaName) {
-    try {
-      return PrincipalUtils.doAs(
-          principal,
-          () ->
-              tableDispatcher.listTables(
-                      NamespaceUtil.ofTable(metalakeName, catalogName, schemaName))
-                  .length);
-    } catch (Exception e) {
-      LOG.error(
-          "Failed to get table count for catalogName: {}, schemaName: {} in metalakeName: {}",
-          catalogName,
-          schemaName,
-          metalakeName,
-          e);
-      return 0;
-    }
+      UserPrincipal principal, String metalakeName, String catalogName, String schemaName)
+      throws Exception {
+    return PrincipalUtils.doAs(
+        principal,
+        () ->
+            tableDispatcher.listTables(NamespaceUtil.ofTable(metalakeName, catalogName, schemaName))
+                .length);
   }
 
   private long getFilesetCountFromSchemas(
       UserPrincipal principal, String metalakeName, String catalogName, String[] schemaNames) {
     return Arrays.stream(schemaNames)
-        .mapToLong(s -> getFilesetCountFromSchema(principal, metalakeName, catalogName, s))
+        .mapToLong(
+            s -> {
+              try {
+                return getFilesetCountFromSchema(principal, metalakeName, catalogName, s);
+              } catch (Exception e) {
+                throw new RuntimeException(e);
+              }
+            })
         .sum();
   }
 
   private long getTopicCountFromSchemas(
       UserPrincipal principal, String metalakeName, String catalogName, String[] schemaNames) {
     return Arrays.stream(schemaNames)
-        .mapToLong(s -> getTopicCountFromSchema(principal, metalakeName, catalogName, s))
+        .mapToLong(
+            s -> {
+              try {
+                return getTopicCountFromSchema(principal, metalakeName, catalogName, s);
+              } catch (Exception e) {
+                throw new RuntimeException(e);
+              }
+            })
         .sum();
   }
 
   private long getModelCountFromSchemas(
       UserPrincipal principal, String metalakeName, String catalogName, String[] schemaNames) {
     return Arrays.stream(schemaNames)
-        .mapToLong(s -> getModelCountFromSchema(principal, metalakeName, catalogName, s))
+        .mapToLong(
+            s -> {
+              try {
+                return getModelCountFromSchema(principal, metalakeName, catalogName, s);
+              } catch (Exception e) {
+                throw new RuntimeException(e);
+              }
+            })
         .sum();
   }
 
   private long getModelCountFromSchema(
-      UserPrincipal principal, String metalakeName, String catalogName, String schemaName) {
-    try {
-      return PrincipalUtils.doAs(
-          principal,
-          () ->
-              modelDispatcher.listModels(
-                      NamespaceUtil.ofModel(metalakeName, catalogName, schemaName))
-                  .length);
-    } catch (Exception e) {
-      LOG.error(
-          "Failed to get model count for catalogName: {}, schemaName: {} in metalakeName: {}",
-          catalogName,
-          schemaName,
-          metalakeName,
-          e);
-      return 0;
-    }
+      UserPrincipal principal, String metalakeName, String catalogName, String schemaName)
+      throws Exception {
+    return PrincipalUtils.doAs(
+        principal,
+        () ->
+            modelDispatcher.listModels(NamespaceUtil.ofModel(metalakeName, catalogName, schemaName))
+                .length);
   }
 
   private long getTopicCountFromSchema(
-      UserPrincipal principal, String metalakeName, String catalogName, String schemaName) {
-    try {
-      return PrincipalUtils.doAs(
-          principal,
-          () ->
-              topicDispatcher.listTopics(
-                      NamespaceUtil.ofTopic(metalakeName, catalogName, schemaName))
-                  .length);
-    } catch (Exception e) {
-      LOG.error(
-          "Failed to get topic count for catalogName: {}, schemaName: {} in metalakeName: {}",
-          catalogName,
-          schemaName,
-          metalakeName,
-          e);
-      return 0;
-    }
+      UserPrincipal principal, String metalakeName, String catalogName, String schemaName)
+      throws Exception {
+    return PrincipalUtils.doAs(
+        principal,
+        () ->
+            topicDispatcher.listTopics(NamespaceUtil.ofTopic(metalakeName, catalogName, schemaName))
+                .length);
   }
 
   private long getFilesetCountFromSchema(
-      UserPrincipal principal, String metalakeName, String catalogName, String schemaName) {
-    try {
-      return PrincipalUtils.doAs(
-          principal,
-          () ->
-              filesetDispatcher.listFilesets(
-                      NamespaceUtil.ofFileset(metalakeName, catalogName, schemaName))
-                  .length);
-    } catch (Exception e) {
-      LOG.error(
-          "Failed to get fileset count for catalogName: {}, schemaName: {} in metalakeName: {}",
-          catalogName,
-          schemaName,
-          metalakeName,
-          e);
-      return 0;
-    }
+      UserPrincipal principal, String metalakeName, String catalogName, String schemaName)
+      throws Exception {
+    return PrincipalUtils.doAs(
+        principal,
+        () ->
+            filesetDispatcher.listFilesets(
+                    NamespaceUtil.ofFileset(metalakeName, catalogName, schemaName))
+                .length);
   }
 
   private void removeOverlappingTaggedObjects(

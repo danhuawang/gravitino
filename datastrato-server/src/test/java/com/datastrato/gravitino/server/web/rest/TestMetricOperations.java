@@ -90,7 +90,7 @@ public class TestMetricOperations extends JerseyTest {
   }
 
   @Test
-  public void testGetMetrics() {
+  public void testGetMetrics() throws Exception {
     // test metalake does not exist
     doThrow(new NoSuchMetalakeException("metalake1"))
         .when(metricDataService)

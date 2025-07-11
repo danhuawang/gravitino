@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.MetadataObject;
@@ -27,8 +26,6 @@ import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
-import org.apache.gravitino.authorization.Owner;
-import org.apache.gravitino.authorization.OwnerManager;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
 import org.apache.gravitino.catalog.ModelDispatcher;
@@ -59,7 +56,6 @@ class TestMetricsCollector {
   private ModelDispatcher modelDispatcher;
   private TagDispatcher tagDispatcher;
   private AccessControlDispatcher accessControlDispatcher;
-  private OwnerManager ownerManager;
   private MetricDataService metricDataService;
 
   private final long mockId = 1L;
@@ -90,9 +86,8 @@ class TestMetricsCollector {
     modelDispatcher = mock(ModelDispatcher.class);
     tagDispatcher = mock(TagDispatcher.class);
     accessControlDispatcher = mock(AccessControlDispatcher.class);
-    ownerManager = mock(OwnerManager.class);
     metricDataService = mock(MetricDataService.class);
-    when(metricDataService.getAssetWithOwnerCount(eq(metalakeName))).thenReturn(1L);
+    when(metricDataService.getAssetWithOwnerCount(metalakeName)).thenReturn(0L);
 
     // mock config
     when(serverConfig.get(MetricsConfig.PII_TAGS_CONFIG)).thenReturn(Collections.emptyList());
@@ -103,7 +98,7 @@ class TestMetricsCollector {
     when(serverConfig.get(Configs.SERVICE_ADMINS))
         .thenReturn(Collections.singletonList(AuthConstants.ANONYMOUS_USER));
     when(serverConfig.get(MetricsConfig.RETENTION_DAYS_CONFIG)).thenReturn(30);
-    when(serverConfig.get(Configs.ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(serverConfig.get(Configs.ENABLE_AUTHORIZATION)).thenReturn(false);
 
     // mock dispatchers
     mockMetalakeDispatcher();
@@ -117,7 +112,7 @@ class TestMetricsCollector {
   }
 
   @Test
-  public void testRefreshMetricsForUser() {
+  public void testRefreshMetricsForUser() throws Exception {
     MetricsCollector collector =
         new MetricsCollector(
             serverConfig,
@@ -130,23 +125,14 @@ class TestMetricsCollector {
             modelDispatcher,
             tagDispatcher,
             accessControlDispatcher,
-            ownerManager,
             metricDataService);
 
-    String user1 = "user1";
-    Owner owner = mock(Owner.class);
-    when(owner.name()).thenReturn(user1);
-    when(owner.type()).thenReturn(Owner.Type.USER);
-    MetadataObject metalakeObject =
-        MetadataObjects.of(null, metalakeName, MetadataObject.Type.METALAKE);
-    when(ownerManager.getOwner(eq(metalakeName), eq(metalakeObject)))
-        .thenReturn(Optional.of(owner));
-
-    collector.refreshMetricsForUser(metalakeName, user1);
+    collector.refreshMetricsForUser(metalakeName, "user1");
 
     ArgumentCaptor<List<MetricPO>> metricsCaptor = ArgumentCaptor.forClass(List.class);
     // Since enableAuthorization is false, ANONYMOUS_USER will be used
-    verify(metricDataService).insertMetrics(eq(metalakeName), eq(user1), metricsCaptor.capture());
+    verify(metricDataService)
+        .insertMetrics(eq(metalakeName), eq(AuthConstants.ANONYMOUS_USER), metricsCaptor.capture());
 
     List<MetricPO> capturedMetrics = metricsCaptor.getValue();
     Map<String, MetricPO> actualMetrics =
@@ -198,7 +184,7 @@ class TestMetricsCollector {
             .get(MetricDataService.Metric.PRIVATE_TAGGED_ASSET_COUNT.getName())
             .getMetricValue());
     assertEquals(
-        1,
+        0,
         actualMetrics.get(MetricDataService.Metric.OWNED_ASSET_COUNT.getName()).getMetricValue());
   }
 

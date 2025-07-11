@@ -37,14 +37,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
-import org.apache.gravitino.MetadataObject;
-import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
-import org.apache.gravitino.authorization.Owner;
-import org.apache.gravitino.authorization.OwnerManager;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
@@ -71,7 +67,6 @@ public class MetricsCollector implements Closeable {
   private final AccessControlDispatcher accessControlDispatcher;
   private final MetricDataService metricDataService;
   private final MetricsCalculator metricsCalculator;
-  private final OwnerManager ownerManager;
 
   // Scheduled executor for periodic metric collection
   private final ScheduledThreadPoolExecutor scheduledExecutor;
@@ -83,6 +78,9 @@ public class MetricsCollector implements Closeable {
   private final int metricsCalculationMaxThreadsNum = 5;
   private final long metricsCalculationKeepAliveTimeSec = 60L;
   private final int metricsCalculationQueueSize = 50;
+
+  private final int maxCalculationRetriesForUser = 3;
+  private final long calculationRetryDelayMs = 60_000;
 
   private final Set<String> piiTags;
   private final Set<String> publicTags;
@@ -105,13 +103,11 @@ public class MetricsCollector implements Closeable {
       ModelDispatcher modelDispatcher,
       TagDispatcher tagDispatcher,
       AccessControlDispatcher accessControlDispatcher,
-      OwnerManager ownerManager,
       MetricDataService metricDataService) {
     this.metalakeDispatcher = dispatcher;
     this.catalogDispatcher = catalogDispatcher;
     this.tagDispatcher = tagDispatcher;
     this.accessControlDispatcher = accessControlDispatcher;
-    this.ownerManager = ownerManager;
     this.metricDataService = metricDataService;
     this.metricsCalculator =
         new MetricsCalculator(
@@ -209,7 +205,7 @@ public class MetricsCollector implements Closeable {
     }
   }
 
-  public void refreshMetricsForUser(String metalakeName, String userName) {
+  public void refreshMetricsForUser(String metalakeName, String userName) throws Exception {
     NameIdentifier metalakeIdent = NameIdentifierUtil.ofMetalake(metalakeName);
     // ensure the metalake exists before proceeding
     metalakeDispatcher.loadMetalake(metalakeIdent);
@@ -307,31 +303,56 @@ public class MetricsCollector implements Closeable {
     }
 
     for (String userName : users) {
-      LOG.info(
-          "[batch: {}] Calculating metrics for user: {} in metalake: {}",
-          batchDate,
-          userName,
-          metalakeName);
-      try {
-        calculateMetricsForUser(metalakeName, userName);
-      } catch (Exception e) {
-        LOG.error(
-            "[batch: {}] Failed to calculate metrics for user: {} in metalake: {}",
-            batchDate,
-            userName,
-            metalakeName,
-            e);
-      }
-      LOG.info(
-          "[batch: {}] Metrics for user: {} in metalake: {} processed successfully",
-          batchDate,
-          userName,
-          metalakeName);
+      String actionDesc =
+          String.format(
+              "[batch: %s] Calculating metrics for user: %s in metalake: %s",
+              batchDate, userName, metalakeName);
+      executeWithRetry(() -> calculateMetricsForUser(metalakeName, userName), actionDesc);
     }
     LOG.info("[batch: {}] Metrics for metalake {} processed successfully", batchDate, metalakeName);
   }
 
-  private void calculateMetricsForUser(String metalake, String userName) {
+  @FunctionalInterface
+  private interface ThrowableRunnable {
+    void run() throws Exception;
+  }
+
+  private void executeWithRetry(ThrowableRunnable action, String actionDescription) {
+    boolean success = false;
+    for (int attempt = 1; attempt <= maxCalculationRetriesForUser; attempt++) {
+      try {
+        LOG.info("{} (Attempt {}/{})", actionDescription, attempt, maxCalculationRetriesForUser);
+        action.run();
+        success = true;
+        LOG.info("{} processed successfully", actionDescription);
+        break;
+      } catch (Exception e) {
+        LOG.warn(
+            "{} failed on attempt {}/{}: {}",
+            actionDescription,
+            attempt,
+            maxCalculationRetriesForUser,
+            e.getMessage());
+        if (attempt < maxCalculationRetriesForUser) {
+          try {
+            TimeUnit.MILLISECONDS.sleep(calculationRetryDelayMs);
+          } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            LOG.error("Retry delay interrupted for {}", actionDescription, ie);
+            break; // Exit retry loop if interrupted
+          }
+        }
+      }
+    }
+    if (!success) {
+      LOG.error(
+          "Failed to process {} after {} attempts. Giving up.",
+          actionDescription,
+          maxCalculationRetriesForUser);
+    }
+  }
+
+  private void calculateMetricsForUser(String metalake, String userName) throws Exception {
     UserPrincipal principal = new UserPrincipal(userName);
     Catalog[] catalogs = getCatalogInfos(principal, metalake);
     List<MetricPO> metrics = new ArrayList<>();
@@ -397,58 +418,23 @@ public class MetricsCollector implements Closeable {
         createMetricPO(
             MetricDataService.Metric.PRIVATE_TAGGED_ASSET_COUNT, taggedPrivateAssetCount));
 
-    if (isMetalakeOwner(userName, metalake)) {
-      long assetWithOwnerCount = metricDataService.getAssetWithOwnerCount(metalake);
-      metrics.add(createMetricPO(MetricDataService.Metric.OWNED_ASSET_COUNT, assetWithOwnerCount));
-    }
+    // calculate owned assets for all users, regardless of whether they are the metalake owner or
+    // not. This is useful for the case where the metalake owner changed and the new owner also can
+    // see the historical owned assets.
+    // The frontend will use the owner information to filter the owned assets metric.
+    long assetWithOwnerCount = metricDataService.getAssetWithOwnerCount(metalake);
+    metrics.add(createMetricPO(MetricDataService.Metric.OWNED_ASSET_COUNT, assetWithOwnerCount));
 
     persistMetrics(metalake, userName, metrics);
   }
 
-  private boolean isMetalakeOwner(String userName, String metalakeName) {
-    if (enableAuthorization) {
-      MetadataObject metalakeObject =
-          MetadataObjects.of(null, metalakeName, MetadataObject.Type.METALAKE);
-      try {
-        return ownerManager
-            .getOwner(metalakeName, metalakeObject)
-            .map(
-                owner -> owner.type() == Owner.Type.USER && owner.name().equals(userName)
-                // The case for Owner.Type.GROUP will implicitly return false,
-                // check whether the user belongs to the group after OSS support.
-                )
-            .orElse(false);
-      } catch (Exception e) {
-        LOG.error(
-            "Failed to check if user: {} is owner of metalake: {}", userName, metalakeName, e);
-      }
-    }
-    return false;
+  private Catalog[] getCatalogInfos(UserPrincipal principal, String metalakeName) throws Exception {
+    return PrincipalUtils.doAs(
+        principal, () -> catalogDispatcher.listCatalogsInfo(NamespaceUtil.ofCatalog(metalakeName)));
   }
 
-  private Catalog[] getCatalogInfos(UserPrincipal principal, String metalakeName) {
-    try {
-      return PrincipalUtils.doAs(
-          principal,
-          () -> catalogDispatcher.listCatalogsInfo(NamespaceUtil.ofCatalog(metalakeName)));
-    } catch (Exception e) {
-      LOG.error(
-          "Failed to list catalogs for user: {} in metalake: {}",
-          principal.getName(),
-          metalakeName,
-          e);
-      return new Catalog[0];
-    }
-  }
-
-  private String[] getTagNames(UserPrincipal principal, String metalakeName) {
-    try {
-      return PrincipalUtils.doAs(principal, () -> tagDispatcher.listTags(metalakeName));
-    } catch (Exception e) {
-      LOG.error(
-          "Failed to list tags for user: {} in metalake: {}", principal.getName(), metalakeName, e);
-      return EMPTY_STRING_ARRAY;
-    }
+  private String[] getTagNames(UserPrincipal principal, String metalakeName) throws Exception {
+    return PrincipalUtils.doAs(principal, () -> tagDispatcher.listTags(metalakeName));
   }
 
   private void persistMetrics(String metalakeName, String user, List<MetricPO> metrics) {

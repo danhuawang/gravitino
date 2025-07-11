@@ -24,6 +24,7 @@ import com.datastrato.gravitino.storage.relational.mapper.provider.base.MetricDa
 import com.datastrato.gravitino.storage.relational.mapper.provider.h2.MetricDataH2Provider;
 import com.datastrato.gravitino.storage.relational.mapper.provider.postgresql.MetricDataPostgreSQLProvider;
 import com.google.common.collect.ImmutableMap;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.storage.relational.JDBCBackend.JDBCBackendType;
@@ -50,15 +51,15 @@ public class MetricDataSQLProviderFactory {
     return METRIC_DATA_SQL_PROVIDER_MAP.get(jdbcBackendType);
   }
 
-  public static String getMetricDTOsByNameAndTimestamp(
+  public static String getMetricPOsByNameAndTimestamp(
       @Param("metalakeName") String metalakeName,
       @Param("userName") String userName,
       @Param("metricNames") String[] metricNames,
-      @Param("startTimestamp") long startTimestamp,
-      @Param("endTimestamp") long endTimestamp,
+      @Param("startTimestamp") Timestamp startTimestamp,
+      @Param("endTimestamp") Timestamp endTimestamp,
       @Param("enableAuthorization") boolean enableAuthorization) {
     return getProvider()
-        .getMetricDTOsByNameAndTimestamp(
+        .getMetricPOsByNameAndTimestamp(
             metalakeName, userName, metricNames, startTimestamp, endTimestamp, enableAuthorization);
   }
 
@@ -78,7 +79,8 @@ public class MetricDataSQLProviderFactory {
     return getProvider().cleanInvalidMetrics();
   }
 
-  public static String cleanMetricsByTimestamp(@Param("oldestTimestamp") long oldestTimestamp) {
+  public static String cleanMetricsByTimestamp(
+      @Param("oldestTimestamp") Timestamp oldestTimestamp) {
     return getProvider().cleanMetricsByTimestamp(oldestTimestamp);
   }
 }

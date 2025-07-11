@@ -5,6 +5,7 @@
 package com.datastrato.gravitino.storage.relational.mapper;
 
 import com.datastrato.gravitino.storage.relational.MetricPO;
+import java.sql.Timestamp;
 import java.util.List;
 import org.apache.ibatis.annotations.DeleteProvider;
 import org.apache.ibatis.annotations.InsertProvider;
@@ -16,13 +17,13 @@ public interface MetricDataMapper {
 
   @SelectProvider(
       type = MetricDataSQLProviderFactory.class,
-      method = "getMetricDTOsByNameAndTimestamp")
-  List<MetricPO> getMetricDTOsByNameAndTimestamp(
+      method = "getMetricPOsByNameAndTimestamp")
+  List<MetricPO> getMetricPOsByNameAndTimestamp(
       @Param("metalakeName") String metalakeName,
       @Param("userName") String userName,
       @Param("metricNames") String[] metricNames,
-      @Param("startTimestamp") long startTimestamp,
-      @Param("endTimestamp") long endTimestamp,
+      @Param("startTimestamp") Timestamp startTimestamp,
+      @Param("endTimestamp") Timestamp endTimestamp,
       @Param("enableAuthorization") boolean enableAuthorization);
 
   @SelectProvider(type = MetricDataSQLProviderFactory.class, method = "getAssetWithOwnerCount")
@@ -39,5 +40,5 @@ public interface MetricDataMapper {
   void cleanInvalidMetrics();
 
   @DeleteProvider(type = MetricDataSQLProviderFactory.class, method = "cleanMetricsByTimestamp")
-  void cleanMetricsByTimestamp(@Param("oldestTimestamp") long oldestTimestamp);
+  void cleanMetricsByTimestamp(@Param("oldestTimestamp") Timestamp oldestTimestamp);
 }

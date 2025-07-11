@@ -8,6 +8,7 @@ import com.datastrato.gravitino.dto.metrics.MetricDTO;
 import com.datastrato.gravitino.storage.relational.MetricPO;
 import com.datastrato.gravitino.storage.relational.mapper.MetricDataMapper;
 import com.datastrato.gravitino.storage.relational.utils.DatastratoPOConverters;
+import java.sql.Timestamp;
 import java.util.List;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
@@ -89,12 +90,12 @@ public class MetricDataService {
         SessionUtils.getWithoutCommit(
             MetricDataMapper.class,
             mapper ->
-                mapper.getMetricDTOsByNameAndTimestamp(
+                mapper.getMetricPOsByNameAndTimestamp(
                     metalakeName,
                     userName,
                     metricNames,
-                    startTimestamp,
-                    endTimestamp,
+                    new Timestamp(startTimestamp),
+                    new Timestamp(endTimestamp),
                     enableAuthorization));
     return DatastratoPOConverters.fromMetricPOs(metricPOs);
   }
@@ -116,7 +117,8 @@ public class MetricDataService {
 
   public void cleanMetricsByTimestamp(long oldestTimestamp) {
     SessionUtils.doWithCommit(
-        MetricDataMapper.class, mapper -> mapper.cleanMetricsByTimestamp(oldestTimestamp));
+        MetricDataMapper.class,
+        mapper -> mapper.cleanMetricsByTimestamp(new Timestamp(oldestTimestamp)));
   }
 
   public void cleanInvalidMetrics() {
