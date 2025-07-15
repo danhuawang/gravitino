@@ -13,6 +13,7 @@ import org.apache.gravitino.listener.api.event.CatalogEvent;
 import org.apache.gravitino.listener.api.event.Event;
 import org.apache.gravitino.listener.api.event.FilesetEvent;
 import org.apache.gravitino.listener.api.event.ModelEvent;
+import org.apache.gravitino.listener.api.event.OwnerEvent;
 import org.apache.gravitino.listener.api.event.SchemaEvent;
 import org.apache.gravitino.listener.api.event.TableEvent;
 import org.apache.gravitino.listener.api.event.TagEvent;
@@ -38,7 +39,8 @@ public class DataDiscoveryListener implements EventListenerPlugin {
             TagEvent.class, new TagEventHandler(searchService),
             TopicEvent.class, new TopicEventHandler(searchService),
             FilesetEvent.class, new FilesetEventHandler(searchService),
-            ModelEvent.class, new ModelEventHandler(searchService));
+            ModelEvent.class, new ModelEventHandler(searchService),
+            OwnerEvent.class, new OwnerEventHandler(searchService));
   }
 
   @Override
@@ -65,6 +67,8 @@ public class DataDiscoveryListener implements EventListenerPlugin {
         handler = eventHandlers.get(FilesetEvent.class);
       } else if (event instanceof ModelEvent) {
         handler = eventHandlers.get(ModelEvent.class);
+      } else if (event instanceof OwnerEvent) {
+        handler = eventHandlers.get(OwnerEvent.class);
       }
 
       if (handler != null) {

@@ -4,11 +4,11 @@
  */
 package com.datastrato.gravitino.search.listener;
 
+import static org.apache.gravitino.utils.MetadataObjectUtil.toEntityType;
+
 import com.datastrato.gravitino.search.service.SearchService;
 import org.apache.gravitino.Entity;
-import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
-import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.listener.api.event.AlterTagEvent;
 import org.apache.gravitino.listener.api.event.AssociateTagsForMetadataObjectEvent;
 import org.apache.gravitino.listener.api.event.DeleteTagEvent;
@@ -49,25 +49,5 @@ public class TagEventHandler implements EventHandler {
         }
       }
     }
-  }
-
-  private static Entity.EntityType toEntityType(MetadataObject.Type type) {
-    switch (type) {
-      case METALAKE:
-        return Entity.EntityType.METALAKE;
-      case CATALOG:
-        return Entity.EntityType.CATALOG;
-      case SCHEMA:
-        return Entity.EntityType.SCHEMA;
-      case TABLE:
-        return Entity.EntityType.TABLE;
-      case TOPIC:
-        return Entity.EntityType.TOPIC;
-      case FILESET:
-        return Entity.EntityType.FILESET;
-      case MODEL:
-        return Entity.EntityType.MODEL;
-    }
-    throw new GravitinoRuntimeException("Unsupported metadata object type: " + type);
   }
 }
