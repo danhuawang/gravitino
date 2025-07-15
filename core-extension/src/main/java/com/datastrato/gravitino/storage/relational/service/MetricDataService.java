@@ -14,7 +14,7 @@ import java.util.List;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.authorization.Owner;
-import org.apache.gravitino.authorization.OwnerManager;
+import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
@@ -26,11 +26,11 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 public class MetricDataService {
   public static final long DUMMY_TIMESTAMP = 0;
 
-  private final OwnerManager ownerManager;
+  private final OwnerDispatcher ownerDispatcher;
   private final boolean enableAuthorization;
 
-  public MetricDataService(OwnerManager ownerManager, boolean enableAuthorization) {
-    this.ownerManager = ownerManager;
+  public MetricDataService(OwnerDispatcher ownerDispatcher, boolean enableAuthorization) {
+    this.ownerDispatcher = ownerDispatcher;
     this.enableAuthorization = enableAuthorization;
   }
 
@@ -158,7 +158,7 @@ public class MetricDataService {
   public Owner getMetalakeOwner(String metalakeName) {
     MetadataObject metalakeObject =
         MetadataObjects.of(null, metalakeName, MetadataObject.Type.METALAKE);
-    return ownerManager
+    return ownerDispatcher
         .getOwner(metalakeName, metalakeObject)
         .orElseThrow(
             () ->

@@ -26,7 +26,7 @@ import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.Owner;
-import org.apache.gravitino.authorization.OwnerManager;
+import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.catalog.EntityCombinedFileset;
 import org.apache.gravitino.catalog.EntityCombinedModel;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
@@ -52,13 +52,13 @@ public class EntityConverterUtils {
 
   @Nullable
   private static String getMetadataObjectOwner(MetadataObject metadataObject, String metalake) {
-    OwnerManager ownerManager = GravitinoEnv.getInstance().ownerManager();
-    if (ownerManager == null) {
+    OwnerDispatcher ownerDispatcher = GravitinoEnv.getInstance().ownerDispatcher();
+    if (ownerDispatcher == null) {
       return null;
     }
 
     try {
-      return ownerManager.getOwner(metalake, metadataObject).map(Owner::name).orElse(null);
+      return ownerDispatcher.getOwner(metalake, metadataObject).map(Owner::name).orElse(null);
     } catch (Exception e) {
       LOG.warn(
           "Failed to get owner for metadata object {} in metalake {}: {}",

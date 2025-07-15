@@ -37,7 +37,7 @@ import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.FutureGrantManager;
-import org.apache.gravitino.authorization.OwnerManager;
+import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
@@ -134,7 +134,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
 
     // initialize metric data service
     boolean enableAuthorization = config.get(Configs.ENABLE_AUTHORIZATION);
-    this.metricDataService = new MetricDataService(ownerManager(), enableAuthorization);
+    this.metricDataService = new MetricDataService(ownerDispatcher(), enableAuthorization);
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
@@ -229,8 +229,8 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @Override
-  public OwnerManager ownerManager() {
-    return GravitinoEnv.getInstance().ownerManager();
+  public OwnerDispatcher ownerDispatcher() {
+    return GravitinoEnv.getInstance().ownerDispatcher();
   }
 
   @Override
