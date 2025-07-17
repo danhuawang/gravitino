@@ -16,7 +16,7 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-FROM openjdk:17-jdk-buster
+FROM openjdk:17-jdk-bullseye
 LABEL maintainer="support@datastrato.com"
 
 RUN apt-get update && apt-get install -y \
