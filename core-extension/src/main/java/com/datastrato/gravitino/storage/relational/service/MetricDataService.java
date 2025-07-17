@@ -93,6 +93,7 @@ public class MetricDataService {
       }
     }
 
+    boolean isMetalakeOwner = isMetalakeOwner(metalakeName, userName);
     List<MetricPO> metricPOs =
         SessionUtils.getWithoutCommit(
             MetricDataMapper.class,
@@ -104,7 +105,7 @@ public class MetricDataService {
                     new Timestamp(startTimestamp),
                     new Timestamp(endTimestamp),
                     enableAuthorization,
-                    enableAuthorization && isMetalakeOwner(metalakeName, userName)));
+                    enableAuthorization && isMetalakeOwner));
     return DatastratoPOConverters.fromMetricPOs(metricPOs);
   }
 
