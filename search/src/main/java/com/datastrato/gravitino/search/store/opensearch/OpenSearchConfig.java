@@ -28,12 +28,15 @@ public class OpenSearchConfig extends Config {
       "gravitino.datastrato.search.opensearch.maxQueryThread";
   public static final String OPEN_SEARCH_MAX_QUERY_QUEUE_SIZE =
       "gravitino.datastrato.search.opensearch.maxQueryQueueSize";
+  public static final String OPEN_SEARCH_BACKGROUND_QUERY_TIMEOUT =
+      "gravitino.datastrato.search.opensearch.backgroundQueryTimeout";
 
   public static final int DEFAULT_WRITE_MAX_RETRY = 3;
   public static final int DEFAULT_RETRY_BACKOFF_MS = 3000;
   public static final int DEFAULT_QUERY_TIMEOUT_MS = 30000;
   public static final int DEFAULT_MAX_QUERY_THREAD = 10;
   public static final int DEFAULT_MAX_QUERY_QUEUE_SIZE = 100;
+  public static final String DEFAULT_BACKGROUND_QUERY_QUEUE_TIMEOUT = "2m";
 
   public OpenSearchConfig(Map<String, String> properties) {
     super(false);
@@ -95,6 +98,12 @@ public class OpenSearchConfig extends Config {
           .version(ConfigConstants.VERSION_0_9_0)
           .intConf()
           .createWithDefault(DEFAULT_MAX_QUERY_QUEUE_SIZE);
+  public static final ConfigEntry<String> ENTITY_OPEN_SEARCH_BACKGROUND_QUERY_TIMEOUT =
+      new ConfigBuilder(OPEN_SEARCH_BACKGROUND_QUERY_TIMEOUT)
+          .doc("The timeout for background queries in OpenSearch, like 30s, 5m etc.")
+          .version(ConfigConstants.VERSION_0_9_0)
+          .stringConf()
+          .createWithDefault(DEFAULT_BACKGROUND_QUERY_QUEUE_TIMEOUT);
 
   public String getOpenSearchUrl() {
     return get(ENTITY_OPEN_SEARCH_URL);
@@ -126,5 +135,9 @@ public class OpenSearchConfig extends Config {
 
   public int getOpenSearchMaxQueryQueueSize() {
     return get(ENTITY_OPEN_SEARCH_MAX_QUERY_QUEUE_SIZE);
+  }
+
+  public String getOpenSearchBackgroundQueryTimeout() {
+    return get(ENTITY_OPEN_SEARCH_BACKGROUND_QUERY_TIMEOUT);
   }
 }

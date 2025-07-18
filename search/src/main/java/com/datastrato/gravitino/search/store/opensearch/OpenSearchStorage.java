@@ -4,17 +4,16 @@
  */
 package com.datastrato.gravitino.search.store.opensearch;
 
-import com.datastrato.gravitino.search.dto.SearchCatalogEntityDTO;
+import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS;
+import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS_DTO;
+
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
-import com.datastrato.gravitino.search.dto.SearchModelEntityDTO;
-import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
 import com.datastrato.gravitino.search.parser.Condition;
-import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
-import com.datastrato.gravitino.search.po.SearchModelEntityPO;
-import com.datastrato.gravitino.search.po.SearchTableEntityPO;
+import com.datastrato.gravitino.search.store.SearchDataSource;
 import com.datastrato.gravitino.search.store.SearchStorage;
+import com.datastrato.gravitino.search.store.WriteContext;
 import com.datastrato.gravitino.search.utils.FilterConditionUtils;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
 import com.google.common.base.Function;
@@ -25,6 +24,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -39,6 +39,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -73,6 +75,9 @@ import org.opensearch.client.opensearch.core.search.SourceConfig;
 import org.opensearch.client.opensearch.core.search.TrackHits;
 import org.opensearch.client.opensearch.indices.GetAliasResponse;
 import org.opensearch.client.opensearch.indices.PutAliasResponse;
+import org.opensearch.client.opensearch.indices.UpdateAliasesRequest;
+import org.opensearch.client.opensearch.indices.update_aliases.Action;
+import org.opensearch.client.transport.endpoints.BooleanResponse;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
 import org.opensearch.client.util.ObjectBuilder;
 import org.slf4j.Logger;
@@ -91,13 +96,14 @@ public class OpenSearchStorage implements SearchStorage {
   private int maxRetries;
   private long retryBackoffMs;
   private long queryTimeoutMs;
+  private String backgroundQueryTimeout;
 
   private OpenSearchClient client;
   private RestClient restClient;
   private ExecutorService queryExecutor;
   private SearchEntityCodec searchEntityCodec;
 
-  private static final Map<EntityType, String> ENTITY_TYPE_TO_INDEX_SUFFIX =
+  protected static final Map<EntityType, String> ENTITY_TYPE_TO_INDEX_SUFFIX =
       ImmutableMap.of(
           EntityType.CATALOG, CATALOG_ENTITY_SUFFIX,
           EntityType.SCHEMA, SCHEMA_ENTITY_INDEX_SUFFIX,
@@ -106,27 +112,12 @@ public class OpenSearchStorage implements SearchStorage {
           EntityType.TOPIC, TOPIC_ENTITY_INDEX_SUFFIX,
           EntityType.TABLE, TABLE_ENTITY_INDEX_SUFFIX);
 
-  private static final Map<EntityType, Class<? extends SearchEntityPO>> ENTITY_TYPE_TO_CLASS =
-      ImmutableMap.of(
-          EntityType.CATALOG, SearchCatalogEntityPO.class,
-          EntityType.SCHEMA, SearchEntityPO.class,
-          EntityType.FILESET, SearchEntityPO.class,
-          EntityType.MODEL, SearchModelEntityPO.class,
-          EntityType.TOPIC, SearchEntityPO.class,
-          EntityType.TABLE, SearchTableEntityPO.class);
-
-  private static final Map<EntityType, Class<? extends SearchEntityDTO>> ENTITY_TYPE_TO_CLASS_DTO =
-      ImmutableMap.of(
-          EntityType.CATALOG, SearchCatalogEntityDTO.class,
-          EntityType.SCHEMA, SearchEntityDTO.class,
-          EntityType.FILESET, SearchEntityDTO.class,
-          EntityType.MODEL, SearchModelEntityDTO.class,
-          EntityType.TOPIC, SearchEntityDTO.class,
-          EntityType.TABLE, SearchTableEntityDTO.class);
-
   private final Map<EntityType, String> entityTypeToIndicesJsonMap = Maps.newHashMap();
 
   private final Set<String> createdIndices = Sets.newHashSet();
+
+  private static final Map<Long, OpenSearchStorageTransaction> TRANSACTION_MAP =
+      Maps.newConcurrentMap();
 
   @Override
   public void initialize(Config config) {
@@ -135,9 +126,10 @@ public class OpenSearchStorage implements SearchStorage {
     this.maxRetries = openSearchConfig.getOpenSearchWriteMaxRetry();
     this.retryBackoffMs = openSearchConfig.getOpenSearchRetryBackoffMs();
     this.queryTimeoutMs = openSearchConfig.getOpenSearchQueryTimeoutMs();
+    this.backgroundQueryTimeout = openSearchConfig.getOpenSearchBackgroundQueryTimeout();
 
     this.queryExecutor = createThreadExecutor(openSearchConfig);
-    this.searchEntityCodec = new SearchEntityCodec();
+    this.searchEntityCodec = SearchEntityCodec.INSTANCE;
 
     initOpenSearchClient(openSearchConfig);
 
@@ -200,12 +192,21 @@ public class OpenSearchStorage implements SearchStorage {
     return indicesName;
   }
 
-  private String getIndicesName(EntityType entityType, String metalakeName) {
+  protected String getIndicesName(EntityType entityType, String metalakeName) {
     String indicesSuffix = ENTITY_TYPE_TO_INDEX_SUFFIX.get(entityType);
     return metalakeName + "_" + indicesSuffix;
   }
 
-  private void saveToStorage(List<SearchEntityPO> entities, boolean flush) {
+  public OpenSearchClient getClient() {
+    return client;
+  }
+
+  public String getBackgroundQueryTimeout() {
+    return backgroundQueryTimeout;
+  }
+
+  private void saveToStorage(
+      List<SearchEntityPO> entities, WriteContext writeContext, boolean flush) {
     // Group by SearchEntityPO by metalake
     Map<String, List<SearchEntityPO>> metalakeToEntitiesMap =
         entities.stream()
@@ -220,7 +221,7 @@ public class OpenSearchStorage implements SearchStorage {
         EntityType entityType = entityTypeListEntry.getKey();
         List<SearchEntityPO> entityList = entityTypeListEntry.getValue();
 
-        saveToIndex(metalakeName, entityType, entityList, flush);
+        saveToIndex(metalakeName, entityType, entityList, flush, writeContext);
       }
     }
 
@@ -240,8 +241,19 @@ public class OpenSearchStorage implements SearchStorage {
   }
 
   private void saveToIndex(
-      String metalakeName, EntityType type, List<SearchEntityPO> entityPOs, boolean flush) {
+      String metalakeName,
+      EntityType type,
+      List<SearchEntityPO> entityPOs,
+      boolean flush,
+      WriteContext context) {
     String indicesName = createIndicesIfNotExists(type, metalakeName);
+
+    // In case of transaction, append the transaction ID to the index name
+    if (context.getTransactionId() != null) {
+      indicesName = indicesName + "_" + context.getTransactionId();
+    }
+    final String realIndicesName = indicesName;
+
     try {
       BulkRequest.Builder bulkRequestBuilder = new BulkRequest.Builder();
       for (SearchEntityPO entity : entityPOs) {
@@ -251,7 +263,7 @@ public class OpenSearchStorage implements SearchStorage {
                   op ->
                       op.index(
                           idx ->
-                              idx.index(indicesName)
+                              idx.index(realIndicesName)
                                   .id(String.valueOf(entity.getEntityId()))
                                   .document(entity)))
               .refresh(flush ? Refresh.True : Refresh.False);
@@ -351,18 +363,43 @@ public class OpenSearchStorage implements SearchStorage {
   }
 
   @Override
-  public void write(List<SearchEntityPO> entities) {
-    saveToStorage(entities, true);
+  public void write(List<SearchEntityPO> entities, WriteContext writeContext) {
+    saveToStorage(entities, writeContext, true);
   }
 
   public void write(List<SearchEntityPO> entities, boolean flush) {
-    saveToStorage(entities, flush);
+    saveToStorage(entities, WriteContext.DEFAULT, flush);
   }
 
   @Override
   public void close() {
     if (client != null) {
       client.shutdown();
+    }
+  }
+
+  private boolean indicesExists(String indicesName) {
+    try {
+      BooleanResponse exists = client.indices().exists(e -> e.index(indicesName));
+      return exists.value();
+    } catch (Exception e) {
+      LOG.error("Failed to check if index {} exists: {}", indicesName, e.getMessage());
+      throw new RuntimeException("Failed to check if index " + indicesName + " exists", e);
+    }
+  }
+
+  private void createEntityIndicesByTemplate(String indicesName) {
+    if (indicesExists(indicesName)) {
+      LOG.info("Index {} already exists, skipping creation.", indicesName);
+      return;
+    }
+
+    // Will use index template to create the index
+    Request request = new Request("PUT", "/" + indicesName);
+    try {
+      sendHttpRequestWithRetry(request);
+    } catch (Exception e) {
+      LOG.error("Failed to create index {}: {}", indicesName, e.getMessage());
     }
   }
 
@@ -448,28 +485,17 @@ public class OpenSearchStorage implements SearchStorage {
       int pageNum) {
     List<SearchEntitiesDTO> result = new ArrayList<>();
 
-    Function<SourceConfig.Builder, ObjectBuilder<SourceConfig>> sourceConfig;
-    if (fields != null && !fields.isEmpty()) {
-      sourceConfig = src -> src.filter(f -> f.includes(fields));
-    } else {
-      sourceConfig = src -> src.fetch(true);
-    }
-
     List<Future<Pair<EntityType, SearchResponse<? extends SearchEntityPO>>>> futures =
         Lists.newArrayList();
     for (Map.Entry<EntityType, String> entry : ENTITY_TYPE_TO_INDEX_SUFFIX.entrySet()) {
       EntityType entityType = entry.getKey();
       String indexName = getIndicesName(entityType, metalake);
+
       SearchRequest searchRequest =
-          new SearchRequest.Builder()
+          createSearchRequestBuilder(keyword, filter, fields, entityType)
               .index(indexName)
-              .query(query -> query.bool(buildBoolQuery(keyword, filter, entityType)))
-              .source(sourceConfig)
               .from(pageNum * pageSize)
               .size(pageSize)
-              // Ignore unavailable indices to avoid errors if the index does not exist
-              .trackTotalHits(TrackHits.of(t -> t.enabled(true)))
-              .ignoreUnavailable(true)
               .build();
 
       futures.add(
@@ -520,6 +546,30 @@ public class OpenSearchStorage implements SearchStorage {
     }
 
     return result;
+  }
+
+  @Override
+  public SearchDataSource search(
+      String metalake, String keyword, Condition filter, List<String> fields) {
+    return new OpenSearchQueryDataSource(
+        this, ENTITY_TYPE_TO_INDEX_SUFFIX.keySet(), metalake, keyword, filter, fields);
+  }
+
+  protected static SearchRequest.Builder createSearchRequestBuilder(
+      String keyword, Condition filter, List<String> fields, EntityType entityType) {
+    Function<SourceConfig.Builder, ObjectBuilder<SourceConfig>> sourceConfig;
+    if (fields != null && !fields.isEmpty()) {
+      sourceConfig = src -> src.filter(f -> f.includes(fields));
+    } else {
+      sourceConfig = src -> src.fetch(true);
+    }
+
+    return new SearchRequest.Builder()
+        .query(query -> query.bool(buildBoolQuery(keyword, filter, entityType)))
+        .source(sourceConfig)
+        // Ignore unavailable indices to avoid errors if the index does not exist
+        .trackTotalHits(TrackHits.of(t -> t.enabled(true)))
+        .ignoreUnavailable(true);
   }
 
   @Override
@@ -709,5 +759,128 @@ public class OpenSearchStorage implements SearchStorage {
                 "tag_name", "tags.tag_name.keyword", "catalog_name", "catalog_name.keyword"));
     result.add(query);
     return result;
+  }
+
+  boolean checkMetalakeTransactionExists(String metalake) {
+    return TRANSACTION_MAP.values().stream()
+        .anyMatch(transaction -> transaction.getMetalake().equals(metalake));
+  }
+
+  @Override
+  public long beginTransaction(String metalake) {
+    if (checkMetalakeTransactionExists(metalake)) {
+      throw new IllegalStateException("Transaction already exists for metalake: " + metalake);
+    }
+    long now = System.currentTimeMillis();
+    // Create temporary indices for the transaction
+    Set<String> indicesSet = Sets.newHashSet();
+    for (EntityType entityType : ENTITY_TYPE_TO_INDEX_SUFFIX.keySet()) {
+      // Should use transaction id not tmp indices name
+      String indicesName = getIndicesName(entityType, metalake) + "_" + now;
+      createEntityIndicesByTemplate(indicesName);
+      indicesSet.add(indicesName);
+    }
+    TRANSACTION_MAP.put(now, new OpenSearchStorageTransaction(now, metalake, indicesSet));
+    return now;
+  }
+
+  @Override
+  public void commit(long transactionId) {
+    // Switch alias. add alias for temp indices and then remove the old alias.
+    OpenSearchStorageTransaction transaction = TRANSACTION_MAP.get(transactionId);
+    Set<String> newIndexes = transaction.getIndexNames();
+    Set<String> oldIndexNames = Sets.newHashSet();
+
+    try {
+      for (String indices : newIndexes) {
+        String aliasName = indices.substring(0, indices.lastIndexOf("_1"));
+        IndexStatus indexStatus = checkIndexOrAlias(aliasName);
+
+        if (!indexStatus.isAlias) {
+          throw new RuntimeException("Alias " + aliasName + " does not exist or is not an alias");
+        }
+
+        String targetIndex = indexStatus.targetIndex;
+        client
+            .indices()
+            .updateAliases(
+                new UpdateAliasesRequest.Builder()
+                    .actions(
+                        new Action.Builder()
+                            .remove(a -> a.index(targetIndex).alias(aliasName))
+                            .build(),
+                        new Action.Builder().add(a -> a.index(indices).alias(aliasName)).build())
+                    .build());
+        oldIndexNames.add(targetIndex);
+      }
+
+      // Delete old indices, this can be done in a separate thread or asynchronously.
+      for (String oldIndexName : oldIndexNames) {
+        try {
+          client.indices().delete(d -> d.index(oldIndexName));
+        } catch (Exception e) {
+          LOG.error("Failed to delete old index {}: {}", oldIndexName, e.getMessage());
+        }
+      }
+
+      // remove data from transaction map
+      TRANSACTION_MAP.remove(transactionId);
+    } catch (IOException e) {
+      LOG.error("Failed to commit transaction: {}", e.getMessage());
+      throw new RuntimeException("Failed to commit transaction", e);
+    }
+  }
+
+  @AllArgsConstructor
+  @Getter
+  public static class IndexStatus {
+    private boolean exists;
+    private boolean isAlias;
+    private String targetIndex; // If isAlias is true, this is the target index of the alias.
+  }
+
+  private IndexStatus checkIndexOrAlias(String name) {
+    try {
+      // Check if this is an index.
+      BooleanResponse exists = client.indices().exists(e -> e.index(name));
+      if (!exists.value()) {
+        return new IndexStatus(false, false, null);
+      }
+
+      // Check if this is an alias.
+      GetAliasResponse aliasResponse = client.indices().getAlias(g -> g.name(name).index(name));
+
+      boolean isAlias = !aliasResponse.result().isEmpty();
+      String targetIndex = isAlias ? aliasResponse.result().keySet().iterator().next() : name;
+
+      return new IndexStatus(true, isAlias, targetIndex);
+    } catch (Exception e) {
+      LOG.error("Failed to check index/alias {}: {}", name, e.getMessage());
+      throw new RuntimeException("Check failed for " + name, e);
+    }
+  }
+
+  @Override
+  public void rollback(long transactionId) {
+    OpenSearchStorageTransaction transaction = TRANSACTION_MAP.remove(transactionId);
+    if (transaction == null) {
+      LOG.warn("No transaction found for ID: {}", transactionId);
+      return;
+    }
+
+    Set<String> indicesToDelete = transaction.getIndexNames();
+    if (indicesToDelete == null || indicesToDelete.isEmpty()) {
+      LOG.warn("No indices found for transaction ID: {}", transactionId);
+      return;
+    }
+
+    // Delete the temporary indices created for the transaction
+    for (String indexName : indicesToDelete) {
+      try {
+        client.indices().delete(d -> d.index(indexName));
+      } catch (Exception e) {
+        LOG.error("Failed to delete index {}: {}", indexName, e.getMessage());
+      }
+    }
   }
 }

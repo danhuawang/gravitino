@@ -6,9 +6,9 @@ package com.datastrato.gravitino.search.service;
 
 import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY;
 import static com.datastrato.gravitino.search.config.SearchConfig.GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH;
-import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
-import static com.datastrato.gravitino.search.service.SyncTask.MAX_DELETE_BATCH_SIZE;
 import static com.datastrato.gravitino.search.utils.FilterConditionUtils.createEntityNameQueryCondition;
+import static java.util.stream.Collectors.toList;
+import static org.apache.gravitino.MetadataObject.Type.METALAKE;
 
 import com.datastrato.gravitino.search.config.SearchConfig;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
@@ -16,8 +16,11 @@ import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.parser.QueryParser;
+import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
+import com.datastrato.gravitino.search.store.SearchDataSource;
 import com.datastrato.gravitino.search.store.SearchStorage;
+import com.datastrato.gravitino.search.store.WriteContext;
 import com.datastrato.gravitino.search.store.opensearch.OpenSearchStorage;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -27,7 +30,6 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.Closeable;
 import java.time.Duration;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,7 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.utils.NameIdentifierUtil;
@@ -60,7 +63,7 @@ public class SearchService implements Closeable {
   private final int maxSyncMetadataThreadNum;
   private final int entityProcessBatchSize;
 
-  @VisibleForTesting final SearchStorage storage;
+  @VisibleForTesting protected final SearchStorage storage;
 
   private final TaskStatusStorage taskStatusStorage;
 
@@ -160,6 +163,20 @@ public class SearchService implements Closeable {
    */
   public SyncTask synchronizeMetadata(
       String metalake, MetadataObject metadataObject, boolean cascade) {
+    return synchronizeMetadata(
+        metalake,
+        metadataObject,
+        cascade,
+        SyncTaskOptions.DEFAULT,
+        cascade ? new RemoveDeletedMetadata() : null);
+  }
+
+  private SyncTask synchronizeMetadata(
+      String metalake,
+      MetadataObject metadataObject,
+      boolean cascade,
+      SyncTaskOptions syncTaskOptions,
+      SyncTaskFinishedHandler finishedHandler) {
     // Load the metalake first to make sure the metalake exists.
     boolean metalakeExists =
         GravitinoEnv.getInstance().metalakeDispatcher().metalakeExists(NameIdentifier.of(metalake));
@@ -178,7 +195,8 @@ public class SearchService implements Closeable {
               syncTasks.size(), maxQueueSize));
     }
 
-    SyncTask syncTask = new SyncTask(metalake, metadataObject, cascade, this);
+    SyncTask syncTask =
+        new SyncTask(metalake, metadataObject, cascade, this, syncTaskOptions, finishedHandler);
     LOG.info("TaskId: {}, start synchronize metadata...", syncTask.getTaskId());
     addTask(syncTask);
 
@@ -189,7 +207,12 @@ public class SearchService implements Closeable {
       NameIdentifier nameIdentifier, Entity.EntityType type, boolean cascade) {
     String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
     MetadataObject metadataObject = NameIdentifierUtil.toMetadataObject(nameIdentifier, type);
-    return synchronizeMetadata(metalake, metadataObject, cascade);
+    return synchronizeMetadata(
+        metalake,
+        metadataObject,
+        cascade,
+        SyncTaskOptions.DEFAULT,
+        cascade ? new RemoveDeletedMetadata() : null);
   }
 
   public SyncTask synchronizeEntityDataByTag(String metalake, String tagName) {
@@ -218,40 +241,12 @@ public class SearchService implements Closeable {
         () -> {
           try {
             String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
-            List<SearchEntitiesDTO> entities;
+            removeMetadataByQuery(
+                metalake,
+                entityType == Entity.EntityType.METALAKE
+                    ? null
+                    : createEntityNameQueryCondition(nameIdentifier, cascade));
 
-            do {
-              // TODO we could only fetch entity_id instead of getting all fields.
-              entities =
-                  storage.search(
-                      metalake,
-                      null,
-                      entityType == Entity.EntityType.METALAKE
-                          ? null
-                          : createEntityNameQueryCondition(nameIdentifier, cascade),
-                      null,
-                      MAX_DELETE_BATCH_SIZE,
-                      0);
-
-              if (cascade) {
-                for (SearchEntitiesDTO searchEntitiesDTO : entities) {
-                  List<Long> entityIds = new ArrayList<>();
-                  for (SearchEntityDTO entity : searchEntitiesDTO.getEntities()) {
-                    entityIds.add(entity.getEntityId());
-                  }
-                  storage.delete(metalake, entityIds, searchEntitiesDTO.getType());
-                }
-              } else {
-                SearchEntitiesDTO dto = getSearchEntitiesDTOByType(entities, entityType);
-                List<Long> entityIds = new ArrayList<>();
-                if (dto != null) {
-                  for (SearchEntityDTO entity : dto.getEntities()) {
-                    entityIds.add(entity.getEntityId());
-                  }
-                  storage.delete(metalake, entityIds, entityType);
-                }
-              }
-            } while (!entities.isEmpty());
           } catch (Exception e) {
             LOG.error("Failed to remove metadata for {}: {}", nameIdentifier, e.getMessage(), e);
           }
@@ -262,29 +257,27 @@ public class SearchService implements Closeable {
     return executorService.submit(
         () -> {
           try {
-            // TODO we could only fetch entity_id instead of getting all fields.
-            List<SearchEntitiesDTO> entities;
-            do {
-              entities =
-                  storage.search(
-                      metalake,
-                      null,
-                      new Condition.InCondition("tag_name", ImmutableList.of(tagName)),
-                      ImmutableList.of(),
-                      MAX_DELETE_BATCH_SIZE,
-                      0);
-              for (SearchEntitiesDTO searchEntitiesDTO : entities) {
-                List<Long> entityIds = new ArrayList<>();
-                for (SearchEntityDTO entity : searchEntitiesDTO.getEntities()) {
-                  entityIds.add(entity.getEntityId());
-                }
-                storage.delete(metalake, entityIds, searchEntitiesDTO.getType());
-              }
-            } while (!entities.isEmpty());
+            removeMetadataByQuery(
+                metalake, new Condition.InCondition("tag_name", ImmutableList.of(tagName)));
           } catch (Exception e) {
             LOG.error("Failed to remove metadata by tag {}: {}", tagName, e.getMessage(), e);
           }
         });
+  }
+
+  public void removeMetadataByQuery(String metalake, Condition condition) {
+    // TODO we could only fetch entity_id instead of getting all fields.
+    SearchDataSource source = storage.search(metalake, null, condition, ImmutableList.of());
+
+    SearchDataSource.Result result = source.nextBatch();
+    while (!result.isEmpty()) {
+      Entity.EntityType resultEntityType = result.entityType();
+      List<Long> entityIds =
+          result.entities().stream().map(SearchEntityDTO::getEntityId).collect(toList());
+      storage.delete(metalake, entityIds, resultEntityType);
+
+      result = source.nextBatch();
+    }
   }
 
   public List<SearchEntitiesDTO> query(
@@ -305,7 +298,12 @@ public class SearchService implements Closeable {
       List<String> fields,
       int pageNumber,
       int pageSize) {
-    return storage.search(metalake, null, condition, ImmutableList.of(), pageSize, pageNumber);
+    return storage.search(metalake, keywords, condition, fields, pageSize, pageNumber);
+  }
+
+  public SearchDataSource query(
+      String metalake, String keywords, Condition condition, List<String> fields) {
+    return storage.search(metalake, null, condition, ImmutableList.of());
   }
 
   protected void addTask(SyncTask syncTask) {
@@ -386,5 +384,35 @@ public class SearchService implements Closeable {
     } catch (Exception e) {
       LOG.error("Failed to close SearchService", e);
     }
+  }
+
+  public SyncTask rebuildMetadata(String metalake) throws Exception {
+    // Should add limit that only one transaction can be active at a time for a metalake.
+    long txId = storage.beginTransaction(metalake);
+
+    // synchronizeMetadata will handle the transaction commit/rollback.
+    SyncTaskOptions syncTaskOptions = SyncTaskOptions.builder().withTransactionId(txId).build();
+    return synchronizeMetadata(
+        metalake,
+        MetadataObjects.parse(metalake, METALAKE),
+        true,
+        syncTaskOptions,
+        new RebuildMetadataFinishHandler());
+  }
+
+  public void delete(String metalake, List<Long> entityIds, EntityType resultEntityType) {
+    storage.delete(metalake, entityIds, resultEntityType);
+  }
+
+  public void write(List<SearchEntityPO> allEntities, WriteContext build) {
+    storage.write(allEntities, build);
+  }
+
+  public void commit(long transId) {
+    storage.commit(transId);
+  }
+
+  public void rollback(long transId) {
+    storage.rollback(transId);
   }
 }

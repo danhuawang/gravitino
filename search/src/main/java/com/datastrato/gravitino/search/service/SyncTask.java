@@ -4,35 +4,26 @@
  */
 package com.datastrato.gravitino.search.service;
 
-import static com.datastrato.gravitino.search.utils.FilterConditionUtils.createRemovedEntityCondition;
-import static com.datastrato.gravitino.search.utils.FilterConditionUtils.createUpdateTimeCondition;
-
-import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
-import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.service.TaskStatus.TaskStatusEnum;
+import com.datastrato.gravitino.search.store.WriteContext;
 import com.google.common.collect.Lists;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Getter;
-import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
-import org.apache.gravitino.NameIdentifier;
-import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SyncTask {
   private static final Logger LOG = LoggerFactory.getLogger(SyncTask.class);
 
-  static final int MAX_DELETE_BATCH_SIZE = 10000;
-
-  private final String taskId;
-  private final SearchService service;
-  private final SearchEntitySource source;
-  private final SearchEntityIdentifier searchEntityIdentifier;
+  protected final String taskId;
+  protected final SearchService service;
+  protected final SearchEntitySource source;
+  protected final SearchEntityIdentifier searchEntityIdentifier;
 
   private final Object finishedLock = new Object();
   private boolean finished = false;
@@ -44,12 +35,21 @@ public class SyncTask {
 
   @Getter private final TaskStatus taskStatus;
 
-  private final long createTime;
+  protected final long createTime;
 
-  private boolean cascade = false;
+  protected boolean cascade = false;
+
+  protected final SyncTaskOptions options;
+
+  private final SyncTaskFinishedHandler finishedHandler;
 
   public SyncTask(
-      String metalake, MetadataObject metadataObject, boolean cascade, SearchService service) {
+      String metalake,
+      MetadataObject metadataObject,
+      boolean cascade,
+      SearchService service,
+      SyncTaskOptions options,
+      SyncTaskFinishedHandler finishedHandler) {
     this.searchEntityIdentifier = new SearchEntityIdentifier(metadataObject, metalake);
     this.taskId = createTaskId();
     this.createTime = System.currentTimeMillis();
@@ -57,6 +57,8 @@ public class SyncTask {
     this.isRootTask = true;
     this.cascade = cascade;
     this.source = SearchEntitySource.createSearchEntitySource(searchEntityIdentifier, cascade);
+    this.options = options;
+    this.finishedHandler = finishedHandler;
 
     splitTask();
 
@@ -82,6 +84,8 @@ public class SyncTask {
     this.isRootTask = true;
     this.source = source;
     this.createTime = System.currentTimeMillis();
+    this.options = SyncTaskOptions.builder().build();
+    this.finishedHandler = null;
 
     this.taskStatus =
         TaskStatus.builder()
@@ -104,14 +108,17 @@ public class SyncTask {
       SearchEntityIdentifier identifier,
       SearchEntitySource source,
       SearchService service,
-      TaskStatus taskStatus) {
+      TaskStatus taskStatus,
+      SyncTaskOptions syncTaskOptions) {
     this.taskId = taskId;
     this.searchEntityIdentifier = identifier;
     this.source = source;
     this.service = service;
     this.isRootTask = false;
     this.taskStatus = taskStatus;
+    this.options = syncTaskOptions;
     this.createTime = System.currentTimeMillis();
+    this.finishedHandler = null;
   }
 
   private String createTaskId() {
@@ -143,10 +150,12 @@ public class SyncTask {
               .withSubTaskNum(0)
               .build();
 
-      SyncTask syncTask = new SyncTask(taskId, searchEntityIdentifier, source, service, taskStatus);
+      SyncTask syncTask =
+          new SyncTask(taskId, searchEntityIdentifier, source, service, taskStatus, options);
       subTasks.add(syncTask);
       service.addTask(syncTask);
     }
+
     LOG.info(
         "Task {} split into {} subtasks, Sub tasks: {}",
         taskId,
@@ -181,7 +190,9 @@ public class SyncTask {
       }
 
       if (!searchEntityPOs.isEmpty()) {
-        service.storage.write(searchEntityPOs);
+        service.write(
+            searchEntityPOs,
+            WriteContext.builder().withTransactionId(options.getTransactionId()).build());
       }
       return true;
 
@@ -231,18 +242,21 @@ public class SyncTask {
       }
     }
 
-    boolean syncDeleteSuccess = true;
-    if (isRootTask && cascade) {
-      // If cascade is true and is the root task, then we need to remove the deleted data from
-      // storage.
-      syncDeleteSuccess = removeDeleteDataFromStorage();
+    boolean result = false;
+    if (finishedHandler != null) {
+      try {
+        result = finishedHandler.onTaskFinished(this);
+      } catch (Exception e) {
+        status = TaskStatusEnum.FAILED;
+        LOG.error("Error handling task finished", e);
+      }
     }
 
     StringBuilder stringBuilder = new StringBuilder();
     stringBuilder.append(String.format("Task %s process finished.", taskId));
     List<SearchEntityIdentifier> totalFailedEntities =
         Lists.newArrayList(source.getProcessFailedEntities());
-    if (!syncDeleteSuccess) {
+    if (!result) {
       totalFailedEntities.add(searchEntityIdentifier);
     }
 
@@ -285,53 +299,5 @@ public class SyncTask {
             .withTaskUpdateTime(System.currentTimeMillis())
             .build();
     service.getTaskStatusStorage().update(newStatus);
-  }
-
-  private boolean removeDeleteDataFromStorage() {
-    try {
-      if (!source.getProcessFailedEntities().isEmpty()) {
-        LOG.warn(
-            "Task {} finished with failure, do not remove the metadata for {}",
-            taskId,
-            searchEntityIdentifier);
-        return true;
-      }
-
-      NameIdentifier nameIdentifier = searchEntityIdentifier.entityIdent();
-      Entity.EntityType entityType = searchEntityIdentifier.entityType();
-      String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
-
-      List<SearchEntitiesDTO> entities;
-
-      do {
-        entities =
-            service.storage.search(
-                metalake,
-                null,
-                entityType == Entity.EntityType.METALAKE
-                    ? createUpdateTimeCondition(createTime)
-                    : createRemovedEntityCondition(nameIdentifier, cascade, createTime),
-                null,
-                MAX_DELETE_BATCH_SIZE,
-                0);
-
-        for (SearchEntitiesDTO searchEntitiesDTO : entities) {
-          List<Long> entityIds = new ArrayList<>();
-          for (SearchEntityDTO entity : searchEntitiesDTO.getEntities()) {
-            entityIds.add(entity.getEntityId());
-          }
-          service.storage.delete(metalake, entityIds, searchEntitiesDTO.getType());
-        }
-      } while (!entities.isEmpty());
-    } catch (Exception e) {
-      LOG.error(
-          "Error removing deleted data from storage for task {}: {}",
-          taskId,
-          searchEntityIdentifier,
-          e);
-      return false;
-    }
-
-    return true;
   }
 }

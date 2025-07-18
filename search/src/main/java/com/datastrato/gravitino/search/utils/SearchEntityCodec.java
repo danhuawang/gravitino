@@ -4,8 +4,14 @@
  */
 package com.datastrato.gravitino.search.utils;
 
+import com.datastrato.gravitino.search.dto.SearchCatalogEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
+import com.datastrato.gravitino.search.dto.SearchModelEntityDTO;
+import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
+import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.datastrato.gravitino.search.po.SearchModelEntityPO;
+import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
@@ -19,6 +25,9 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.google.common.collect.ImmutableMap;
+import java.util.Map;
+import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.rel.types.Type;
 import org.slf4j.Logger;
@@ -26,8 +35,28 @@ import org.slf4j.LoggerFactory;
 
 public class SearchEntityCodec {
 
+  public static final Map<EntityType, Class<? extends SearchEntityPO>> ENTITY_TYPE_TO_CLASS =
+      ImmutableMap.of(
+          EntityType.CATALOG, SearchCatalogEntityPO.class,
+          EntityType.SCHEMA, SearchEntityPO.class,
+          EntityType.FILESET, SearchEntityPO.class,
+          EntityType.MODEL, SearchModelEntityPO.class,
+          EntityType.TOPIC, SearchEntityPO.class,
+          EntityType.TABLE, SearchTableEntityPO.class);
+
+  public static final Map<EntityType, Class<? extends SearchEntityDTO>> ENTITY_TYPE_TO_CLASS_DTO =
+      ImmutableMap.of(
+          EntityType.CATALOG, SearchCatalogEntityDTO.class,
+          EntityType.SCHEMA, SearchEntityDTO.class,
+          EntityType.FILESET, SearchEntityDTO.class,
+          EntityType.MODEL, SearchModelEntityDTO.class,
+          EntityType.TOPIC, SearchEntityDTO.class,
+          EntityType.TABLE, SearchTableEntityDTO.class);
+
   private static final Logger LOG = LoggerFactory.getLogger(SearchEntityCodec.class);
   private final ObjectMapper objectMapper;
+
+  public static final SearchEntityCodec INSTANCE = new SearchEntityCodec();
 
   public SearchEntityCodec() {
     // Create a new ObjectMapper specifically configured with PropertyNamingStrategies.SNAKE_CASE to
@@ -55,7 +84,7 @@ public class SearchEntityCodec {
    * @param entity The SearchEntityPO object to serialize.
    * @return The JSON string representation of the object.
    */
-  public String serialize(SearchEntityPO entity) {
+  public String serialize(Object entity) {
     try {
       return objectMapper.writeValueAsString(entity);
     } catch (JsonProcessingException e) {

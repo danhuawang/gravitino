@@ -41,7 +41,32 @@ public class SearchOperations {
   @Context private HttpServletRequest httpRequest;
 
   @POST
-  @Path("/sync/{metalake}/objects")
+  @Path("/rebuild/metalakes/{metalake}")
+  @Produces("application/vnd.gravitino.v1+json")
+  public Response rebuildMetadata(@PathParam("metalake") String metalake) {
+    if (StringUtils.isBlank(metalake)) {
+      return Utils.illegalArguments("Metalake cannot be null or empty");
+    }
+
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            // Use sync method to rebuild metadata
+            SyncTask task =
+                ExtendedDatastratoGravitinoEnv.getInstance()
+                    .getSearchService()
+                    .rebuildMetadata(metalake);
+            return Utils.ok(new SyncMetadataResponse(task.getTaskId()));
+          });
+    } catch (Exception e) {
+      LOG.error("Failed to rebuild metadata for metalake: {}", metalake, e);
+      return Utils.internalError(e.getMessage());
+    }
+  }
+
+  @POST
+  @Path("/sync/metalakes/{metalake}/objects")
   @Produces("application/vnd.gravitino.v1+json")
   public Response syncMetadataObjects(
       @PathParam("metalake") String metalake, SynMetadataRequest request) {

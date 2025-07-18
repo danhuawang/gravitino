@@ -19,6 +19,7 @@ import com.datastrato.gravitino.search.rest.SynMetadataRequest;
 import com.datastrato.gravitino.search.rest.TaskStatusResponse;
 import com.datastrato.gravitino.search.service.SearchService;
 import com.datastrato.gravitino.search.service.SyncTask;
+import com.datastrato.gravitino.search.service.SyncTaskOptions;
 import com.datastrato.gravitino.search.service.TaskStatus;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
@@ -105,7 +106,13 @@ public class TestSearchOperations extends JerseyTest {
     SearchService spyService = Mockito.spy(service);
     doAnswer(
             invocation ->
-                new SyncTask("test", MetadataObjects.parse("test", METALAKE), true, spyService))
+                new SyncTask(
+                    "test",
+                    MetadataObjects.parse("test", METALAKE),
+                    true,
+                    spyService,
+                    SyncTaskOptions.DEFAULT,
+                    null))
         .when(spyService)
         .synchronizeMetadata(Mockito.anyString(), Mockito.any(), Mockito.anyBoolean());
 
@@ -125,7 +132,7 @@ public class TestSearchOperations extends JerseyTest {
   @Test
   void testSearchOperations() {
     Response resp =
-        target("/search/sync/metalake1/objects")
+        target("/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -136,7 +143,7 @@ public class TestSearchOperations extends JerseyTest {
     Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
 
     resp =
-        target("/search/sync/metalake1/objects")
+        target("/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -150,7 +157,7 @@ public class TestSearchOperations extends JerseyTest {
     Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
 
     resp =
-        target("/search/sync/metalake1/objects")
+        target("/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -166,7 +173,7 @@ public class TestSearchOperations extends JerseyTest {
 
     // The following are wrong examples
     resp =
-        target("/search/sync/metalake1/objects")
+        target("/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -183,7 +190,7 @@ public class TestSearchOperations extends JerseyTest {
         "Metadata full name is required when metadata type is provided", errorResp.getMessage());
 
     resp =
-        target("/search/sync/metalake1/objects")
+        target("/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -201,7 +208,7 @@ public class TestSearchOperations extends JerseyTest {
         "Metadata type is required when metadata full name is provided", errorResp.getMessage());
 
     resp =
-        target("/search/sync/metalake1/objects")
+        target("/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(

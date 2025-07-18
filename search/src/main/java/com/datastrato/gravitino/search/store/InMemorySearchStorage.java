@@ -4,18 +4,19 @@
  */
 package com.datastrato.gravitino.search.store;
 
-import com.datastrato.gravitino.search.dto.SearchCatalogEntityDTO;
+import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS_DTO;
+import static java.util.stream.Collectors.toList;
+
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
-import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.parser.Condition.RangeType;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -31,17 +32,7 @@ import org.apache.gravitino.Entity;
  */
 public class InMemorySearchStorage implements SearchStorage {
 
-  private static final Map<Entity.EntityType, Class<? extends SearchEntityDTO>>
-      ENTITY_TYPE_TO_CLASS_DTO =
-          ImmutableMap.of(
-              Entity.EntityType.CATALOG, SearchCatalogEntityDTO.class,
-              Entity.EntityType.SCHEMA, SearchEntityDTO.class,
-              Entity.EntityType.FILESET, SearchEntityDTO.class,
-              Entity.EntityType.MODEL, SearchEntityDTO.class,
-              Entity.EntityType.TOPIC, SearchEntityDTO.class,
-              Entity.EntityType.TABLE, SearchTableEntityDTO.class);
-
-  private Map<Long, SearchEntityPO> searchEntityMap = new ConcurrentHashMap<>();
+  private final Map<Long, SearchEntityPO> searchEntityMap = new ConcurrentHashMap<>();
   private SearchEntityCodec codec;
 
   public List<SearchEntityPO> getSearchEntities() {
@@ -50,11 +41,11 @@ public class InMemorySearchStorage implements SearchStorage {
 
   @Override
   public void initialize(Config config) {
-    this.codec = new SearchEntityCodec();
+    this.codec = SearchEntityCodec.INSTANCE;
   }
 
   @Override
-  public void write(List<SearchEntityPO> entities) {
+  public void write(List<SearchEntityPO> entities, WriteContext context) {
     for (SearchEntityPO entity : entities) {
       searchEntityMap.put(entity.getEntityId(), entity);
     }
@@ -116,7 +107,7 @@ public class InMemorySearchStorage implements SearchStorage {
                   })
               .skip(offset)
               .limit(pageSize)
-              .collect(Collectors.toList());
+              .collect(toList());
 
       result.add(
           SearchEntitiesDTO.builder()
@@ -126,6 +117,13 @@ public class InMemorySearchStorage implements SearchStorage {
               .build());
     }
     return result;
+  }
+
+  @Override
+  public SearchDataSource search(
+      String metalake, String keyword, Condition filter, List<String> fields) {
+    return new InMemorySearchDataSource(
+        search(metalake, keyword, filter, fields, Integer.MAX_VALUE, 0));
   }
 
   @VisibleForTesting
@@ -161,7 +159,7 @@ public class InMemorySearchStorage implements SearchStorage {
       Condition.TermCondition termCondition = (Condition.TermCondition) condition;
       String field = termCondition.getField();
       String value = termCondition.getValue();
-      if (field.startsWith("full_qualified_name")) {
+      if (field.equals("full_qualified_name") || field.equals("full_qualified_name.keyword")) {
         return entity -> value.equals(entity.getFullQualifiedName());
       }
       if (field.equals("entity_type")) {
@@ -176,7 +174,7 @@ public class InMemorySearchStorage implements SearchStorage {
       Condition.PrefixCondition prefixCondition = (Condition.PrefixCondition) condition;
       String field = prefixCondition.getField();
       String value = prefixCondition.getValue();
-      if (field.startsWith("full_qualified_name")) {
+      if (field.equals("full_qualified_name") || field.equals("full_qualified_name.keyword")) {
         return entity -> entity.getFullQualifiedName().startsWith(value);
       }
     }
@@ -221,5 +219,27 @@ public class InMemorySearchStorage implements SearchStorage {
     }
 
     throw new IllegalArgumentException("Unsupported condition type: " + condition.getClass());
+  }
+
+  static class InMemorySearchDataSource implements SearchDataSource {
+
+    private final List<SearchEntitiesDTO> searchResults;
+    private final Iterator<SearchEntitiesDTO> iterator;
+
+    public InMemorySearchDataSource(List<SearchEntitiesDTO> dtoList) {
+      this.searchResults = dtoList;
+      iterator = searchResults.iterator();
+    }
+
+    @Override
+    public Result nextBatch() {
+      if (iterator.hasNext()) {
+        SearchEntitiesDTO next = iterator.next();
+        return new Result(
+            next.getEntities().stream().map(dto -> (SearchEntityDTO) dto).collect(toList()),
+            next.getType());
+      }
+      return Result.empty();
+    }
   }
 }

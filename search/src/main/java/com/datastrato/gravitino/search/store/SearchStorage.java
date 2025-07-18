@@ -27,7 +27,7 @@ public interface SearchStorage extends Closeable {
    *
    * @param entities The entity list to be written to the storage.
    */
-  void write(List<SearchEntityPO> entities);
+  void write(List<SearchEntityPO> entities, WriteContext writeContext);
 
   /**
    * Search the storage for entities that match the given keyword and filter.
@@ -49,6 +49,17 @@ public interface SearchStorage extends Closeable {
       int pageNum);
 
   /**
+   * Search the storage for entities that match the given keyword and filter.
+   *
+   * @param metalake The metalake to search in.
+   * @param keyword The keyword to search for.
+   * @param filter The filter to apply to the search.
+   * @param fields The fields to return in the search results. If null or empty, all fields will be
+   * @return a SearchDataSource object that contains the search results.
+   */
+  SearchDataSource search(String metalake, String keyword, Condition filter, List<String> fields);
+
+  /**
    * Delete entities from the storage based on their IDs, metalake, and entity type.
    *
    * @param metalake The metalake from which to delete entities.
@@ -62,8 +73,12 @@ public interface SearchStorage extends Closeable {
    * transaction, we need to call this method to begin a transaction. This is helpful when you are
    * doing rolling upgrades or when you want to switch the alias of the indices to a new one.
    */
-  default void beginTransaction() {};
+  default long beginTransaction(String metalake) {
+    return -1;
+  }
 
   /** Commit the changes in a transaction to the storage */
-  default void commit() {};
+  default void commit(long transactionId) {}
+
+  default void rollback(long transactionId) {}
 }
