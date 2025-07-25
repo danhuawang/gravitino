@@ -19,7 +19,6 @@
 #
 #set -ex
 
-docker build . -t datastratosandbox/opensearch-with-analysis-ik:2.17.1
 # docker login -u datastratosandbox
-docker push datastratosandbox/opensearch-with-analysis-ik:2.17.1
 
+docker buildx build --no-cache --pull --platform=linux/amd64,linux/arm64 --build-arg IMAGE_NAME=opensearch-with-analysis-ik --build-arg TAG_NAME=2.17.1 --push --progress plain -f Dockerfile -t docker.io/datastratosandbox/opensearch-with-analysis-ik:2.17.1 .
