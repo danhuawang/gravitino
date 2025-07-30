@@ -18,7 +18,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.gravitino.Entity;
-import org.opensearch.client.opensearch.core.ClearScrollRequest;
 import org.opensearch.client.opensearch.core.ScrollRequest;
 import org.opensearch.client.opensearch.core.SearchRequest;
 import org.opensearch.client.opensearch.core.SearchResponse;
@@ -51,7 +50,7 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
     this.filter = filter;
     this.fields = fields;
     for (Entity.EntityType entityType : entityTypeSet) {
-      searchIndices.put(entityType, openSearch.getIndicesName(entityType, metalake));
+      searchIndices.put(entityType, openSearch.getIndicesAliasName(entityType, metalake));
     }
   }
 
@@ -79,7 +78,7 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
       if (currentScrollId == null) {
         SearchRequest searchRequest =
             OpenSearchStorage.createSearchRequestBuilder(keyword, filter, fields, entityType)
-                .index(openSearch.getIndicesName(entityType, metalake))
+                .index(openSearch.getIndicesAliasName(entityType, metalake))
                 .size(1000)
                 .scroll(s -> s.time(openSearch.getBackgroundQueryTimeout()))
                 .build();
@@ -108,10 +107,6 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
       currentScrollId = response.scrollId();
 
       if (entities.isEmpty()) {
-        ClearScrollRequest clearRequest =
-            new ClearScrollRequest.Builder().scrollId(currentScrollId).build();
-
-        openSearch.getClient().clearScroll(clearRequest);
         searchIndices.remove(currentEntityType);
         currentEntityType = null;
         currentScrollId = null;

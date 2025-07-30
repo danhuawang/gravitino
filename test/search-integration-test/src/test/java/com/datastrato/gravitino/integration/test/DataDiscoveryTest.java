@@ -5,11 +5,15 @@
 package com.datastrato.gravitino.integration.test;
 
 import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
+import static com.datastrato.gravitino.test.OpenSearchContainer.DEFAULT_PASSWORD;
+import static com.datastrato.gravitino.test.OpenSearchContainer.LOG;
 import static java.util.Collections.emptyMap;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
+import com.datastrato.gravitino.test.TestUtil;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +59,8 @@ public class DataDiscoveryTest extends BaseIT {
   @BeforeAll
   public void startIntegrationTest() throws Exception {
     openSearchContainer = createOpenSearchContainer();
+    initIndexTemplate();
+
     mySQLContainer = createMySQLContainer();
     Map<String, String> configs = new HashMap<>();
     configs.put("gravitino.datastrato.search.storage.impl", "opensearch");
@@ -70,6 +76,29 @@ public class DataDiscoveryTest extends BaseIT {
     searchClient = new SearchClient("http://localhost:" + getGravitinoServerPort());
 
     createMetalake(METALAKE_NAME);
+  }
+
+  public void initIndexTemplate() {
+    try {
+      String userDir = System.getProperty("user.dir");
+
+      String[] command = {
+        "/bin/bash",
+        userDir + "/../../search/bin/create_indices_template.sh",
+        "v1",
+        "--uri=" + openSearchContainer.getOpenSearchUrl(),
+        "--username=" + OpenSearchContainer.DEFAULT_USERNAME,
+        "--password=" + DEFAULT_PASSWORD
+      };
+
+      TestUtil.CommandResult result = TestUtil.execCommand(command);
+      LOG.info("Initialization index template output: {}", result.output());
+      if (result.exitCode() != 0) {;
+        throw new RuntimeException("Failed to run command: " + Arrays.toString(command));
+      }
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to initialize index template", e);
+    }
   }
 
   @AfterAll

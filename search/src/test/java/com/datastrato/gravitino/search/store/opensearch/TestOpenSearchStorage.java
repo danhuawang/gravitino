@@ -5,6 +5,8 @@
 package com.datastrato.gravitino.search.store.opensearch;
 
 import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
+import static com.datastrato.gravitino.test.OpenSearchContainer.DEFAULT_PASSWORD;
+import static com.datastrato.gravitino.test.OpenSearchContainer.LOG;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
@@ -13,6 +15,7 @@ import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
+import com.datastrato.gravitino.test.TestUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.util.List;
@@ -32,7 +35,6 @@ public class TestOpenSearchStorage {
 
   @BeforeAll
   public void initTest() throws IllegalAccessException {
-
     this.container =
         new OpenSearchContainer(
             "ci-opensearch",
@@ -40,17 +42,47 @@ public class TestOpenSearchStorage {
                 "discovery.type",
                 "single-node",
                 "OPENSEARCH_INITIAL_ADMIN_PASSWORD",
-                "axzin1S3?@A"));
+                DEFAULT_PASSWORD));
     container.start();
+
+    // initialize index template
+    boolean result = initIndexTemplate();
+    if (!result) {
+      throw new RuntimeException("Failed to initialize index template");
+    }
 
     this.storage = new OpenSearchStorage();
     OpenSearchConfig config =
         new OpenSearchConfig(
             ImmutableMap.of(
-                OpenSearchConfig.OPEN_SEARCH_URL_KEY, container.getOpenSearchUrl(),
-                OpenSearchConfig.OPEN_SEARCH_USERNAME_KEY, OpenSearchContainer.DEFAULT_USERNAME,
-                OpenSearchConfig.OPEN_SEARCH_PASSWORD_KEY, OpenSearchContainer.DEFAULT_PASSWORD));
+                OpenSearchConfig.OPEN_SEARCH_URL_KEY,
+                container.getOpenSearchUrl(),
+                OpenSearchConfig.OPEN_SEARCH_USERNAME_KEY,
+                OpenSearchContainer.DEFAULT_USERNAME,
+                OpenSearchConfig.OPEN_SEARCH_PASSWORD_KEY,
+                DEFAULT_PASSWORD));
     this.storage.initialize(config);
+  }
+
+  public boolean initIndexTemplate() {
+    try {
+      String userDir = System.getProperty("user.dir");
+      String[] command = {
+        "/bin/bash",
+        userDir + "/bin/create_indices_template.sh",
+        "v1",
+        "--uri=" + container.getOpenSearchUrl(),
+        "--username=" + OpenSearchContainer.DEFAULT_USERNAME,
+        "--password=" + DEFAULT_PASSWORD
+      };
+
+      TestUtil.CommandResult result = TestUtil.execCommand(command);
+      LOG.info("Initialization index template output: {}", result.output());
+      int exitCode = result.exitCode();
+      return exitCode == 0;
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to initialize index template", e);
+    }
   }
 
   @Test

@@ -6,6 +6,7 @@ package com.datastrato.gravitino.search.store.opensearch;
 
 import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS;
 import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS_DTO;
+import static java.net.HttpURLConnection.HTTP_NOT_FOUND;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
@@ -24,9 +25,6 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +39,6 @@ import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.gravitino.Config;
@@ -74,10 +71,11 @@ import org.opensearch.client.opensearch.core.bulk.BulkResponseItem;
 import org.opensearch.client.opensearch.core.search.SourceConfig;
 import org.opensearch.client.opensearch.core.search.TrackHits;
 import org.opensearch.client.opensearch.indices.GetAliasResponse;
-import org.opensearch.client.opensearch.indices.PutAliasResponse;
+import org.opensearch.client.opensearch.indices.GetIndexTemplateRequest;
+import org.opensearch.client.opensearch.indices.GetIndexTemplateResponse;
 import org.opensearch.client.opensearch.indices.UpdateAliasesRequest;
-import org.opensearch.client.opensearch.indices.update_aliases.Action;
-import org.opensearch.client.transport.endpoints.BooleanResponse;
+import org.opensearch.client.opensearch.indices.UpdateAliasesResponse;
+import org.opensearch.client.opensearch.indices.get_index_template.IndexTemplateItem;
 import org.opensearch.client.transport.rest_client.RestClientTransport;
 import org.opensearch.client.util.ObjectBuilder;
 import org.slf4j.Logger;
@@ -112,9 +110,7 @@ public class OpenSearchStorage implements SearchStorage {
           EntityType.TOPIC, TOPIC_ENTITY_INDEX_SUFFIX,
           EntityType.TABLE, TABLE_ENTITY_INDEX_SUFFIX);
 
-  private final Map<EntityType, String> entityTypeToIndicesJsonMap = Maps.newHashMap();
-
-  private final Set<String> createdIndices = Sets.newHashSet();
+  private final Set<String> createdIndicesAlias = Sets.newHashSet();
 
   private static final Map<Long, OpenSearchStorageTransaction> TRANSACTION_MAP =
       Maps.newConcurrentMap();
@@ -132,9 +128,30 @@ public class OpenSearchStorage implements SearchStorage {
     this.searchEntityCodec = SearchEntityCodec.INSTANCE;
 
     initOpenSearchClient(openSearchConfig);
+    checkIndexTemplate();
+  }
 
-    // Load the indices definition from the JSON files
-    loadIndicesDefinition();
+  private void checkIndexTemplate() {
+    try {
+      // The index template should be created before the Gravitino server starts.
+      // The name of the index template like "fileset_entity_index_template_v1",
+      GetIndexTemplateRequest request = new GetIndexTemplateRequest.Builder().build();
+      GetIndexTemplateResponse response = client.indices().getIndexTemplate(request);
+      List<IndexTemplateItem> templates = response.indexTemplates();
+      List<String> templateNames =
+          templates.stream().map(IndexTemplateItem::name).collect(Collectors.toList());
+      for (String v : ENTITY_TYPE_TO_INDEX_SUFFIX.values()) {
+        boolean found = templateNames.stream().anyMatch(name -> name.startsWith(v));
+        if (!found) {
+          LOG.error("Index template for {} not found", v);
+          throw new Exception("Index template for " + v + " not found");
+        }
+      }
+
+    } catch (Exception e) {
+      LOG.error("Failed to check index template: {}", e.getMessage());
+      throw new RuntimeException("Failed to check index template", e);
+    }
   }
 
   private ThreadPoolExecutor createThreadExecutor(OpenSearchConfig openSearchConfig) {
@@ -150,49 +167,22 @@ public class OpenSearchStorage implements SearchStorage {
             .build());
   }
 
-  private void loadIndicesDefinition() {
-    String entityJson = loadIndexDefFile("indices/opensearch/entity_indices.json");
-    String tableJson = loadIndexDefFile("indices/opensearch/table_entity_indices.json");
-    String catalogJson = loadIndexDefFile("indices/opensearch/catalog_entity_indices.json");
-    String modelJson = loadIndexDefFile("indices/opensearch/model_entity_indices.json");
-
-    entityTypeToIndicesJsonMap.put(EntityType.TABLE, tableJson);
-    entityTypeToIndicesJsonMap.put(EntityType.CATALOG, catalogJson);
-    entityTypeToIndicesJsonMap.put(EntityType.SCHEMA, entityJson);
-    entityTypeToIndicesJsonMap.put(EntityType.FILESET, entityJson);
-    entityTypeToIndicesJsonMap.put(EntityType.MODEL, modelJson);
-    entityTypeToIndicesJsonMap.put(EntityType.TOPIC, entityJson);
-  }
-
-  private String loadIndexDefFile(String filePath) {
-    try (InputStream stream =
-        OpenSearchStorage.class.getClassLoader().getResourceAsStream(filePath)) {
-      if (stream == null) {
-        String msg = String.format("Resource not found: %s", filePath);
-        LOG.error(msg);
-        throw new RuntimeException(msg);
-      }
-      return IOUtils.toString(stream, StandardCharsets.UTF_8);
-    } catch (Exception e) {
-      String msg = String.format("Failed to load JSON file: %s", filePath);
-      LOG.error(msg, e);
-      throw new RuntimeException(msg, e);
-    }
-  }
-
-  private synchronized String createIndicesIfNotExists(EntityType entityType, String metalakeName) {
+  private synchronized String createIndicesIfNotExists(EntityType entityType, String metalakeName)
+      throws Exception {
     // getIndicesName will return an alias name, we will treat the alias name as the index name here
-    String indicesName = getIndicesName(entityType, metalakeName);
-    if (createdIndices.contains(indicesName)) {
-      return indicesName;
+    String indicesAliasName = getIndicesAliasName(entityType, metalakeName);
+    if (createdIndicesAlias.contains(indicesAliasName)) {
+      return indicesAliasName;
     }
 
-    createEntityIndices(entityType, indicesName);
-    createdIndices.add(indicesName);
+    String indicesName = createEntityIndices(indicesAliasName);
+    updateIndexAlias(indicesName, indicesAliasName);
+    createdIndicesAlias.add(indicesAliasName);
     return indicesName;
   }
 
-  protected String getIndicesName(EntityType entityType, String metalakeName) {
+  protected String getIndicesAliasName(EntityType entityType, String metalakeName) {
+    // Create the index alias name based on the entity type and metalake name
     String indicesSuffix = ENTITY_TYPE_TO_INDEX_SUFFIX.get(entityType);
     return metalakeName + "_" + indicesSuffix;
   }
@@ -224,20 +214,6 @@ public class OpenSearchStorage implements SearchStorage {
         saveToIndex(metalakeName, entityType, entityList, flush, writeContext);
       }
     }
-
-    // flush the indices after all entities are saved
-    if (flush) {
-      for (String metalakeName : metalakeToEntitiesMap.keySet()) {
-        for (EntityType entityType : ENTITY_TYPE_TO_INDEX_SUFFIX.keySet()) {
-          String indicesName = createIndicesIfNotExists(entityType, metalakeName);
-          try {
-            client.indices().refresh(r -> r.index(indicesName));
-          } catch (Exception e) {
-            LOG.error("Failed to refresh index {}", indicesName, e);
-          }
-        }
-      }
-    }
   }
 
   private void saveToIndex(
@@ -246,15 +222,15 @@ public class OpenSearchStorage implements SearchStorage {
       List<SearchEntityPO> entityPOs,
       boolean flush,
       WriteContext context) {
-    String indicesName = createIndicesIfNotExists(type, metalakeName);
-
-    // In case of transaction, append the transaction ID to the index name
-    if (context.getTransactionId() != null) {
-      indicesName = indicesName + "_" + context.getTransactionId();
-    }
-    final String realIndicesName = indicesName;
-
     try {
+      String indicesName = createIndicesIfNotExists(type, metalakeName);
+
+      // In case of transaction, append the transaction ID to the index name
+      if (context.getTransactionId() != null) {
+        indicesName = indicesName + "_" + context.getTransactionId();
+      }
+      final String realIndicesName = indicesName;
+
       BulkRequest.Builder bulkRequestBuilder = new BulkRequest.Builder();
       for (SearchEntityPO entity : entityPOs) {
         try {
@@ -378,79 +354,65 @@ public class OpenSearchStorage implements SearchStorage {
     }
   }
 
-  private boolean indicesExists(String indicesName) {
+  private String createEntityIndices(String indexAliasName) {
+    // Create a new index based on the template.
+    // the index template name is the part os alias name, like "*fileset_entity_index*".
+    // the index alias name will be "metalake_fileset_entity_index",
+    // the index name will be "metalake_fileset_entity_index_1234567890"
+    String realIndicesName = indexAliasName + "_" + System.currentTimeMillis();
     try {
-      BooleanResponse exists = client.indices().exists(e -> e.index(indicesName));
-      return exists.value();
+      Request request = new Request("PUT", "/" + realIndicesName);
+      sendHttpRequestWithRetry(request);
+      return realIndicesName;
     } catch (Exception e) {
-      LOG.error("Failed to check if index {} exists: {}", indicesName, e.getMessage());
-      throw new RuntimeException("Failed to check if index " + indicesName + " exists", e);
+      LOG.error(
+          "Failed to create index {} by template {}: {}",
+          realIndicesName,
+          indexAliasName,
+          e.getMessage());
+      throw e;
     }
   }
 
-  private void createEntityIndicesByTemplate(String indicesName) {
-    if (indicesExists(indicesName)) {
-      LOG.info("Index {} already exists, skipping creation.", indicesName);
-      return;
-    }
-
-    // Will use index template to create the index
-    Request request = new Request("PUT", "/" + indicesName);
+  private String updateIndexAlias(String indicesName, String aliasName) throws Exception {
     try {
-      sendHttpRequestWithRetry(request);
-    } catch (Exception e) {
-      LOG.error("Failed to create index {}: {}", indicesName, e.getMessage());
-    }
-  }
+      String oldIndexName = null;
 
-  private void createEntityIndices(EntityType entityType, String indicesAliasName) {
-    String entityJson = entityTypeToIndicesJsonMap.get(entityType);
-    if (entityJson == null) {
-      throw new IllegalArgumentException("No JSON definition found for entity type: " + entityType);
-    }
-
-    try {
-      // Check alias with `indicesAliasName` can be found
-      GetAliasResponse response = client.indices().getAlias(g -> g.name(indicesAliasName));
-      if (!response.result().isEmpty()) {
-        // indicesAliasName exists, no need to create the index
-        return;
-      }
-    } catch (OpenSearchException e) {
-      if (e.getMessage().contains(String.format("alias [%s] missing", indicesAliasName))) {
-        // Alias does not exist, continue to create the index
-      } else {
-        LOG.error("Failed to check if index alias {} exists: {}", indicesAliasName, e.getMessage());
-        throw e;
+      try {
+        GetAliasResponse getAliasResponse = client.indices().getAlias(r -> r.name(aliasName));
+        Set<String> oldIndices = getAliasResponse.result().keySet();
+        oldIndexName = oldIndices.stream().findFirst().orElse(null);
+      } catch (OpenSearchException e) {
+        if (e.status() != HTTP_NOT_FOUND) {
+          throw e;
+        }
       }
 
-    } catch (Exception e) {
-      LOG.error("Failed to check if index alias {} exists: {}", indicesAliasName, e.getMessage());
-      throw new RuntimeException("Failed to check if index " + indicesAliasName + " exists", e);
-    }
+      UpdateAliasesRequest.Builder builder = new UpdateAliasesRequest.Builder();
+      if (oldIndexName != null) {
+        String finalOldIndexName = oldIndexName;
+        builder.actions(a -> a.remove(r -> r.index(finalOldIndexName).alias(aliasName)));
+      }
 
-    String realIndicesName = indicesAliasName + "_" + System.currentTimeMillis();
-    Request request = new Request("PUT", "/" + realIndicesName);
-    request.setJsonEntity(entityJson);
+      builder.actions(a -> a.add(a2 -> a2.index(indicesName).alias(aliasName).isWriteIndex(true)));
 
-    try {
-      sendHttpRequestWithRetry(request);
+      UpdateAliasesResponse updateAliasesResponse = client.indices().updateAliases(builder.build());
 
-      // Add alias to the newly created index
-      PutAliasResponse aliasResponse =
-          client
-              .indices()
-              .putAlias(r -> r.index(realIndicesName).name(indicesAliasName).isWriteIndex(true));
-
-      if (aliasResponse.acknowledged()) {
-        LOG.info("Successfully created index {} with alias {}", realIndicesName, indicesAliasName);
+      if (updateAliasesResponse.acknowledged()) {
+        LOG.info("Successfully update index alias {} with index {}", aliasName, indicesName);
       } else {
-        LOG.error("Failed to create alias {} for index {}", indicesAliasName, realIndicesName);
+        LOG.error("Failed to update alias {} for index {}", aliasName, indicesName);
         throw new RuntimeException(
-            "Failed to create alias " + indicesAliasName + " for index " + realIndicesName);
+            "Failed to update alias " + aliasName + " for index " + indicesName);
       }
+      return oldIndexName;
     } catch (Exception e) {
-      LOG.error("Failed to create index alias {}: {}", realIndicesName, e.getMessage());
+      LOG.error(
+          "Failed to update index alias {} with index {} : {}",
+          aliasName,
+          indicesName,
+          e.getMessage());
+      throw e;
     }
   }
 
@@ -489,7 +451,7 @@ public class OpenSearchStorage implements SearchStorage {
         Lists.newArrayList();
     for (Map.Entry<EntityType, String> entry : ENTITY_TYPE_TO_INDEX_SUFFIX.entrySet()) {
       EntityType entityType = entry.getKey();
-      String indexName = getIndicesName(entityType, metalake);
+      String indexName = getIndicesAliasName(entityType, metalake);
 
       SearchRequest searchRequest =
           createSearchRequestBuilder(keyword, filter, fields, entityType)
@@ -576,7 +538,7 @@ public class OpenSearchStorage implements SearchStorage {
   public void delete(String metalake, List<Long> entityIds, EntityType entityType) {
     try {
       BulkRequest.Builder bulkRequestBuilder = new BulkRequest.Builder();
-      String indexName = getIndicesName(entityType, metalake);
+      String indexName = getIndicesAliasName(entityType, metalake);
       for (Long entityId : entityIds) {
         bulkRequestBuilder.operations(
             op -> op.delete(del -> del.index(indexName).id(String.valueOf(entityId))));
@@ -776,8 +738,7 @@ public class OpenSearchStorage implements SearchStorage {
     Set<String> indicesSet = Sets.newHashSet();
     for (EntityType entityType : ENTITY_TYPE_TO_INDEX_SUFFIX.keySet()) {
       // Should use transaction id not tmp indices name
-      String indicesName = getIndicesName(entityType, metalake) + "_" + now;
-      createEntityIndicesByTemplate(indicesName);
+      String indicesName = createEntityIndices(getIndicesAliasName(entityType, metalake));
       indicesSet.add(indicesName);
     }
     TRANSACTION_MAP.put(now, new OpenSearchStorageTransaction(now, metalake, indicesSet));
@@ -794,24 +755,8 @@ public class OpenSearchStorage implements SearchStorage {
     try {
       for (String indices : newIndexes) {
         String aliasName = indices.substring(0, indices.lastIndexOf("_1"));
-        IndexStatus indexStatus = checkIndexOrAlias(aliasName);
-
-        if (!indexStatus.isAlias) {
-          throw new RuntimeException("Alias " + aliasName + " does not exist or is not an alias");
-        }
-
-        String targetIndex = indexStatus.targetIndex;
-        client
-            .indices()
-            .updateAliases(
-                new UpdateAliasesRequest.Builder()
-                    .actions(
-                        new Action.Builder()
-                            .remove(a -> a.index(targetIndex).alias(aliasName))
-                            .build(),
-                        new Action.Builder().add(a -> a.index(indices).alias(aliasName)).build())
-                    .build());
-        oldIndexNames.add(targetIndex);
+        String oldIndicesName = updateIndexAlias(indices, aliasName);
+        oldIndexNames.add(oldIndicesName);
       }
 
       // Delete old indices, this can be done in a separate thread or asynchronously.
@@ -825,7 +770,7 @@ public class OpenSearchStorage implements SearchStorage {
 
       // remove data from transaction map
       TRANSACTION_MAP.remove(transactionId);
-    } catch (IOException e) {
+    } catch (Exception e) {
       LOG.error("Failed to commit transaction: {}", e.getMessage());
       throw new RuntimeException("Failed to commit transaction", e);
     }
@@ -837,27 +782,6 @@ public class OpenSearchStorage implements SearchStorage {
     private boolean exists;
     private boolean isAlias;
     private String targetIndex; // If isAlias is true, this is the target index of the alias.
-  }
-
-  private IndexStatus checkIndexOrAlias(String name) {
-    try {
-      // Check if this is an index.
-      BooleanResponse exists = client.indices().exists(e -> e.index(name));
-      if (!exists.value()) {
-        return new IndexStatus(false, false, null);
-      }
-
-      // Check if this is an alias.
-      GetAliasResponse aliasResponse = client.indices().getAlias(g -> g.name(name).index(name));
-
-      boolean isAlias = !aliasResponse.result().isEmpty();
-      String targetIndex = isAlias ? aliasResponse.result().keySet().iterator().next() : name;
-
-      return new IndexStatus(true, isAlias, targetIndex);
-    } catch (Exception e) {
-      LOG.error("Failed to check index/alias {}: {}", name, e.getMessage());
-      throw new RuntimeException("Check failed for " + name, e);
-    }
   }
 
   @Override
