@@ -15,7 +15,8 @@ import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.parser.Condition;
-import com.datastrato.gravitino.search.parser.QueryParser;
+import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor;
+import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor.QueryCondition;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
 import com.datastrato.gravitino.search.store.SearchDataSource;
@@ -23,6 +24,7 @@ import com.datastrato.gravitino.search.store.SearchStorage;
 import com.datastrato.gravitino.search.store.WriteContext;
 import com.datastrato.gravitino.search.store.opensearch.OpenSearchStorage;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -38,8 +40,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.Entity.EntityType;
@@ -282,12 +282,10 @@ public class SearchService implements Closeable {
 
   public List<SearchEntitiesDTO> query(
       String metalake, String query, int pageNumber, int pageSize) {
-    Pair<String, String> keywordAndFilter = QueryParser.parserQuery(query);
-    Condition condition =
-        StringUtils.isBlank(keywordAndFilter.getRight())
-            ? null
-            : QueryParser.parse(keywordAndFilter.getRight());
-    String keyword = keywordAndFilter.getLeft();
+    QueryCondition queryCondition = ConditionBuilderVisitor.buildQueryCondition(query);
+    String keyword = Joiner.on(" ").skipNulls().join(queryCondition.getKeywords());
+    Condition condition = queryCondition.getCondition();
+
     return storage.search(metalake, keyword, condition, ImmutableList.of(), pageSize, pageNumber);
   }
 

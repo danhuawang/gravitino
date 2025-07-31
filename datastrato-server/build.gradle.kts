@@ -18,7 +18,9 @@ dependencies {
 
   implementation(project(":common-extension"))
   implementation(project(":core-extension"))
-  implementation(project(":search"))
+  implementation(project(":search")) {
+    exclude(group = "org.antlr", module = "antlr4")
+  }
 
   implementation(libs.guava)
   implementation(libs.bundles.jersey)

@@ -7,6 +7,7 @@ plugins {
   `maven-publish`
   id("java")
   id("idea")
+  antlr
 }
 
 dependencies {
@@ -14,6 +15,8 @@ dependencies {
   implementation("org.apache.gravitino:core")
   implementation("org.apache.gravitino:common")
   implementation("org.apache.gravitino:server-common")
+  antlr(libs.antlr4)
+  implementation(libs.antlr4.runtime)
 
   implementation(project(":common-extension"))
   implementation(project(":core-extension"))
@@ -52,4 +55,29 @@ dependencies {
   testImplementation(libs.mockito.core)
 
   testRuntimeOnly(libs.junit.jupiter.engine)
+}
+
+configurations.named("runtimeClasspath") {
+  exclude(group = "org.antlr", module = "antlr4")
+}
+
+val antlrSourcePath = "build/generated/java/com/datastrato/gravitino/search/antlr"
+
+sourceSets {
+  main {
+    java {
+      srcDirs("src/main/java", "build/generated/java")
+    }
+  }
+}
+
+tasks.generateGrammarSource {
+  maxHeapSize = "64m"
+  arguments = arguments + listOf("-visitor", "-long-messages", "-package", "com.datastrato.gravitino.search.antlr")
+  outputDirectory = file(antlrSourcePath)
+  setSource("src/main/antlr")
+}
+
+tasks.spotlessJava {
+  dependsOn(tasks.generateGrammarSource)
 }

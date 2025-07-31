@@ -181,7 +181,8 @@ tasks.rat {
     "**/.npm/**",
     "**/licenses/*.txt",
     "**/licenses/*.md",
-    "**/LICENSE.*"
+    "**/LICENSE.*",
+    "**/antlr/**"
   )
 
   // Add .gitignore excludes to the Apache Rat exclusion list.
