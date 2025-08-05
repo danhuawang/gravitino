@@ -12,9 +12,12 @@ import com.datastrato.gravitino.search.parser.Condition.NotCondition;
 import com.datastrato.gravitino.search.parser.Condition.OrCondition;
 import com.datastrato.gravitino.search.parser.Condition.TermCondition;
 import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor.QueryCondition;
+import com.datastrato.gravitino.search.utils.FilterConditionUtils;
 import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.opensearch.client.opensearch._types.query_dsl.Query;
+import org.testcontainers.shaded.com.google.common.collect.ImmutableMap;
 
 public class TestQueryParser {
 
@@ -618,5 +621,37 @@ public class TestQueryParser {
     TermCondition termCondition8 = (TermCondition) notCondition2.getCondition();
     Assertions.assertEquals(termCondition8.getField(), "catalog_name");
     Assertions.assertEquals(termCondition8.getValue(), "model_catalog");
+  }
+
+  @Test
+  void testNoCondition() {
+    String query = "just some random text without conditions";
+    QueryCondition queryCondition = buildQueryCondition(query);
+    List<String> keywords = queryCondition.getKeywords();
+    Assertions.assertNotNull(keywords);
+    Assertions.assertEquals(6, keywords.size());
+    Assertions.assertEquals("just", keywords.get(0));
+    Assertions.assertEquals("some", keywords.get(1));
+    Assertions.assertEquals("random", keywords.get(2));
+    Assertions.assertEquals("text", keywords.get(3));
+    Assertions.assertEquals("without", keywords.get(4));
+    Assertions.assertEquals("conditions", keywords.get(5));
+
+    Assertions.assertTrue(queryCondition.getCondition() instanceof AndCondition);
+    AndCondition andCondition = (AndCondition) queryCondition.getCondition();
+    Assertions.assertEquals(
+        0, andCondition.getConditions().size(), "No conditions should be present");
+
+    Query openSearch =
+        FilterConditionUtils.convert(
+            queryCondition.getCondition(), ImmutableMap.of(), ImmutableMap.of());
+    Assertions.assertNotNull(openSearch);
+    Assertions.assertNotNull(openSearch.toString());
+
+    queryCondition = buildQueryCondition("");
+    keywords = queryCondition.getKeywords();
+    Assertions.assertNotNull(keywords);
+    Assertions.assertEquals(0, keywords.size(), "No keywords should be present");
+    Assertions.assertNull(queryCondition.getCondition());
   }
 }

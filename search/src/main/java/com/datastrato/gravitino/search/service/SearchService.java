@@ -40,6 +40,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.Entity.EntityType;
@@ -282,9 +283,13 @@ public class SearchService implements Closeable {
 
   public List<SearchEntitiesDTO> query(
       String metalake, String query, int pageNumber, int pageSize) {
-    QueryCondition queryCondition = ConditionBuilderVisitor.buildQueryCondition(query);
-    String keyword = Joiner.on(" ").skipNulls().join(queryCondition.getKeywords());
-    Condition condition = queryCondition.getCondition();
+    String keyword = null;
+    Condition condition = null;
+    if (StringUtils.isNotBlank(query)) {
+      QueryCondition queryCondition = ConditionBuilderVisitor.buildQueryCondition(query);
+      keyword = Joiner.on(" ").skipNulls().join(queryCondition.getKeywords());
+      condition = queryCondition.getCondition();
+    }
 
     return storage.search(metalake, keyword, condition, ImmutableList.of(), pageSize, pageNumber);
   }

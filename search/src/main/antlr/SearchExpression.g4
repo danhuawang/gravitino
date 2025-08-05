@@ -1,6 +1,6 @@
 grammar SearchExpression;
 
-query: expression EOF;
+query: expression? EOF;
 
 expression
     : andExpression (OR andExpression)*
