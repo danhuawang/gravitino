@@ -260,9 +260,14 @@ tasks {
 
   fun updateFileForServer(file: File) {
     val content = file.readText()
-    val updatedContent = content.replace(
+    var updatedContent = content.replace(
       "GRAVITINO_SERVER_NAME=org.apache.gravitino.server.GravitinoServer",
       "GRAVITINO_SERVER_NAME=org.apache.gravitino.server.DatastratoGravitinoServer"
+    )
+    updatedContent = updatedContent.replace(
+      "function start() {",
+      "function start() {\n" +
+        "  \$GRAVITINO_HOME/bin/index.sh init"
     )
     file.writeText(updatedContent)
   }
@@ -385,6 +390,7 @@ tasks {
       copy {
         from(submoduleDir.dir("conf")) { into("package/conf") }
         from(submoduleDir.dir("bin")) { into("package/bin") }
+        from(("search/bin")) { into("package/bin") }
         into(outputDir)
         rename { fileName ->
           fileName.replace(".template", "")

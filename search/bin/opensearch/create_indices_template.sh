@@ -17,110 +17,10 @@
 # limitations under the License.
 #
 
-cd "$(dirname "$0")"
-
-# init_indices.sh
-# Creates OpenSearch index templates based on JSON schema definitions
-# Usage: ./create_indices_template.sh [version] [--uri=OPENSEARCH_URI] [--username=USERNAME] [--password=PASSWORD]
-# Example: ./create_indices_template.sh v1 --uri=http://localhost:9200 --username=admin --password=secret
-
-# Show usage information
-show_usage() {
-    echo "Usage: $0 [version] [options]"
-    echo "Options:"
-    echo "  --uri=OPENSEARCH_URI        OpenSearch connection URI (required)"
-    echo "  --username=USERNAME         OpenSearch username (required)"
-    echo "  --password=PASSWORD         OpenSearch password (required)"
-    echo "  --help                      Show this help message"
-    echo ""
-    echo "If options are not provided, will use environment variables:"
-    echo "  OPEN_SEARCH_URI, OPEN_SEARCH_USERNAME, OPEN_SEARCH_PASSWORD (all required)"
-    exit 1
-}
-
-# Parse command line arguments
-VERSION=""
-OPENSEARCH_URL=""
-USERNAME=""
-PASSWORD=""
-
-if [ -n "$GRAVITINO_HOME" ] && [ -d "$GRAVITINO_HOME" ]; then
-  CONF_FILE="$GRAVITINO_HOME/conf/gravitino.conf"
-
-  if [ -f "$CONF_FILE" ]; then
-    OPENSEARCH_URL=$(grep '^gravitino.datastrato.search.opensearch.url' "$CONF_FILE" | awk -F '=' '{print $2}' | xargs)
-    USERNAME=$(grep '^gravitino.datastrato.search.opensearch.username' "$CONF_FILE" | awk -F '=' '{print $2}' | xargs)
-    PASSWORD=$(grep '^gravitino.datastrato.search.opensearch.password' "$CONF_FILE" | awk -F '=' '{print $2}' | xargs)
-
-    echo "[INFO] Loaded OpenSearch config from $CONF_FILE"
-    echo "OPENSEARCH_URL=$OPENSEARCH_URL"
-    echo "USERNAME=$USERNAME"
-    echo "PASSWORD=$PASSWORD"
-  else
-    echo "[WARN] Config file not found: $CONF_FILE. Skipping OpenSearch config init."
-  fi
-fi
-
-for arg in "$@"; do
-    case $arg in
-        --uri=*)
-        OPENSEARCH_URL="${arg#*=}"
-        shift
-        ;;
-        --username=*)
-        USERNAME="${arg#*=}"
-        shift
-        ;;
-        --password=*)
-        PASSWORD="${arg#*=}"
-        shift
-        ;;
-        --help)
-        show_usage
-        ;;
-        -*)
-        echo "Unknown option: $arg"
-        show_usage
-        ;;
-        *)
-        VERSION="$arg"
-        ;;
-    esac
-done
-
-# Validate version parameter
-if [ -z "$VERSION" ]; then
-    echo "Error: Version parameter is required"
-    show_usage
-fi
-
-# Get values from environment variables if not provided via parameters
-if [ -z "$OPENSEARCH_URL" ]; then
-    if [ -n "$OPEN_SEARCH_URI" ]; then
-        OPENSEARCH_URL="$OPEN_SEARCH_URI"
-    else
-        echo "Error: OpenSearch URI must be specified via --uri or OPEN_SEARCH_URI environment variable"
-        show_usage
-    fi
-fi
-
-if [ -z "$USERNAME" ]; then
-    if [ -n "$OPEN_SEARCH_USERNAME" ]; then
-        USERNAME="$OPEN_SEARCH_USERNAME"
-    else
-        echo "Error: OpenSearch username must be specified via --username or OPEN_SEARCH_USERNAME environment variable"
-        show_usage
-    fi
-fi
-
-if [ -z "$PASSWORD" ]; then
-    if [ -n "$OPEN_SEARCH_PASSWORD" ]; then
-        PASSWORD="$OPEN_SEARCH_PASSWORD"
-    else
-        echo "Error: OpenSearch password must be specified via --password or OPEN_SEARCH_PASSWORD environment variable"
-        show_usage
-    fi
-fi
+VERSION=$1
+OPENSEARCH_URL=$2
+USERNAME=$3
+PASSWORD=$4
 
 # Prepare credentials for curl
 CREDENTIALS="-u $USERNAME:$PASSWORD -k"
@@ -141,7 +41,7 @@ JSON_DIR="./opensearch/$VERSION"
 
 # Check if version directory exists
 if [ ! -d "$JSON_DIR" ]; then
-    echo "Error: Directory $JSON_DIR does not exist"
+    echo "Error: The index tempalte Directory $JSON_DIR of version $VERSION does not exist"
     exit 1
 fi
 
@@ -186,8 +86,8 @@ create_composable_template() {
         $CREDENTIALS)
 
     if [ "$RESPONSE" == "200" ]; then
-        echo "Error: Index template $template_name already exists"
-        return 1
+        echo "Info: Index template $template_name already exists"
+        return 0
     fi
 
     # Create the index template
@@ -224,7 +124,8 @@ EOF
 ERROR_OCCURRED=0
 
 # Create composable templates for each pattern
-priority=110
+NUM="${VERSION//[!0-9]/}"
+priority=$((10000 + NUM * 10))
 for i in "${!KEYS[@]}"; do
     pattern="${KEYS[$i]}"
     json_file="${VALUES[$i]}"

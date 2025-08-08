@@ -175,7 +175,8 @@ public class OpenSearchStorage implements SearchStorage {
       return indicesAliasName;
     }
 
-    String indicesName = createEntityIndices(indicesAliasName);
+    // if index alias does not exists, create a new index with version 0 and update alias
+    String indicesName = createEntityIndices(indicesAliasName, 0);
     updateIndexAlias(indicesName, indicesAliasName);
     createdIndicesAlias.add(indicesAliasName);
     return indicesName;
@@ -354,12 +355,12 @@ public class OpenSearchStorage implements SearchStorage {
     }
   }
 
-  private String createEntityIndices(String indexAliasName) {
+  private String createEntityIndices(String indexAliasName, long version) {
     // Create a new index based on the template.
     // the index template name is the part os alias name, like "*fileset_entity_index*".
     // the index alias name will be "metalake_fileset_entity_index",
     // the index name will be "metalake_fileset_entity_index_1234567890"
-    String realIndicesName = indexAliasName + "_" + System.currentTimeMillis();
+    String realIndicesName = indexAliasName + "_" + version;
     try {
       Request request = new Request("PUT", "/" + realIndicesName);
       sendHttpRequestWithRetry(request);
@@ -738,7 +739,7 @@ public class OpenSearchStorage implements SearchStorage {
     Set<String> indicesSet = Sets.newHashSet();
     for (EntityType entityType : ENTITY_TYPE_TO_INDEX_SUFFIX.keySet()) {
       // Should use transaction id not tmp indices name
-      String indicesName = createEntityIndices(getIndicesAliasName(entityType, metalake));
+      String indicesName = createEntityIndices(getIndicesAliasName(entityType, metalake), now);
       indicesSet.add(indicesName);
     }
     TRANSACTION_MAP.put(now, new OpenSearchStorageTransaction(now, metalake, indicesSet));
