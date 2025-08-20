@@ -30,9 +30,7 @@ import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
 import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
-import com.datastrato.gravitino.storage.relational.service.MetricDataService;
 import org.apache.gravitino.Config;
-import org.apache.gravitino.Configs;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
@@ -64,8 +62,6 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private DatastratoFilesetDispatcher datastratoFilesetDispatcher;
   private DatastratoTopicDispatcher datastratoTopicDispatcher;
   private DatastratoModelDispatcher datastratoModelDispatcher;
-
-  private MetricDataService metricDataService;
 
   public static DatastratoGravitinoEnv getInstance() {
     return INSTANCE;
@@ -132,10 +128,6 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
     datastratoModelDispatcher =
         new DatastratoModelEventDispatcher(eventBus(), datastratoModelNormalizeDispatcher);
 
-    // initialize metric data service
-    boolean enableAuthorization = config.get(Configs.ENABLE_AUTHORIZATION);
-    this.metricDataService = new MetricDataService(ownerDispatcher(), enableAuthorization);
-
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
 
@@ -172,10 +164,6 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public PartitionDispatcher partitionDispatcher() {
     return GravitinoEnv.getInstance().partitionDispatcher();
-  }
-
-  public MetricDataService metricDataService() {
-    return metricDataService;
   }
 
   @Override

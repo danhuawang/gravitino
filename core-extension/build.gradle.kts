@@ -13,19 +13,15 @@ dependencies {
   implementation("org.apache.gravitino:api")
   implementation("org.apache.gravitino:core")
 
-  implementation(project(":common-extension"))
-
   implementation(libs.bundles.log4j)
   implementation(libs.commons.codec)
   implementation(libs.commons.dbcp2)
   implementation(libs.commons.lang3)
   implementation(libs.guava)
-  implementation(libs.mybatis)
   implementation(libs.trino.jdbc)
 
   testImplementation("org.apache.gravitino:common")
   testImplementation("org.apache.gravitino:core")
-  testImplementation(libs.commons.io)
   testImplementation(libs.commons.lang3)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.mockito.core)

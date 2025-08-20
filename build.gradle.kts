@@ -182,7 +182,8 @@ tasks.rat {
     "**/licenses/*.txt",
     "**/licenses/*.md",
     "**/LICENSE.*",
-    "**/antlr/**"
+    "**/antlr/**",
+    "docs/**.md"
   )
 
   // Add .gitignore excludes to the Apache Rat exclusion list.
@@ -274,7 +275,10 @@ tasks {
 
   fun updateFileForRESTPackages(file: File) {
     val newLine = "\n# Comma separated list of REST API packages to expand\n" +
-      "gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest,com.datastrato.gravitino.search.rest\n"
+      "gravitino.server.rest.extensionPackages = " +
+      "com.datastrato.gravitino.server.web.rest," +
+      "com.datastrato.gravitino.search.rest," +
+      "com.datastrato.gravitino.metrics.rest\n"
     file.appendText(newLine)
   }
 
@@ -313,16 +317,6 @@ tasks {
       "gravitino.eventListener.names = search\n" +
       "gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener\n"
     file.appendText(searchLine)
-  }
-
-  fun updateFileForMetric(file: File) {
-    val previewLine = "\n\n# tag group for dashboard metrics collection\n" +
-      "# note: The tags should be created by the user in advance.\n" +
-      "# gravitino.datastrato.dashboardMetrics.piiTags=pii1,pii2\n" +
-      "# gravitino.datastrato.dashboardMetrics.publicTags=public1,public2\n" +
-      "# gravitino.datastrato.dashboardMetrics.confidentialTags=confidential1, confidential2\n" +
-      "# gravitino.datastrato.dashboardMetrics.privateTags=private1,private2\n"
-    file.appendText(previewLine)
   }
 
   fun updateFileForLog(file: File) {
@@ -391,6 +385,8 @@ tasks {
         from(submoduleDir.dir("conf")) { into("package/conf") }
         from(submoduleDir.dir("bin")) { into("package/bin") }
         from(("search/bin")) { into("package/bin") }
+        from(("metrics/bin")) { into("package/bin") }
+        from(("metrics/conf")) { into("package/conf") }
         into(outputDir)
         rename { fileName ->
           fileName.replace(".template", "")
@@ -414,8 +410,6 @@ tasks {
         updateFileForLineage(confFile)
 
         updateFileForSearch(confFile)
-
-        updateFileForMetric(confFile)
       }
       // Modify log4j2.properties
       val log4jFile = file(outputDir.dir("package/conf/log4j2.properties"))

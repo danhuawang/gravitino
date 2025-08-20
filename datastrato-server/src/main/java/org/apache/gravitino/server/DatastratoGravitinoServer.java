@@ -6,8 +6,8 @@ package org.apache.gravitino.server;
 
 import com.datastrato.gravitino.DatastratoGravitinoEnv;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
-import com.datastrato.gravitino.server.web.metric.MetricsCollector;
-import com.datastrato.gravitino.storage.relational.service.MetricDataService;
+import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
+import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.slf4j.Logger;
@@ -17,7 +17,6 @@ public class DatastratoGravitinoServer extends GravitinoServer {
   private static final Logger LOG = LoggerFactory.getLogger(DatastratoGravitinoServer.class);
 
   private final DatastratoGravitinoEnv datastratoGravitinoEnv;
-  private MetricsCollector metricsCollector;
 
   public DatastratoGravitinoServer(ServerConfig config, GravitinoEnv gravitinoEnv) {
     super(config, gravitinoEnv);
@@ -71,27 +70,16 @@ public class DatastratoGravitinoServer extends GravitinoServer {
   public void initialize() {
     super.initialize();
 
-    this.metricsCollector =
-        new MetricsCollector(
-            serverConfig(),
-            datastratoGravitinoEnv.metalakeDispatcher(),
-            datastratoGravitinoEnv.catalogDispatcher(),
-            datastratoGravitinoEnv.schemaDispatcher(),
-            datastratoGravitinoEnv.tableDispatcher(),
-            datastratoGravitinoEnv.filesetDispatcher(),
-            datastratoGravitinoEnv.topicDispatcher(),
-            datastratoGravitinoEnv.modelDispatcher(),
-            datastratoGravitinoEnv.tagDispatcher(),
-            datastratoGravitinoEnv.accessControlDispatcher(),
-            datastratoGravitinoEnv.metricDataService());
+    boolean enableAuthorization = serverConfig().get(Configs.ENABLE_AUTHORIZATION);
+    MetricDataService metricDataService = MetricDataService.getInstance();
+    metricDataService.initialize(datastratoGravitinoEnv.ownerDispatcher(), enableAuthorization);
 
     // initialize extra rest api resources
     register(
         new AbstractBinder() {
           @Override
           protected void configure() {
-            bind(datastratoGravitinoEnv.metricDataService()).to(MetricDataService.class).ranked(1);
-            bind(metricsCollector).to(MetricsCollector.class).ranked(1);
+            bind(metricDataService).to(MetricDataService.class).ranked(1);
           }
         });
   }
@@ -99,8 +87,5 @@ public class DatastratoGravitinoServer extends GravitinoServer {
   @Override
   public void start() throws Exception {
     super.start();
-
-    // start metrics collector after the server is started
-    metricsCollector.start();
   }
 }
