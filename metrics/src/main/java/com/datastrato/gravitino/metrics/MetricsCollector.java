@@ -340,11 +340,11 @@ public class MetricsCollector implements Closeable {
         break;
       } catch (Exception e) {
         LOG.warn(
-            "{} failed on attempt {}/{}: {}",
+            "{} failed on attempt {}/{}: ",
             actionDescription,
             attempt,
             maxCalculationRetriesForUser,
-            e.getMessage());
+            e);
         if (attempt < maxCalculationRetriesForUser) {
           try {
             TimeUnit.MILLISECONDS.sleep(calculationRetryDelayMs);

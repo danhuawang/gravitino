@@ -144,9 +144,11 @@ public class MetricDataBaseSQLProvider {
         + " WHERE metalake_id NOT IN (SELECT metalake_id FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + " WHERE deleted_at = 0) "
-        + "OR (user_id != "
+        + "OR (user_id NOT IN ("
         + MOCK_ANONYMOUS_USER_ID
-        + " AND user_id NOT IN (SELECT user_id FROM "
+        + ", "
+        + MOCK_METALAKE_OWNER_ID
+        + ") AND user_id NOT IN (SELECT user_id FROM "
         + UserRoleRelMapper.USER_TABLE_NAME
         + " WHERE deleted_at = 0))";
   }
