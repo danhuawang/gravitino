@@ -47,7 +47,7 @@ cp -r "${gravitino_home}/distribution/package" "${gravitino_dir}/packages/gravit
 # make sure bundles are built
 "${gravitino_home}"/gradlew -p gravitino-oss build -x test -x clients:client-python:build
 # Copy the all file system bundles to the Hadoop catalog libs
-cp -r ${gravitino_home}/gravitino-oss/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/hadoop/libs"
+cp -r ${gravitino_home}/gravitino-oss/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/fileset/libs"
 
 if [ ! -f "${gravitino_dir}/packages/${MYSQL_JDBC_DRIVER_NAME}" ]; then
   curl -L -s -o "${gravitino_dir}/packages/${MYSQL_JDBC_DRIVER_NAME}" "${MYSQL_JDBC_DIVER_DOWNLOAD_URL}"
