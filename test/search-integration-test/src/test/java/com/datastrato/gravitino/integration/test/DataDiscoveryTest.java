@@ -154,6 +154,7 @@ public class DataDiscoveryTest extends BaseIT {
           totalTables,
           totalTagTableEntities);
 
+      // test catalog query
       long startTime = System.currentTimeMillis();
       Awaitility.await()
           .atMost(180, TimeUnit.SECONDS)
@@ -189,6 +190,7 @@ public class DataDiscoveryTest extends BaseIT {
           totalTables,
           (System.currentTimeMillis() - startTime) / 1000);
 
+      // test tag query
       startTime = System.currentTimeMillis();
       int finalTotalTagTableEntities = totalTagTableEntities;
       int finalTotalTagSchemaEntities = totalTagSchemaEntities;
@@ -222,8 +224,8 @@ public class DataDiscoveryTest extends BaseIT {
           totalTagTableEntities,
           (System.currentTimeMillis() - startTime) / 1000);
 
+      // test catalog rename
       metalake.alterCatalog("c2", CatalogChange.rename("c3"));
-
       startTime = System.currentTimeMillis();
       Awaitility.await()
           .atMost(180, TimeUnit.SECONDS)
@@ -259,8 +261,8 @@ public class DataDiscoveryTest extends BaseIT {
           totalTables,
           (System.currentTimeMillis() - startTime) / 1000);
 
+      // test tag rename
       metalake.alterTag("tag2", TagChange.rename("tag3"));
-
       startTime = System.currentTimeMillis();
       Awaitility.await()
           .atMost(180, TimeUnit.SECONDS)
@@ -292,6 +294,43 @@ public class DataDiscoveryTest extends BaseIT {
           totalTagTableEntities,
           (System.currentTimeMillis() - startTime) / 1000);
 
+      // test rebuild index
+      searchClient.rebuildIndex(metalake.name());
+      startTime = System.currentTimeMillis();
+      Awaitility.await()
+          .atMost(180, TimeUnit.SECONDS)
+          .pollInterval(5, TimeUnit.SECONDS)
+          .until(
+              () -> {
+                List<SearchEntitiesDTO> dtos =
+                    searchClient.search("catalog_name:c3", metalake.name());
+
+                if (dtos.size() != 3) {
+                  return false;
+                }
+
+                SearchEntitiesDTO catalogDtos =
+                    getSearchEntitiesDTOByType(dtos, EntityType.CATALOG);
+                if (catalogDtos.getEntities().size() != 1) {
+                  return false;
+                }
+
+                SearchEntitiesDTO schemaDtos = getSearchEntitiesDTOByType(dtos, EntityType.SCHEMA);
+                if (schemaDtos.getEntities().size() != numberOfSchemas) {
+                  return false;
+                }
+
+                SearchEntitiesDTO tableDtos = getSearchEntitiesDTOByType(dtos, EntityType.TABLE);
+                if (tableDtos.getEntities().size() != totalTables) {
+                  return false;
+                }
+                return true;
+              });
+      LOG.info(
+          "Rebuild index successfully after {} seconds",
+          (System.currentTimeMillis() - startTime) / 1000);
+
+      // test tag delete
       deleteTag("tag3");
       startTime = System.currentTimeMillis();
       Awaitility.await()
@@ -307,6 +346,7 @@ public class DataDiscoveryTest extends BaseIT {
           "Search tag tag3 deleted successfully after {} seconds",
           (System.currentTimeMillis() - startTime) / 1000);
 
+      // test catalog delete
       metalake.dropCatalog("c3", true);
       startTime = System.currentTimeMillis();
       Awaitility.await()
