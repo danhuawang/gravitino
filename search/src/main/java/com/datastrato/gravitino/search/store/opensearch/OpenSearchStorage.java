@@ -70,6 +70,7 @@ import org.opensearch.client.opensearch.core.SearchResponse;
 import org.opensearch.client.opensearch.core.bulk.BulkResponseItem;
 import org.opensearch.client.opensearch.core.search.SourceConfig;
 import org.opensearch.client.opensearch.core.search.TrackHits;
+import org.opensearch.client.opensearch.indices.ExistsRequest;
 import org.opensearch.client.opensearch.indices.GetAliasResponse;
 import org.opensearch.client.opensearch.indices.GetIndexTemplateRequest;
 import org.opensearch.client.opensearch.indices.GetIndexTemplateResponse;
@@ -173,6 +174,21 @@ public class OpenSearchStorage implements SearchStorage {
     String indicesAliasName = getIndicesAliasName(entityType, metalakeName);
     if (createdIndicesAlias.contains(indicesAliasName)) {
       return indicesAliasName;
+    }
+
+    // check if index alias already exists
+    try {
+      GetAliasResponse getAliasResponse = client.indices().getAlias(r -> r.name(indicesAliasName));
+      Set<String> oldIndices = getAliasResponse.result().keySet();
+      String oldIndexName = oldIndices.stream().findFirst().orElse(null);
+      if (oldIndexName != null) {
+        createdIndicesAlias.add(indicesAliasName);
+        return indicesAliasName;
+      }
+    } catch (OpenSearchException e) {
+      if (e.status() != HTTP_NOT_FOUND) {
+        throw e;
+      }
     }
 
     // if index alias does not exists, create a new index with version 0 and update alias
@@ -362,6 +378,12 @@ public class OpenSearchStorage implements SearchStorage {
     // the index name will be "metalake_fileset_entity_index_1234567890"
     String realIndicesName = indexAliasName + "_" + version;
     try {
+      // Check if the index already exists
+      ExistsRequest existsRequest = new ExistsRequest.Builder().index(realIndicesName).build();
+      boolean exists = client.indices().exists(existsRequest).value();
+      if (exists) {
+        return realIndicesName;
+      }
       Request request = new Request("PUT", "/" + realIndicesName);
       sendHttpRequestWithRetry(request);
       return realIndicesName;
@@ -371,7 +393,7 @@ public class OpenSearchStorage implements SearchStorage {
           realIndicesName,
           indexAliasName,
           e.getMessage());
-      throw e;
+      throw new RuntimeException(e);
     }
   }
 

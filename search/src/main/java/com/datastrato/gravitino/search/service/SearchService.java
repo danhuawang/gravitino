@@ -345,7 +345,7 @@ public class SearchService implements Closeable {
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      LOG.error("Sync task handler thread interrupted", e);
+      LOG.error("Sync task handler thread interrupted");
     } catch (Exception e) {
       LOG.error("Failed to handle sync task", e);
     }
