@@ -305,17 +305,21 @@ tasks {
 
   fun updateFileForSearch(file: File) {
     // Add the following line to the end of the file
-    val searchLine = "\n\n# Default search storage, the default value of this configuration: opensearch\n" +
-      "gravitino.datastrato.search.storage.impl = opensearch\n" +
+    val searchLine = "\n\n# Search storage backend configuration\n" +
+      "# Using memory SearchStorage for testing purpose, advanced query may be not support\n" +
+      "gravitino.datastrato.search.storage.impl = memory\n" +
+      "# Search storage backend implementation, recommended to use opensearch in production environment \n" +
+      "#gravitino.datastrato.search.storage.impl = opensearch\n" +
       "# OpenSearch URL\n" +
-      "gravitino.datastrato.search.opensearch.url = https://localhost:9200\n" +
+      "#gravitino.datastrato.search.opensearch.url = https://localhost:9200\n" +
       "# OpenSearch username\n" +
-      "gravitino.datastrato.search.opensearch.username = admin\n" +
+      "#gravitino.datastrato.search.opensearch.username = admin\n" +
       "# OpenSearch password\n" +
-      "gravitino.datastrato.search.opensearch.password = ----\n" +
+      "#gravitino.datastrato.search.opensearch.password = ----\n\n" +
       "# Search listener configuration\n" +
       "gravitino.eventListener.names = search\n" +
-      "gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener\n"
+      "gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener\n\n"
+
     file.appendText(searchLine)
   }
 
@@ -324,8 +328,8 @@ tasks {
             ## use separate file for search log
             appender.search_file.type=RollingFile
             appender.search_file.name=search_file
-            appender.search_file.fileName=${'$'}{basePath}/gravitino_search.log
-            appender.search_file.filePattern=${'$'}{basePath}/gravitino_search_%d{yyyyMMdd}.log.gz
+            appender.search_file.fileName=${'$'}{basePath}/gravitino-search.log
+            appender.search_file.filePattern=${'$'}{basePath}/gravitino-search_%d{yyyyMMdd}.log.gz
             appender.search_file.layout.type=PatternLayout
             appender.search_file.layout.pattern=[%d{yyyy-MM-dd HH:mm:ss}] %m%n
             appender.search_file.policies.type=Policies

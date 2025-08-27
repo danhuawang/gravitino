@@ -52,6 +52,12 @@ load_config() {
     if [ -n "$GRAVITINO_HOME" ] && [ -d "$GRAVITINO_HOME" ]; then
         local conf_file="$GRAVITINO_HOME/conf/gravitino.conf"
         if [ -f "$conf_file" ]; then
+            SEARCH_STORAGE=$(grep '^gravitino.datastrato.search.storage.impl' "$conf_file" | awk -F '=' '{print $2}' | xargs)
+            if [ $SEARCH_STORAGE != "opensearch" ]; then
+                echo "Search storeage is not OpenSearch, ignore the command"
+                exit 1;
+            fi
+
             OPENSEARCH_URL=$(grep '^gravitino.datastrato.search.opensearch.url' "$conf_file" | awk -F '=' '{print $2}' | xargs)
             USERNAME=$(grep '^gravitino.datastrato.search.opensearch.username' "$conf_file" | awk -F '=' '{print $2}' | xargs)
             PASSWORD=$(grep '^gravitino.datastrato.search.opensearch.password' "$conf_file" | awk -F '=' '{print $2}' | xargs)
