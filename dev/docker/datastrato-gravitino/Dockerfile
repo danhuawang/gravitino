@@ -22,6 +22,7 @@ LABEL maintainer="support@datastrato.com"
 RUN apt-get update && apt-get install -y \
     vim \
     jq \
+    bsdmainutils \
     less \
     curl \
     wget \
