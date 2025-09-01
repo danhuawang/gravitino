@@ -18,6 +18,7 @@ import com.datastrato.gravitino.search.store.WriteContext;
 import com.datastrato.gravitino.search.utils.FilterConditionUtils;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
 import com.google.common.base.Function;
+import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -84,6 +85,8 @@ import org.slf4j.LoggerFactory;
 
 public class OpenSearchStorage implements SearchStorage {
   private static final Logger LOG = LoggerFactory.getLogger(OpenSearchStorage.class);
+
+  private static final String INDEX_NAME_SEPARATOR = "_";
 
   private static final String CATALOG_ENTITY_SUFFIX = "catalog_entity_index";
   private static final String SCHEMA_ENTITY_INDEX_SUFFIX = "schema_entity_index";
@@ -201,7 +204,7 @@ public class OpenSearchStorage implements SearchStorage {
   protected String getIndicesAliasName(EntityType entityType, String metalakeName) {
     // Create the index alias name based on the entity type and metalake name
     String indicesSuffix = ENTITY_TYPE_TO_INDEX_SUFFIX.get(entityType);
-    return metalakeName + "_" + indicesSuffix;
+    return metalakeName + INDEX_NAME_SEPARATOR + indicesSuffix;
   }
 
   public OpenSearchClient getClient() {
@@ -376,7 +379,7 @@ public class OpenSearchStorage implements SearchStorage {
     // the index template name is the part os alias name, like "*fileset_entity_index*".
     // the index alias name will be "metalake_fileset_entity_index",
     // the index name will be "metalake_fileset_entity_index_1234567890"
-    String realIndicesName = indexAliasName + "_" + version;
+    String realIndicesName = indexAliasName + INDEX_NAME_SEPARATOR + version;
     try {
       // Check if the index already exists
       ExistsRequest existsRequest = new ExistsRequest.Builder().index(realIndicesName).build();
@@ -399,8 +402,11 @@ public class OpenSearchStorage implements SearchStorage {
 
   private String updateIndexAlias(String indicesName, String aliasName) throws Exception {
     try {
+      Preconditions.checkArgument(
+          !indicesName.equals(aliasName),
+          "Index and alias name %s should not be same",
+          indicesName);
       String oldIndexName = null;
-
       try {
         GetAliasResponse getAliasResponse = client.indices().getAlias(r -> r.name(aliasName));
         Set<String> oldIndices = getAliasResponse.result().keySet();
@@ -777,7 +783,7 @@ public class OpenSearchStorage implements SearchStorage {
 
     try {
       for (String indices : newIndexes) {
-        String aliasName = indices.substring(0, indices.lastIndexOf("_1"));
+        String aliasName = indices.substring(0, indices.lastIndexOf(INDEX_NAME_SEPARATOR));
         String oldIndicesName = updateIndexAlias(indices, aliasName);
         oldIndexNames.add(oldIndicesName);
       }
