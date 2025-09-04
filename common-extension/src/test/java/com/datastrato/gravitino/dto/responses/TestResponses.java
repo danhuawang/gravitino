@@ -14,6 +14,7 @@ import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
+import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.json.JsonUtils;
@@ -56,10 +57,17 @@ public class TestResponses {
         TableDTO.builder()
             .withName("table1")
             .withComment("comment1")
+            .withColumns(
+                new ColumnDTO[] {DTOConverters.toDTO(Column.of("a", Types.ByteType.get()))})
             .withAudit(AuditDTO.builder().build())
             .build();
     TableDTO table2 =
-        TableDTO.builder().withName("table2").withAudit(AuditDTO.builder().build()).build();
+        TableDTO.builder()
+            .withName("table2")
+            .withColumns(
+                new ColumnDTO[] {DTOConverters.toDTO(Column.of("b", Types.IntegerType.get()))})
+            .withAudit(AuditDTO.builder().build())
+            .build();
     TableDTO[] tables = new TableDTO[] {table1, table2};
     TableListResponse response = new TableListResponse(tables);
     Assertions.assertDoesNotThrow(response::validate);

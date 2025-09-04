@@ -12,8 +12,10 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.EntityAlreadyExistsException;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.HasIdentifier;
@@ -129,5 +131,26 @@ public class InMemoryEntityStore implements EntityStore {
   @Override
   public void close() throws IOException {
     entityMap.clear();
+  }
+
+  @Override
+  public int batchDelete(List<Pair<NameIdentifier, EntityType>> entitiesToDelete, boolean cascade)
+      throws IOException {
+    for (Pair<NameIdentifier, EntityType> pair : entitiesToDelete) {
+      entityMap.remove(pair.getLeft());
+    }
+    return 0;
+  }
+
+  @Override
+  public <E extends Entity & HasIdentifier> void batchPut(List<E> entities, boolean overwritten)
+      throws IOException, EntityAlreadyExistsException {
+    executeInTransaction(
+        () -> {
+          for (E e : entities) {
+            put(e, overwritten);
+          }
+          return null;
+        });
   }
 }

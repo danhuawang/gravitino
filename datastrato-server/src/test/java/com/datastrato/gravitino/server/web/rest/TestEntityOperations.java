@@ -24,6 +24,7 @@ import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
 import com.datastrato.gravitino.dto.responses.TopicListResponse;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.time.Instant;
@@ -66,6 +67,7 @@ import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
+import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.rest.RESTUtils;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -539,6 +541,21 @@ public class TestEntityOperations extends JerseyTest {
                             .withCreator("creator")
                             .withCreateTime(Instant.now())
                             .build())
+                    .withColumns(
+                        ImmutableList.of(
+                            org.apache.gravitino.meta.ColumnEntity.builder()
+                                .withName("col1")
+                                .withId(1L)
+                                .withPosition(1)
+                                .withDataType(Types.IntegerType.get())
+                                .withNullable(true)
+                                .withAuditInfo(
+                                    AuditInfo.builder()
+                                        .withCreator("creator")
+                                        .withCreateTime(Instant.now())
+                                        .build())
+                                .withComment("comment")
+                                .build()))
                     .build())
         .collect(Collectors.toList());
   }

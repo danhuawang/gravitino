@@ -13,6 +13,7 @@ dependencies {
   implementation("org.apache.gravitino:core")
   implementation("org.apache.gravitino:lineage")
   implementation("org.apache.gravitino:server-common")
+  implementation("org.apache.gravitino:common")
 
   implementation(libs.bundles.log4j)
   implementation(libs.commons.lang3)

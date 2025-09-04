@@ -44,10 +44,13 @@ import org.apache.gravitino.catalog.PartitionDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
+import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.metrics.MetricsSystem;
+import org.apache.gravitino.policy.PolicyDispatcher;
+import org.apache.gravitino.stats.StatisticManager;
 import org.apache.gravitino.storage.IdGenerator;
 import org.apache.gravitino.tag.TagDispatcher;
 import org.slf4j.Logger;
@@ -209,6 +212,21 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public TagDispatcher tagDispatcher() {
     return GravitinoEnv.getInstance().tagDispatcher();
+  }
+
+  @Override
+  public PolicyDispatcher policyDispatcher() {
+    return GravitinoEnv.getInstance().policyDispatcher();
+  }
+
+  @Override
+  public JobOperationDispatcher jobOperationDispatcher() {
+    return GravitinoEnv.getInstance().jobOperationDispatcher();
+  }
+
+  @Override
+  public StatisticManager statisticManager() {
+    return GravitinoEnv.getInstance().statisticManager();
   }
 
   @Override

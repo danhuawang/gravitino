@@ -4,14 +4,14 @@
  */
 package com.datastrato.gravitino.metrics.storage.relational.mapper.provider;
 
+import com.datastrato.gravitino.metrics.storage.relational.mapper.MetricDataMapper;
+import com.google.common.collect.ImmutableList;
+import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.provider.MapperPackageProvider;
 
 public class MetricsMapperPackageProvider implements MapperPackageProvider {
-  private static final String METRICS_MAPPER_PACKAGE =
-      "com.datastrato.gravitino.metrics.storage.relational.mapper";
-
   @Override
-  public String getPackageName() {
-    return METRICS_MAPPER_PACKAGE;
+  public List<Class<?>> getMapperClasses() {
+    return ImmutableList.of(MetricDataMapper.class);
   }
 }

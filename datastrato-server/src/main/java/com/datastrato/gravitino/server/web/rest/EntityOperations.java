@@ -47,6 +47,7 @@ import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
+import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
@@ -56,6 +57,7 @@ import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
+import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
@@ -119,6 +121,8 @@ public class EntityOperations {
       return Utils.doAs(httpRequest, () -> doList(namespace, catalogType, resultLimit));
     } catch (Exception e) {
       return Utils.internalError("Error while listing entities", e);
+    } catch (Throwable throwable) {
+      return Utils.internalError("Unexpected error while listing entities", throwable);
     }
   }
 
@@ -241,8 +245,39 @@ public class EntityOperations {
                 tableIdent -> {
                   TableDTO.Builder builder = TableDTO.builder().withName(tableIdent.name());
                   return Optional.ofNullable(nameToTableEntity.get(tableIdent.name()))
-                      .map(t -> builder.withAudit(toDTO(t.auditInfo())).build())
-                      .orElse(builder.withAudit(AuditDTO.builder().build()).build());
+                      .map(
+                          t ->
+                              builder
+                                  .withAudit(toDTO(t.auditInfo()))
+                                  .withColumns(
+                                      t.columns().stream()
+                                          .map(
+                                              c ->
+                                                  ColumnDTO.builder()
+                                                      .withName(c.name())
+                                                      .withDataType(c.dataType())
+                                                      .withComment(c.comment())
+                                                      .withNullable(c.nullable())
+                                                      .withAutoIncrement(c.autoIncrement())
+                                                      .withDefaultValue(c.defaultValue())
+                                                      .build())
+                                          .toArray(ColumnDTO[]::new))
+                                  .build())
+                      .orElse(
+                          builder
+                              .withAudit(AuditDTO.builder().build())
+                              .withColumns(
+                                  new ColumnDTO[] {
+                                    ColumnDTO.builder()
+                                        .withName("unkonwn")
+                                        .withDataType(Types.IntegerType.get())
+                                        .withComment("")
+                                        .withNullable(true)
+                                        .withAutoIncrement(false)
+                                        .withDefaultValue(null)
+                                        .build()
+                                  })
+                              .build());
                 })
             .toArray(TableDTO[]::new);
 

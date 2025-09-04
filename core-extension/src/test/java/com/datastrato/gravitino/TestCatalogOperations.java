@@ -39,6 +39,7 @@ import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchFilesetException;
 import org.apache.gravitino.exceptions.NoSuchModelException;
 import org.apache.gravitino.exceptions.NoSuchModelVersionException;
+import org.apache.gravitino.exceptions.NoSuchModelVersionURINameException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.exceptions.NoSuchTopicException;
@@ -793,7 +794,7 @@ public class TestCatalogOperations
             .withVersion(version)
             .withAliases(aliases)
             .withComment(comment)
-            .withUri(uri)
+            .withUris(ImmutableMap.of("unknown", uri))
             .withProperties(properties)
             .withAuditInfo(
                 AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
@@ -951,5 +952,28 @@ public class TestCatalogOperations
         .withProperties(entityProperties)
         .withLatestVersion(entityLatestVersion)
         .build();
+  }
+
+  @Override
+  public void linkModelVersion(
+      NameIdentifier ident,
+      Map<String, String> uris,
+      String[] aliases,
+      String comment,
+      Map<String, String> properties)
+      throws NoSuchModelException, ModelVersionAliasesAlreadyExistException {
+    linkModelVersion(ident, uris.get("unknown"), aliases, comment, properties);
+  }
+
+  @Override
+  public String getModelVersionUri(NameIdentifier ident, int version, String uriName)
+      throws NoSuchModelVersionException, NoSuchModelVersionURINameException {
+    return null;
+  }
+
+  @Override
+  public String getModelVersionUri(NameIdentifier ident, String alias, String uriName)
+      throws NoSuchModelVersionException, NoSuchModelVersionURINameException {
+    return null;
   }
 }
