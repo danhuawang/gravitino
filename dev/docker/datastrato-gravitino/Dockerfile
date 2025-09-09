@@ -31,6 +31,10 @@ RUN apt-get update && apt-get install -y \
 
 ARG MYSQL_JDBC_DRIVER_NAME
 ARG POSTGRESQL_JDBC_DRIVER_NAME
+ARG ICEBERG_AWS_BUNDLE_NAME
+ARG ICEBERG_GCP_BUNDLE_NAME
+ARG ICEBERG_AZURE_BUNDLE_NAME
+ARG GCS_CONNECTOR_NAME
 
 WORKDIR /root/gravitino
 
@@ -38,12 +42,16 @@ COPY packages/gravitino /root/gravitino
 
 # copy JDBC driver
 COPY packages/${MYSQL_JDBC_DRIVER_NAME} packages/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/libs/
+# copy Iceberg Cloud bundle
+COPY packages/${ICEBERG_AWS_BUNDLE_NAME} packages/${ICEBERG_GCP_BUNDLE_NAME} packages/${ICEBERG_AZURE_BUNDLE_NAME} packages/${GCS_CONNECTOR_NAME} /root/gravitino/iceberg-rest-server/libs/
+COPY packages/${ICEBERG_AWS_BUNDLE_NAME} packages/${ICEBERG_GCP_BUNDLE_NAME} packages/${ICEBERG_AZURE_BUNDLE_NAME} packages/${GCS_CONNECTOR_NAME} /root/gravitino/catalogs/lakehouse-iceberg/libs/
 
 # copy MySQL JDBC driver
 RUN cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-mysql/libs/ && \
     cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-doris/libs/ && \
     cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-oceanbase/libs/ && \
     cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/lakehouse-iceberg/libs/ && \
+    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-starrocks/libs/ && \
     cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/iceberg-rest-server/libs/
 
 # copy PostgreSQL JDBC driver
