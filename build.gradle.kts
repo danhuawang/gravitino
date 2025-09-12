@@ -395,6 +395,13 @@ tasks {
         rename { fileName ->
           fileName.replace(".template", "")
         }
+        eachFile {
+          if (name == "gravitino-env.sh") {
+            filter { line ->
+              line.replace("GRAVITINO_VERSION_PLACEHOLDER", "$version")
+            }
+          }
+        }
         fileMode = 0b111101101
       }
 
