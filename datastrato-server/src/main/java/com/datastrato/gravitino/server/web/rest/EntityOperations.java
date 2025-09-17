@@ -243,41 +243,15 @@ public class EntityOperations {
             .limit(resultLimit)
             .map(
                 tableIdent -> {
-                  TableDTO.Builder builder = TableDTO.builder().withName(tableIdent.name());
+                  TableDTO.Builder builder =
+                      TableDTO.builder()
+                          .withName(tableIdent.name())
+                          // Use mock columns for listing tables, since frontend doesn't use columns
+                          // info for displaying table list.
+                          .withColumns(mockColumns());
                   return Optional.ofNullable(nameToTableEntity.get(tableIdent.name()))
-                      .map(
-                          t ->
-                              builder
-                                  .withAudit(toDTO(t.auditInfo()))
-                                  .withColumns(
-                                      t.columns().stream()
-                                          .map(
-                                              c ->
-                                                  ColumnDTO.builder()
-                                                      .withName(c.name())
-                                                      .withDataType(c.dataType())
-                                                      .withComment(c.comment())
-                                                      .withNullable(c.nullable())
-                                                      .withAutoIncrement(c.autoIncrement())
-                                                      .withDefaultValue(c.defaultValue())
-                                                      .build())
-                                          .toArray(ColumnDTO[]::new))
-                                  .build())
-                      .orElse(
-                          builder
-                              .withAudit(AuditDTO.builder().build())
-                              .withColumns(
-                                  new ColumnDTO[] {
-                                    ColumnDTO.builder()
-                                        .withName("unkonwn")
-                                        .withDataType(Types.IntegerType.get())
-                                        .withComment("")
-                                        .withNullable(true)
-                                        .withAutoIncrement(false)
-                                        .withDefaultValue(null)
-                                        .build()
-                                  })
-                              .build());
+                      .map(t -> builder.withAudit(toDTO(t.auditInfo())).build())
+                      .orElse(builder.withAudit(AuditDTO.builder().build()).build());
                 })
             .toArray(TableDTO[]::new);
 
@@ -366,5 +340,18 @@ public class EntityOperations {
     Response response = Utils.ok(new ModelListResponse(modelDTOs));
     LOG.info("List {} model entities under namespace: {}", modelDTOs.length, namespace);
     return response;
+  }
+
+  private ColumnDTO[] mockColumns() {
+    return new ColumnDTO[] {
+      ColumnDTO.builder()
+          .withName("mock_column")
+          .withDataType(Types.IntegerType.get())
+          .withComment("")
+          .withNullable(true)
+          .withAutoIncrement(false)
+          .withDefaultValue(null)
+          .build()
+    };
   }
 }
