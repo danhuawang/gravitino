@@ -83,6 +83,10 @@ paths:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./metrics.yaml#/paths/~1web~1metrics~1metalakes~1%7Bmetalake%7D"
 
+  /web/security/metalakes/{metalake}/roles/{role}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D"
+
 components:
   securitySchemes:
 

@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino;
 
+import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetNormalizeDispatcher;
@@ -65,6 +66,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private DatastratoFilesetDispatcher datastratoFilesetDispatcher;
   private DatastratoTopicDispatcher datastratoTopicDispatcher;
   private DatastratoModelDispatcher datastratoModelDispatcher;
+  private DatastratoAccessControlDispatcher accessControlDispatcher;
 
   public static DatastratoGravitinoEnv getInstance() {
     return INSTANCE;
@@ -130,6 +132,12 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoModelNormalizeDispatcher(modelHookDispatcher, catalogManager());
     datastratoModelDispatcher =
         new DatastratoModelEventDispatcher(eventBus(), datastratoModelNormalizeDispatcher);
+
+    // initialize access control dispatcher
+    accessControlDispatcher =
+        new DatastratoAccessControlDispatcher(
+            GravitinoEnv.getInstance().accessControlDispatcher(), entityStore());
+    LOG.info("Datastrato Access Control Dispatcher initialized. " + accessControlDispatcher);
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
@@ -206,7 +214,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
 
   @Override
   public AccessControlDispatcher accessControlDispatcher() {
-    return GravitinoEnv.getInstance().accessControlDispatcher();
+    return accessControlDispatcher;
   }
 
   @Override

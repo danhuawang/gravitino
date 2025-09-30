@@ -1,0 +1,199 @@
+/*
+ * Copyright 2025 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+package com.datastrato.gravitino.server.web.rest;
+
+import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
+import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
+import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.dto.requests.PermissionUpdateRequest;
+import com.google.common.collect.Lists;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Collections;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.client.Entity;
+import javax.ws.rs.core.Application;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
+import org.apache.commons.lang3.reflect.FieldUtils;
+import org.apache.gravitino.Config;
+import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.authorization.AccessControlDispatcher;
+import org.apache.gravitino.authorization.Privilege;
+import org.apache.gravitino.authorization.Privileges;
+import org.apache.gravitino.authorization.Role;
+import org.apache.gravitino.authorization.SecurableObject;
+import org.apache.gravitino.authorization.SecurableObjects;
+import org.apache.gravitino.catalog.TableDispatcher;
+import org.apache.gravitino.dto.authorization.PrivilegeDTO;
+import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
+import org.apache.gravitino.dto.responses.ErrorConstants;
+import org.apache.gravitino.dto.responses.ErrorResponse;
+import org.apache.gravitino.dto.responses.RoleResponse;
+import org.apache.gravitino.exceptions.NoSuchMetadataObjectException;
+import org.apache.gravitino.lock.LockManager;
+import org.apache.gravitino.meta.AuditInfo;
+import org.apache.gravitino.meta.RoleEntity;
+import org.apache.gravitino.rest.RESTUtils;
+import org.glassfish.hk2.utilities.binding.AbstractBinder;
+import org.glassfish.jersey.server.ResourceConfig;
+import org.glassfish.jersey.test.JerseyTest;
+import org.glassfish.jersey.test.TestProperties;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+public class TestExtendedRoleOperations extends JerseyTest {
+
+  private static final DatastratoAccessControlDispatcher accessControlDispatcher =
+      mock(DatastratoAccessControlDispatcher.class);
+  private static final TableDispatcher tableDispatcher = mock(TableDispatcher.class);
+
+  private static class MockServletRequestFactory extends ServletRequestFactoryBase {
+    @Override
+    public HttpServletRequest get() {
+      HttpServletRequest request = mock(HttpServletRequest.class);
+      when(request.getRemoteUser()).thenReturn(null);
+      return request;
+    }
+  }
+
+  @BeforeAll
+  public static void setup() throws IllegalAccessException {
+    Config config = mock(Config.class);
+    Mockito.doReturn(100000L).when(config).get(TREE_LOCK_MAX_NODE_IN_MEMORY);
+    Mockito.doReturn(1000L).when(config).get(TREE_LOCK_MIN_NODE_IN_MEMORY);
+    Mockito.doReturn(36000L).when(config).get(TREE_LOCK_CLEAN_INTERVAL);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "tableDispatcher", tableDispatcher, true);
+  }
+
+  protected Application configure() {
+    try {
+      forceSet(
+          TestProperties.CONTAINER_PORT, String.valueOf(RESTUtils.findAvailablePort(2000, 3000)));
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+
+    ResourceConfig resourceConfig = new ResourceConfig();
+    resourceConfig.register(ExtendedRoleOperations.class);
+    resourceConfig.register(
+        new AbstractBinder() {
+          @Override
+          protected void configure() {
+            bind(accessControlDispatcher).to(AccessControlDispatcher.class).ranked(2);
+            bindFactory(MockServletRequestFactory.class).to(HttpServletRequest.class);
+          }
+        });
+
+    return resourceConfig;
+  }
+
+  @Test
+  public void testBulkUpdateObjects() {
+    SecurableObjectDTO[] updates =
+        new SecurableObjectDTO[] {
+          SecurableObjectDTO.builder()
+              .withPrivileges(
+                  new PrivilegeDTO[] {
+                    PrivilegeDTO.builder()
+                        .withName(Privilege.Name.SELECT_TABLE)
+                        .withCondition(Privilege.Condition.ALLOW)
+                        .build()
+                  })
+              .withType(MetadataObject.Type.TABLE)
+              .withFullName("test1.test2.test3")
+              .build()
+        };
+
+    PermissionUpdateRequest req = new PermissionUpdateRequest(updates);
+
+    when(accessControlDispatcher.updatePrivilegesForRole(any(), any(), any()))
+        .thenReturn(buildRole("role1"));
+    when(tableDispatcher.tableExists(any())).thenReturn(true);
+
+    Response resp =
+        target("/web/security/metalakes/testMetalake/roles/testRole/")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    RoleResponse roleResponse = resp.readEntity(RoleResponse.class);
+    Assertions.assertEquals(0, roleResponse.getCode());
+    Role roleDTO = roleResponse.getRole();
+    Assertions.assertEquals("role1", roleDTO.name());
+    Assertions.assertTrue(roleDTO.properties().isEmpty());
+    Assertions.assertEquals(
+        SecurableObjects.ofCatalog("catalog", Lists.newArrayList(Privileges.UseCatalog.allow()))
+            .fullName(),
+        roleDTO.securableObjects().get(0).fullName());
+    Assertions.assertEquals(1, roleDTO.securableObjects().get(0).privileges().size());
+    Assertions.assertEquals(
+        Privileges.UseCatalog.allow().name(),
+        roleDTO.securableObjects().get(0).privileges().get(0).name());
+    Assertions.assertEquals(
+        Privileges.UseCatalog.allow().condition(),
+        roleDTO.securableObjects().get(0).privileges().get(0).condition());
+
+    // Throw no found exception
+    when(tableDispatcher.tableExists(any())).thenReturn(false);
+    Response resp1 =
+        target("/web/security/metalakes/testMetalake/roles/testRole/")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), resp1.getStatus());
+
+    ErrorResponse errorResponse = resp1.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.NOT_FOUND_CODE, errorResponse.getCode());
+    Assertions.assertEquals(
+        NoSuchMetadataObjectException.class.getSimpleName(), errorResponse.getType());
+
+    // Throw runtime exception
+    when(tableDispatcher.tableExists(any())).thenReturn(true);
+    when(accessControlDispatcher.updatePrivilegesForRole(any(), any(), any()))
+        .thenThrow(new RuntimeException("Test exception"));
+    Response resp2 =
+        target("/web/security/metalakes/testMetalake/roles/testRole/")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(
+        Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), resp2.getStatus());
+    ErrorResponse errorResponse2 = resp2.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.INTERNAL_ERROR_CODE, errorResponse2.getCode());
+    Assertions.assertEquals(RuntimeException.class.getSimpleName(), errorResponse2.getType());
+  }
+
+  private Role buildRole(String role) {
+    SecurableObject catalog =
+        SecurableObjects.ofCatalog("catalog", Lists.newArrayList(Privileges.UseCatalog.allow()));
+    SecurableObject anotherSecurableObject =
+        SecurableObjects.ofCatalog(
+            "another_catalog", Lists.newArrayList(Privileges.CreateSchema.deny()));
+
+    return RoleEntity.builder()
+        .withId(1L)
+        .withName(role)
+        .withProperties(Collections.emptyMap())
+        .withSecurableObjects(Lists.newArrayList(catalog, anotherSecurableObject))
+        .withAuditInfo(
+            AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+        .build();
+  }
+}
