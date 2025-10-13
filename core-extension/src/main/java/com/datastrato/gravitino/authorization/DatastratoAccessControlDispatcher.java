@@ -183,6 +183,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
     return accessControlDispatcher.grantPrivilegeToRole(metalake, role, object, privileges);
   }
 
+  // TODO: Add event dispatcher
   public Role updatePrivilegesForRole(
       String metalake, String role, List<SecurableObject> updateObjects) {
     return TreeLockUtils.doWithTreeLock(
