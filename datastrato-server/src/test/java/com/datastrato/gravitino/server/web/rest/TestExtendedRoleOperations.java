@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.requests.PermissionUpdateRequest;
 import com.google.common.collect.Lists;
@@ -26,7 +27,6 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
-import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.Role;
@@ -75,6 +75,11 @@ public class TestExtendedRoleOperations extends JerseyTest {
     Mockito.doReturn(36000L).when(config).get(TREE_LOCK_CLEAN_INTERVAL);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "tableDispatcher", tableDispatcher, true);
+    FieldUtils.writeField(
+        ExtendedDatastratoGravitinoEnv.getInstance(),
+        "accessControlDispatcher",
+        accessControlDispatcher,
+        true);
   }
 
   protected Application configure() {
@@ -91,7 +96,6 @@ public class TestExtendedRoleOperations extends JerseyTest {
         new AbstractBinder() {
           @Override
           protected void configure() {
-            bind(accessControlDispatcher).to(AccessControlDispatcher.class).ranked(2);
             bindFactory(MockServletRequestFactory.class).to(HttpServletRequest.class);
           }
         });
