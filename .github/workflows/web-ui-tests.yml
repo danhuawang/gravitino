@@ -2,19 +2,20 @@ name: Web UI Tests
 
 on:
   push:
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
     paths:
       - 'web/web/**'
       - '.github/workflows/web-ui-tests.yml'
   pull_request:
-    branches: [ "main", "branch-*" ]
+    types: [ labeled ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
     paths:
       - 'web/web/**'
       - '.github/workflows/web-ui-tests.yml'
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
     
     steps:
     - name: Checkout code

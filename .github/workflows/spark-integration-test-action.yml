@@ -22,9 +22,9 @@ on:
         type: string
 
 jobs:
-  start-runner:
+  SparkIT:
     name: JDK${{ inputs.java-version }}-${{ inputs.test-mode }}-Scala${{ inputs.scala-version }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64, amazon, xlarge]
     timeout-minutes: 60
     env:
       PLATFORM: ${{ inputs.architecture }}

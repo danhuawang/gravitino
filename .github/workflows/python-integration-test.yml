@@ -2,10 +2,12 @@ name: Python Client Integration Test
 
 # Controls when the workflow will run
 on:
+  workflow_dispatch:
   push:
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
   pull_request:
-    branches: [ "main", "branch-*" ]
+    types: [labeled]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -14,6 +16,7 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    if: needs.changes.outputs.source_changes == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
@@ -47,7 +50,7 @@ jobs:
   PythonIT:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
     timeout-minutes: 90
     strategy:
       matrix:

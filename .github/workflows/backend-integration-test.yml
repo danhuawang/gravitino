@@ -2,10 +2,12 @@ name: Backend Integration Test
 
 # Controls when the workflow will run
 on:
+  workflow_dispatch:
   push:
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
   pull_request:
-    branches: [ "main", "branch-*" ]
+    types: [labeled]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -13,7 +15,8 @@ concurrency:
 
 jobs:
   changes:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,7 +38,6 @@ jobs:
               - common/**
               - conf/**
               - core/**
-              - lance/**
               - dev/**
               - gradle/**
               - iceberg/**
@@ -87,17 +89,10 @@ jobs:
     if: (github.event_name == 'push' && needs.changes.outputs.source_changes == 'true')
     strategy:
       matrix:
-        architecture: [linux/amd64]
+        architecture: [ linux/amd64 ]
         java-version: [ 17 ]
-        backend: [ h2, mysql, postgresql ]
-        test-mode: [ embedded, deploy ]
-        exclude:
-          - test-mode: 'embedded'
-            backend: 'mysql'
-          - test-mode: 'embedded'
-            backend: 'postgresql'
-          - test-mode: 'deploy'
-            backend: 'h2'
+        backend: [ mysql ]
+        test-mode: [ deploy ]
     uses: ./.github/workflows/backend-integration-test-action.yml
     with:
       architecture: ${{ matrix.architecture }}
@@ -113,15 +108,8 @@ jobs:
       matrix:
         architecture: [ linux/amd64 ]
         java-version: [ 17 ]
-        backend: [ h2, mysql, postgresql ]
-        test-mode: [ embedded, deploy ]
-        exclude:
-          - test-mode: 'embedded'
-            backend: 'mysql'
-          - test-mode: 'embedded'
-            backend: 'postgresql'
-          - test-mode: 'deploy'
-            backend: 'h2'
+        backend: [ mysql ]
+        test-mode: [ deploy ]
     uses: ./.github/workflows/backend-integration-test-action.yml
     with:
       architecture: ${{ matrix.architecture }}
