@@ -158,6 +158,7 @@ public class TestDatastratoAccessControlDispatcher {
         SecurableObjects.ofSchema(
             catalog, SCHEMA, Lists.newArrayList(Privileges.CreateTable.allow()));
 
+    // Add two securable objects
     Role role =
         accessControlManager.updatePrivilegesForRole(
             METALAKE, testRole, Lists.newArrayList(catalog, schema));
@@ -166,12 +167,24 @@ public class TestDatastratoAccessControlDispatcher {
 
     Assertions.assertEquals(2, objects.size());
 
+    // Remove one securable object
     role =
         accessControlManager.updatePrivilegesForRole(
             METALAKE, testRole, Lists.newArrayList(catalog));
     objects = role.securableObjects();
-
     Assertions.assertEquals(1, objects.size());
+    Assertions.assertEquals(catalog, objects.get(0));
+
+    // Update one securable object
+    SecurableObject catalogAnother =
+        SecurableObjects.ofCatalog(CATALOG, Lists.newArrayList(Privileges.UseCatalog.allow()));
+    role =
+        accessControlManager.updatePrivilegesForRole(
+            METALAKE, testRole, Lists.newArrayList(catalogAnother));
+
+    objects = role.securableObjects();
+    Assertions.assertEquals(1, objects.size());
+    Assertions.assertEquals(catalogAnother, objects.get(0));
 
     // Throw IllegalRoleException
     String notExist = "not-exist";
