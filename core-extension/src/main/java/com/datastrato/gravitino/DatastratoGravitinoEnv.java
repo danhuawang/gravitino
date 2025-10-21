@@ -137,7 +137,6 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
     accessControlDispatcher =
         new DatastratoAccessControlDispatcher(
             GravitinoEnv.getInstance().accessControlDispatcher(), entityStore());
-    LOG.info("Datastrato Access Control Dispatcher initialized. " + accessControlDispatcher);
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }

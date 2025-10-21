@@ -255,6 +255,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
                                 object -> {
                                   SecurableObject existingObject = originObjectMap.get(object);
                                   SecurableObject newSecurableObject = updatedObjectMap.get(object);
+                                  // If the updated role is the same as the existing one, we don't
+                                  // need to call the authorization plugin.
                                   if (existingObject != null
                                       && newSecurableObject != null
                                       && !existingObject
@@ -307,7 +309,10 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
             return updatedRole;
           } catch (NoSuchEntityException nse) {
             LOG.error(
-                "Failed to update role {} does not exist in the metalake {}", role, metalake, nse);
+                "Failed to update role {}, because the role does not exist in the metalake {}",
+                role,
+                metalake,
+                nse);
             throw new NoSuchRoleException(
                 "Role %s does not exist in the metalake %s", role, metalake);
           } catch (IOException ioe) {

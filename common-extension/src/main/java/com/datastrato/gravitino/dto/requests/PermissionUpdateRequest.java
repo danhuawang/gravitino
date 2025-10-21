@@ -20,7 +20,8 @@ public class PermissionUpdateRequest implements RESTRequest {
   @JsonProperty("updates")
   private SecurableObjectDTO[] updates;
 
-  public PermissionUpdateRequest() {
+  /** Default constructor for Jackson deserialization. */
+  private PermissionUpdateRequest() {
     this(null);
   }
 
