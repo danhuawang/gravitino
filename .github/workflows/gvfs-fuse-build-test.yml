@@ -4,9 +4,9 @@ name: Build gvfs-fuse and testing
 on:
   # Temporarily disable
   # push:
-  #  branches: [ "main", "branch-*" ]
+  #  branches: [ "main", "branch-*", "internal-*", "oss-main" ]
   # pull_request:
-  #  branches: [ "main", "branch-*" ]
+  #  branches: [ "main", "branch-*", "internal-*", "oss-main" ]
   workflow_dispatch:
 
 concurrency:
