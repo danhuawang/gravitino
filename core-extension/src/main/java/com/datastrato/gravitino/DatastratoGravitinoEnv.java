@@ -36,6 +36,7 @@ import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.FutureGrantManager;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
@@ -47,11 +48,12 @@ import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
 import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.listener.EventBus;
+import org.apache.gravitino.listener.EventListenerManager;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.metrics.MetricsSystem;
 import org.apache.gravitino.policy.PolicyDispatcher;
-import org.apache.gravitino.stats.StatisticManager;
+import org.apache.gravitino.stats.StatisticDispatcher;
 import org.apache.gravitino.storage.IdGenerator;
 import org.apache.gravitino.tag.TagDispatcher;
 import org.slf4j.Logger;
@@ -232,8 +234,23 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @Override
-  public StatisticManager statisticManager() {
-    return GravitinoEnv.getInstance().statisticManager();
+  public EventListenerManager eventListenerManager() {
+    return GravitinoEnv.getInstance().eventListenerManager();
+  }
+
+  @Override
+  public void setGravitinoAuthorizer(GravitinoAuthorizer gravitinoAuthorizer) {
+    GravitinoEnv.getInstance().setGravitinoAuthorizer(gravitinoAuthorizer);
+  }
+
+  @Override
+  public GravitinoAuthorizer gravitinoAuthorizer() {
+    return GravitinoEnv.getInstance().gravitinoAuthorizer();
+  }
+
+  @Override
+  public StatisticDispatcher statisticDispatcher() {
+    return GravitinoEnv.getInstance().statisticDispatcher();
   }
 
   @Override
