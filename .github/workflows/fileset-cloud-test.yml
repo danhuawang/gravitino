@@ -1,0 +1,137 @@
+name: Fileset Cloud Test
+
+# Controls when the workflow will run
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    types: [labeled]
+    branches: [ "main", "branch-*" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Integration test for AMD64 architecture
+  test-amd64-arch:
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
+    env:
+      GRAVITINO_TEST_CLOUD_IT: true
+      S3_STS_ACCESS_KEY_ID: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
+      S3_STS_SECRET_ACCESS_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
+      S3_STS_ENDPOINT: http://s3.ap-northeast-1.amazonaws.com
+      S3_STS_BUCKET_NAME: sts-test-bucket-001
+      S3_STS_REGION: ap-northeast-1
+      S3_STS_ROLE_ARN: arn:aws:iam::730335553010:role/sts_s3_access_role
+      S3_ACCESS_KEY_ID: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
+      S3_ENDPOINT: http://s3.ap-northeast-1.amazonaws.com
+      S3_BUCKET_NAME: sts-test-bucket-001
+      PLATFORM: ${{ matrix.architecture }}
+      S3_ACCESS_KEY_ID_FOR_CREDENTIAL: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
+      S3_BUCKET_NAME_FOR_CREDENTIAL: sts-test-bucket-001
+      S3_ENDPOINT_FOR_CREDENTIAL: http://s3.ap-northeast-1.amazonaws.com
+      S3_REGION_FOR_CREDENTIAL: ap-northeast-1
+      S3_ROLE_ARN_FOR_CREDENTIAL: arn:aws:iam::730335553010:role/sts_s3_access_role
+      S3_ROLE_ARN: arn:aws:iam::730335553010:role/sts_s3_access_role
+      S3_SECRET_ACCESS_KEY_FOR_CREDENTIAL: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
+      GCS_BUCKET_NAME_FOR_CREDENTIAL: strato-iceberg
+      GCS_SERVICE_ACCOUNT_JSON_PATH_FOR_CREDENTIAL: /tmp/tonal-land-426304-d3-a75b6878b6ce.json
+      GCS_BUCKET_NAME: strato-iceberg
+      GCS_SERVICE_ACCOUNT_JSON_PATH: /tmp/tonal-land-426304-d3-a75b6878b6ce.json
+      GCS_SERVICE_ACCOUNT_JSON_CONTENT: ${{ secrets.GCS_SERVICE_ACCOUNT_JSON_CONTENT }}
+      GRAVITINO_HOME: ${{ github.workspace }}/gravitino-oss/distribution/package
+      PYTHON_BUILD_PATH: ${{ github.workspace }}/gravitino-oss/clients/client-python/build
+      GRAVITINO_CI_HIVE_DOCKER_IMAGE: apache/gravitino-ci:hive-0.1.20
+      DOCKER_TEST: "true"
+    timeout-minutes: 45
+    strategy:
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [ 17 ]
+        test-mode: [ deploy ]
+        backend: [ mysql ]
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Check required command
+        run: |
+          echo "$GCS_SERVICE_ACCOUNT_JSON_CONTENT" > /tmp/tonal-land-426304-d3-a75b6878b6ce.json
+          gravitino-oss/dev/ci/check_commands.sh
+          cat /tmp/tonal-land-426304-d3-a75b6878b6ce.json
+
+      - name: Package
+        run: |
+          ./gradlew -p gravitino-oss build -x test
+          mkdir -p /tmp/bundles
+          cp -r gravitino-oss/bundles/*-bundle/build/libs/*.jar /tmp/bundles
+
+          ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
+
+          cp -r -f ./distribution ./gravitino-oss
+          cp -r /tmp/bundles/* ./gravitino-oss/distribution/package/catalogs/fileset/libs
+          echo "==============start gravitino server================="
+          cd gravitino-oss/distribution/package/bin
+          pwd
+          ./gravitino.sh start
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Fileset Cloud Integration Test python
+        id: integrationTest1
+        run: |
+          cd gravitino-oss/clients/client-python
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install .
+          pip install -r requirements-dev.txt
+          echo "============ Start to run test_gvfs_with_s3 and test_gvfs_with_s3_credential ============"
+          python -m unittest tests.integration.test_gvfs_with_s3_credential -v
+          echo "============ Start to run test_gvfs_with_gcs and test_gvfs_with_gcs_credential ============"
+          python -m unittest tests.integration.test_gvfs_with_gcs_credential -v
+
+      - name: Update S3_BUCKET_NAME env var
+        if: ${{ always() }}
+        run: |
+          echo "S3_BUCKET_NAME=amzn-s3-ci-sydney-bucket" >> "$GITHUB_ENV"
+
+      - name: Fileset Cloud Integration Test java
+        if: ${{ always() }}
+        id: integrationTest2
+        run: |
+          ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PjdbcBackend=${{ matrix.backend }} -PskipDockerTests=false :clients:filesystem-hadoop3:test --tests "org.apache.gravitino.filesystem.hadoop.integration.test.**"
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v4
+        if: ${{ failure() && steps.integrationTest2.outcome == 'failure' }}
+        with:
+          name: integrate test reports-${{ matrix.java-version }}-${{ matrix.test-mode }}-${{ matrix.backend }}
+          path: |
+            gravitino-oss/build/reports
+            gravitino-oss/iceberg/iceberg-rest-server/build/*.log
+            gravitino-oss/integration-test/build/*.log
+            gravitino-oss/integration-test/build/*.tar
+            gravitino-oss/integration-test/build/trino-ci-container-log/hive/*.*
+            gravitino-oss/integration-test/build/trino-ci-container-log/hdfs/*.*
+            gravitino-oss/distribution/package/logs/*.out
+            gravitino-oss/distribution/package/logs/*.log
+            gravitino-oss/catalogs/**/*.log
+            gravitino-oss/catalogs/**/*.tar
+            gravitino-oss/distribution/**/*.log
