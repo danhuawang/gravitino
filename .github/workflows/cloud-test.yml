@@ -1,4 +1,4 @@
-name: Fileset Cloud Test
+name: Cloud Test
 
 # Controls when the workflow will run
 on:
@@ -47,6 +47,13 @@ jobs:
       PYTHON_BUILD_PATH: ${{ github.workspace }}/gravitino-oss/clients/client-python/build
       GRAVITINO_CI_HIVE_DOCKER_IMAGE: apache/gravitino-ci:hive-0.1.20
       DOCKER_TEST: "true"
+      GRAVITINO_GCS_BUCKET: strato-iceberg
+      GOOGLE_APPLICATION_CREDENTIALS: /tmp/tonal-land-426304-d3-a75b6878b6ce.json
+      GRAVITINO_S3_ACCESS_KEY: AKIA2UC3EEXZMH7F5DPE
+      GRAVITINO_S3_BUCKET: sts-test-bucket-001
+      GRAVITINO_S3_REGION: ap-northeast-1
+      GRAVITINO_S3_ROLE_ARN: arn:aws:iam::730335553010:role/sts_s3_access_role
+      GRAVITINO_S3_SECRET_KEY: NfDSmcUkKipDQaN8xS1BBsMDx+j1pYT5WMG41h++
     timeout-minutes: 45
     strategy:
       matrix:
@@ -88,6 +95,14 @@ jobs:
           cd gravitino-oss/distribution/package/bin
           pwd
           ./gravitino.sh start
+
+      - name: IRC IcebergRESTS3TokenIT Test
+        run: |
+          ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTS3TokenIT"
+
+      - name: IRC IcebergRESTGCSIT Test
+        run: |
+          ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTGCSIT"
 
       - name: Set up python
         uses: actions/setup-python@v5
