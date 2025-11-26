@@ -2,15 +2,16 @@
  * Copyright 2024 Datastrato Pvt Ltd.
  * This software is licensed under the Apache License version 2.
  */
-package com.datastrato.gravitino.metrics;
+package com.datastrato.gravitino.metrics.storage.relational.service;
 
 import static com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService.Metric.ASSET_COUNT;
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_MAX_CONNECTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.datastrato.gravitino.metrics.MetalakeSnapshot;
+import com.datastrato.gravitino.metrics.MetricsCollector;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
-import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.google.common.collect.Lists;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -19,14 +20,14 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
-import org.apache.gravitino.authorization.OwnerManager;
 import org.apache.gravitino.config.ConfigConstants;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
-import org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -58,9 +59,31 @@ class TestMetricDataService {
 
     initTables();
     SqlSessionFactoryHelper.getInstance().init(config);
-    OwnerManager ownerManager = Mockito.mock(OwnerManager.class);
     service = MetricDataService.getInstance();
-    service.initialize(ownerManager, false);
+    service.initialize(false);
+
+    MetricsCollector metricsCollector = Mockito.mock(MetricsCollector.class);
+    Mockito.when(metricsCollector.getMetalakeSnapshots())
+        .thenAnswer(
+            i -> {
+              Map<String, MetalakeSnapshot> snapshots = new HashMap<>();
+              MetalakeSnapshot snapshot1 = Mockito.mock(MetalakeSnapshot.class);
+              Mockito.when(snapshot1.getAssetTreeRoot()).thenReturn(Mockito.mock());
+              Mockito.when(snapshot1.getAssetTreeRoot().getId()).thenReturn(1L);
+              snapshots.put(metalakeName1, snapshot1);
+
+              MetalakeSnapshot snapshot2 = Mockito.mock(MetalakeSnapshot.class);
+              Mockito.when(snapshot2.getAssetTreeRoot()).thenReturn(Mockito.mock());
+              Mockito.when(snapshot2.getAssetTreeRoot().getId()).thenReturn(2L);
+              snapshots.put(metalakeName2, snapshot2);
+
+              MetalakeSnapshot snapshot3 = Mockito.mock(MetalakeSnapshot.class);
+              Mockito.when(snapshot3.getAssetTreeRoot()).thenReturn(Mockito.mock());
+              Mockito.when(snapshot3.getAssetTreeRoot().getId()).thenReturn(3L);
+              snapshots.put(metalakeName3, snapshot3);
+              return snapshots;
+            });
+    service.setMetricsCollector(metricsCollector);
   }
 
   @Test
@@ -70,7 +93,7 @@ class TestMetricDataService {
         MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(1.0).build();
     List<MetricPO> metrics = Lists.newArrayList(assetCount);
 
-    service.insertMetrics(metalakeName1, user, metrics, false);
+    service.insertMetrics(1L, MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, metrics);
     MetricDTO[] result =
         service.getMetricsByNameAndTimestamp(
             metalakeName1, user, new String[0], 1, System.currentTimeMillis() + 2_000);
@@ -92,7 +115,8 @@ class TestMetricDataService {
             .withMetricValue(1.0)
             .withCreatedTime(new Timestamp(now - 10_000))
             .build();
-    service.insertMetrics(metalakeName2, user, Lists.newArrayList(assetCount), false);
+    service.insertMetrics(
+        2L, MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, Lists.newArrayList(assetCount));
     MetricDTO[] result =
         service.getMetricsByNameAndTimestamp(metalakeName2, user, new String[0], 0, now);
     Assertions.assertNotNull(result);
@@ -112,7 +136,7 @@ class TestMetricDataService {
         MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(1.0).build();
     List<MetricPO> metrics = Lists.newArrayList(assetCount);
 
-    service.insertMetrics(metalakeName3, user, metrics, false);
+    service.insertMetrics(3L, MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, metrics);
     MetricDTO[] result =
         service.getMetricsByNameAndTimestamp(
             metalakeName3, user, new String[0], 0, System.currentTimeMillis() + 2_000);
@@ -137,29 +161,6 @@ class TestMetricDataService {
             metalakeName3, user, new String[0], 0, System.currentTimeMillis() + 2_000);
     Assertions.assertNotNull(cleanedResult);
     Assertions.assertEquals(0, cleanedResult.length, "Metrics should be cleaned up");
-  }
-
-  @Test
-  void testGetAssetWithOwnerCount() throws SQLException {
-    long assetWithOwnerCount = service.getAssetWithOwnerCount(metalakeName1);
-    Assertions.assertEquals(0, assetWithOwnerCount);
-
-    String ownerRecord1 =
-        String.format("(%d, %d, '%s', %d, '%s', '%s')", 1, 1, "", 1, "CATALOG", "");
-    String insertOwnerSql =
-        "INSERT INTO "
-            + OwnerMetaMapper.OWNER_TABLE_NAME
-            + " (metalake_id, owner_id, owner_type, metadata_object_id,"
-            + " metadata_object_type, audit_info) VALUES "
-            + ownerRecord1
-            + ";";
-    try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword)) {
-      Statement stmt = conn.createStatement();
-      stmt.executeUpdate(insertOwnerSql);
-    }
-
-    assetWithOwnerCount = service.getAssetWithOwnerCount(metalakeName1);
-    Assertions.assertEquals(1, assetWithOwnerCount);
   }
 
   private static void initTables() throws Exception {

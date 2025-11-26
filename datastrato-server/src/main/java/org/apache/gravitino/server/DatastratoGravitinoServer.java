@@ -72,7 +72,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
 
     boolean enableAuthorization = serverConfig().get(Configs.ENABLE_AUTHORIZATION);
     MetricDataService metricDataService = MetricDataService.getInstance();
-    metricDataService.initialize(datastratoGravitinoEnv.ownerDispatcher(), enableAuthorization);
+    metricDataService.initialize(enableAuthorization);
 
     // initialize extra rest api resources
     register(

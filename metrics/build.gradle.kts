@@ -22,6 +22,11 @@ dependencies {
   implementation(libs.jackson.annotations)
   implementation(libs.lombok)
   implementation(libs.mybatis)
+  implementation(libs.jcasbin) {
+    exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")
+    exclude(group = "org.slf4j", module = "slf4j-api")
+    exclude(group = "com.google.errorprone", module = "error_prone_annotations")
+  }
 
   annotationProcessor(libs.lombok)
 

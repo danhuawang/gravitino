@@ -81,6 +81,7 @@ jakarta = "2.1.6"
 open-search-java = "2.19.0"
 open-search-rest = "2.19.0"
 antlr = "4.9.3"
+jcasbin = "1.81.0"
 
 [libraries]
 protobuf-java = { group = "com.google.protobuf", name = "protobuf-java", version.ref = "protoc" }
@@ -198,6 +199,8 @@ open-search-java = {group='org.opensearch.client',name='opensearch-java', versio
 open-search-rest = {group='org.opensearch.client',name='opensearch-rest-client', version.ref='open-search-rest'}
 antlr4 = { group = "org.antlr", name = "antlr4", version.ref = "antlr" }
 antlr4-runtime = { group = "org.antlr", name = "antlr4-runtime", version.ref = "antlr" }
+jcasbin = { group='org.casbin', name='jcasbin', version.ref="jcasbin" }
+
 
 [bundles]
 log4j = ["slf4j-api", "log4j-slf4j2-impl", "log4j-api", "log4j-core", "log4j-12-api"]
