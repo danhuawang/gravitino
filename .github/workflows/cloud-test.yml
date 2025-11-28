@@ -22,38 +22,38 @@ jobs:
       GRAVITINO_TEST_CLOUD_IT: true
       S3_STS_ACCESS_KEY_ID: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
       S3_STS_SECRET_ACCESS_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
-      S3_STS_ENDPOINT: http://s3.ap-northeast-1.amazonaws.com
-      S3_STS_BUCKET_NAME: sts-test-bucket-001
-      S3_STS_REGION: ap-northeast-1
-      S3_STS_ROLE_ARN: arn:aws:iam::730335553010:role/sts_s3_access_role
+      S3_STS_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+      S3_STS_BUCKET_NAME: ${{ vars.S3_BUCKET }}
+      S3_STS_REGION: ${{ vars.S3_REGION }}
+      S3_STS_ROLE_ARN: ${{ vars.S3_ROLE_ARN }}
       S3_ACCESS_KEY_ID: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
       S3_SECRET_ACCESS_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
-      S3_ENDPOINT: http://s3.ap-northeast-1.amazonaws.com
-      S3_BUCKET_NAME: sts-test-bucket-001
+      S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+      S3_BUCKET_NAME: ${{ vars.S3_BUCKET }}
       PLATFORM: ${{ matrix.architecture }}
       S3_ACCESS_KEY_ID_FOR_CREDENTIAL: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
-      S3_BUCKET_NAME_FOR_CREDENTIAL: sts-test-bucket-001
-      S3_ENDPOINT_FOR_CREDENTIAL: http://s3.ap-northeast-1.amazonaws.com
-      S3_REGION_FOR_CREDENTIAL: ap-northeast-1
-      S3_ROLE_ARN_FOR_CREDENTIAL: arn:aws:iam::730335553010:role/sts_s3_access_role
-      S3_ROLE_ARN: arn:aws:iam::730335553010:role/sts_s3_access_role
+      S3_BUCKET_NAME_FOR_CREDENTIAL: ${{ vars.S3_BUCKET }}
+      S3_ENDPOINT_FOR_CREDENTIAL: ${{ vars.S3_ENDPOINT }}
+      S3_REGION_FOR_CREDENTIAL: ${{ vars.S3_REGION }}
+      S3_ROLE_ARN_FOR_CREDENTIAL: ${{ vars.S3_ROLE_ARN }}
+      S3_ROLE_ARN: ${{ vars.S3_ROLE_ARN }}
       S3_SECRET_ACCESS_KEY_FOR_CREDENTIAL: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
-      GCS_BUCKET_NAME_FOR_CREDENTIAL: strato-iceberg
-      GCS_SERVICE_ACCOUNT_JSON_PATH_FOR_CREDENTIAL: /tmp/tonal-land-426304-d3-a75b6878b6ce.json
-      GCS_BUCKET_NAME: strato-iceberg
-      GCS_SERVICE_ACCOUNT_JSON_PATH: /tmp/tonal-land-426304-d3-a75b6878b6ce.json
+      GCS_BUCKET_NAME_FOR_CREDENTIAL: ${{ vars.GCS_BUCKET }}
+      GCS_SERVICE_ACCOUNT_JSON_PATH_FOR_CREDENTIAL: ${{ vars.GCS_SERVICE_ACCOUNT_JSON_PATH }}
+      GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET }}
+      GCS_SERVICE_ACCOUNT_JSON_PATH: ${{ vars.GCS_SERVICE_ACCOUNT_JSON_PATH }}
       GCS_SERVICE_ACCOUNT_JSON_CONTENT: ${{ secrets.GCS_SERVICE_ACCOUNT_JSON_CONTENT }}
       GRAVITINO_HOME: ${{ github.workspace }}/gravitino-oss/distribution/package
       PYTHON_BUILD_PATH: ${{ github.workspace }}/gravitino-oss/clients/client-python/build
       GRAVITINO_CI_HIVE_DOCKER_IMAGE: apache/gravitino-ci:hive-0.1.20
       DOCKER_TEST: "true"
-      GRAVITINO_GCS_BUCKET: strato-iceberg
-      GOOGLE_APPLICATION_CREDENTIALS: /tmp/tonal-land-426304-d3-a75b6878b6ce.json
-      GRAVITINO_S3_ACCESS_KEY: AKIA2UC3EEXZMH7F5DPE
-      GRAVITINO_S3_BUCKET: sts-test-bucket-001
-      GRAVITINO_S3_REGION: ap-northeast-1
-      GRAVITINO_S3_ROLE_ARN: arn:aws:iam::730335553010:role/sts_s3_access_role
-      GRAVITINO_S3_SECRET_KEY: NfDSmcUkKipDQaN8xS1BBsMDx+j1pYT5WMG41h++
+      GRAVITINO_GCS_BUCKET: ${{ vars.GCS_BUCKET }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ vars.GCS_SERVICE_ACCOUNT_JSON_PATH }}
+      GRAVITINO_S3_ACCESS_KEY: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
+      GRAVITINO_S3_BUCKET: ${{ vars.S3_BUCKET }}
+      GRAVITINO_S3_REGION: ${{ vars.S3_REGION }}
+      GRAVITINO_S3_ROLE_ARN: ${{ vars.S3_ROLE_ARN }}
+      GRAVITINO_S3_SECRET_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
     timeout-minutes: 45
     strategy:
       matrix:
@@ -77,9 +77,9 @@ jobs:
 
       - name: Check required command
         run: |
-          echo "$GCS_SERVICE_ACCOUNT_JSON_CONTENT" > /tmp/tonal-land-426304-d3-a75b6878b6ce.json
+          echo "$GCS_SERVICE_ACCOUNT_JSON_CONTENT" > ${{ vars.GCS_SERVICE_ACCOUNT_JSON_PATH }}
           gravitino-oss/dev/ci/check_commands.sh
-          cat /tmp/tonal-land-426304-d3-a75b6878b6ce.json
+          cat ${{ vars.GCS_SERVICE_ACCOUNT_JSON_PATH }}
 
       - name: Package
         run: |
