@@ -160,6 +160,21 @@ allprojects {
           "import\\s+org\\.testcontainers\\.shaded\\.([^;]+);",
           "import $1;"
         )
+        replaceRegex(
+          "Use Guava Sets instead of shadowed Avro Sets",
+          "import\\s+org\\.apache\\.avro\\.shaded\\.com\\.google\\.common\\.collect\\.Sets;",
+          "import com.google.common.collect.Sets;"
+        )
+        replaceRegex(
+          "Use Guava Maps instead of shadowed Avro Maps",
+          "import\\s+org\\.apache\\.avro\\.shaded\\.com\\.google\\.common\\.collect\\.Maps;",
+          "import com.google.common.collect.Maps;"
+        )
+        replaceRegex(
+          "Use Guava Lists instead of shadowed Avro Lists",
+          "import\\s+org\\.apache\\.avro\\.shaded\\.com\\.google\\.common\\.collect\\.Lists;",
+          "import com.google.common.collect.Lists;"
+        )
 
         targetExclude("**/build/**", "**/.pnpm/***")
       }
