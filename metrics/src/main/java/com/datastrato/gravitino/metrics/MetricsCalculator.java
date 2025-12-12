@@ -24,7 +24,8 @@ import java.util.stream.Collectors;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
-import org.apache.gravitino.server.authorization.MetadataFilterHelper;
+import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -193,11 +194,10 @@ public class MetricsCalculator {
 
   private Set<AssetNode> getVisibleCatalogNodes(
       String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    String loadCatalogAuthorizationExpression = "ANY_USE_CATALOG || ANY(OWNER, METALAKE, CATALOG)";
     AssetNode[] visibleCatalogNodes =
-        MetadataFilterHelper.filterByExpression(
+        MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            loadCatalogAuthorizationExpression,
+            AuthorizationExpressionConstants.loadCatalogAuthorizationExpression,
             Entity.EntityType.CATALOG,
             metalakeSnapshot.getCatalogNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -208,13 +208,10 @@ public class MetricsCalculator {
 
   private Set<AssetNode> getVisibleSchemaNodes(
       String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    String loadSchemaAuthorizationExpression =
-        " ANY(OWNER, METALAKE, CATALOG) || "
-            + "ANY_USE_CATALOG && (SCHEMA::OWNER || ANY_USE_SCHEMA) ";
     AssetNode[] visibleSchemaNodes =
-        MetadataFilterHelper.filterByExpression(
+        MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            loadSchemaAuthorizationExpression,
+            AuthorizationExpressionConstants.loadSchemaAuthorizationExpression,
             Entity.EntityType.SCHEMA,
             metalakeSnapshot.getSchemaNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -225,14 +222,10 @@ public class MetricsCalculator {
 
   private Set<AssetNode> getVisibleTableNodes(
       String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    String loadTableAuthorizationExpression =
-        "ANY(OWNER, METALAKE, CATALOG) ||"
-            + "SCHEMA_OWNER_WITH_USE_CATALOG ||"
-            + "ANY_USE_CATALOG && ANY_USE_SCHEMA  && (TABLE::OWNER || ANY_SELECT_TABLE || ANY_MODIFY_TABLE)";
     AssetNode[] visibleTableNodes =
-        MetadataFilterHelper.filterByExpression(
+        MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            loadTableAuthorizationExpression,
+            AuthorizationExpressionConstants.loadTableAuthorizationExpression,
             Entity.EntityType.TABLE,
             metalakeSnapshot.getTableNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -243,14 +236,10 @@ public class MetricsCalculator {
 
   private Set<AssetNode> getVisibleFilesetNodes(
       String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    String loadFilesetAuthorizationExpression =
-        "ANY(OWNER, METALAKE, CATALOG) || "
-            + "SCHEMA_OWNER_WITH_USE_CATALOG || "
-            + "ANY_USE_CATALOG && ANY_USE_SCHEMA && (FILESET::OWNER || ANY_READ_FILESET || ANY_WRITE_FILESET)";
     AssetNode[] visibleFilesetNodes =
-        MetadataFilterHelper.filterByExpression(
+        MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            loadFilesetAuthorizationExpression,
+            AuthorizationExpressionConstants.loadFilesetAuthorizationExpression,
             Entity.EntityType.FILESET,
             metalakeSnapshot.getFilesetNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -261,14 +250,10 @@ public class MetricsCalculator {
 
   private Set<AssetNode> getVisibleTopicNodes(
       String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    String loadTopicsAuthorizationExpression =
-        "ANY(OWNER, METALAKE, CATALOG) || "
-            + "SCHEMA_OWNER_WITH_USE_CATALOG || "
-            + "ANY_USE_CATALOG && ANY_USE_SCHEMA && (TOPIC::OWNER || ANY_CONSUME_TOPIC || ANY_PRODUCE_TOPIC)";
     AssetNode[] visibleTopicNodes =
-        MetadataFilterHelper.filterByExpression(
+        MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            loadTopicsAuthorizationExpression,
+            AuthorizationExpressionConstants.loadTopicsAuthorizationExpression,
             Entity.EntityType.TOPIC,
             metalakeSnapshot.getTopicNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -279,14 +264,10 @@ public class MetricsCalculator {
 
   private Set<AssetNode> getVisibleModelNodes(
       String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    String loadModelAuthorizationExpression =
-        "ANY(OWNER, METALAKE, CATALOG) ||"
-            + " SCHEMA_OWNER_WITH_USE_CATALOG || "
-            + " ANY_USE_CATALOG && ANY_USE_SCHEMA && (MODEL::OWNER || ANY_USE_MODEL)";
     AssetNode[] visibleModelNodes =
-        MetadataFilterHelper.filterByExpression(
+        MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            loadModelAuthorizationExpression,
+            AuthorizationExpressionConstants.loadModelAuthorizationExpression,
             Entity.EntityType.MODEL,
             metalakeSnapshot.getModelNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,

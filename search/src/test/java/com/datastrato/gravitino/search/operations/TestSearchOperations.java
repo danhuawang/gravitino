@@ -224,8 +224,7 @@ public class TestSearchOperations extends JerseyTest {
     errorResp = resp.readEntity(ErrorResponse.class);
     Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, errorResp.getCode());
     Assertions.assertEquals(
-        "If the length of names is 3, it must be FILESET, TABLE, TOPIC or MODEL",
-        errorResp.getMessage());
+        "If the type is SCHEMA, the length of names must be 2", errorResp.getMessage());
   }
 
   @Test

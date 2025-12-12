@@ -122,7 +122,11 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
   }
 
   @Override
-  public boolean isOwner(Principal principal, String metalake, MetadataObject metadataObject) {
+  public boolean isOwner(
+      Principal principal,
+      String metalake,
+      MetadataObject metadataObject,
+      AuthorizationRequestContext requestContext) {
     boolean result =
         allowInternalAuthorizer.authorizeInternal(
             principal, metalake, metadataObject, AuthConstants.OWNER);

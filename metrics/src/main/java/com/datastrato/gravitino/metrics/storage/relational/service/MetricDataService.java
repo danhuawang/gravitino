@@ -21,7 +21,7 @@ import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.meta.UserEntity;
-import org.apache.gravitino.server.authorization.MetadataFilterHelper;
+import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.storage.relational.po.SecurableObjectPO;
 import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
 import org.apache.gravitino.storage.relational.service.MetalakeMetaService;
@@ -116,7 +116,7 @@ public class MetricDataService {
             "User not found: " + userName + " for metalake: " + metalakeName, e);
       }
       NameIdentifier[] authResult =
-          MetadataFilterHelper.filterByExpression(
+          MetadataAuthzHelper.filterByExpression(
               metalakeName,
               "METALAKE::OWNER",
               Entity.EntityType.METALAKE,

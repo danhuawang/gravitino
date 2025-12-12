@@ -54,7 +54,7 @@ jobs:
       GRAVITINO_S3_REGION: ${{ vars.S3_REGION }}
       GRAVITINO_S3_ROLE_ARN: ${{ vars.S3_ROLE_ARN }}
       GRAVITINO_S3_SECRET_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       matrix:
         architecture: [linux/amd64]
@@ -87,14 +87,13 @@ jobs:
           mkdir -p /tmp/bundles
           cp -r gravitino-oss/bundles/*-bundle/build/libs/*.jar /tmp/bundles
 
+          mkdir -p /tmp/irc-bundles
+          cp -r gravitino-oss/bundles/iceberg-*/build/libs/*.jar /tmp/irc-bundles
           ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
 
           cp -r -f ./distribution ./gravitino-oss
           cp -r /tmp/bundles/* ./gravitino-oss/distribution/package/catalogs/fileset/libs
-          echo "==============start gravitino server================="
-          cd gravitino-oss/distribution/package/bin
-          pwd
-          ./gravitino.sh start
+          cp -r /tmp/irc-bundles/* ./gravitino-oss/distribution/package/iceberg-rest-server/libs
 
       - name: IRC IcebergRESTS3TokenIT Test
         run: |
@@ -112,6 +111,12 @@ jobs:
       - name: Fileset Cloud Integration Test python
         id: integrationTest1
         run: |
+          echo "==============start gravitino server================="
+          cd gravitino-oss/distribution/package/bin
+          pwd
+          ./gravitino.sh start
+          cd -
+          pwd
           cd gravitino-oss/clients/client-python
           python3 -m venv venv
           source venv/bin/activate
@@ -121,21 +126,21 @@ jobs:
           python -m unittest tests.integration.test_gvfs_with_s3_credential -v
           echo "============ Start to run test_gvfs_with_gcs and test_gvfs_with_gcs_credential ============"
           python -m unittest tests.integration.test_gvfs_with_gcs_credential -v
-
+          echo "==============stop gravitino server================="
+          cd -
+          cd gravitino-oss/distribution/package/bin
+          ./gravitino.sh stop
       - name: Update S3_BUCKET_NAME env var
-        if: ${{ always() }}
         run: |
           echo "S3_BUCKET_NAME=amzn-s3-ci-sydney-bucket" >> "$GITHUB_ENV"
 
       - name: Fileset Cloud Integration Test java
-        if: ${{ always() }}
-        id: integrationTest2
         run: |
           ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PjdbcBackend=${{ matrix.backend }} -PskipDockerTests=false :clients:filesystem-hadoop3:test --tests "org.apache.gravitino.filesystem.hadoop.integration.test.**"
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v4
-        if: ${{ failure() && steps.integrationTest2.outcome == 'failure' }}
+        if: ${{ failure() }}
         with:
           name: integrate test reports-${{ matrix.java-version }}-${{ matrix.test-mode }}-${{ matrix.backend }}
           path: |
