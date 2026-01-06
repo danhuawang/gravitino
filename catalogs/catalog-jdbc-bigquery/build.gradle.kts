@@ -55,6 +55,7 @@ val extractSimbaDriver by tasks.registering(Copy::class) {
   from(zipTree(simbaZipFile))
   into(simbaExtractDir)
   include("**/*.jar")
+  exclude("**/jackson-*.jar")
   exclude("**/src/", "**/doc/", "**/samples/", "**/legal/")
 
   rename("GoogleBigQueryJDBC42.jar", "GoogleBigQueryJDBC42-simba.jar")
@@ -110,6 +111,7 @@ dependencies {
   implementation(libs.commons.lang3)
   implementation(libs.guava)
   implementation(libs.commons.compress)
+  implementation(libs.jackson.databind)
 
   testImplementation(project(":catalogs:catalog-jdbc-common", "testArtifacts"))
   testImplementation(project(":clients:client-java"))
@@ -122,7 +124,11 @@ dependencies {
   testImplementation(libs.testcontainers)
   testImplementation(libs.mockito.core)
 
-  val simbaJdbcDriver = files(simbaExtractDir.asFileTree.matching { include("*.jar") })
+  val simbaJdbcDriver = files(
+    simbaExtractDir.asFileTree.matching {
+      include("*.jar")
+    }
+  )
   implementation(simbaJdbcDriver)
 
   testRuntimeOnly(libs.junit.jupiter.engine)
