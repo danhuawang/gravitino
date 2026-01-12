@@ -30,6 +30,7 @@ import Icon from '@/components/Icon'
 import clsx from 'clsx'
 
 import { useAppDispatch, useAppSelector } from '@/lib/hooks/useStore'
+import { checkCatalogIcon } from '@/lib/utils/catalogIcons'
 import {
   setExpandedNodes,
   setIntoTreeNodeWithFetch,
@@ -56,44 +57,6 @@ const MetalakeTree = props => {
 
   const dispatch = useAppDispatch()
   const store = useAppSelector(state => state.metalakes)
-
-  const checkCatalogIcon = ({ type, provider }) => {
-    switch (type) {
-      case 'relational':
-        switch (provider) {
-          case 'hive':
-            return 'custom-icons-hive'
-          case 'lakehouse-iceberg':
-            return 'openmoji:iceberg'
-          case 'jdbc-mysql':
-            return 'devicon:mysql-wordmark'
-          case 'jdbc-postgresql':
-            return 'devicon:postgresql-wordmark'
-          case 'jdbc-doris':
-            return 'custom-icons-doris'
-          case 'jdbc-starrocks':
-            return 'custom-icons-starrocks'
-          case 'lakehouse-paimon':
-            return 'custom-icons-paimon'
-          case 'lakehouse-hudi':
-            return 'custom-icons-hudi'
-          case 'lakehouse-generic':
-            return 'material-symbols:houseboat-outline'
-          case 'jdbc-oceanbase':
-            return 'custom-icons-oceanbase'
-          default:
-            return 'bx:book'
-        }
-      case 'messaging':
-        return 'skill-icons:kafka'
-      case 'fileset':
-        return 'twemoji:file-folder'
-      case 'model':
-        return 'carbon:machine-learning-model'
-      default:
-        return 'bx:book'
-    }
-  }
 
   const handleClickIcon = (e, nodeProps) => {
     e.stopPropagation()
