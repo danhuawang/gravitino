@@ -123,6 +123,7 @@ dependencies {
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.testcontainers)
   testImplementation(libs.mockito.core)
+  testImplementation(libs.awaitility)
 
   val simbaJdbcDriver = files(
     simbaExtractDir.asFileTree.matching {
