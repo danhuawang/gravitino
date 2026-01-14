@@ -38,9 +38,11 @@ const TextWrapper = styled(Typography)(({ theme }) => ({
 const Text = props => {
   return <TextWrapper component='span' {...props} />
 }
+
 const MetalakePath = props => {
   const searchParams = useSearchParams()
   const store = useAppSelector(state => state.metalakes)
+
   const routeParams = {
     metalake: searchParams.get('metalake'),
     catalog: searchParams.get('catalog'),
