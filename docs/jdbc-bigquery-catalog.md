@@ -5,7 +5,6 @@ keywords:
 - jdbc
 - BigQuery
 - metadata
-license: "This software is licensed under the Apache License version 2."
 ---
 
 import Tabs from '@theme/Tabs';
@@ -132,13 +131,13 @@ Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metada
 
 **Complex Types Supported by API** (Not supported in Web UI):
 
-| Gravitino Type| BigQuery Type |
-|---------------|---------------|
-| `ARRAY<T>`    | `ARRAY<T>`    |
-| `STRUCT<...>` | `STRUCT<...>` |
-| `Geography`   | `GEOGRAPHY`   |
-| `Json`        | `JSON`        |
-| `Range<T>`    | `RANGE<T>`    |
+| Gravitino Type | BigQuery Type |
+|----------------|---------------|
+| `ARRAY<T>`     | `ARRAY<T>`    |
+| `STRUCT<...>`  | `STRUCT<...>` |
+| `Geography`    | `GEOGRAPHY`   |
+| `Json`         | `JSON`        |
+| `Range<T>`     | `RANGE<T>`    |
 
 :::info
 BigQuery doesn't support Gravitino `Fixed` `IntervalDay` `IntervalYear` `Union` `UUID` type.
