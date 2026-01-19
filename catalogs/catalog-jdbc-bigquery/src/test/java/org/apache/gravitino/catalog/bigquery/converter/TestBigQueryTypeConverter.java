@@ -74,7 +74,7 @@ public class TestBigQueryTypeConverter {
     assertEquals("NUMERIC(38, 2)", typeConverter.fromGravitino(Types.DecimalType.of(38, 2)));
 
     // Note: Gravitino DecimalType is limited to precision 38
-    // So we always use NUMERIC, never BIGNUMERIC
+    // For BIGNUMERIC, use ExternalType or UnparsedType
   }
 
   @Test
@@ -192,14 +192,13 @@ public class TestBigQueryTypeConverter {
         Types.DecimalType.of(38, 9),
         typeConverter.toGravitino(createTypeBean("numeric", null, null, null)));
 
-    // BIGNUMERIC with precision and scale (limited to Gravitino's max precision)
+    // BIGNUMERIC is now treated as ExternalType to avoid precision loss
     assertEquals(
-        Types.DecimalType.of(38, 10),
+        Types.ExternalType.of("BIGNUMERIC"),
         typeConverter.toGravitino(createTypeBean("bignumeric", 38, 10, null)));
 
-    // BIGNUMERIC with default precision and scale (limited to Gravitino's max precision)
     assertEquals(
-        Types.DecimalType.of(38, 38),
+        Types.ExternalType.of("BIGNUMERIC"),
         typeConverter.toGravitino(createTypeBean("bignumeric", null, null, null)));
   }
 
@@ -215,16 +214,31 @@ public class TestBigQueryTypeConverter {
         Types.ExternalType.of("JSON"),
         typeConverter.toGravitino(createTypeBean("json", null, null, null)));
 
+    // STRUCT
+    assertEquals(
+        Types.ExternalType.of("STRUCT"),
+        typeConverter.toGravitino(createTypeBean("struct", null, null, null)));
+
+    // RANGE
+    assertEquals(
+        Types.ExternalType.of("RANGE"),
+        typeConverter.toGravitino(createTypeBean("range", null, null, null)));
+
     // Array type
     assertEquals(
         Types.ExternalType.of("ARRAY<STRING>"),
         typeConverter.toGravitino(createTypeBean("array<string>", null, null, null)));
 
-    // Struct type
+    // Struct type with full definition
     assertEquals(
         Types.ExternalType.of("STRUCT<NAME STRING, AGE INT64>"),
         typeConverter.toGravitino(
             createTypeBean("struct<name string, age int64>", null, null, null)));
+
+    // Range type with full definition
+    assertEquals(
+        Types.ExternalType.of("RANGE<DATE>"),
+        typeConverter.toGravitino(createTypeBean("range<date>", null, null, null)));
   }
 
   @Test

@@ -96,10 +96,11 @@ public class TestBigQueryColumnDefaultValueConverter {
     Expression result = converter.toGravitino(numericTypeBean, "123.45", false, true);
     assertTrue(result instanceof Literals.LiteralImpl);
 
-    // BIGNUMERIC type
+    // BIGNUMERIC type - now treated as external type, returns unparsed expression
     JdbcTypeConverter.JdbcTypeBean bigNumericTypeBean = createTypeBean("bignumeric", 20, 5, null);
     result = converter.toGravitino(bigNumericTypeBean, "12345.67890", false, true);
-    assertTrue(result instanceof Literals.LiteralImpl);
+    assertTrue(result instanceof UnparsedExpression);
+    assertEquals("12345.67890", ((UnparsedExpression) result).unparsedExpression());
 
     // Invalid decimal should return unparsed expression
     result = converter.toGravitino(numericTypeBean, "invalid_decimal", false, true);

@@ -107,42 +107,33 @@ dependencies {
   testImplementation(libs.mockito.core)
   testImplementation(libs.awaitility)
 
+  // Simba JDBC driver for compile and test only
+  // Users must download and install the driver manually in production
   val simbaJdbcDriver = files(
     simbaExtractDir.asFileTree.matching {
       include("*.jar")
     }
   )
-  implementation(simbaJdbcDriver)
+  compileOnly(simbaJdbcDriver)
+  testImplementation(simbaJdbcDriver)
 
   testRuntimeOnly(libs.junit.jupiter.engine)
 }
 
 tasks {
   val runtimeJars by registering(Copy::class) {
-    dependsOn("jar", extractSimbaDriver)
+    dependsOn("jar")
     from(configurations.runtimeClasspath)
     into("build/libs")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-    doFirst {
-      logger.lifecycle("Copying runtime dependencies to build/libs")
-      logger.lifecycle("Including Simba JDBC driver files:")
-      fileTree(simbaExtractDir).matching { include("*.jar") }.forEach { jar ->
-        logger.lifecycle("  - ${jar.name}")
-      }
-    }
   }
 
   val copyCatalogLibs by registering(Copy::class) {
-    dependsOn("jar", runtimeJars)
+    dependsOn("jar", "runtimeJars")
     from("build/libs") {
       exclude("guava-*.jar")
       exclude("log4j-*.jar")
       exclude("slf4j-*.jar")
-      exclude("grpc-google-cloud-bigquerystorage-v1beta*.jar")
-      exclude("proto-google-cloud-bigquerystorage-v1beta*.jar")
-      exclude("error_prone_annotations-2.33.0.jar")
-      exclude("failureaccess-1.0.2.jar")
     }
     into("$rootDir/distribution/package/catalogs/jdbc-bigquery/libs")
 
@@ -185,8 +176,6 @@ tasks.test {
   environment("SIMBA_JDBC_DRIVER_PATH", simbaExtractDir.asFile.absolutePath)
 }
 
-afterEvaluate {
-  tasks.getByName("generateMetadataFileForMavenJavaPublication") {
-    dependsOn(tasks.getByName("runtimeJars"))
-  }
+tasks.getByName("generateMetadataFileForMavenJavaPublication") {
+  dependsOn("runtimeJars")
 }

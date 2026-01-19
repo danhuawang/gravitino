@@ -66,20 +66,9 @@ public class BigQueryColumnDefaultValueConverter extends JdbcColumnDefaultValueC
         }
 
       case BigQueryTypeConverter.NUMERIC:
-      case BigQueryTypeConverter.BIGNUMERIC:
         try {
           Integer precision = type.getColumnSize();
           Integer scale = type.getScale();
-          // Gravitino Decimal supports precision up to 38, but BigQuery BIGNUMERIC supports up to
-          // 76.76
-          // For BIGNUMERIC with precision > 38, we cap it at 38 for Gravitino compatibility
-          if (precision != null && precision > 38) {
-            precision = 38;
-            // Adjust scale proportionally if needed
-            if (scale != null && scale > 38) {
-              scale = 38;
-            }
-          }
           if (precision != null && scale != null) {
             return Literals.decimalLiteral(Decimal.of(trimmedValue, precision, scale));
           } else {
@@ -100,7 +89,8 @@ public class BigQueryColumnDefaultValueConverter extends JdbcColumnDefaultValueC
         return Literals.stringLiteral(trimmedValue);
 
       default:
-        // For other types, return as unparsed expression
+        // For other types (including BIGNUMERIC, GEOGRAPHY, JSON, STRUCT, RANGE),
+        // return as unparsed expression
         return UnparsedExpression.of(columnDefaultValue);
     }
   }

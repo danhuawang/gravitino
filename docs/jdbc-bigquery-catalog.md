@@ -18,6 +18,19 @@ Apache Gravitino provides the ability to manage Google BigQuery metadata through
 Gravitino saves some system information in schema and table comment, like `(From Gravitino, DO NOT EDIT: gravitino.v1.uid1078334182909406185)`, please don't change or remove this message.
 :::
 
+### JDBC Driver Installation
+
+The BigQuery JDBC driver is not included in the Gravitino distribution. You must download and install it manually:
+
+1. Download the Simba JDBC Driver for Google BigQuery from the [official website](https://cloud.google.com/bigquery/docs/reference/odbc-jdbc-drivers)
+2. Extract the downloaded ZIP file
+3. Copy all JAR files (except Jackson JARs to avoid conflicts) to `${GRAVITINO_HOME}/catalogs/jdbc-bigquery/libs/`
+4. Restart the Gravitino server
+
+:::note
+The recommended driver version is 1.6.5.1001 or later. Make sure to exclude Jackson-related JARs from the driver package to avoid dependency conflicts with Gravitino.
+:::
+
 ## Catalog
 
 ### Catalog capabilities
@@ -138,14 +151,16 @@ Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metada
 | `Geography`    | `GEOGRAPHY`   |
 | `Json`         | `JSON`        |
 | `Range<T>`     | `RANGE<T>`    |
+| `BigNumeric`   | `BIGNUMERIC`  |
 
 :::info
 BigQuery doesn't support Gravitino `Fixed` `IntervalDay` `IntervalYear` `Union` `UUID` type.
 Meanwhile, the data types other than listed above are mapped to Gravitino **[External Type](./manage-relational-metadata-using-gravitino.md#external-type)** that represents an unresolvable data type.
 
+**Note on BIGNUMERIC**: BigQuery's BIGNUMERIC type supports precision of approximately 76.8 digits (the 77th digit is partial), which exceeds Gravitino's DecimalType maximum precision of 38. To avoid precision loss, BIGNUMERIC is mapped to ExternalType and preserved as-is. Use the API with ExternalType or UnparsedType to work with BIGNUMERIC columns.
+
 Unsupported types will be optimized in future versions. The following types are recommended to use `string` type as a workaround:
 - INTERVAL
-- BIGNUMERIC (Note: BIGNUMERIC precision above 38 is truncated to fit Gravitino's DecimalType limits)
 :::
 
 ### Table properties
@@ -302,9 +317,10 @@ Gravitino supports these table alteration operations:
    - External tables, views, table clones not supported
    - Dataset properties like `failover_reservation`, `is_primary`, `primary_replica`, `collate` not supported
    - Web UI does not support table partitioning and clustering (API only)
-   - Web UI does not support complex data types (ARRAY, STRUCT, GEOGRAPHY, JSON) (API only)
-   - BIGNUMERIC precision above (38,9) has precision loss; INTERVAL type currently not supported
+   - Web UI does not support complex data types (ARRAY, STRUCT, GEOGRAPHY, JSON, RANGE, BIGNUMERIC) (API only)
+   - INTERVAL type currently not supported
    - Unsupported data types display as "external" in Web UI
+   - JDBC driver must be manually downloaded and installed (not included in distribution)
 
 2. **Performance Considerations**
    - Table metadata loading uses JDBC which may be slower than native API calls

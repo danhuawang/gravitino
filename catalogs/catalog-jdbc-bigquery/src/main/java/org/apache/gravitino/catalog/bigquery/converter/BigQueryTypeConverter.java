@@ -23,6 +23,8 @@ public class BigQueryTypeConverter extends JdbcTypeConverter {
   static final String TIMESTAMP = "timestamp";
   static final String GEOGRAPHY = "geography";
   static final String JSON = "json";
+  static final String STRUCT = "struct";
+  static final String RANGE = "range";
 
   @Override
   public Type toGravitino(JdbcTypeBean typeBean) {
@@ -45,21 +47,6 @@ public class BigQueryTypeConverter extends JdbcTypeConverter {
         } else {
           return Types.DecimalType.of(38, 9);
         }
-      case BIGNUMERIC:
-        // BigQuery BIGNUMERIC has precision up to 76.76, scale up to 38 by default
-        // But Gravitino DecimalType is limited to precision 38, so we limit it to fit Gravitino's
-        // constraints
-        Integer bigNumericPrecision = typeBean.getColumnSize();
-        Integer bigNumericScale = typeBean.getScale();
-        if (bigNumericPrecision != null && bigNumericScale != null) {
-          // Limit precision to Gravitino's maximum (38 digits)
-          int limitedPrecision = Math.min(bigNumericPrecision, 38);
-          int limitedScale = Math.min(bigNumericScale, limitedPrecision);
-          return Types.DecimalType.of(limitedPrecision, limitedScale);
-        } else {
-          // Use Gravitino's maximum precision
-          return Types.DecimalType.of(38, 38);
-        }
       case STRING:
         return Types.StringType.get();
       case BYTES:
@@ -78,12 +65,20 @@ public class BigQueryTypeConverter extends JdbcTypeConverter {
         return Optional.ofNullable(typeBean.getDatetimePrecision())
             .map(Types.TimestampType::withTimeZone)
             .orElseGet(Types.TimestampType::withTimeZone);
+      case BIGNUMERIC:
       case GEOGRAPHY:
       case JSON:
-        // Handle GEOGRAPHY and JSON as external types with uppercase type name
+      case STRUCT:
+      case RANGE:
+        // Handle BIGNUMERIC, GEOGRAPHY, JSON, STRUCT, and RANGE as external types
+        // BIGNUMERIC: Avoid precision loss (BigQuery supports approximately 76.8 digits,
+        // Gravitino Decimal only up to 38)
+        // GEOGRAPHY, JSON, STRUCT, RANGE: Complex types not directly supported by Gravitino
+        // Preserve the full type definition with uppercase type name
         return Types.ExternalType.of(typeBean.getTypeName().toUpperCase());
       default:
-        // For complex types like ARRAY, STRUCT, RANGE, preserve the full type definition
+        // For complex types like ARRAY<T>, STRUCT<...>, RANGE<T>, preserve the full type
+        // definition
         // The typeName from JDBC should contain the complete type like "ARRAY<STRING>"
         // We need to preserve this for proper SQL generation
         return Types.ExternalType.of(typeBean.getTypeName().toUpperCase());
@@ -133,7 +128,6 @@ public class BigQueryTypeConverter extends JdbcTypeConverter {
           : baseType;
     } else if (type instanceof Types.DecimalType decimalType) {
       // BigQuery NUMERIC: precision 1-38, scale 0-9 (or 0-precision)
-      // BigQuery BIGNUMERIC: precision 1-76, scale 0-38 (or 0-precision)
       // For Gravitino DecimalType (max precision 38), always use NUMERIC
       return String.format("NUMERIC(%d, %d)", decimalType.precision(), decimalType.scale());
     } else if (type instanceof Types.ExternalType) {
