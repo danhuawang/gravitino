@@ -16,7 +16,7 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-FROM openjdk:17-jdk-bullseye
+FROM eclipse-temurin:17.0.16_8-jdk-jammy
 LABEL maintainer="support@datastrato.com"
 
 RUN apt-get update && apt-get install -y \
