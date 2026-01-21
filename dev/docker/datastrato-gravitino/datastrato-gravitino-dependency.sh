@@ -50,7 +50,7 @@ git -C "${gravitino_home}" submodule update --init --recursive
 
 # Prepare compile Gravitino packages
 "${gravitino_home}"/gradlew clean
-"${gravitino_home}"/gradlew compileDistribution -x test -x :gravitino-oss:docs:build -x :gravitino-oss:clients:client-python:build
+"${gravitino_home}"/gradlew compileDistribution -x test -x :gravitino-internal:docs:build -x :gravitino-internal:clients:client-python:build
 
 
 # Removed old packages, Avoid multiple re-executions using the wrong file
@@ -60,21 +60,21 @@ mkdir -p "${gravitino_dir}/packages"
 cp -r "${gravitino_home}/distribution/package" "${gravitino_dir}/packages/gravitino"
 
 # make sure bundles are built
-"${gravitino_home}"/gradlew -p gravitino-oss build -x test -x clients:client-python:build
+"${gravitino_home}"/gradlew -p gravitino-internal build -x test -x clients:client-python:build
 # Copy the all file system bundles to the Hadoop catalog libs
-cp -r ${gravitino_home}/gravitino-oss/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/fileset/libs"
+cp -r ${gravitino_home}/gravitino-internal/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/fileset/libs"
 
 # Copy the all file system bundles to the Iceberg REST server libs
-find ${gravitino_home}/gravitino-oss/bundles/gcp/build/libs/ -name 'gravitino-gcp-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
-find ${gravitino_home}/gravitino-oss/bundles/aws/build/libs/ -name 'gravitino-aws-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
-find ${gravitino_home}/gravitino-oss/bundles/azure/build/libs/ -name 'gravitino-azure-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
-find ${gravitino_home}/gravitino-oss/bundles/aliyun-bundle/build/libs/ -name 'gravitino-aliyun-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
+find ${gravitino_home}/gravitino-internal/bundles/gcp/build/libs/ -name 'gravitino-gcp-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
+find ${gravitino_home}/gravitino-internal/bundles/aws/build/libs/ -name 'gravitino-aws-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
+find ${gravitino_home}/gravitino-internal/bundles/azure/build/libs/ -name 'gravitino-azure-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
+find ${gravitino_home}/gravitino-internal/bundles/aliyun-bundle/build/libs/ -name 'gravitino-aliyun-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
 
 # Copy the all file system bundles to the Iceberg catalog libs
-find ${gravitino_home}/gravitino-oss/bundles/gcp/build/libs/ -name 'gravitino-gcp-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
-find ${gravitino_home}/gravitino-oss/bundles/aws/build/libs/ -name 'gravitino-aws-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
-find ${gravitino_home}/gravitino-oss/bundles/azure/build/libs/ -name 'gravitino-azure-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
-find ${gravitino_home}/gravitino-oss/bundles/aliyun-bundle/build/libs/ -name 'gravitino-aliyun-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
+find ${gravitino_home}/gravitino-internal/bundles/gcp/build/libs/ -name 'gravitino-gcp-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
+find ${gravitino_home}/gravitino-internal/bundles/aws/build/libs/ -name 'gravitino-aws-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
+find ${gravitino_home}/gravitino-internal/bundles/azure/build/libs/ -name 'gravitino-azure-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
+find ${gravitino_home}/gravitino-internal/bundles/aliyun-bundle/build/libs/ -name 'gravitino-aliyun-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
 
 if [ ! -f "${gravitino_dir}/packages/${MYSQL_JDBC_DRIVER_NAME}" ]; then
   curl -L -s -o "${gravitino_dir}/packages/${MYSQL_JDBC_DRIVER_NAME}" "${MYSQL_JDBC_DIVER_DOWNLOAD_URL}"

@@ -170,11 +170,11 @@ tasks.rat {
 
   val exclusions = mutableListOf(
     // Ignore gitSubmodule files which should be dealt by itself
-    "gravitino-oss/**",
+    "gravitino-internal/**",
 
     // Ignore files we track but do not need headers
     "**/.github/**/*",
-    "gravitino-oss/dev/docker/kerberos-hive/kadm5.acl",
+    "gravitino-internal/dev/docker/kerberos-hive/kadm5.acl",
     "**/*.log",
     "**/*.out",
     "**/node_modules/**",
@@ -210,7 +210,7 @@ jacoco {
 tasks {
   val projectDir = layout.projectDirectory
   val outputDir = projectDir.dir("distribution")
-  val submoduleDir = projectDir.dir("gravitino-oss")
+  val submoduleDir = projectDir.dir("gravitino-internal")
 
   val compileOssDistributionWithoutTest by registering(Exec::class) {
     group = "datastrato gravitino distribution"
@@ -447,7 +447,7 @@ tasks {
     doLast {
       // Clean up all subprojects of submodule
       exec {
-        commandLine("./gradlew", "-p", "gravitino-oss", "clean")
+        commandLine("./gradlew", "-p", "gravitino-internal", "clean")
       }
 
       // Clean up the distribution directory

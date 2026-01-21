@@ -76,9 +76,9 @@ git submodule update --remote --rebase
 If you want to update submodule to a specific commit, you should use the following command:
 
 ```shell
-cd gravitino-oss
+cd gravitino-internal
 git checkout <commit_hash>
 cd ..
-git add gravitino-oss
+git add gravitino-internal
 git commit -m "update submodule to <commit_hash>"
 ```

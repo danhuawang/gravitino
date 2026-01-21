@@ -177,7 +177,7 @@ class TestMetricDataService {
             + FileUtils.readFileToString(
                 new File(
                     gravitinoHome
-                        + "/gravitino-oss"
+                        + "/gravitino-internal"
                         + "/scripts/h2/schema-"
                         + ConfigConstants.CURRENT_SCRIPT_VERSION
                         + "-h2.sql"),

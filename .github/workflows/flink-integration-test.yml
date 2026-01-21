@@ -25,9 +25,10 @@ jobs:
         architecture: [linux/amd64]
         java-version: [ 17 ]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
@@ -46,7 +47,7 @@ jobs:
 
       - name: Check required command
         run: |
-          gravitino-oss/dev/ci/check_commands.sh
+          gravitino-internal/dev/ci/check_commands.sh
 
       - name: Package Gravitino
         run: |
@@ -54,19 +55,19 @@ jobs:
 
       - name: Free up disk space
         run: |
-          gravitino-oss/dev/ci/util_free_space.sh
+          gravitino-internal/dev/ci/util_free_space.sh
 
       - name: Copy distribution package
         run: |
           sed -i '/= *opensearch/d' ./distribution/package/conf/gravitino.conf
           sed -i '/= *search/d' ./distribution/package/conf/gravitino.conf
           echo "gravitino.datastrato.search.storage.impl = memory" >> ./distribution/package/conf/gravitino.conf 
-          cp -r -f ./distribution ./gravitino-oss
+          cp -r -f ./distribution ./gravitino-internal
 
       - name: Flink Integration Test
         id: integrationTest
         run: |
-          ./gradlew -p gravitino-oss -PskipTests -PtestMode=deploy -PjdkVersion=${{ matrix.java-version }} -PskipDockerTests=false :flink-connector:test --tests "org.apache.gravitino.flink.connector.integration.test.**"
+          ./gradlew -p gravitino-internal -PskipTests -PtestMode=deploy -PjdkVersion=${{ matrix.java-version }} -PskipDockerTests=false :flink-connector:test --tests "org.apache.gravitino.flink.connector.integration.test.**"
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v4
@@ -74,10 +75,10 @@ jobs:
         with:
           name: flink-connector-integrate-test-reports-${{ matrix.java-version }}
           path: |
-            gravitino-oss/build/reports
-            gravitino-oss/flink-connector/build/flink-connector-integration-test.log
-            gravitino-oss/flink-connector/build/*.tar
-            gravitino-oss/distribution/package/logs/gravitino-server.out
-            gravitino-oss/distribution/package/logs/gravitino-server.log
-            gravitino-oss/catalogs/**/*.log
-            gravitino-oss/catalogs/**/*.tar
+            gravitino-internal/build/reports
+            gravitino-internal/flink-connector/build/flink-connector-integration-test.log
+            gravitino-internal/flink-connector/build/*.tar
+            gravitino-internal/distribution/package/logs/gravitino-server.out
+            gravitino-internal/distribution/package/logs/gravitino-server.log
+            gravitino-internal/catalogs/**/*.log
+            gravitino-internal/catalogs/**/*.tar

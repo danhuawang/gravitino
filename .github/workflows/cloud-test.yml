@@ -43,8 +43,8 @@ jobs:
       GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET }}
       GCS_SERVICE_ACCOUNT_JSON_PATH: ${{ vars.GCS_SERVICE_ACCOUNT_JSON_PATH }}
       GCS_SERVICE_ACCOUNT_JSON_CONTENT: ${{ secrets.GCS_SERVICE_ACCOUNT_JSON_CONTENT }}
-      GRAVITINO_HOME: ${{ github.workspace }}/gravitino-oss/distribution/package
-      PYTHON_BUILD_PATH: ${{ github.workspace }}/gravitino-oss/clients/client-python/build
+      GRAVITINO_HOME: ${{ github.workspace }}/gravitino-internal/distribution/package
+      PYTHON_BUILD_PATH: ${{ github.workspace }}/gravitino-internal/clients/client-python/build
       GRAVITINO_CI_HIVE_DOCKER_IMAGE: apache/gravitino-ci:hive-0.1.20
       DOCKER_TEST: "true"
       GRAVITINO_GCS_BUCKET: ${{ vars.GCS_BUCKET }}
@@ -62,15 +62,21 @@ jobs:
         test-mode: [ deploy ]
         backend: [ mysql ]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
           cache: 'gradle'
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
@@ -78,46 +84,44 @@ jobs:
       - name: Check required command
         run: |
           echo "$GCS_SERVICE_ACCOUNT_JSON_CONTENT" > ${{ vars.GCS_SERVICE_ACCOUNT_JSON_PATH }}
-          gravitino-oss/dev/ci/check_commands.sh
+          gravitino-internal/dev/ci/check_commands.sh
           cat ${{ vars.GCS_SERVICE_ACCOUNT_JSON_PATH }}
 
       - name: Package
         run: |
-          ./gradlew -p gravitino-oss build -x test
+          export MINIFORGE_BIN="$GITHUB_WORKSPACE/gravitino-internal/.gradle/python/Linux/Miniforge3/bin"
+          export PATH="$MINIFORGE_BIN:$PATH"
+          
+          ./gradlew -p gravitino-internal build -x test
           mkdir -p /tmp/bundles
-          cp -r gravitino-oss/bundles/*-bundle/build/libs/*.jar /tmp/bundles
+          cp -r gravitino-internal/bundles/*-bundle/build/libs/*.jar /tmp/bundles
 
           mkdir -p /tmp/irc-bundles
-          cp -r gravitino-oss/bundles/iceberg-*/build/libs/*.jar /tmp/irc-bundles
+          cp -r gravitino-internal/bundles/iceberg-*/build/libs/*.jar /tmp/irc-bundles
           ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
 
-          cp -r -f ./distribution ./gravitino-oss
-          cp -r /tmp/bundles/* ./gravitino-oss/distribution/package/catalogs/fileset/libs
-          cp -r /tmp/irc-bundles/* ./gravitino-oss/distribution/package/iceberg-rest-server/libs
+          cp -r -f ./distribution ./gravitino-internal
+          cp -r /tmp/bundles/* ./gravitino-internal/distribution/package/catalogs/fileset/libs
+          cp -r /tmp/irc-bundles/* ./gravitino-internal/distribution/package/iceberg-rest-server/libs
 
       - name: IRC IcebergRESTS3TokenIT Test
         run: |
-          ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTS3TokenIT"
+          ./gradlew -p gravitino-internal -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTS3TokenIT"
 
       - name: IRC IcebergRESTGCSIT Test
         run: |
-          ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTGCSIT"
-
-      - name: Set up python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+          ./gradlew -p gravitino-internal -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTGCSIT"
 
       - name: Fileset Cloud Integration Test python
         id: integrationTest1
         run: |
           echo "==============start gravitino server================="
-          cd gravitino-oss/distribution/package/bin
+          cd gravitino-internal/distribution/package/bin
           pwd
           ./gravitino.sh start
           cd -
           pwd
-          cd gravitino-oss/clients/client-python
+          cd gravitino-internal/clients/client-python
           python3 -m venv venv
           source venv/bin/activate
           pip install .
@@ -128,7 +132,7 @@ jobs:
           python -m unittest tests.integration.test_gvfs_with_gcs_credential -v
           echo "==============stop gravitino server================="
           cd -
-          cd gravitino-oss/distribution/package/bin
+          cd gravitino-internal/distribution/package/bin
           ./gravitino.sh stop
       - name: Update S3_BUCKET_NAME env var
         run: |
@@ -136,7 +140,7 @@ jobs:
 
       - name: Fileset Cloud Integration Test java
         run: |
-          ./gradlew -p gravitino-oss -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PjdbcBackend=${{ matrix.backend }} -PskipDockerTests=false :clients:filesystem-hadoop3:test --tests "org.apache.gravitino.filesystem.hadoop.integration.test.**"
+          ./gradlew -p gravitino-internal -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PjdbcBackend=${{ matrix.backend }} -PskipDockerTests=false :clients:filesystem-hadoop3:test --tests "org.apache.gravitino.filesystem.hadoop.integration.test.**"
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v4
@@ -144,14 +148,14 @@ jobs:
         with:
           name: integrate test reports-${{ matrix.java-version }}-${{ matrix.test-mode }}-${{ matrix.backend }}
           path: |
-            gravitino-oss/build/reports
-            gravitino-oss/iceberg/iceberg-rest-server/build/*.log
-            gravitino-oss/integration-test/build/*.log
-            gravitino-oss/integration-test/build/*.tar
-            gravitino-oss/integration-test/build/trino-ci-container-log/hive/*.*
-            gravitino-oss/integration-test/build/trino-ci-container-log/hdfs/*.*
-            gravitino-oss/distribution/package/logs/*.out
-            gravitino-oss/distribution/package/logs/*.log
-            gravitino-oss/catalogs/**/*.log
-            gravitino-oss/catalogs/**/*.tar
-            gravitino-oss/distribution/**/*.log
+            gravitino-internal/build/reports
+            gravitino-internal/iceberg/iceberg-rest-server/build/*.log
+            gravitino-internal/integration-test/build/*.log
+            gravitino-internal/integration-test/build/*.tar
+            gravitino-internal/integration-test/build/trino-ci-container-log/hive/*.*
+            gravitino-internal/integration-test/build/trino-ci-container-log/hdfs/*.*
+            gravitino-internal/distribution/package/logs/*.out
+            gravitino-internal/distribution/package/logs/*.log
+            gravitino-internal/catalogs/**/*.log
+            gravitino-internal/catalogs/**/*.tar
+            gravitino-internal/distribution/**/*.log

@@ -72,6 +72,9 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:

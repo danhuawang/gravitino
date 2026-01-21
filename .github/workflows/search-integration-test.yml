@@ -27,9 +27,10 @@ jobs:
     env:
       PLATFORM: ${{ matrix.architecture }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
@@ -48,7 +49,7 @@ jobs:
 
       - name: Check required command
         run: |
-          gravitino-oss/dev/ci/check_commands.sh
+          gravitino-internal/dev/ci/check_commands.sh
 
       - name: Package Gravitino
         if : ${{ matrix.test-mode == 'deploy' }}
@@ -57,7 +58,7 @@ jobs:
 
       - name: Free up disk space
         run: |
-          gravitino-oss/dev/ci/util_free_space.sh
+          gravitino-internal/dev/ci/util_free_space.sh
 
       - name: Run Search Integration Test
         id: integrationTest
@@ -70,17 +71,17 @@ jobs:
         with:
           name: integrate-test-reports-${{ matrix.java-version }}-${{ matrix.test-mode }}-${{ matrix.backend }}
           path: |
-            gravitino-oss/build/reports
-            gravitino-oss/iceberg/iceberg-rest-server/build/*.log
-            gravitino-oss/integration-test/build/*.log
-            gravitino-oss/integration-test/build/*.tar
-            gravitino-oss/integration-test/build/trino-ci-container-log/hive/*.*
-            gravitino-oss/integration-test/build/trino-ci-container-log/hdfs/*.*
-            gravitino-oss/distribution/package/logs/*.out
-            gravitino-oss/distribution/package/logs/*.log
-            gravitino-oss/catalogs/**/*.log
-            gravitino-oss/catalogs/**/*.tar
-            gravitino-oss/distribution/**/*.log
+            gravitino-internal/build/reports
+            gravitino-internal/iceberg/iceberg-rest-server/build/*.log
+            gravitino-internal/integration-test/build/*.log
+            gravitino-internal/integration-test/build/*.tar
+            gravitino-internal/integration-test/build/trino-ci-container-log/hive/*.*
+            gravitino-internal/integration-test/build/trino-ci-container-log/hdfs/*.*
+            gravitino-internal/distribution/package/logs/*.out
+            gravitino-internal/distribution/package/logs/*.log
+            gravitino-internal/catalogs/**/*.log
+            gravitino-internal/catalogs/**/*.tar
+            gravitino-internal/distribution/**/*.log
             test/search-integration-test/build/reports
             distribution/package/logs/*.out
             distribution/package/logs/*.log

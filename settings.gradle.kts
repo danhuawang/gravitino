@@ -8,7 +8,7 @@ plugins {
 
 rootProject.name = "datastrato-gravitino"
 
-includeBuild("gravitino-oss") {
+includeBuild("gravitino-internal") {
   dependencySubstitution {
     substitute(module("org.apache.gravitino:api"))
       .using(project(":api"))

@@ -1,4 +1,4 @@
-[submodule "gravitino-oss"]
-	path = gravitino-oss
-	url = https://github.com/apache/gravitino.git
-	branch = main
+[submodule "gravitino-internal"]
+	path = gravitino-internal
+	url = https://github.com/datastrato/gravitino-internal.git
+	branch = internal-main
