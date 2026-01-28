@@ -38,6 +38,7 @@ include(
   "catalogs:catalog-jdbc-common",
   "catalogs:catalog-jdbc-bigquery",
   "catalogs:catalog-jdbc-doris",
+  "catalogs:catalog-jdbc-maxcompute",
   "catalogs:catalog-jdbc-mysql",
   "catalogs:catalog-jdbc-postgresql",
   "catalogs:catalog-jdbc-starrocks"
