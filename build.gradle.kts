@@ -1170,6 +1170,7 @@ tasks {
       ":catalogs:catalog-hive:copyLibAndConfig",
       ":catalogs:catalog-jdbc-bigquery:copyLibAndConfig",
       ":catalogs:catalog-jdbc-doris:copyLibAndConfig",
+      ":catalogs:catalog-jdbc-maxcompute:copyLibAndConfig",
       ":catalogs:catalog-jdbc-mysql:copyLibAndConfig",
       ":catalogs:catalog-jdbc-postgresql:copyLibAndConfig",
       ":catalogs:catalog-jdbc-starrocks:copyLibAndConfig",
