@@ -23,6 +23,7 @@ import java.sql.ResultSet;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.NotImplementedException;
+import org.apache.gravitino.catalog.bigquery.BigQueryClientPool;
 import org.apache.gravitino.catalog.jdbc.JdbcColumn;
 import org.apache.gravitino.catalog.jdbc.JdbcTable;
 import org.apache.gravitino.catalog.jdbc.operation.JdbcTableOperations;
@@ -33,6 +34,26 @@ import org.apache.gravitino.rel.indexes.Index;
 
 /** Table operations for BigQuery. */
 public class BigQueryTableOperations extends JdbcTableOperations {
+
+  private BigQueryClientPool clientPool;
+
+  /**
+   * Sets the BigQuery API client pool.
+   *
+   * @param clientPool BigQuery client pool
+   */
+  public void setClientPool(BigQueryClientPool clientPool) {
+    this.clientPool = clientPool;
+  }
+
+  /**
+   * Gets the BigQuery API client pool.
+   *
+   * @return BigQuery client pool, may be null if not set
+   */
+  protected BigQueryClientPool getClientPool() {
+    return clientPool;
+  }
 
   @Override
   protected String generateCreateTableSql(

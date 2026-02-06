@@ -23,18 +23,23 @@ import java.util.Map;
 import org.apache.gravitino.catalog.jdbc.JdbcCatalogPropertiesMetadata;
 import org.apache.gravitino.connector.PropertyEntry;
 
-/** Properties metadata for BigQuery catalog. */
+/**
+ * Properties metadata for BigQuery catalog.
+ *
+ * <p>Defines BigQuery-specific catalog properties including project ID and authentication
+ * credentials.
+ */
 public class BigQueryCatalogPropertiesMetadata extends JdbcCatalogPropertiesMetadata {
+
+  // BigQuery catalog property keys
+  public static final String PROJECT_ID = "project-id";
 
   private static final Map<String, PropertyEntry<?>> BIGQUERY_CATALOG_PROPERTY_ENTRIES =
       ImmutableMap.<String, PropertyEntry<?>>builder()
           .put(
-              "project-id",
+              PROJECT_ID,
               PropertyEntry.stringRequiredPropertyEntry(
-                  "project-id",
-                  "Google Cloud Project ID",
-                  false /* immutable */,
-                  false /* hidden */))
+                  PROJECT_ID, "Google Cloud Project ID", false /* immutable */, false /* hidden */))
           .build();
 
   @Override
