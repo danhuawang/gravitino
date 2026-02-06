@@ -127,15 +127,11 @@ Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metada
 |----------------|---------------|
 | `Binary`       | `BYTES`       |
 | `Boolean`      | `BOOL`        |
-| `Byte`         | `INT64`       |
 | `Char`         | `STRING`      |
 | `Date`         | `DATE`        |
 | `Decimal`      | `NUMERIC`     |
 | `Double`       | `FLOAT64`     |
-| `Float`        | `FLOAT64`     |
-| `Integer`      | `INT64`       |
 | `Long`         | `INT64`       |
-| `Short`        | `INT64`       |
 | `String`       | `STRING`      |
 | `Time`         | `TIME`        |
 | `Timestamp`    | `DATETIME`    |
