@@ -93,7 +93,7 @@ public class BigQueryCatalog extends JdbcCatalog {
   /**
    * Build JDBC URL from individual BigQuery configuration components. If jdbc-url contains
    * authentication parameters, use it directly. Otherwise, enhance the base URL with project-id,
-   * jdbc-user (service account email), and jdbc-password (key file path).
+   * jdbc-user (service account email), and jdbc-password (key file path), and proxy configuration.
    */
   private Map<String, String> buildJdbcUrl(Map<String, String> config) {
 
@@ -112,6 +112,12 @@ public class BigQueryCatalog extends JdbcCatalog {
     String keyFilePath = config.get(JdbcConfig.PASSWORD.getKey()); // Key file path
     String serviceAccountEmail = config.get(JdbcConfig.USERNAME.getKey()); // Service account email
 
+    // Extract proxy configuration
+    String proxyHost = config.get(BigQueryCatalogPropertiesMetadata.PROXY_HOST);
+    String proxyPort = config.get(BigQueryCatalogPropertiesMetadata.PROXY_PORT);
+    String proxyUsername = config.get(BigQueryCatalogPropertiesMetadata.PROXY_USERNAME);
+    String proxyPassword = config.get(BigQueryCatalogPropertiesMetadata.PROXY_PASSWORD);
+
     // Validate required properties
     if (StringUtils.isBlank(projectId)) {
       throw new IllegalArgumentException("project-id is required for BigQuery catalog");
@@ -119,6 +125,21 @@ public class BigQueryCatalog extends JdbcCatalog {
     if (StringUtils.isBlank(keyFilePath)) {
       throw new IllegalArgumentException(
           "jdbc-password (key file path) is required for BigQuery catalog");
+    }
+
+    // Validate proxy configuration if provided
+    if (StringUtils.isNotBlank(proxyHost)) {
+      if (StringUtils.isBlank(proxyPort)) {
+        throw new IllegalArgumentException("proxy-port is required when proxy-host is specified");
+      }
+      try {
+        int port = Integer.parseInt(proxyPort);
+        if (port <= 0 || port > 65535) {
+          throw new IllegalArgumentException("proxy-port must be between 1 and 65535");
+        }
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("proxy-port must be a valid integer", e);
+      }
     }
 
     // Build complete JDBC URL with authentication parameters
@@ -145,6 +166,23 @@ public class BigQueryCatalog extends JdbcCatalog {
 
     urlBuilder.append("OAuthPvtKeyPath=").append(keyFilePath).append(";");
 
+    // Add proxy configuration if provided
+    if (StringUtils.isNotBlank(proxyHost)) {
+      urlBuilder.append("ProxyHost=").append(proxyHost).append(";");
+      urlBuilder.append("ProxyPort=").append(proxyPort).append(";");
+
+      // Add proxy authentication if provided
+      if (StringUtils.isNotBlank(proxyUsername)) {
+        urlBuilder.append("ProxyUid=").append(proxyUsername).append(";");
+
+        if (StringUtils.isNotBlank(proxyPassword)) {
+          urlBuilder.append("ProxyPwd=").append(proxyPassword).append(";");
+        }
+      }
+
+      LOG.info("Added proxy configuration: {}:{}", proxyHost, proxyPort);
+    }
+
     String completeJdbcUrl = urlBuilder.toString();
 
     // Create new config map with complete jdbc-url
@@ -155,7 +193,9 @@ public class BigQueryCatalog extends JdbcCatalog {
     LOG.info("Built BigQuery JDBC URL for project: {}", projectId);
     LOG.debug(
         "Complete JDBC URL: {}",
-        completeJdbcUrl.replaceAll("OAuthPvtKeyPath=[^;]+", "OAuthPvtKeyPath=[REDACTED]"));
+        completeJdbcUrl
+            .replaceAll("OAuthPvtKeyPath=[^;]+", "OAuthPvtKeyPath=[REDACTED]")
+            .replaceAll("ProxyPwd=[^;]+", "ProxyPwd=[REDACTED]"));
 
     return newConfig;
   }

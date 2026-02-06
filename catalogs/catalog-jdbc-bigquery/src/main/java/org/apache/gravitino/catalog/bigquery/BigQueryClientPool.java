@@ -20,6 +20,7 @@ package org.apache.gravitino.catalog.bigquery;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpTransport;
+import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.bigquery.Bigquery;
@@ -28,6 +29,10 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.net.Authenticator;
+import java.net.InetSocketAddress;
+import java.net.PasswordAuthentication;
+import java.net.Proxy;
 import java.security.GeneralSecurityException;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
@@ -39,8 +44,9 @@ import org.slf4j.LoggerFactory;
  * BigQuery client pool for managing BigQuery API clients.
  *
  * <p>This class provides a centralized way to create and manage BigQuery API clients with proper
- * authentication using service account credentials. It uses the Google API Client Library for Java
- * (google-api-services-bigquery) which is already included in the Simba JDBC driver dependencies.
+ * authentication using service account credentials and optional proxy configuration. It uses the
+ * Google API Client Library for Java (google-api-services-bigquery) which is already included in
+ * the Simba JDBC driver dependencies.
  */
 public class BigQueryClientPool {
 
@@ -50,16 +56,28 @@ public class BigQueryClientPool {
 
   private final String projectId;
   private final String keyFilePath;
+  private final String proxyHost;
+  private final Integer proxyPort;
+  private final String proxyUsername;
+  private final String proxyPassword;
   private volatile Bigquery bigQueryClient;
 
   /**
    * Creates a new BigQuery client pool.
    *
-   * @param config catalog configuration containing project-id and jdbc-password (key file path)
+   * @param config catalog configuration containing project-id, jdbc-password (key file path), and
+   *     optional proxy configuration
    */
   public BigQueryClientPool(Map<String, String> config) {
     this.projectId = config.get(BigQueryCatalogPropertiesMetadata.PROJECT_ID);
     this.keyFilePath = config.get(JdbcConfig.PASSWORD.getKey()); // Key file path
+    this.proxyHost = config.get(BigQueryCatalogPropertiesMetadata.PROXY_HOST);
+
+    String proxyPortStr = config.get(BigQueryCatalogPropertiesMetadata.PROXY_PORT);
+    this.proxyPort = StringUtils.isNotBlank(proxyPortStr) ? Integer.parseInt(proxyPortStr) : null;
+
+    this.proxyUsername = config.get(BigQueryCatalogPropertiesMetadata.PROXY_USERNAME);
+    this.proxyPassword = config.get(BigQueryCatalogPropertiesMetadata.PROXY_PASSWORD);
 
     if (StringUtils.isBlank(projectId)) {
       throw new IllegalArgumentException("project-id is required for BigQuery catalog");
@@ -70,6 +88,12 @@ public class BigQueryClientPool {
     }
 
     LOG.info("Initialized BigQuery client pool for project: {}", projectId);
+    // Log proxy configuration
+    LOG.info(
+        "Proxy: {}:{}, Auth: {}",
+        StringUtils.isNotBlank(proxyHost) ? proxyHost : "none",
+        proxyPort != null ? proxyPort : "none",
+        StringUtils.isNotBlank(proxyUsername) ? "yes" : "no");
   }
 
   /**
@@ -93,7 +117,8 @@ public class BigQueryClientPool {
   }
 
   /**
-   * Creates a new BigQuery API client with service account authentication.
+   * Creates a new BigQuery API client with service account authentication and optional proxy
+   * support.
    *
    * @return BigQuery API client
    * @throws RuntimeException if client creation fails
@@ -108,8 +133,8 @@ public class BigQueryClientPool {
         credentials = ServiceAccountCredentials.fromStream(serviceAccountStream);
       }
 
-      // Create HTTP transport
-      HttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
+      // Create HTTP transport with optional proxy support
+      HttpTransport httpTransport = createHttpTransport();
 
       // Build BigQuery client with credentials
       Bigquery client =
@@ -140,6 +165,52 @@ public class BigQueryClientPool {
       LOG.error(errorMsg, e);
       throw new RuntimeException(errorMsg, e);
     }
+  }
+
+  /**
+   * Creates HTTP transport with optional proxy configuration.
+   *
+   * @return HTTP transport
+   * @throws GeneralSecurityException if transport creation fails
+   * @throws IOException if transport creation fails
+   */
+  private HttpTransport createHttpTransport() throws GeneralSecurityException, IOException {
+    if (StringUtils.isBlank(proxyHost) || proxyPort == null) {
+      LOG.debug("Creating HTTP transport without proxy");
+      return GoogleNetHttpTransport.newTrustedTransport();
+    }
+
+    LOG.debug("Creating HTTP transport with proxy: {}:{}", proxyHost, proxyPort);
+
+    // Create proxy configuration
+    Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
+
+    // Set up proxy authentication if credentials are provided
+    if (StringUtils.isNotBlank(proxyUsername) && StringUtils.isNotBlank(proxyPassword)) {
+      LOG.debug("Setting up proxy authentication for user: {}", proxyUsername);
+
+      // Create a custom authenticator for this proxy
+      Authenticator proxyAuthenticator =
+          new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+              // Only provide credentials for our specific proxy
+              if (getRequestorType() == RequestorType.PROXY
+                  && proxyHost.equals(getRequestingHost())
+                  && proxyPort.equals(getRequestingPort())) {
+                return new PasswordAuthentication(proxyUsername, proxyPassword.toCharArray());
+              }
+              return null;
+            }
+          };
+
+      // Set the authenticator for this thread
+      // Note: This is a global setting, but we only respond to our specific proxy
+      Authenticator.setDefault(proxyAuthenticator);
+    }
+
+    // Create NetHttpTransport with proxy
+    return new NetHttpTransport.Builder().setProxy(proxy).build();
   }
 
   /**
