@@ -51,7 +51,7 @@ public class TestBigQueryTypeConverter {
     assertEquals("time", typeConverter.fromGravitino(Types.TimeType.get()));
 
     // Time with precision
-    assertEquals("time(6)", typeConverter.fromGravitino(Types.TimeType.of(6)));
+    assertEquals("time", typeConverter.fromGravitino(Types.TimeType.of(3)));
 
     // Timestamp without timezone (DATETIME in BigQuery)
     assertEquals("datetime", typeConverter.fromGravitino(Types.TimestampType.withoutTimeZone()));
@@ -60,9 +60,14 @@ public class TestBigQueryTypeConverter {
     assertEquals("timestamp", typeConverter.fromGravitino(Types.TimestampType.withTimeZone()));
 
     // Timestamp with precision
+    // NOTE: BigQuery DATETIME precision is microsecond by default, it does not support specify
+    // precision
+    // so a TimestampType without timezone should still map to plain "datetime" even if a
+    // precision is set.
     assertEquals(
-        "datetime(3)", typeConverter.fromGravitino(Types.TimestampType.withoutTimeZone(3)));
-    assertEquals("timestamp(6)", typeConverter.fromGravitino(Types.TimestampType.withTimeZone(6)));
+        "datetime", // DATETIME in BigQuery (precision ignored)
+        typeConverter.fromGravitino(Types.TimestampType.withoutTimeZone(6)));
+    assertEquals("timestamp", typeConverter.fromGravitino(Types.TimestampType.withTimeZone(6)));
   }
 
   @Test

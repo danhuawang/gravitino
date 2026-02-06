@@ -117,15 +117,10 @@ public class BigQueryTypeConverter extends JdbcTypeConverter {
       return BYTES;
     } else if (type instanceof Types.DateType) {
       return DATE;
-    } else if (type instanceof Types.TimeType timeType) {
-      return timeType.hasPrecisionSet()
-          ? String.format("%s(%d)", TIME, timeType.precision())
-          : TIME;
+    } else if (type instanceof Types.TimeType) {
+      return TIME;
     } else if (type instanceof Types.TimestampType timestampType) {
-      String baseType = timestampType.hasTimeZone() ? TIMESTAMP : DATETIME;
-      return timestampType.hasPrecisionSet()
-          ? String.format("%s(%d)", baseType, timestampType.precision())
-          : baseType;
+      return timestampType.hasTimeZone() ? TIMESTAMP : DATETIME;
     } else if (type instanceof Types.DecimalType decimalType) {
       // BigQuery NUMERIC: precision 1-38, scale 0-9 (or 0-precision)
       // For Gravitino DecimalType (max precision 38), always use NUMERIC

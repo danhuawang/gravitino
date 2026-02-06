@@ -161,8 +161,8 @@ public class TestBigQuerySqlGeneration {
             tableName, columns, null, null, new Transform[0], Distributions.NONE, new Index[0]);
 
     assertTrue(sql.contains("`decimal_col` NUMERIC(10, 2) NOT NULL"));
-    assertTrue(sql.contains("`timestamp_col` timestamp(6)"));
-    assertTrue(sql.contains("`time_col` time(3)"));
+    assertTrue(sql.contains("`timestamp_col` timestamp"));
+    assertTrue(sql.contains("`time_col` time"));
   }
 
   @Test
