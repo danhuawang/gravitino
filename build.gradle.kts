@@ -1166,6 +1166,7 @@ tasks {
     dependsOn(
       ":catalogs:catalog-fileset:copyLibAndConfig",
       ":catalogs:catalog-hive:copyLibAndConfig",
+      ":catalogs:catalog-jdbc-bigquery:copyLibAndConfig",
       ":catalogs:catalog-jdbc-doris:copyLibAndConfig",
       ":catalogs:catalog-jdbc-mysql:copyLibAndConfig",
       ":catalogs:catalog-jdbc-postgresql:copyLibAndConfig",

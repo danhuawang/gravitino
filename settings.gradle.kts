@@ -36,6 +36,7 @@ include("catalogs:catalog-lakehouse-hudi")
 include("catalogs:catalog-lakehouse-generic")
 include(
   "catalogs:catalog-jdbc-common",
+  "catalogs:catalog-jdbc-bigquery",
   "catalogs:catalog-jdbc-doris",
   "catalogs:catalog-jdbc-mysql",
   "catalogs:catalog-jdbc-postgresql",
