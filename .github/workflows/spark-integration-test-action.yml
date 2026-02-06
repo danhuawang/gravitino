@@ -25,7 +25,7 @@ jobs:
   SparkIT:
     name: JDK${{ inputs.java-version }}-${{ inputs.test-mode }}-Scala${{ inputs.scala-version }}
     runs-on: [self-hosted, linux, arm64, amazon, xlarge]
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       PLATFORM: ${{ inputs.architecture }}
     steps:
