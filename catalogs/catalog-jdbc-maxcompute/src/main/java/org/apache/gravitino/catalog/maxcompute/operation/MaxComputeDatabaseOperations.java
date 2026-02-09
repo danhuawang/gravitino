@@ -256,4 +256,26 @@ public class MaxComputeDatabaseOperations extends JdbcDatabaseOperations {
     String escaped = databaseName.replace(BACK_QUOTE, BACK_QUOTE + BACK_QUOTE);
     return BACK_QUOTE + escaped + BACK_QUOTE;
   }
+
+  /**
+   * Deletes a schema from MaxCompute.
+   *
+   * <p>This method first checks if the schema exists before attempting to drop it. If the schema
+   * does not exist, it returns false instead of throwing an exception.
+   *
+   * @param databaseName the name of the schema to delete
+   * @param cascade whether to cascade the delete (not supported by MaxCompute)
+   * @return true if the schema was deleted, false if it did not exist
+   */
+  @Override
+  public boolean delete(String databaseName, boolean cascade) {
+    // First check if the schema exists
+    List<String> allDatabases = listDatabases();
+    boolean exists = allDatabases.stream().anyMatch(db -> db.equalsIgnoreCase(databaseName));
+    if (!exists) {
+      return false;
+    }
+    // Schema exists, proceed with deletion
+    return super.delete(databaseName, cascade);
+  }
 }

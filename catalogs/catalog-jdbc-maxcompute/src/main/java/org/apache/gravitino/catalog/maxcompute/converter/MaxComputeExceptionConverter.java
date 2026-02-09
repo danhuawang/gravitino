@@ -27,6 +27,8 @@ import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
+import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
+import org.apache.gravitino.exceptions.TableAlreadyExistsException;
 import org.apache.gravitino.exceptions.UnauthorizedException;
 
 /**
@@ -145,6 +147,16 @@ public class MaxComputeExceptionConverter extends JdbcExceptionConverter {
       return new NoSuchTableException(se, se.getMessage());
     }
 
+    // Check for schema already exists errors
+    if (isSchemaAlreadyExists(message)) {
+      return new SchemaAlreadyExistsException(se, se.getMessage());
+    }
+
+    // Check for table already exists errors
+    if (isTableAlreadyExists(message)) {
+      return new TableAlreadyExistsException(se, se.getMessage());
+    }
+
     // Default: return generic runtime exception
     return new GravitinoRuntimeException(se, se.getMessage());
   }
@@ -224,5 +236,48 @@ public class MaxComputeExceptionConverter extends JdbcExceptionConverter {
       return false;
     }
     return Arrays.stream(CONNECTION_FAILURE_PATTERNS).anyMatch(message::contains);
+  }
+
+  /**
+   * Checks if the error message indicates a schema already exists error.
+   *
+   * <p>This method checks for the specific pattern where "schema" and "already exists" appear in
+   * the message. To avoid false positives (e.g., "table schema.tablename already exists"), we
+   * ensure that "table" does not appear before "schema" in the message.
+   *
+   * @param message the error message
+   * @return true if the message indicates a schema already exists error
+   */
+  @VisibleForTesting
+  static boolean isSchemaAlreadyExists(String message) {
+    if (StringUtils.isBlank(message)) {
+      return false;
+    }
+    String lowerMessage = message.toLowerCase();
+    // Check if message contains both "schema" and "already exists"
+    if (!lowerMessage.contains("schema") || !lowerMessage.contains("already exists")) {
+      return false;
+    }
+    // Avoid false positive: if "table" appears before "schema", it's likely a table error
+    // e.g., "table schema.tablename already exists" should not match
+    int schemaIndex = lowerMessage.indexOf("schema");
+    int tableIndex = lowerMessage.indexOf("table");
+    // If "table" appears and is before "schema", this is likely a table error
+    return tableIndex < 0 || tableIndex >= schemaIndex;
+  }
+
+  /**
+   * Checks if the error message indicates a table already exists error.
+   *
+   * @param message the error message
+   * @return true if the message indicates a table already exists error
+   */
+  @VisibleForTesting
+  static boolean isTableAlreadyExists(String message) {
+    if (StringUtils.isBlank(message)) {
+      return false;
+    }
+    String lowerMessage = message.toLowerCase();
+    return lowerMessage.contains("table") && lowerMessage.contains("already exists");
   }
 }

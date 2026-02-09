@@ -32,6 +32,7 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import javax.sql.DataSource;
 import org.apache.gravitino.catalog.jdbc.JdbcSchema;
 import org.apache.gravitino.catalog.maxcompute.converter.MaxComputeExceptionConverter;
@@ -48,7 +49,7 @@ class TestMaxComputeDatabaseOperations {
   private ResultSet mockResultSet;
 
   @BeforeEach
-  void setUp() throws SQLException {
+  void setUp() {
     operations = new MaxComputeDatabaseOperations();
     mockDataSource = mock(DataSource.class);
     mockConnection = mock(Connection.class);
@@ -72,10 +73,17 @@ class TestMaxComputeDatabaseOperations {
 
   @Test
   void testDelete() throws SQLException {
-    when(mockDataSource.getConnection()).thenReturn(mockConnection);
     java.sql.Statement mockStatement = mock(java.sql.Statement.class);
+    when(mockDataSource.getConnection()).thenReturn(mockConnection);
     when(mockConnection.createStatement()).thenReturn(mockStatement);
-    when(mockStatement.executeUpdate("DROP SCHEMA test_schema")).thenReturn(0);
+    // Mock for enableSchemaMode
+    when(mockStatement.execute("set odps.namespace.schema=true")).thenReturn(true);
+    // Mock for listDatabases check in delete method
+    when(mockStatement.executeQuery("SHOW SCHEMAS")).thenReturn(mockResultSet);
+    when(mockResultSet.next()).thenReturn(true, false);
+    when(mockResultSet.getString(1)).thenReturn("test_schema");
+    // Mock for drop statement
+    when(mockStatement.executeUpdate("DROP SCHEMA `test_schema`")).thenReturn(0);
 
     // Should not throw exception
     boolean result = operations.delete("test_schema", false);
@@ -86,7 +94,7 @@ class TestMaxComputeDatabaseOperations {
   void testGenerateCreateDatabaseSql() {
     Map<String, String> properties = new HashMap<>();
     String sql = operations.generateCreateDatabaseSql("test_schema", "comment", properties);
-    assertEquals("CREATE SCHEMA test_schema", sql);
+    assertEquals("CREATE SCHEMA `test_schema`", sql);
   }
 
   @Test
@@ -104,7 +112,7 @@ class TestMaxComputeDatabaseOperations {
     when(mockDataSource.getConnection()).thenReturn(mockConnection);
 
     String sql = operations.generateDropDatabaseSql("test_schema", false);
-    assertEquals("DROP SCHEMA test_schema", sql);
+    assertEquals("DROP SCHEMA `test_schema`", sql);
   }
 
   @Test
@@ -176,7 +184,7 @@ class TestMaxComputeDatabaseOperations {
     assertNotNull(schema);
     assertEquals("test_schema", schema.name());
     assertNotNull(schema.properties());
-    assertTrue(schema.properties().isEmpty());
+    assertTrue(Objects.requireNonNull(schema.properties()).isEmpty());
   }
 
   @Test
