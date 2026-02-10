@@ -257,21 +257,7 @@ const CreateCatalogDialog = props => {
         let properties = {}
 
         const prevProperties = innerProps
-          .filter(item => {
-            const hasKey = item.key.trim() !== ''
-
-            if (!hasKey) {
-              return false
-            }
-
-            if (typeSelect === 'fileset' && item.key === 'location') {
-              return item.value.trim() !== ''
-            }
-
-            const hasValue = item.value?.trim() !== ''
-
-            return item.required || hasValue
-          })
+          .filter(i => (typeSelect === 'fileset' && i.key === 'location' ? i.value.trim() !== '' : i.key.trim() !== ''))
           .reduce((acc, item) => {
             acc[item.key] = item.value
 

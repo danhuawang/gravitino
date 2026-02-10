@@ -60,7 +60,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
     runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       matrix:
         # Integration test for AMD64 architecture
@@ -100,6 +100,7 @@ jobs:
       - name: Frontend Integration Test
         id: integrationTest
         run: |
+          GRAVITINO_USE_WEB_V2=true ./gradlew -PskipTests -PtestMode=embedded -PskipDockerTests=false :web-v2:integration-test:test
           GRAVITINO_USE_WEB_V2=true ./gradlew -PskipTests -PtestMode=deploy -PskipDockerTests=false :web-v2:integration-test:test
 
       - name: Upload integrate tests reports
@@ -114,4 +115,4 @@ jobs:
             distribution/package/logs/gravitino-server.log
             catalogs/**/*.log
             catalogs/**/*.tar
-            web/integration-test/build/*.log
+            web-v2/integration-test/build/*.log

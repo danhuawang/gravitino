@@ -256,54 +256,6 @@ export const providers = [
     ]
   },
   {
-    label: 'Google BigQuery',
-    value: 'jdbc-bigquery',
-    defaultProps: [
-      {
-        key: 'project-id',
-        value: '',
-        required: true,
-        description: 'Google Cloud Project ID'
-      },
-      {
-        key: 'jdbc-driver',
-        value: '',
-        required: true,
-        description: 'e.g. com.simba.googlebigquery.jdbc42.Driver'
-      },
-      {
-        key: 'jdbc-url',
-        value: '',
-        required: true,
-        description: 'e.g. jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443'
-      },
-      {
-        key: 'jdbc-user',
-        value: '',
-        required: true,
-        description: 'Service account email'
-      },
-      {
-        key: 'jdbc-password',
-        value: '',
-        required: true,
-        description: 'Path to service account key file'
-      },
-      {
-        key: 'proxy-host',
-        value: '',
-        required: false,
-        description: 'Proxy server hostname or IP address (optional)'
-      },
-      {
-        key: 'proxy-port',
-        value: '',
-        required: false,
-        description: 'Proxy server port number (required if proxy-host is set)'
-      }
-    ]
-  },
-  {
     label: 'Lakehouse Generic',
     value: 'lakehouse-generic',
     defaultProps: []
@@ -571,20 +523,6 @@ const relationalColumnTypeMap = {
     'short',
     'string',
     'timestamp',
-    'varchar'
-  ],
-  'jdbc-bigquery': [
-    'binary',
-    'boolean',
-    'char',
-    'date',
-    'decimal',
-    'double',
-    'long',
-    'string',
-    'time',
-    'timestamp',
-    'timestamp_tz',
     'varchar'
   ],
   'jdbc-mysql': [

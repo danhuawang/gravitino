@@ -25,8 +25,6 @@ import { useSearchParams } from 'next/navigation'
 import { Link as MUILink, Breadcrumbs, Typography, Tooltip, styled, Box, IconButton } from '@mui/material'
 
 import Icon from '@/components/Icon'
-import { useAppSelector } from '@/lib/hooks/useStore'
-import { checkCatalogIcon } from '@/lib/utils/catalogIcons'
 
 const TextWrapper = styled(Typography)(({ theme }) => ({
   maxWidth: '120px',
@@ -41,7 +39,6 @@ const Text = props => {
 
 const MetalakePath = props => {
   const searchParams = useSearchParams()
-  const store = useAppSelector(state => state.metalakes)
 
   const routeParams = {
     metalake: searchParams.get('metalake'),
@@ -126,10 +123,7 @@ const MetalakePath = props => {
               onClick={event => handleClick(event, catalogUrl)}
               underline='hover'
             >
-              <Icon
-                icon={checkCatalogIcon({ type, provider: store.catalogs?.find(c => c.name === catalog)?.provider })}
-                fontSize={20}
-              />
+              <Icon icon='bx:book' fontSize={20} />
               <Text data-refer={`nav-to-catalog-${catalog}`}>{catalog}</Text>
             </MUILink>
           </Tooltip>
