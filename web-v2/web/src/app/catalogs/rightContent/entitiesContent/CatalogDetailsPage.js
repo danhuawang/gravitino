@@ -91,6 +91,10 @@ const renderIcon = catalog => {
         return <Icons.lakehouse className='size-8'></Icons.lakehouse>
       case 'custom-icons-clickhouse':
         return <Icons.clickhouse className='size-8'></Icons.clickhouse>
+      case 'custom-icons-bigquery':
+        return <Icons.bigQuery className='size-8'></Icons.bigQuery>
+      case 'custom-icons-alicloud':
+        return <Icons.alicloud className='size-8'></Icons.alicloud>
     }
   } else {
     return <Icons.iconify icon={calalogIcon} className='size-8' />

@@ -231,6 +231,38 @@ export const TreeComponent = forwardRef(function TreeComponent(props, ref) {
               )}
             </span>
           )
+        case 'custom-icons-bigquery':
+          return (
+            <span
+              role='img'
+              className='anticon'
+              onMouseEnter={e => onMouseEnter(e, catalog)}
+              onMouseLeave={e => onMouseLeave(e, catalog)}
+              onClick={e => handleClickIcon(e, catalog)}
+            >
+              {isHover !== key ? (
+                <Icons.bigQuery className='size-4'></Icons.bigQuery>
+              ) : (
+                <Icons.RotateCw className='h-4 w-3'></Icons.RotateCw>
+              )}
+            </span>
+          )
+        case 'custom-icons-alicloud':
+          return (
+            <span
+              role='img'
+              className='anticon'
+              onMouseEnter={e => onMouseEnter(e, catalog)}
+              onMouseLeave={e => onMouseLeave(e, catalog)}
+              onClick={e => handleClickIcon(e, catalog)}
+            >
+              {isHover !== key ? (
+                <Icons.alicloud className='size-4'></Icons.alicloud>
+              ) : (
+                <Icons.RotateCw className='h-4 w-3'></Icons.RotateCw>
+              )}
+            </span>
+          )
       }
     } else {
       return (

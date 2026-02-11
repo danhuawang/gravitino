@@ -31,7 +31,7 @@ import { mapValues } from 'lodash-es'
 import { useAppSelector } from '@/lib/hooks/useStore'
 
 export default function RenderPropertiesFormItem({ ...props }) {
-  const { fields, subOpt, form, isEdit, isDisable, provider, selectBefore } = props
+  const { fields, subOpt, form, isDisable, isEdit, provider, selectBefore } = props
   const disableTableLevelPro = (provider && getPropInfo(provider).immutable) || []
   const reservedPro = provider ? getPropInfo(provider).reserved : []
   const allowDeletePro = provider ? getPropInfo(provider).allowDelete : true
@@ -188,9 +188,10 @@ export default function RenderPropertiesFormItem({ ...props }) {
                 <Input
                   placeholder={'Key'}
                   disabled={
-                    ([...reservedPro, ...disableTableLevelPro].includes(
+                    (([...reservedPro, ...disableTableLevelPro].includes(
                       form.getFieldValue(['properties', subField.name, 'key'])
-                    ) &&
+                    ) ||
+                      allowDeletePro === false) &&
                       isFieldEdit) ||
                     isDisable
                   }
@@ -264,17 +265,19 @@ export default function RenderPropertiesFormItem({ ...props }) {
               <Icons.Minus
                 className={cn('size-8 cursor-pointer text-gray-400 hover:text-defaultPrimary', {
                   'text-gray-100 hover:text-gray-200 cursor-not-allowed':
-                    ([...reservedPro, ...disableTableLevelPro].includes(
+                    (([...reservedPro, ...disableTableLevelPro].includes(
                       form.getFieldValue(['properties', subField.name, 'key'])
-                    ) &&
+                    ) ||
+                      allowDeletePro === false) &&
                       isFieldEdit) ||
                     isDisable
                 })}
                 onClick={() => {
                   if (
-                    ([...reservedPro, ...disableTableLevelPro].includes(
+                    (([...reservedPro, ...disableTableLevelPro].includes(
                       form.getFieldValue(['properties', subField.name, 'key'])
-                    ) &&
+                    ) ||
+                      allowDeletePro === false) &&
                       isFieldEdit) ||
                     isDisable
                   )

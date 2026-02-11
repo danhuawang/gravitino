@@ -353,6 +353,10 @@ export default function CreateCatalogDialog({ ...props }) {
           return <Icons.lakehouse className={small ? 'size-6' : 'size-12'}></Icons.lakehouse>
         case 'custom-icons-clickhouse':
           return <Icons.clickhouse className={small ? 'size-6' : 'size-12'}></Icons.clickhouse>
+        case 'custom-icons-bigquery':
+          return <Icons.bigQuery className={small ? 'size-6' : 'size-12'}></Icons.bigQuery>
+        case 'custom-icons-alicloud':
+          return <Icons.alicloud className={small ? 'size-6' : 'size-12'}></Icons.alicloud>
       }
     } else {
       return <Icons.iconify icon={calalogIcon} className={small ? 'size-6' : 'size-12'} />
@@ -370,8 +374,8 @@ export default function CreateCatalogDialog({ ...props }) {
         })}
         onClick={() => handleSelectProvider(provider.value)}
       >
-        <div className='flex space-x-3'>
-          <div className='flex size-16 items-center justify-center rounded bg-gray-100 text-gray-400 hover:text-defaultPrimary'>
+        <div className='flex items-center space-x-3'>
+          <div className='flex size-16 shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400 hover:text-defaultPrimary'>
             {renderIcon({ type: catalogType, provider: provider.value })}
           </div>
           <div className='default-theme-text'>

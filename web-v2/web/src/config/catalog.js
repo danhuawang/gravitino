@@ -45,6 +45,10 @@ export const checkCatalogIcon = ({ type, provider }) => {
           return 'custom-icons-lakehouse'
         case 'jdbc-clickhouse':
           return 'custom-icons-clickhouse'
+        case 'jdbc-bigquery':
+          return 'custom-icons-bigquery'
+        case 'jdbc-maxcompute':
+          return 'custom-icons-alicloud'
         default:
           return 'bx:book'
       }
@@ -282,6 +286,41 @@ export const rangerDefaultProps = [
 ]
 
 export const providerBase = {
+  'jdbc-maxcompute': {
+    label: 'Alibaba Cloud MaxCompute',
+    defaultProps: [
+      {
+        label: 'JDBC Driver',
+        key: 'jdbc-driver',
+        value: 'com.aliyun.odps.jdbc.OdpsDriver',
+        defaultValue: 'com.aliyun.odps.jdbc.OdpsDriver',
+        required: true,
+        description: 'JDBC driver class: com.aliyun.odps.jdbc.OdpsDriver'
+      },
+      {
+        label: 'JDBC URL',
+        key: 'jdbc-url',
+        value: '',
+        required: true,
+        description:
+          'e.g. jdbc:odps:https://service.cn-hangzhou.maxcompute.aliyun.com/api?project=your_project&odpsNamespaceSchema=true'
+      },
+      {
+        label: 'JDBC User',
+        key: 'jdbc-user',
+        value: '',
+        required: true,
+        description: 'Alibaba Cloud Access Key ID'
+      },
+      {
+        label: 'JDBC Password',
+        key: 'jdbc-password',
+        value: '',
+        required: true,
+        description: 'Alibaba Cloud Access Key Secret'
+      }
+    ]
+  },
   hive: {
     label: 'Apache Hive',
     defaultProps: [
@@ -403,6 +442,47 @@ export const providerBase = {
         description: 'The URI of The keytab for the Kerberos authentication.',
         parentField: 'authentication.type',
         hide: ['simple']
+      }
+    ]
+  },
+  'jdbc-bigquery': {
+    label: 'Google BigQuery',
+    defaultProps: [
+      {
+        label: 'Project ID',
+        key: 'project-id',
+        value: '',
+        required: true,
+        description: 'The Google Cloud project ID containing the BigQuery datasets. e.g. my-gcp-project.'
+      },
+      {
+        label: 'JDBC Driver',
+        key: 'jdbc-driver',
+        value: 'com.simba.googlebigquery.jdbc42.Driver',
+        required: true,
+        description: 'The JDBC driver class. Must be com.simba.googlebigquery.jdbc42.Driver.'
+      },
+      {
+        label: 'JDBC URL',
+        key: 'jdbc-url',
+        value: '',
+        required: true,
+        description:
+          'The JDBC URL for connecting to BigQuery. e.g. jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443.'
+      },
+      {
+        label: 'JDBC User',
+        key: 'jdbc-user',
+        value: '',
+        required: true,
+        description: 'Typically the service account email used for authentication.'
+      },
+      {
+        label: 'JDBC Password',
+        key: 'jdbc-password',
+        value: '',
+        required: true,
+        description: 'The path to the service account JSON key file for authentication.'
       }
     ]
   },
@@ -752,6 +832,11 @@ export const messagingProviders = [
 
 export const relationalProviders = [
   {
+    label: 'Alibaba Cloud MaxCompute',
+    value: 'jdbc-maxcompute',
+    description: 'A cloud-native, fully managed data warehouse for large-scale analytics.'
+  },
+  {
     label: 'Apache Doris',
     value: 'jdbc-doris',
     description: 'Open source, real-time data warehouse'
@@ -780,6 +865,11 @@ export const relationalProviders = [
     label: 'ClickHouse',
     value: 'jdbc-clickhouse',
     description: 'A fast open-source column-oriented database management system'
+  },
+  {
+    label: 'Google BigQuery',
+    value: 'jdbc-bigquery',
+    description: "A web service for executing SQL against very large databases on Google's architecture."
   },
   {
     label: 'Lakehouse Generic',

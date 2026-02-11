@@ -64,7 +64,8 @@ import {
   indexesInfoMap,
   partitionInfoMap,
   sortOrdersInfoMap,
-  transformsLimitMap
+  transformsLimitMap,
+  ColumnTypeForBigQueryClustering
 } from '@/config'
 import { tableDefaultProps } from '@/config/catalog'
 import { nameRegex } from '@/lib/utils/regex'
@@ -101,31 +102,25 @@ export default function CreateTableDialog({ ...props }) {
   const [topShadow, setTopShadow] = useState(false)
   const [columnTypes, setColumnTypes] = useState([])
 
-  const [tabOptions, setTabOptions] = useState([
+  const baseTabs = [
     {
       label: (
-        <span className='font-normal text-[rgb(0,0,0,0.88)] before:mr-0.5 before:font-["SimSun"] before:text-[#ff4d4f] before:content-["*"]'>
+        <span className='font-normal text-[rgb(0,0,0,0.88)] before:mr-0.5 before:font-["SimSun"] before:text-[#ff4d4f] before:content-["*"] '>
           Columns
         </span>
       ),
       key: 'columns'
     }
-  ])
+  ]
+  const [tabOptions, setTabOptions] = useState(baseTabs)
   const [tabKey, setTabKey] = useState('columns')
   const [form] = Form.useForm()
   const values = Form.useWatch([], form)
 
-  const isClickHouseDistributedEngine =
-    provider === 'jdbc-clickhouse' &&
-    values?.properties?.find(item => item?.key === 'engine')?.value?.toLowerCase?.() === 'distributed'
-  const isColumnsRequired = !isClickHouseDistributedEngine
-
   const defaultValues = {
     name: '',
     comment: '',
-    columns: isClickHouseDistributedEngine
-      ? []
-      : [{ id: '', name: '', typeObj: { type: '' }, required: false, comment: '' }],
+    columns: [{ id: '', name: '', typeObj: { type: '' }, required: false, comment: '' }],
     properties: []
   }
   const supportProperties = getPropInfo(provider).allowAdd
@@ -156,20 +151,7 @@ export default function CreateTableDialog({ ...props }) {
   }
 
   useEffect(() => {
-    const tabs = [
-      {
-        label: (
-          <span
-            className={cn('font-normal text-[rgb(0,0,0,0.88)]', {
-              'before:mr-0.5 before:font-["SimSun"] before:text-[#ff4d4f] before:content-["*"]': isColumnsRequired
-            })}
-          >
-            Columns
-          </span>
-        ),
-        key: 'columns'
-      }
-    ]
+    const tabs = [...baseTabs]
     if (partitioningInfo) {
       tabs.push({
         label: <span className='font-normal text-[rgb(0,0,0,0.88)]'>Partitions</span>,
@@ -189,6 +171,12 @@ export default function CreateTableDialog({ ...props }) {
         key: 'indexes'
       })
     }
+    if (provider === 'jdbc-bigquery') {
+      tabs.push({
+        label: <span className='font-normal text-[rgb(0,0,0,0.88)]'>Clustering</span>,
+        key: 'clustering'
+      })
+    }
     if (distributionInfo) {
       tabs.push({
         label: (
@@ -205,7 +193,7 @@ export default function CreateTableDialog({ ...props }) {
       })
     }
     setTabOptions(tabs)
-  }, [isColumnsRequired, provider, partitioningInfo, sortOredsInfo, indexesInfo, distributionInfo])
+  }, [provider, partitioningInfo, sortOredsInfo, indexesInfo, distributionInfo])
 
   useEffect(() => {
     scrollRef.current && handScroll()
@@ -456,6 +444,21 @@ export default function CreateTableDialog({ ...props }) {
             let idxProperty = 0
             if (table.properties && Object.keys(table.properties).length) {
               Object.entries(table.properties).forEach(([key, value]) => {
+                if (provider === 'jdbc-bigquery' && key === 'clustering_fields') {
+                  const clusteringFieldsRaw = value
+
+                  const clusteringFields = Array.isArray(clusteringFieldsRaw)
+                    ? clusteringFieldsRaw.map(v => String(v).trim()).filter(Boolean)
+                    : typeof clusteringFieldsRaw === 'string'
+                      ? clusteringFieldsRaw
+                          .split(',')
+                          .map(v => v.trim())
+                          .filter(Boolean)
+                      : []
+                  form.setFieldValue(['clustering'], clusteringFields)
+
+                  return
+                }
                 form.setFieldValue(['properties', idxProperty, 'key'], key)
                 form.setFieldValue(['properties', idxProperty, 'value'], value)
                 form.setFieldValue(['properties', idxProperty, 'isEdit'], true)
@@ -505,24 +508,6 @@ export default function CreateTableDialog({ ...props }) {
       })
     }
   }, [provider, values?.format])
-
-  useEffect(() => {
-    if (!open || editTable) {
-      return
-    }
-
-    const columns = form.getFieldValue('columns') || []
-
-    if (isClickHouseDistributedEngine && columns.length === 1 && !columns[0]?.name && !columns[0]?.typeObj?.type) {
-      form.setFieldValue('columns', [])
-
-      return
-    }
-
-    if (!isClickHouseDistributedEngine && columns.length === 0) {
-      form.setFieldValue('columns', [{ id: '', name: '', typeObj: { type: '' }, required: false, comment: '' }])
-    }
-  }, [open, editTable, isClickHouseDistributedEngine, form])
 
   const getColumnType = typeObj => {
     const { type } = typeObj
@@ -585,57 +570,55 @@ export default function CreateTableDialog({ ...props }) {
             name: values.name.trim(),
             comment: values.comment,
             tagsToAdd: values.tags,
-            columns: (values.columns || [])
-              .filter(col => col?.name)
-              .map(col => {
-                const column = {
-                  uniqueId: col.uniqueId || col.name,
-                  name: col.name,
-                  type: getColumnType(col.typeObj),
-                  nullable: !col.required,
-                  comment: col.comment || ''
-                }
-                if (autoIncrementInfo) {
-                  column['autoIncrement'] = col.autoIncrement
-                }
-                if (col.defaultValue) {
-                  switch (col.defaultValue.type) {
-                    case 'field':
-                      column['defaultValue'] = {
-                        type: 'field',
-                        fieldName: [col.defaultValue?.fieldName]
-                      }
-                      break
-                    case 'function':
-                      column['defaultValue'] = {
-                        type: 'function',
-                        funcName: col.defaultValue?.funcName,
-                        funcArgs: col.defaultValue?.funcArgs.map(f => {
-                          const func = {}
-                          if (f.type === 'literal') {
-                            func['type'] = 'literal'
-                            func['dataType'] = 'string'
-                            func['value'] = f.value
-                          } else {
-                            func['type'] = 'field'
-                            func['fieldName'] = [f.fieldName]
-                          }
+            columns: values.columns.map(col => {
+              const column = {
+                uniqueId: col.uniqueId || col.name,
+                name: col.name,
+                type: getColumnType(col.typeObj),
+                nullable: !col.required,
+                comment: col.comment || ''
+              }
+              if (autoIncrementInfo) {
+                column['autoIncrement'] = col.autoIncrement
+              }
+              if (col.defaultValue) {
+                switch (col.defaultValue.type) {
+                  case 'field':
+                    column['defaultValue'] = {
+                      type: 'field',
+                      fieldName: [col.defaultValue?.fieldName]
+                    }
+                    break
+                  case 'function':
+                    column['defaultValue'] = {
+                      type: 'function',
+                      funcName: col.defaultValue?.funcName,
+                      funcArgs: col.defaultValue?.funcArgs.map(f => {
+                        const func = {}
+                        if (f.type === 'literal') {
+                          func['type'] = 'literal'
+                          func['dataType'] = 'string'
+                          func['value'] = f.value
+                        } else {
+                          func['type'] = 'field'
+                          func['fieldName'] = [f.fieldName]
+                        }
 
-                          return func
-                        })
-                      }
-                      break
-                    default:
-                      column['defaultValue'] = {
-                        type: 'literal',
-                        dataType: col.defaultValue?.dataType || 'string',
-                        value: col.defaultValue?.value
-                      }
-                  }
+                        return func
+                      })
+                    }
+                    break
+                  default:
+                    column['defaultValue'] = {
+                      type: 'literal',
+                      dataType: col.defaultValue?.dataType || 'string',
+                      value: col.defaultValue?.value
+                    }
                 }
+              }
 
-                return column
-              }),
+              return column
+            }),
             properties:
               values.properties &&
               values.properties.reduce((acc, item) => {
@@ -664,6 +647,14 @@ export default function CreateTableDialog({ ...props }) {
                 ...field
               }
             })
+          }
+          if (provider === 'jdbc-bigquery') {
+            const clusteringFields = (values?.clustering || []).slice(0, 4)
+            if (clusteringFields.length) {
+              submitData.properties['clustering_fields'] = clusteringFields.join(',')
+            } else {
+              delete submitData.properties['clustering_fields']
+            }
           }
           if (sortOredsInfo) {
             submitData['sortOrders'] = values.sortOrders?.map(s => {
@@ -764,7 +755,7 @@ export default function CreateTableDialog({ ...props }) {
           }
 
           if (submitted) {
-            !editTable && treeRef.current.onLoadData({ key: `${catalog}/${schema}`, nodeType: 'schema' })
+            treeRef.current.onLoadData({ key: `${catalog}/${schema}`, nodeType: 'schema' })
             setOpen(false)
           }
         } catch (error) {
@@ -790,6 +781,26 @@ export default function CreateTableDialog({ ...props }) {
     setOpen(false)
   }
 
+  const handleClusteringChange = values => {
+    const availableColumns = (form.getFieldValue('columns') || []).map(col => col?.name).filter(Boolean)
+    const filtered = values.filter(v => availableColumns.includes(v)).slice(0, 4)
+    form.setFieldValue(['clustering'], filtered)
+  }
+
+  const getClusteringOptions = () => {
+    const allowedTypes = new Set(ColumnTypeForBigQueryClustering)
+
+    return (values?.columns || [])
+      .filter(col => {
+        const rawType = String(col?.typeObj?.type || '')
+        const type = rawType.toLowerCase().split('(')[0]
+
+        return allowedTypes.has(type)
+      })
+      .map(col => col?.name)
+      .filter(Boolean)
+  }
+
   const [pageOffset, setPageOffset] = useState(1)
 
   const onChange = page => {
@@ -799,7 +810,6 @@ export default function CreateTableDialog({ ...props }) {
   const renderTableColumns = (fields, subOpt) => {
     const pageSize = 10
     const isShowPagination = fields.length > pageSize
-    const lastPage = Math.max(1, Math.ceil(fields.length / pageSize))
 
     return (
       <div className='flex flex-col divide-y divide-solid border-b border-solid'>
@@ -966,17 +976,16 @@ export default function CreateTableDialog({ ...props }) {
                 <div className='px-2 py-1'>
                   <Icons.Minus
                     className={cn('size-4 cursor-pointer text-gray-400 hover:text-defaultPrimary', {
-                      'text-gray-100 hover:text-gray-200 cursor-not-allowed':
-                        form.getFieldValue('columns').length === 1 && isColumnsRequired
+                      'text-gray-100 hover:text-gray-200 cursor-not-allowed': form.getFieldValue('columns').length === 1
                     })}
                     onClick={() => {
-                      if (form.getFieldValue('columns').length === 1 && isColumnsRequired) return
+                      if (form.getFieldValue('columns').length === 1) return
                       subOpt.remove(subField.name)
                       if (fields.length - 1 === pageOffset * pageSize) {
-                        setPageOffset(Math.max(1, pageOffset - 1))
+                        setPageOffset(pageOffset - 1)
                       } else if (fields.length - 1 < pageOffset * pageSize) {
                         const to = Math.ceil(fields.length / pageSize)
-                        setPageOffset(Math.max(1, (fields.length - 1) % pageSize === 0 ? to - 1 : to))
+                        setPageOffset((fields.length - 1) % pageSize === 0 ? to - 1 : to)
                       }
                     }}
                   />
@@ -995,7 +1004,7 @@ export default function CreateTableDialog({ ...props }) {
             total={fields.length}
           />
         )}
-        {(fields.length === 0 || pageOffset === lastPage) && (
+        {pageOffset === Math.ceil(fields.length / pageSize) && (
           <div className='text-center'>
             <Button
               type='link'
@@ -1370,21 +1379,7 @@ export default function CreateTableDialog({ ...props }) {
                   className={tabKey !== 'columns' ? 'hidden' : ''}
                   label=''
                   name='columns'
-                  rules={[
-                    {
-                      validator: (_, columns) => {
-                        if (!isColumnsRequired) {
-                          return Promise.resolve()
-                        }
-
-                        if (columns?.length > 0) {
-                          return Promise.resolve()
-                        }
-
-                        return Promise.reject(new Error('At least one column is required'))
-                      }
-                    }
-                  ]}
+                  rules={[{ required: true }]}
                   help=''
                 >
                   <Form.List name='columns'>{(fields, subOpt) => renderTableColumns(fields, subOpt)}</Form.List>
@@ -1402,6 +1397,17 @@ export default function CreateTableDialog({ ...props }) {
                 {indexesInfo && (
                   <Form.Item className={tabKey !== 'indexes' ? 'hidden' : ''} label='' name='indexes'>
                     <Form.List name='indexes'>{(fields, subOpt) => renderTableIndexes(fields, subOpt)}</Form.List>
+                  </Form.Item>
+                )}
+                {provider === 'jdbc-bigquery' && (
+                  <Form.Item className={tabKey !== 'clustering' ? 'hidden' : ''} label='' name='clustering'>
+                    <Select
+                      mode='tags'
+                      placeholder={`Clustering (Up to 4 columns)`}
+                      options={getClusteringOptions().map(name => ({ label: name, value: name }))}
+                      onChange={vals => handleClusteringChange(vals)}
+                      disabled={!!editTable}
+                    />
                   </Form.Item>
                 )}
                 {distributionInfo && (

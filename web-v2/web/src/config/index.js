@@ -110,6 +110,20 @@ export const ColumnType = [
 
 export const ColumnTypeForUnsigned = ['byte unsigned', 'short unsigned', 'integer unsigned', 'long unsigned']
 
+export const ColumnTypeForBigQueryClustering = [
+  'string',
+  'integer',
+  'long',
+  'decimal',
+  'timestamp',
+  'timestamp_tz',
+  'date',
+  'boolean',
+  'binary'
+]
+
+export const ColumnTypeForMysql = ['byte unsigned', 'short unsigned', 'integer unsigned', 'long unsigned']
+
 export const ColumnTypeSupportAutoIncrement = [
   'byte',
   'short',
@@ -167,7 +181,22 @@ export const UnsupportColumnType = {
     'union',
     'time',
     'timestamp_tz'
-  ]
+  ],
+  'jdbc-bigquery': [
+    'union',
+    'list',
+    'map',
+    'struct',
+    'uuid',
+    'interval_day',
+    'interval_year',
+    'fixed',
+    'byte',
+    'short',
+    'integer',
+    'float'
+  ],
+  'jdbc-maxcompute': ['union', 'list', 'map', 'struct', 'uuid', 'fixed', 'timestamp_tz']
 }
 
 const tableLevelPropInfoMap = {
@@ -183,6 +212,12 @@ const tableLevelPropInfoMap = {
       'serde.parameter',
       'table-type'
     ],
+    allowAdd: true
+  },
+  'jdbc-maxcompute': {
+    reserved: [],
+    immutable: [],
+    allowDelete: false, // MaxCompute does not support removing table properties
     allowAdd: true
   },
   'jdbc-mysql': {
@@ -274,7 +309,8 @@ export const partitionInfoMap = {
   hive: ['identity'],
   'jdbc-doris': ['range', 'list'],
   'lakehouse-iceberg': ['identity', 'bucket', 'truncate', 'year', 'month', 'day', 'hour'],
-  'lakehouse-paimon': ['identity']
+  'lakehouse-paimon': ['identity'],
+  'jdbc-bigquery': ['identity', 'year', 'month', 'day', 'hour']
 }
 
 export const transformsLimitMap = {
