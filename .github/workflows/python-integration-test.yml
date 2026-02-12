@@ -62,7 +62,7 @@ jobs:
           echo "gravitino.datastrato.search.storage.impl = memory" >> ./distribution/package/conf/gravitino.conf 
           cp -r -f ./distribution ./gravitino-internal
           
-          ./gradlew -p gravitino-internal -PjdkVersion=${{ matrix.java-version }} -PpythonVersion=3.9 -PskipDockerTests=false :clients:client-python:test
+          ./gradlew -p gravitino-internal -PjdkVersion=${{ matrix.java-version }} -PpythonVersion=3.10 -PskipDockerTests=false :clients:client-python:test
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v4
