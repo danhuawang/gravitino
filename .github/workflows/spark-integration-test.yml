@@ -65,6 +65,7 @@ jobs:
       java-version: ${{ matrix.java-version }}
       scala-version: ${{ matrix.scala-version }}
       test-mode: ${{ matrix.test-mode }}
+    secrets: inherit
 
   SparkIT-on-pr:
     needs: changes
@@ -82,3 +83,4 @@ jobs:
       java-version: ${{ matrix.java-version }}
       scala-version: ${{ matrix.scala-version }}
       test-mode: ${{ matrix.test-mode }}
+    secrets: inherit

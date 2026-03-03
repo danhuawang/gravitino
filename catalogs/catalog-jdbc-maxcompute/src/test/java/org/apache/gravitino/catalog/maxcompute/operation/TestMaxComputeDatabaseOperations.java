@@ -62,6 +62,7 @@ class TestMaxComputeDatabaseOperations {
   @Test
   void testCreate() throws SQLException {
     when(mockDataSource.getConnection()).thenReturn(mockConnection);
+    when(mockConnection.getCatalog()).thenReturn("default");
     java.sql.Statement mockStatement = mock(java.sql.Statement.class);
     when(mockConnection.createStatement()).thenReturn(mockStatement);
     when(mockStatement.executeUpdate("CREATE SCHEMA test_schema")).thenReturn(0);

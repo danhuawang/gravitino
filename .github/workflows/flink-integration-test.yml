@@ -61,6 +61,7 @@ jobs:
     with:
       architecture: ${{ matrix.architecture }}
       java-version: ${{ matrix.java-version }}
+    secrets: inherit
 
   FlinkIT-on-pr:
     needs: changes
@@ -73,3 +74,4 @@ jobs:
     with:
       architecture: ${{ matrix.architecture }}
       java-version: ${{ matrix.java-version }}
+    secrets: inherit
