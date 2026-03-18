@@ -21,6 +21,12 @@ dependencies {
     targetConfiguration = "testArtifacts"
   }
 
+  testImplementation("org.apache.gravitino:lance-common") {
+    exclude(group = "*")
+  }
+
+  testRuntimeOnly(libs.awaitility)
+
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.testcontainers)
   testImplementation(libs.httpclient5)

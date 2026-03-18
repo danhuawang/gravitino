@@ -27,7 +27,7 @@ class TableSearchEntitySource extends LeafSearchEntitySource {
 
     EntityCombinedTable table = (EntityCombinedTable) tableAuditable;
     // We need to reload the table if the table is not created by Gravitino.
-    if (table.tableEntity() == null) {
+    if (table.tableFromGravitino() == null) {
       tableAuditable =
           GravitinoEnv.getInstance()
               .tableDispatcher()

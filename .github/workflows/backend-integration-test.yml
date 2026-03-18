@@ -81,7 +81,7 @@ jobs:
           -x :spark-connector:spark-3.3:test -x :spark-connector:spark-3.4:test -x :spark-connector:spark-3.5:test 
           -x :spark-connector:spark-runtime-3.3:test -x :spark-connector:spark-runtime-3.4:test -x :spark-connector:spark-runtime-3.5:test
           -x :authorizations:authorization-ranger:test -x :trino-connector:integration-test:test -x :trino-connector:trino-connector:test
-          -x :catalogs:catalog-jdbc-oceanbase:test
+          -x :catalogs-contrib:catalog-jdbc-oceanbase:test -x :catalogs-contrib:catalog-jdbc-clickhouse:test
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v4

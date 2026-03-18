@@ -361,7 +361,7 @@ public class MockedGravitinoService {
   public long getEntityId(NameIdentifier nameIdentifier) {
     String key = nameIdentifier.toString();
     if (tables.containsKey(key)) {
-      return tables.get(key).tableEntity().id();
+      return tables.get(key).tableFromGravitino().id();
     } else if (schemas.containsKey(key)) {
       return schemas.get(key).schemaEntity().id();
     } else if (catalogs.containsKey(key)) {

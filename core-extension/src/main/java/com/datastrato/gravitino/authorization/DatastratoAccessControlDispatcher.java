@@ -159,6 +159,14 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   @Override
+  public Role overridePrivilegesInRole(
+      String metalake, String role, List<SecurableObject> securableObjectsToOverride)
+      throws NoSuchRoleException, NoSuchMetalakeException {
+    return accessControlDispatcher.overridePrivilegesInRole(
+        metalake, role, securableObjectsToOverride);
+  }
+
+  @Override
   public String[] listRoleNames(String metalake) throws NoSuchMetalakeException {
     return accessControlDispatcher.listRoleNames(metalake);
   }

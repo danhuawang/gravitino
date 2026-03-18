@@ -41,6 +41,7 @@ import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.PartitionDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
@@ -221,6 +222,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public TagDispatcher tagDispatcher() {
     return GravitinoEnv.getInstance().tagDispatcher();
+  }
+
+  @Override
+  public FunctionDispatcher functionDispatcher() {
+    return GravitinoEnv.getInstance().functionDispatcher();
   }
 
   @Override

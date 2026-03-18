@@ -111,6 +111,15 @@ public class InMemoryEntityStore implements EntityStore {
   }
 
   @Override
+  public <E extends Entity & HasIdentifier> List<E> batchGet(
+      List<NameIdentifier> idents, Entity.EntityType entityType, Class<E> clazz) {
+    return idents.stream()
+        .map(ident -> (E) entityMap.get(ident))
+        .filter(e -> e != null)
+        .collect(Collectors.toList());
+  }
+
+  @Override
   public boolean delete(NameIdentifier ident, Entity.EntityType entityType, boolean cascade)
       throws IOException {
     Entity prev = entityMap.remove(ident);

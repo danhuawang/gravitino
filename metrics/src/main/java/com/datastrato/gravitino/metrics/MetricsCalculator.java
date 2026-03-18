@@ -197,7 +197,7 @@ public class MetricsCalculator {
     AssetNode[] visibleCatalogNodes =
         MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            AuthorizationExpressionConstants.loadCatalogAuthorizationExpression,
+            AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
             Entity.EntityType.CATALOG,
             metalakeSnapshot.getCatalogNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -211,7 +211,7 @@ public class MetricsCalculator {
     AssetNode[] visibleSchemaNodes =
         MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            AuthorizationExpressionConstants.loadSchemaAuthorizationExpression,
+            AuthorizationExpressionConstants.LOAD_SCHEMA_AUTHORIZATION_EXPRESSION,
             Entity.EntityType.SCHEMA,
             metalakeSnapshot.getSchemaNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -225,7 +225,7 @@ public class MetricsCalculator {
     AssetNode[] visibleTableNodes =
         MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            AuthorizationExpressionConstants.loadTableAuthorizationExpression,
+            AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION,
             Entity.EntityType.TABLE,
             metalakeSnapshot.getTableNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -239,7 +239,7 @@ public class MetricsCalculator {
     AssetNode[] visibleFilesetNodes =
         MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            AuthorizationExpressionConstants.loadFilesetAuthorizationExpression,
+            AuthorizationExpressionConstants.LOAD_FILESET_AUTHORIZATION_EXPRESSION,
             Entity.EntityType.FILESET,
             metalakeSnapshot.getFilesetNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -253,7 +253,7 @@ public class MetricsCalculator {
     AssetNode[] visibleTopicNodes =
         MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            AuthorizationExpressionConstants.loadTopicsAuthorizationExpression,
+            AuthorizationExpressionConstants.LOAD_TOPICS_AUTHORIZATION_EXPRESSION,
             Entity.EntityType.TOPIC,
             metalakeSnapshot.getTopicNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
@@ -267,7 +267,7 @@ public class MetricsCalculator {
     AssetNode[] visibleModelNodes =
         MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            AuthorizationExpressionConstants.loadModelAuthorizationExpression,
+            AuthorizationExpressionConstants.LOAD_MODEL_AUTHORIZATION_EXPRESSION,
             Entity.EntityType.MODEL,
             metalakeSnapshot.getModelNodes().toArray(new AssetNode[0]),
             AssetNode::getNameIdent,

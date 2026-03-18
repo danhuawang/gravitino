@@ -268,7 +268,7 @@ public class EntityConverterUtils {
       EntityCombinedTable table, Tag[] tags, NameIdentifier nameIdentifier) {
     String inUseString = table.properties().get("in-use");
     boolean inUse = inUseString == null || Boolean.parseBoolean(inUseString);
-    TableEntity tableEntity = table.tableEntity();
+    TableEntity tableEntity = table.tableFromGravitino();
 
     long id =
         tableEntity != null

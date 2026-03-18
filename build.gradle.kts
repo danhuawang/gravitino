@@ -252,9 +252,9 @@ tasks {
 
   val copyOssDistribution by registering(Copy::class) {
     group = "datastrato gravitino distribution"
-    // Use OSS packages as the base directory
+    // Use OSS package-all as the base directory, and place it under distribution/package
     dependsOn(compileOssDistributionWithoutTest)
-    from(submoduleDir.dir("distribution"))
+    from(submoduleDir.dir("distribution/package-all")) { into("package") }
     into(outputDir)
 
     finalizedBy(copySubprojectDependencies, copySubprojectLib, ":authorization-jdbc-enterprise:copyLibAndConfig")
