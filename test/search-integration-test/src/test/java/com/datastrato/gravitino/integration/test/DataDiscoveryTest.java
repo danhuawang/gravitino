@@ -10,6 +10,7 @@ import static java.util.Collections.emptyMap;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -125,34 +126,28 @@ public class DataDiscoveryTest extends BaseIT {
 
       Catalog catalog = getOrCreateMysqlCatalog("c2");
       createTag("tag2");
+
+      // Step 1: create all schemas and tables first — no tagging yet.
+      // Separating creation from tagging avoids a race condition where a non-cascade
+      // schema-create sync task can overwrite the schema document (without tags) after
+      // the cascade tag-association sync task has already written it with tags.
+      List<Schema> createdSchemas = new ArrayList<>();
+      List<List<Table>> createdTables = new ArrayList<>();
       for (int i = 1; i <= numberOfSchemas; i++) {
-        boolean tagged = false;
         Schema schema = createSchema(catalog, String.format("s%03d", i));
-        if (random.nextInt() % 5 == 0) {
-          schema.supportsTags().associateTags(new String[] {"tag2"}, null);
-          totalTagSchemaEntities++;
-          totalTagTableEntities += numberOfTables;
-          tagged = true;
-        }
-
+        createdSchemas.add(schema);
+        List<Table> tables = new ArrayList<>();
         for (int j = 1; j <= numberOfTables; j++) {
-          Table table = createTable(catalog, schema.name(), String.format("tb%05d", j));
-          if (random.nextInt() % 100 == 0 && !tagged) {
-            table.supportsTags().associateTags(new String[] {"tag2"}, null);
-            totalTagTableEntities++;
-          }
-
+          tables.add(createTable(catalog, schema.name(), String.format("tb%05d", j)));
           int total = (i - 1) * numberOfTables + j;
           if (total % 100 == 0) {
-            LOG.info("Create {} tables in schema {}", total, schema.name());
+            LOG.info("Created {} tables so far", total);
           }
         }
+        createdTables.add(tables);
       }
 
-      LOG.info(
-          "Created {} tables in catalog c2, and tagged {} entities with tag2",
-          totalTables,
-          totalTagTableEntities);
+      LOG.info("Created {} tables in catalog c2", totalTables);
 
       // test catalog query
       long startTime = System.currentTimeMillis();
@@ -190,6 +185,32 @@ public class DataDiscoveryTest extends BaseIT {
           totalTables,
           (System.currentTimeMillis() - startTime) / 1000);
 
+      // Step 2: now that all creation sync tasks have settled (catalog query passed),
+      // associate tags. This prevents the race where a stale schema-create sync task
+      // overwrites the schema document WITHOUT tags after the tag sync already wrote it WITH tags.
+      for (int i = 0; i < numberOfSchemas; i++) {
+        Schema schema = createdSchemas.get(i);
+        boolean tagged = false;
+        if (random.nextInt() % 5 == 0) {
+          schema.supportsTags().associateTags(new String[] {"tag2"}, null);
+          totalTagSchemaEntities++;
+          totalTagTableEntities += numberOfTables;
+          tagged = true;
+        }
+        if (!tagged) {
+          for (Table table : createdTables.get(i)) {
+            if (random.nextInt() % 100 == 0) {
+              table.supportsTags().associateTags(new String[] {"tag2"}, null);
+              totalTagTableEntities++;
+            }
+          }
+        }
+      }
+      LOG.info(
+          "Tagged {} schema(s) and {} table(s) with tag2",
+          totalTagSchemaEntities,
+          totalTagTableEntities);
+
       // test tag query
       startTime = System.currentTimeMillis();
       int finalTotalTagTableEntities = totalTagTableEntities;
@@ -205,15 +226,25 @@ public class DataDiscoveryTest extends BaseIT {
                 if (finalTotalTagSchemaEntities > 0) {
                   SearchEntitiesDTO schemaDtos =
                       getSearchEntitiesDTOByType(dtos, EntityType.SCHEMA);
-                  if (schemaDtos != null
-                      && schemaDtos.getEntities().size() != finalTotalTagSchemaEntities) {
+                  LOG.info(
+                      "Search tag tag2 got {} schema entities, expected {}",
+                      schemaDtos == null ? 0 : schemaDtos.getEntities().size(),
+                      finalTotalTagSchemaEntities);
+                  if (schemaDtos == null
+                      || schemaDtos.getEntities().size() != finalTotalTagSchemaEntities) {
                     return false;
                   }
                 }
                 if (finalTotalTagTableEntities > 0) {
+                  LOG.info(
+                      "Search tag tag2 got {} table entities, expected {}",
+                      getSearchEntitiesDTOByType(dtos, EntityType.TABLE) == null
+                          ? 0
+                          : getSearchEntitiesDTOByType(dtos, EntityType.TABLE).getEntities().size(),
+                      finalTotalTagTableEntities);
                   SearchEntitiesDTO tableDtos = getSearchEntitiesDTOByType(dtos, EntityType.TABLE);
-                  if (tableDtos != null
-                      && tableDtos.getEntities().size() != finalTotalTagTableEntities) {
+                  if (tableDtos == null
+                      || tableDtos.getEntities().size() != finalTotalTagTableEntities) {
                     return false;
                   }
                 }
@@ -269,25 +300,10 @@ public class DataDiscoveryTest extends BaseIT {
           .pollInterval(5, TimeUnit.SECONDS)
           .until(
               () -> {
+                // After renaming tag2 → tag3, searching for tag2 should return no results.
                 List<SearchEntitiesDTO> dtos =
                     searchClient.search("tag_name:tag2", metalake.name());
-
-                if (finalTotalTagSchemaEntities > 0) {
-                  SearchEntitiesDTO schemaDtos =
-                      getSearchEntitiesDTOByType(dtos, EntityType.SCHEMA);
-                  if (schemaDtos != null
-                      && schemaDtos.getEntities().size() != finalTotalTagSchemaEntities) {
-                    return false;
-                  }
-                }
-                if (finalTotalTagTableEntities > 0) {
-                  SearchEntitiesDTO tableDtos = getSearchEntitiesDTOByType(dtos, EntityType.TABLE);
-                  if (tableDtos != null
-                      && tableDtos.getEntities().size() != finalTotalTagTableEntities) {
-                    return false;
-                  }
-                }
-                return true;
+                return dtos.isEmpty();
               });
       LOG.info(
           "Search tag tag2 renamed to tag3 of {} tables successfully indexed after {} seconds",
@@ -295,10 +311,34 @@ public class DataDiscoveryTest extends BaseIT {
           (System.currentTimeMillis() - startTime) / 1000);
 
       // test rebuild index
-      searchClient.rebuildIndex(metalake.name());
+      // The rebuild writes to temp indices via a transaction.  We must wait for the task to reach
+      // COMPLETED status (which means the transaction has been committed and the alias has switched
+      // to the new index) before proceeding.  Only then will subsequent deletes (tag, catalog)
+      // apply to the committed index instead of the stale old one.
+      String rebuildTaskId = searchClient.rebuildIndex(metalake.name());
       startTime = System.currentTimeMillis();
       Awaitility.await()
           .atMost(180, TimeUnit.SECONDS)
+          .pollInterval(5, TimeUnit.SECONDS)
+          .until(
+              () -> {
+                com.datastrato.gravitino.search.dto.TaskStatusDTO status =
+                    searchClient.getTaskStatus(rebuildTaskId);
+                if (status == null) {
+                  return false;
+                }
+                String taskStatus = status.getTaskStatus();
+                LOG.info("Rebuild task {} status: {}", rebuildTaskId, taskStatus);
+                return "COMPLETED".equals(taskStatus) || "FAILED".equals(taskStatus);
+              });
+      LOG.info(
+          "Rebuild task completed after {} seconds",
+          (System.currentTimeMillis() - startTime) / 1000);
+
+      // Verify search results reflect the committed rebuild
+      startTime = System.currentTimeMillis();
+      Awaitility.await()
+          .atMost(60, TimeUnit.SECONDS)
           .pollInterval(5, TimeUnit.SECONDS)
           .until(
               () -> {

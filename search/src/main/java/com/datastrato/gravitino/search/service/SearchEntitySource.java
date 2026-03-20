@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.gravitino.Catalog;
@@ -150,11 +149,7 @@ interface SearchEntitySource {
   }
 
   /**
-   * Retrieve the tags for a given metadata object with retry mechanism.
-   *
-   * <p>This method will retry up to 3 times with 50ms delay between retries to handle cases where
-   * tag data might not be immediately available after tag association events due to asynchronous
-   * event processing.
+   * Retrieve the tags for a given metadata object.
    *
    * @param nameIdentifier the name identifier of the metadata object
    * @param type the type of the metadata object
@@ -168,54 +163,35 @@ interface SearchEntitySource {
     String metalakeName = nameIdentifier.namespace().levels()[0];
     MetadataObject object = NameIdentifierUtil.toMetadataObject(nameIdentifier, type);
 
-    // Retry up to 3 times with 50ms delay to handle tag data persistence delay
-    int maxRetries = 3;
-    int retryDelayMs = 50;
-
-    for (int attempt = 0; attempt < maxRetries; attempt++) {
-      List<TagDTO> tags = Lists.newArrayList();
-      Tag[] nonInheritedTags =
-          GravitinoEnv.getInstance()
-              .tagDispatcher()
-              .listTagsInfoForMetadataObject(metalakeName, object);
-      if (ArrayUtils.isNotEmpty(nonInheritedTags)) {
-        Collections.addAll(
-            tags,
-            Arrays.stream(nonInheritedTags)
-                .map(t -> DTOConverters.toDTO(t, Optional.of(false)))
-                .toArray(TagDTO[]::new));
-      }
-
-      MetadataObject parentObject = MetadataObjects.parent(object);
-      while (parentObject != null) {
-        Tag[] inheritedTags =
-            GravitinoEnv.getInstance()
-                .tagDispatcher()
-                .listTagsInfoForMetadataObject(metalakeName, parentObject);
-        if (ArrayUtils.isNotEmpty(inheritedTags)) {
-          Collections.addAll(
-              tags,
-              Arrays.stream(inheritedTags)
-                  .map(t -> DTOConverters.toDTO(t, Optional.of(true)))
-                  .toArray(TagDTO[]::new));
-        }
-        parentObject = MetadataObjects.parent(parentObject);
-      }
-
-      // If we found tags or this is the last attempt, return the result
-      if (!tags.isEmpty() || attempt == maxRetries - 1) {
-        return tags.toArray(new Tag[0]);
-      }
-
-      // Wait before retrying
-      try {
-        TimeUnit.MILLISECONDS.sleep(retryDelayMs);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        return tags.toArray(new Tag[0]);
-      }
+    List<TagDTO> tags = Lists.newArrayList();
+    Tag[] nonInheritedTags =
+        GravitinoEnv.getInstance()
+            .tagDispatcher()
+            .listTagsInfoForMetadataObject(metalakeName, object);
+    if (ArrayUtils.isNotEmpty(nonInheritedTags)) {
+      Collections.addAll(
+          tags,
+          Arrays.stream(nonInheritedTags)
+              .map(t -> DTOConverters.toDTO(t, Optional.of(false)))
+              .toArray(TagDTO[]::new));
     }
 
-    return new Tag[0];
+    MetadataObject parentObject = MetadataObjects.parent(object);
+    while (parentObject != null) {
+      Tag[] inheritedTags =
+          GravitinoEnv.getInstance()
+              .tagDispatcher()
+              .listTagsInfoForMetadataObject(metalakeName, parentObject);
+      if (ArrayUtils.isNotEmpty(inheritedTags)) {
+        Collections.addAll(
+            tags,
+            Arrays.stream(inheritedTags)
+                .map(t -> DTOConverters.toDTO(t, Optional.of(true)))
+                .toArray(TagDTO[]::new));
+      }
+      parentObject = MetadataObjects.parent(parentObject);
+    }
+
+    return tags.toArray(new Tag[0]);
   }
 }

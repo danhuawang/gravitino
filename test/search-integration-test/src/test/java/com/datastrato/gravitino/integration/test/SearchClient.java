@@ -5,7 +5,10 @@
 package com.datastrato.gravitino.integration.test;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
+import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.rest.SearchQueryResponse;
+import com.datastrato.gravitino.search.rest.SyncMetadataResponse;
+import com.datastrato.gravitino.search.rest.TaskStatusResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.util.List;
@@ -47,15 +50,29 @@ public class SearchClient {
     }
   }
 
-  public void rebuildIndex(String metalake) throws Exception {
+  public String rebuildIndex(String metalake) throws Exception {
     URI uri =
         new URIBuilder(url + String.format("/api/search/rebuild/metalakes/%s", metalake)).build();
 
-    HttpPost get = new HttpPost(uri);
-    try (CloseableHttpResponse response = client.execute(get)) {
+    HttpPost post = new HttpPost(uri);
+    try (CloseableHttpResponse response = client.execute(post)) {
       if (response.getCode() != 200) {
         throw new RuntimeException("Failed to rebuild index");
       }
+      String json = EntityUtils.toString(response.getEntity());
+      SyncMetadataResponse responseObj = mapper.readValue(json, SyncMetadataResponse.class);
+      return responseObj.getTaskId();
+    }
+  }
+
+  public TaskStatusDTO getTaskStatus(String taskId) throws Exception {
+    URI uri = new URIBuilder(url + String.format("/api/search/task/%s/status", taskId)).build();
+
+    HttpGet get = new HttpGet(uri);
+    try (CloseableHttpResponse response = client.execute(get)) {
+      String json = EntityUtils.toString(response.getEntity());
+      TaskStatusResponse responseObj = mapper.readValue(json, TaskStatusResponse.class);
+      return responseObj.getTaskStatusDTO();
     }
   }
 

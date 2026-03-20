@@ -25,7 +25,7 @@ EOF
 
 # Check if required scripts exist
 check_required_scripts() {
-    if [ ! -f "$CREATE_SCRIPT" ] || [ ! -f "$DELETE_SCRIPT" ]; then
+    if [[ ! -f "$CREATE_SCRIPT" ]] || [[ ! -f "$DELETE_SCRIPT" ]]; then
         echo "Error: Required scripts not found in the current directory."
         exit 1
     fi
@@ -41,20 +41,20 @@ check_jq() {
 
 # Load OpenSearch configuration from environment variable or config file
 load_config() {
-    if [ -z "$GRAVITINO_HOME" ] || [ ! -d "$GRAVITINO_HOME" ]; then
+    if [[ -z "$GRAVITINO_HOME" ]] || [[ ! -d "$GRAVITINO_HOME" ]]; then
         script_dir="$(pwd)"
-        if [ -f "$script_dir/gravitino.sh" ]; then
+        if [[ -f "$script_dir/gravitino.sh" ]]; then
             GRAVITINO_HOME="$(dirname "$script_dir")"
             echo "[INFO] Inferred GRAVITINO_HOME as $GRAVITINO_HOME"
         fi
     fi
 
-    if [ -n "$GRAVITINO_HOME" ] && [ -d "$GRAVITINO_HOME" ]; then
+    if [[ -n "$GRAVITINO_HOME" ]] && [[ -d "$GRAVITINO_HOME" ]]; then
         local conf_file="$GRAVITINO_HOME/conf/gravitino.conf"
-        if [ -f "$conf_file" ]; then
+        if [[ -f "$conf_file" ]]; then
             SEARCH_STORAGE=$(grep '^gravitino.datastrato.search.storage.impl' "$conf_file" | awk -F '=' '{print $2}' | xargs)
-            if [ $SEARCH_STORAGE != "opensearch" ]; then
-                echo "Search storeage is not OpenSearch, ignore the command"
+            if [[ "$SEARCH_STORAGE" != "opensearch" ]]; then
+                echo "Search storage is not OpenSearch, ignore the command"
                 exit 1;
             fi
 
@@ -85,7 +85,7 @@ parse_arguments() {
 
 # Validate required parameters
 validate_parameters() {
-    if [ -z "$OPENSEARCH_URL" ] || [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+    if [[ -z "$OPENSEARCH_URL" ]] || [[ -z "$USERNAME" ]] || [[ -z "$PASSWORD" ]]; then
         echo "Error: Missing required parameters (opensearch_uri, username, or password). or GRAVITINO_HOME not set."
         show_usage
     fi
@@ -93,7 +93,7 @@ validate_parameters() {
 }
 
 validate_version() {
-    if [ -z "$VERSION" ]; then 
+    if [[ -z "$VERSION" ]]; then
         echo "Error: Missing required parameter version."
         show_usage
     fi
@@ -104,7 +104,7 @@ test_connection() {
     local credentials="-u $USERNAME:$PASSWORD -k"
     echo "Testing OpenSearch connection to $OPENSEARCH_URL..."
     local response=$(curl -s -o /dev/null -w "%{http_code}" "$OPENSEARCH_URL" $credentials)
-    if [ "$response" == "200" ]; then
+    if [[ "$response" == "200" ]]; then
         echo "OpenSearch is reachable."
     else
         echo "Error: Failed to connect to OpenSearch (HTTP $response)."
@@ -118,7 +118,7 @@ print_index_template_version() {
     local response=$(curl -s -k -u "$USERNAME:$PASSWORD" "$OPENSEARCH_URL/_index_template")
     local http_code=$(curl -s -o /dev/null -w "%{http_code}" -k -u "$USERNAME:$PASSWORD" "$OPENSEARCH_URL/_index_template")
 
-    if [ "$http_code" -ne 200 ]; then
+    if [[ "$http_code" -ne 200 ]]; then
         echo "Error: Failed to fetch index templates (HTTP $http_code)."
         return 1
     fi
@@ -167,7 +167,7 @@ get_all_index_template_versions() {
     local response=$(curl -s -k -u "$USERNAME:$PASSWORD" "$OPENSEARCH_URL/_index_template")
     local http_code=$(curl -s -o /dev/null -w "%{http_code}" -k -u "$USERNAME:$PASSWORD" "$OPENSEARCH_URL/_index_template")
 
-    if [ "$http_code" -ne 200 ]; then
+    if [[ "$http_code" -ne 200 ]]; then
         echo "Error: Failed to fetch index templates (HTTP $http_code)."
         return 1
     fi
@@ -180,14 +180,14 @@ get_all_index_template_versions() {
 }
 
 rebuild_index() {
-  if [ -z "$GRAVITINO_URI" ]; then
+  if [[ -z "$GRAVITINO_URI" ]]; then
     echo "Error: Missing required parameter gravitino_uri."
     show_usage
     return 1
   fi
 
   metalakes=$(curl -s "$GRAVITINO_URI/api/metalakes" | jq -r '.metalakes[].name')
-  if [ -z "$metalakes" ]; then
+  if [[ -z "$metalakes" ]]; then
     echo "Error: No metalakes found or failed to fetch metalakes."
     return 1
   fi
@@ -209,7 +209,7 @@ rebuild_index() {
     echo
   done
 
-  if [ "$failed" -gt 0 ]; then
+  if [[ "$failed" -gt 0 ]]; then
     echo "Completed with $failed failure(s)."
     return 1
   else
@@ -219,7 +219,7 @@ rebuild_index() {
 
 # Main logic
 main() {
-    if [ $# -lt 1 ]; then
+    if [[ $# -lt 1 ]]; then
         echo "Error: No operation specified (init/upgrade/delete/version/show/rebuild)"
         show_usage
         exit 1
@@ -240,14 +240,14 @@ main() {
             test_connection
 
             existVersions=$(get_all_index_template_versions)
-            if [ ! -z "$existVersions" ]; then
+            if [[ -n "$existVersions" ]]; then
               echo "Info: Existing index templates found with versions: $existVersions"
               exit 1
             fi
 
-            if [ -z "$VERSION" ]; then
+            if [[ -z "$VERSION" ]]; then
               VERSION=$(ls -d opensearch/v[0-9]* 2>/dev/null | sort -t 'v' -k2,2n | tail -1 | sed 's#.*/##')
-              if [ -z "$VERSION" ]; then
+              if [[ -z "$VERSION" ]]; then
                 echo "Error: No version specified and no version directories found in opensearch"
                 exit 1
               fi
@@ -269,7 +269,7 @@ main() {
             else
               echo "Creating index template with version $VERSION..."
               bash "$CREATE_SCRIPT" "$VERSION" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"
-              if [ $? -eq 0 ]; then
+              if [[ $? -eq 0 ]]; then
                 echo "Deleting previous index templates with version $versions..."
                 bash "$DELETE_SCRIPT" "$existVersions" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"
               fi
