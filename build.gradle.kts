@@ -759,7 +759,8 @@ tasks.rat {
     "web-v2/web/src/types/axios.d.ts",
     "web-v2/web/yarn.lock",
     // Exclude BigQuery catalog files (commercial license, not Apache)
-    "catalogs/catalog-jdbc-bigquery/**/*"
+    "catalogs/catalog-jdbc-bigquery/**/*",
+    "catalogs/catalog-jdbc-maxcompute/**/*"
   )
 
   // Add .gitignore excludes to the Apache Rat exclusion list.
