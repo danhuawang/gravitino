@@ -10,6 +10,7 @@ import java.util.Arrays;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
+import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
@@ -22,14 +23,28 @@ public class ModelListResponse extends BaseResponse {
   @JsonProperty("models")
   private final ModelDTO[] models;
 
+  @JsonProperty("functions")
+  private final FunctionDTO[] functions;
+
+  /**
+   * Creates a new ModelListResponse.
+   *
+   * @param models The list of models.
+   * @param functions The list of functions.
+   */
+  public ModelListResponse(ModelDTO[] models, FunctionDTO[] functions) {
+    super(0);
+    this.models = models;
+    this.functions = functions;
+  }
+
   /**
    * Creates a new ModelListResponse.
    *
    * @param models The list of models.
    */
   public ModelListResponse(ModelDTO[] models) {
-    super(0);
-    this.models = models;
+    this(models, new FunctionDTO[0]);
   }
 
   /**
@@ -38,6 +53,7 @@ public class ModelListResponse extends BaseResponse {
    */
   public ModelListResponse() {
     this.models = null;
+    this.functions = null;
   }
 
   @Override
@@ -47,5 +63,9 @@ public class ModelListResponse extends BaseResponse {
     Preconditions.checkArgument(models != null, "\"models\" cannot be null");
     Arrays.stream(models)
         .forEach(model -> Preconditions.checkArgument(model != null, "model cannot be null"));
+    Preconditions.checkArgument(functions != null, "\"functions\" cannot be null");
+    Arrays.stream(functions)
+        .forEach(
+            function -> Preconditions.checkArgument(function != null, "function cannot be null"));
   }
 }

@@ -37,6 +37,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
@@ -45,6 +46,7 @@ import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
+import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
@@ -52,6 +54,7 @@ import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
+import org.apache.gravitino.function.Function;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
@@ -77,6 +80,7 @@ public class EntityOperations {
   private final DatastratoFilesetDispatcher filesetDispatcher;
   private final DatastratoTopicDispatcher topicDispatcher;
   private final DatastratoModelDispatcher modelDispatcher;
+  private final FunctionDispatcher functionDispatcher;
 
   @Inject
   public EntityOperations(
@@ -85,13 +89,15 @@ public class EntityOperations {
       TableDispatcher tableDispatcher,
       FilesetDispatcher filesetDispatcher,
       TopicDispatcher topicDispatcher,
-      ModelDispatcher modelDispatcher) {
+      ModelDispatcher modelDispatcher,
+      FunctionDispatcher functionDispatcher) {
     this.catalogDispatcher = catalogDispatcher;
     this.schemaDispatcher = (DatastratoSchemaDispatcher) schemaDispatcher;
     this.tableDispatcher = (DatastratoTableDispatcher) tableDispatcher;
     this.filesetDispatcher = (DatastratoFilesetDispatcher) filesetDispatcher;
     this.topicDispatcher = (DatastratoTopicDispatcher) topicDispatcher;
     this.modelDispatcher = (DatastratoModelDispatcher) modelDispatcher;
+    this.functionDispatcher = functionDispatcher;
   }
 
   @GET
@@ -255,7 +261,8 @@ public class EntityOperations {
                 })
             .toArray(TableDTO[]::new);
 
-    Response response = Utils.ok(new TableListResponse(tableDTOs));
+    FunctionDTO[] functionDTOs = listFunctionDTOs(namespace, resultLimit);
+    Response response = Utils.ok(new TableListResponse(tableDTOs, functionDTOs));
     LOG.info("List {} table entities under namespace: {}", tableDTOs.length, namespace);
     return response;
   }
@@ -290,7 +297,8 @@ public class EntityOperations {
                 })
             .toArray(TopicDTO[]::new);
 
-    Response response = Utils.ok(new TopicListResponse(topicDTOs));
+    Response response =
+        Utils.ok(new TopicListResponse(topicDTOs, listFunctionDTOs(namespace, resultLimit)));
     LOG.info("List {} topic entities under namespace: {}", topicDTOs.length, namespace);
     return response;
   }
@@ -314,7 +322,8 @@ public class EntityOperations {
                         .build())
             .toArray(FilesetDTO[]::new);
 
-    Response response = Utils.ok(new FilesetListResponse(filesetDTOs));
+    Response response =
+        Utils.ok(new FilesetListResponse(filesetDTOs, listFunctionDTOs(namespace, resultLimit)));
     LOG.info("List {} fileset entities under namespace: {}", filesetDTOs.length, namespace);
     return response;
   }
@@ -337,9 +346,24 @@ public class EntityOperations {
                         .build())
             .toArray(ModelDTO[]::new);
 
-    Response response = Utils.ok(new ModelListResponse(modelDTOs));
+    Response response =
+        Utils.ok(new ModelListResponse(modelDTOs, listFunctionDTOs(namespace, resultLimit)));
     LOG.info("List {} model entities under namespace: {}", modelDTOs.length, namespace);
     return response;
+  }
+
+  private FunctionDTO[] listFunctionDTOs(Namespace namespace, int resultLimit) {
+    try {
+      Function[] functions = functionDispatcher.listFunctionInfos(namespace);
+      return Arrays.stream(functions)
+          .sorted(Comparator.comparing(Function::name))
+          .limit(resultLimit)
+          .map(DTOConverters::toDTO)
+          .toArray(FunctionDTO[]::new);
+    } catch (Exception e) {
+      LOG.warn("Failed to list functions under namespace: {}", namespace, e);
+      return new FunctionDTO[0];
+    }
   }
 
   private ColumnDTO[] mockColumns() {

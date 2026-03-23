@@ -11,6 +11,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 import org.apache.gravitino.dto.file.FilesetDTO;
+import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
 /** Represents a response for a list of filesets with their information. */
@@ -22,14 +23,28 @@ public class FilesetListResponse extends BaseResponse {
   @JsonProperty("filesets")
   private final FilesetDTO[] filesets;
 
+  @JsonProperty("functions")
+  private final FunctionDTO[] functions;
+
+  /**
+   * Creates a new FilesetListResponse.
+   *
+   * @param filesets The list of filesets.
+   * @param functions The list of functions.
+   */
+  public FilesetListResponse(FilesetDTO[] filesets, FunctionDTO[] functions) {
+    super(0);
+    this.filesets = filesets;
+    this.functions = functions;
+  }
+
   /**
    * Creates a new FilesetListResponse.
    *
    * @param filesets The list of filesets.
    */
   public FilesetListResponse(FilesetDTO[] filesets) {
-    super(0);
-    this.filesets = filesets;
+    this(filesets, new FunctionDTO[0]);
   }
 
   /**
@@ -39,6 +54,7 @@ public class FilesetListResponse extends BaseResponse {
   public FilesetListResponse() {
     super();
     this.filesets = null;
+    this.functions = null;
   }
 
   @Override
@@ -48,5 +64,9 @@ public class FilesetListResponse extends BaseResponse {
     Preconditions.checkArgument(filesets != null, "\"filesets\" cannot be null");
     Arrays.stream(filesets)
         .forEach(fileset -> Preconditions.checkArgument(fileset != null, "fileset cannot be null"));
+    Preconditions.checkArgument(functions != null, "\"functions\" cannot be null");
+    Arrays.stream(functions)
+        .forEach(
+            function -> Preconditions.checkArgument(function != null, "function cannot be null"));
   }
 }

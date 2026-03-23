@@ -10,6 +10,7 @@ import java.util.Arrays;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
+import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
@@ -22,14 +23,28 @@ public class TableListResponse extends BaseResponse {
   @JsonProperty("tables")
   private final TableDTO[] tables;
 
+  @JsonProperty("functions")
+  private final FunctionDTO[] functions;
+
+  /**
+   * Create a new TableListResponse.
+   *
+   * @param tables The list of tables.
+   * @param functions The list of functions.
+   */
+  public TableListResponse(TableDTO[] tables, FunctionDTO[] functions) {
+    super(0);
+    this.tables = tables;
+    this.functions = functions;
+  }
+
   /**
    * Create a new TableListResponse.
    *
    * @param tables The list of tables.
    */
   public TableListResponse(TableDTO[] tables) {
-    super(0);
-    this.tables = tables;
+    this(tables, new FunctionDTO[0]);
   }
 
   /**
@@ -39,6 +54,7 @@ public class TableListResponse extends BaseResponse {
   public TableListResponse() {
     super();
     this.tables = null;
+    this.functions = null;
   }
 
   @Override
@@ -48,5 +64,9 @@ public class TableListResponse extends BaseResponse {
     Preconditions.checkArgument(tables != null, "\"tables\" cannot be null");
     Arrays.stream(tables)
         .forEach(table -> Preconditions.checkArgument(table != null, "table cannot be null"));
+    Preconditions.checkArgument(functions != null, "\"functions\" cannot be null");
+    Arrays.stream(functions)
+        .forEach(
+            function -> Preconditions.checkArgument(function != null, "function cannot be null"));
   }
 }

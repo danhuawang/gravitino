@@ -45,6 +45,7 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
+import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
@@ -52,6 +53,7 @@ import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
+import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
@@ -59,10 +61,13 @@ import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
+import org.apache.gravitino.function.Function;
+import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.FilesetEntity;
+import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
@@ -96,6 +101,7 @@ public class TestEntityOperations extends JerseyTest {
       mock(DatastratoFilesetDispatcher.class);
   private final DatastratoTopicDispatcher topicDispatcher = mock(DatastratoTopicDispatcher.class);
   private final DatastratoModelDispatcher modelDispatcher = mock(DatastratoModelDispatcher.class);
+  private final FunctionDispatcher functionDispatcher = mock(FunctionDispatcher.class);
 
   @BeforeAll
   public static void setup() throws IllegalAccessException {
@@ -127,6 +133,7 @@ public class TestEntityOperations extends JerseyTest {
             bind(topicDispatcher).to(TopicDispatcher.class).ranked(2);
             bind(filesetDispatcher).to(FilesetDispatcher.class).ranked(2);
             bind(modelDispatcher).to(ModelDispatcher.class).ranked(2);
+            bind(functionDispatcher).to(FunctionDispatcher.class).ranked(2);
             bindFactory(TestEntityOperations.MockServletRequestFactory.class)
                 .to(HttpServletRequest.class);
           }
@@ -279,6 +286,7 @@ public class TestEntityOperations extends JerseyTest {
     NameIdentifier[] tableIdents = {tableIdent};
     when(tableDispatcher.listTables(namespace)).thenReturn(tableIdents);
     when(tableDispatcher.listEntities(namespace)).thenReturn(buildTableEntity(tableIdents));
+    when(functionDispatcher.listFunctionInfos(namespace)).thenReturn(buildFunctionInfos(namespace));
 
     resp =
         target("/web/entities")
@@ -294,6 +302,8 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0, tableResp.getCode());
     Assertions.assertEquals(1, tableResp.getTables().length);
     assertTables(tableResp.getTables());
+    Assertions.assertEquals(1, tableResp.getFunctions().length);
+    assertFunctions(tableResp.getFunctions());
 
     // test list tables with schema not found in store
     doThrow(new NoSuchSchemaException("Schema testMetalake.relCatalog.relSchema does not exist"))
@@ -324,6 +334,7 @@ public class TestEntityOperations extends JerseyTest {
     NameIdentifier[] topicIdents = {topicIdent};
     when(topicDispatcher.listTopics(namespace)).thenReturn(topicIdents);
     when(topicDispatcher.listEntities(namespace)).thenReturn(buildTopicEntity(topicIdents));
+    when(functionDispatcher.listFunctionInfos(namespace)).thenReturn(buildFunctionInfos(namespace));
 
     resp =
         target("/web/entities")
@@ -339,6 +350,8 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0, topicResp.getCode());
     Assertions.assertEquals(1, topicResp.getTopics().length);
     assertTopics(topicResp.getTopics());
+    Assertions.assertEquals(1, topicResp.getFunctions().length);
+    assertFunctions(topicResp.getFunctions());
 
     // test list topics with schema not found in store
     doThrow(
@@ -370,6 +383,7 @@ public class TestEntityOperations extends JerseyTest {
     NameIdentifier filesetIdent = NameIdentifier.of(namespace, "fileset");
     NameIdentifier[] filesetIdents = {filesetIdent};
     when(filesetDispatcher.listEntities(namespace)).thenReturn(buildFilesetEntity(filesetIdents));
+    when(functionDispatcher.listFunctionInfos(namespace)).thenReturn(buildFunctionInfos(namespace));
 
     resp =
         target("/web/entities")
@@ -385,12 +399,16 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0, filesetResp.getCode());
     Assertions.assertEquals(1, filesetResp.getFilesets().length);
     assertFilesets(filesetResp.getFilesets());
+    Assertions.assertEquals(1, filesetResp.getFunctions().length);
+    assertFunctions(filesetResp.getFunctions());
 
     // test list models
     Namespace modelNamespace = Namespace.of("testMetalake", "modelCatalog", "modelSchema");
     NameIdentifier modelIdent = NameIdentifier.of(modelNamespace, "model");
     NameIdentifier[] modelIdents = {modelIdent};
     when(modelDispatcher.listEntities(modelNamespace)).thenReturn(buildModelEntity(modelIdents));
+    when(functionDispatcher.listFunctionInfos(modelNamespace))
+        .thenReturn(buildFunctionInfos(modelNamespace));
 
     resp =
         target("/web/entities")
@@ -406,6 +424,8 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0, modelResp.getCode());
     Assertions.assertEquals(1, modelResp.getModels().length);
     assertModels(modelResp.getModels());
+    Assertions.assertEquals(1, modelResp.getFunctions().length);
+    assertFunctions(modelResp.getFunctions());
   }
 
   private void assertModels(ModelDTO[] models) {
@@ -415,6 +435,15 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(1, modelDTO.latestVersion());
     Assertions.assertEquals("creator", modelDTO.auditInfo().creator());
     Assertions.assertEquals("value", modelDTO.properties().get("key"));
+  }
+
+  private void assertFunctions(FunctionDTO[] functions) {
+    FunctionDTO functionDTO = functions[0];
+    Assertions.assertEquals("testFunction", functionDTO.name());
+    Assertions.assertEquals(FunctionType.SCALAR, functionDTO.functionType());
+    Assertions.assertTrue(functionDTO.deterministic());
+    Assertions.assertEquals("test function comment", functionDTO.comment());
+    Assertions.assertEquals("creator", functionDTO.auditInfo().creator());
   }
 
   private void assertFilesets(FilesetDTO[] filesets) {
@@ -467,6 +496,22 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(
         ImmutableMap.of("key", "value", "in-use", "true"), catalogDTO2.properties());
     Assertions.assertEquals("creator", catalogDTO2.auditInfo().creator());
+  }
+
+  private Function[] buildFunctionInfos(Namespace namespace) {
+    return new Function[] {
+      FunctionEntity.builder()
+          .withId(1L)
+          .withName("testFunction")
+          .withNamespace(namespace)
+          .withComment("test function comment")
+          .withFunctionType(FunctionType.SCALAR)
+          .withDeterministic(true)
+          .withDefinitions(new org.apache.gravitino.function.FunctionDefinition[0])
+          .withAuditInfo(
+              AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+          .build()
+    };
   }
 
   private List<ModelEntity> buildModelEntity(NameIdentifier[] modelIdents) {
