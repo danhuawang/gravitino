@@ -76,3 +76,5 @@ jobs:
             gravitino-internal/distribution/package/logs/gravitino-server.log
             gravitino-internal/catalogs/**/*.log
             gravitino-internal/catalogs/**/*.tar
+            gravitino-internal/distribution/**/*.log
+            gravitino-internal/distribution/**/*.out

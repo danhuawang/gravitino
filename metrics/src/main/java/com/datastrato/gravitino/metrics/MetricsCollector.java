@@ -661,7 +661,8 @@ public class MetricsCollector implements Closeable {
       Map<Long, AssetNode> assetNodeById)
       throws IOException {
     Set<AssetNode> topicNodes =
-        store.list(nsOfTopic, org.apache.gravitino.meta.TopicEntity.class, Entity.EntityType.TOPIC)
+        store
+            .list(nsOfTopic, org.apache.gravitino.meta.TopicEntity.class, Entity.EntityType.TOPIC)
             .stream()
             .map(
                 topic -> {

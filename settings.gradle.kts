@@ -46,6 +46,9 @@ includeBuild("gravitino-internal") {
     substitute(module("org.apache.gravitino:integration-test-common"))
       .using(project(":integration-test-common"))
 
+    substitute(module("org.apache.gravitino:iceberg-rest-server"))
+      .using(project(":iceberg:iceberg-rest-server"))
+
     substitute(module("org.apache.gravitino:lance-common"))
       .using(project(":lance:lance-common"))
   }

@@ -154,8 +154,7 @@ jobs:
             gravitino-internal/integration-test/build/*.tar
             gravitino-internal/integration-test/build/trino-ci-container-log/hive/*.*
             gravitino-internal/integration-test/build/trino-ci-container-log/hdfs/*.*
-            gravitino-internal/distribution/package/logs/*.out
-            gravitino-internal/distribution/package/logs/*.log
             gravitino-internal/catalogs/**/*.log
             gravitino-internal/catalogs/**/*.tar
             gravitino-internal/distribution/**/*.log
+            gravitino-internal/distribution/**/*.out

@@ -46,7 +46,7 @@ allprojects {
         // Fix the Google Java Format version to 1.7. Since JDK8 only support Google Java Format
         // 1.7, which is not compatible with JDK17. We will use a newer version when we upgrade to
         // JDK17.
-        googleJavaFormat("1.7")
+        googleJavaFormat("1.15.0")
         removeUnusedImports()
         trimTrailingWhitespace()
         replaceRegex(
@@ -234,6 +234,13 @@ tasks {
         into("distribution/package/libs")
       }
     }
+    // Exclude cloud bundle JARs (aliyun/aws/azure/gcp) that are pulled in transitively
+    // via iceberg-rest-server → bundles. These bundles are packaged separately in the
+    // OSS distribution's catalogs directory and must not be duplicated in the main libs.
+    exclude("gravitino-aliyun-*.jar")
+    exclude("gravitino-aws-*.jar")
+    exclude("gravitino-azure-*.jar")
+    exclude("gravitino-gcp-*.jar")
   }
 
   val copySubprojectLib by registering(Copy::class) {
@@ -431,6 +438,34 @@ tasks {
 
       // append scripts
       appendScriptsToPackage(outputDir)
+
+      // Deduplicate Jackson JARs: keep only the newest version to avoid classpath conflicts.
+      // Multiple Jackson versions (e.g. 2.15.2 from core and 2.19.2 from iceberg-rest-server)
+      // in the same libs directory cause NoSuchMethodError at runtime because jackson-databind
+      // 2.19.x calls ParserMinimalBase(StreamReadConstraints) which only exists in jackson-core 2.16+.
+      val libsDir = file(outputDir.dir("package/libs"))
+      val jacksonModulePattern = Regex("^(jackson-[\\w-]+)-(\\d+(?:\\.\\d+)+)\\.jar$")
+      val jacksonJars = libsDir.listFiles()
+        ?.filter { jacksonModulePattern.matches(it.name) }
+        ?: emptyList()
+
+      jacksonJars
+        .groupBy { jacksonModulePattern.find(it.name)!!.groupValues[1] }
+        .values
+        .filter { it.size > 1 }
+        .forEach { versions ->
+          // Pad each version component for correct lexicographic comparison
+          val sorted = versions.sortedWith(
+            compareBy {
+              jacksonModulePattern.find(it.name)?.groupValues?.get(2)
+                ?.split(".")?.joinToString(".") { part -> part.padStart(6, '0') }
+            }
+          )
+          sorted.dropLast(1).forEach { oldJar ->
+            logger.lifecycle("Removing conflicting Jackson JAR: ${oldJar.name}")
+            oldJar.delete()
+          }
+        }
     }
   }
 

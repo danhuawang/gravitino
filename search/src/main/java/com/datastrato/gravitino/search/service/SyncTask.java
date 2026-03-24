@@ -292,8 +292,7 @@ public class SyncTask {
 
   private void updateTaskStatus(TaskStatusEnum taskStatusEnum, String message) {
     TaskStatus newStatus =
-        taskStatus
-            .toBuilder()
+        taskStatus.toBuilder()
             .withTaskStatus(taskStatusEnum.name())
             .withMessage(message)
             .withTaskUpdateTime(System.currentTimeMillis())

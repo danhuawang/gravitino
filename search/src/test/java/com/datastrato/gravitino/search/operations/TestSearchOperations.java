@@ -261,8 +261,7 @@ public class TestSearchOperations extends JerseyTest {
 
     // Update the task status
     taskStatus =
-        taskStatus
-            .toBuilder()
+        taskStatus.toBuilder()
             .withTaskStatus(TaskStatus.TaskStatusEnum.COMPLETED.name())
             .withMessage("Task completed successfully")
             .withTaskUpdateTime(System.currentTimeMillis())

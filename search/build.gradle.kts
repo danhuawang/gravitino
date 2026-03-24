@@ -14,6 +14,13 @@ dependencies {
   implementation("org.apache.gravitino:api")
   implementation("org.apache.gravitino:core")
   implementation("org.apache.gravitino:common")
+  implementation("org.apache.gravitino:iceberg-rest-server")
+  // RenameTableRequest is referenced in TableEventHandler via IcebergRenameTableEvent;
+  // the jar is present at runtime through iceberg-rest-server's transitive deps.
+  compileOnly(libs.iceberg.core)
+
+  testCompileOnly(libs.iceberg.core)
+
   implementation("org.apache.gravitino:server-common")
   antlr(libs.antlr4)
   implementation(libs.antlr4.runtime)
