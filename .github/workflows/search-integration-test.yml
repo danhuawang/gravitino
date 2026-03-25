@@ -28,9 +28,6 @@ jobs:
       PLATFORM: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
@@ -39,17 +36,17 @@ jobs:
           cache: 'gradle'
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Check required command
         run: |
-          gravitino-internal/dev/ci/check_commands.sh
+          dev/ci/check_commands.sh
 
       - name: Package Gravitino
         if : ${{ matrix.test-mode == 'deploy' }}
@@ -58,7 +55,7 @@ jobs:
 
       - name: Free up disk space
         run: |
-          gravitino-internal/dev/ci/util_free_space.sh
+          dev/ci/util_free_space.sh
 
       - name: Run Search Integration Test
         id: integrationTest
@@ -71,17 +68,17 @@ jobs:
         with:
           name: integrate-test-reports-${{ matrix.java-version }}-${{ matrix.test-mode }}-${{ matrix.backend }}
           path: |
-            gravitino-internal/build/reports
-            gravitino-internal/iceberg/iceberg-rest-server/build/*.log
-            gravitino-internal/integration-test/build/*.log
-            gravitino-internal/integration-test/build/*.tar
-            gravitino-internal/integration-test/build/trino-ci-container-log/hive/*.*
-            gravitino-internal/integration-test/build/trino-ci-container-log/hdfs/*.*
-            gravitino-internal/distribution/package/logs/*.out
-            gravitino-internal/distribution/package/logs/*.log
-            gravitino-internal/catalogs/**/*.log
-            gravitino-internal/catalogs/**/*.tar
-            gravitino-internal/distribution/**/*.log
+            build/reports
+            iceberg/iceberg-rest-server/build/*.log
+            integration-test/build/*.log
+            integration-test/build/*.tar
+            integration-test/build/trino-ci-container-log/hive/*.*
+            integration-test/build/trino-ci-container-log/hdfs/*.*
+            distribution/package/logs/*.out
+            distribution/package/logs/*.log
+            catalogs/**/*.log
+            catalogs/**/*.tar
+            distribution/**/*.log
             test/search-integration-test/build/reports
             distribution/package/logs/*.out
             distribution/package/logs/*.log

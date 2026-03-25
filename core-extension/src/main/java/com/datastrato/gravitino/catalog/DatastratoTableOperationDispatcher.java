@@ -56,7 +56,7 @@ public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
           try {
             return store.list(namespace, TableEntity.class, TABLE);
           } catch (NoSuchEntityException e) {
-            throw new NoSuchSchemaException("Schema does not exist: " + namespace);
+            throw new NoSuchSchemaException("Schema does not exist: %s", namespace);
           } catch (IOException e) {
             throw new RuntimeException(e);
           }

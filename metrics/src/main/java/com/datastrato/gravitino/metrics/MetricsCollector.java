@@ -21,13 +21,13 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -285,7 +285,9 @@ public class MetricsCollector implements Closeable {
     long oldestTimestamp = currentTimestamp - retentionPeriod.toMillis();
     try {
       metricDataService.cleanMetricsByTimestamp(oldestTimestamp);
-      LOG.info("Expired metrics cleaned successfully, older than: {}", new Date(oldestTimestamp));
+      LOG.info(
+          "Expired metrics cleaned successfully, older than: {}",
+          Instant.ofEpochMilli(oldestTimestamp));
 
       metricDataService.cleanInvalidMetrics();
     } catch (Exception e) {

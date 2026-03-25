@@ -10,27 +10,25 @@ plugins {
 }
 
 dependencies {
-  testImplementation("org.apache.gravitino:api")
-  testImplementation("org.apache.gravitino:client-java")
-  testImplementation("org.apache.gravitino:core")
-  testImplementation("org.apache.gravitino:common")
+  testImplementation(project(":api"))
+  testImplementation(project(":clients:client-java"))
+  testImplementation(project(":core"))
+  testImplementation(project(":common"))
   testImplementation(project(":search"))
   testImplementation(project(":test:test-common"))
 
-  testImplementation("org.apache.gravitino:integration-test-common") {
-    targetConfiguration = "testArtifacts"
-  }
+  testImplementation(project(":integration-test-common", "testArtifacts"))
 
-  testImplementation("org.apache.gravitino:lance-common") {
+  testImplementation(project(":lance:lance-common")) {
     exclude(group = "*")
   }
 
-  testRuntimeOnly(libs.awaitility)
-
-  testImplementation(libs.junit.jupiter.api)
-  testImplementation(libs.testcontainers)
+  testImplementation(libs.awaitility)
+  testImplementation(libs.guava)
   testImplementation(libs.httpclient5)
   testImplementation(libs.jackson.databind)
+  testImplementation(libs.junit.jupiter.api)
+  testImplementation(libs.testcontainers)
 
   testRuntimeOnly(libs.junit.jupiter.engine)
 }

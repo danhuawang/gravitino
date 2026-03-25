@@ -43,7 +43,7 @@ public class DatastratoSchemaOperationDispatcher extends SchemaOperationDispatch
           try {
             return store.list(namespace, SchemaEntity.class, SCHEMA);
           } catch (NoSuchEntityException e) {
-            throw new NoSuchCatalogException("Catalog does not exist: " + namespace);
+            throw new NoSuchCatalogException("Catalog does not exist: %s", namespace);
           } catch (IOException e) {
             throw new RuntimeException(e);
           }

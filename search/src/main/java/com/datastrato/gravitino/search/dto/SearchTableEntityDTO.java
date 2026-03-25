@@ -21,7 +21,7 @@ public class SearchTableEntityDTO extends SearchEntityDTO {
   }
 
   public static class SearchTableEntityDTOBuilder
-      extends SearchTableEntityDTO.Builder<SearchTableEntityDTOBuilder, SearchTableEntityDTO> {
+      extends Builder<SearchTableEntityDTOBuilder, SearchTableEntityDTO> {
     private List<SearchColumnDTO> columns;
 
     private SearchTableEntityDTOBuilder() {
@@ -52,6 +52,7 @@ public class SearchTableEntityDTO extends SearchEntityDTO {
   }
 
   @JsonDeserialize(builder = SearchColumnDTO.Builder.class)
+  @SuppressWarnings("unused") // Fields are accessed by Jackson via reflection
   public static class SearchColumnDTO {
     private String columnName;
 

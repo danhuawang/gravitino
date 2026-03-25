@@ -1,6 +1,20 @@
 --
--- Copyright 2023 Datastrato Pvt Ltd.
--- This software is licensed under the Apache License version 2.
+-- Licensed to the Apache Software Foundation (ASF) under one
+-- or more contributor license agreements.  See the NOTICE file--
+--  distributed with this work for additional information
+-- regarding copyright ownership.  The ASF licenses this file
+-- to you under the Apache License, Version 2.0 (the
+-- "License"). You may not use this file except in compliance
+-- with the License.  You may obtain a copy of the License at
+--
+--  http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing,
+-- software distributed under the License is distributed on an
+-- "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+-- KIND, either express or implied.  See the License for the
+-- specific language governing permissions and limitations
+-- under the License.
 --
 
 CREATE TABLE IF NOT EXISTS function_meta (
@@ -11,16 +25,15 @@ CREATE TABLE IF NOT EXISTS function_meta (
     schema_id BIGINT NOT NULL,
     function_type VARCHAR(64) NOT NULL,
     deterministic SMALLINT DEFAULT 1,
-    function_current_version INTEGER DEFAULT 1,
-    function_latest_version INTEGER DEFAULT 1,
+    function_current_version INT DEFAULT 1,
+    function_latest_version INT DEFAULT 1,
     audit_info TEXT NOT NULL,
     deleted_at BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (function_id),
     UNIQUE (schema_id, function_name, deleted_at)
 );
-
-CREATE INDEX IF NOT EXISTS idx_funmid ON function_meta (metalake_id);
-CREATE INDEX IF NOT EXISTS idx_funcid ON function_meta (catalog_id);
+CREATE INDEX idx_function_meta_metalake_id ON function_meta (metalake_id);
+CREATE INDEX idx_function_meta_catalog_id ON function_meta (catalog_id);
 
 COMMENT ON TABLE function_meta IS 'function metadata';
 COMMENT ON COLUMN function_meta.function_id IS 'function id';
@@ -30,7 +43,6 @@ COMMENT ON COLUMN function_meta.catalog_id IS 'catalog id';
 COMMENT ON COLUMN function_meta.schema_id IS 'schema id';
 COMMENT ON COLUMN function_meta.function_type IS 'function type';
 COMMENT ON COLUMN function_meta.deterministic IS 'whether the function result is deterministic';
-COMMENT ON COLUMN function_meta.function_current_version IS 'function current version';
 COMMENT ON COLUMN function_meta.function_latest_version IS 'function latest version';
 COMMENT ON COLUMN function_meta.audit_info IS 'function audit info';
 COMMENT ON COLUMN function_meta.deleted_at IS 'function deleted at';
@@ -41,7 +53,7 @@ CREATE TABLE IF NOT EXISTS function_version_info (
     catalog_id BIGINT NOT NULL,
     schema_id BIGINT NOT NULL,
     function_id BIGINT NOT NULL,
-    version INTEGER NOT NULL,
+    version INT NOT NULL,
     function_comment TEXT DEFAULT NULL,
     definitions TEXT NOT NULL,
     audit_info TEXT NOT NULL,
@@ -49,10 +61,9 @@ CREATE TABLE IF NOT EXISTS function_version_info (
     PRIMARY KEY (id),
     UNIQUE (function_id, version, deleted_at)
 );
-
-CREATE INDEX IF NOT EXISTS idx_funvmid ON function_version_info (metalake_id);
-CREATE INDEX IF NOT EXISTS idx_funvcid ON function_version_info (catalog_id);
-CREATE INDEX IF NOT EXISTS idx_funvsid ON function_version_info (schema_id);
+CREATE INDEX idx_function_version_metalake_id ON function_version_info (metalake_id);
+CREATE INDEX idx_function_version_catalog_id ON function_version_info (catalog_id);
+CREATE INDEX idx_function_version_schema_id ON function_version_info (schema_id);
 
 COMMENT ON TABLE function_version_info IS 'function version info';
 COMMENT ON COLUMN function_version_info.id IS 'auto increment id';
@@ -72,17 +83,17 @@ CREATE TABLE IF NOT EXISTS view_meta (
     metalake_id BIGINT NOT NULL,
     catalog_id BIGINT NOT NULL,
     schema_id BIGINT NOT NULL,
-    current_version INTEGER NOT NULL DEFAULT 1,
-    last_version INTEGER NOT NULL DEFAULT 1,
+    current_version INT NOT NULL DEFAULT 1,
+    last_version INT NOT NULL DEFAULT 1,
     deleted_at BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (view_id),
     UNIQUE (schema_id, view_name, deleted_at)
 );
 
-CREATE INDEX IF NOT EXISTS idx_vemid ON view_meta (metalake_id);
-CREATE INDEX IF NOT EXISTS idx_vecid ON view_meta (catalog_id);
-
+CREATE INDEX IF NOT EXISTS view_meta_idx_metalake_id ON view_meta (metalake_id);
+CREATE INDEX IF NOT EXISTS view_meta_idx_catalog_id ON view_meta (catalog_id);
 COMMENT ON TABLE view_meta IS 'view metadata';
+
 COMMENT ON COLUMN view_meta.view_id IS 'view id';
 COMMENT ON COLUMN view_meta.view_name IS 'view name';
 COMMENT ON COLUMN view_meta.metalake_id IS 'metalake id';
@@ -104,9 +115,9 @@ CREATE TABLE IF NOT EXISTS partition_statistic_meta (
     PRIMARY KEY (table_id, partition_name, statistic_name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_table_partition ON partition_statistic_meta (table_id, partition_name);
+CREATE INDEX IF NOT EXISTS idx_table_partition ON partition_statistic_meta(table_id, partition_name);
 
-COMMENT ON TABLE partition_statistic_meta IS 'partition statistic metadata';
+COMMENT ON TABLE partition_statistic_meta IS 'partition statistics metadata';
 COMMENT ON COLUMN partition_statistic_meta.table_id IS 'table id from table_meta';
 COMMENT ON COLUMN partition_statistic_meta.partition_name IS 'partition name';
 COMMENT ON COLUMN partition_statistic_meta.statistic_name IS 'statistic name';
@@ -114,3 +125,42 @@ COMMENT ON COLUMN partition_statistic_meta.statistic_value IS 'statistic value a
 COMMENT ON COLUMN partition_statistic_meta.audit_info IS 'audit information as JSON';
 COMMENT ON COLUMN partition_statistic_meta.created_at IS 'creation timestamp in milliseconds';
 COMMENT ON COLUMN partition_statistic_meta.updated_at IS 'last update timestamp in milliseconds';
+
+-- Add optimizer metrics storage tables
+CREATE TABLE IF NOT EXISTS table_metrics (
+    id BIGSERIAL PRIMARY KEY,
+    table_identifier VARCHAR(1024) NOT NULL,
+    metric_name VARCHAR(1024) NOT NULL,
+    table_partition VARCHAR(1024),
+    metric_ts BIGINT NOT NULL,
+    metric_value VARCHAR(1024) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS job_metrics (
+    id BIGSERIAL PRIMARY KEY,
+    job_identifier VARCHAR(1024) NOT NULL,
+    metric_name VARCHAR(1024) NOT NULL,
+    metric_ts BIGINT NOT NULL,
+    metric_value VARCHAR(1024) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_table_metrics_metric_ts ON table_metrics(metric_ts);
+CREATE INDEX IF NOT EXISTS idx_job_metrics_metric_ts ON job_metrics(metric_ts);
+CREATE INDEX IF NOT EXISTS idx_table_metrics_composite
+  ON table_metrics(table_identifier, table_partition, metric_ts);
+CREATE INDEX IF NOT EXISTS idx_job_metrics_identifier_metric_ts
+  ON job_metrics(job_identifier, metric_ts);
+
+COMMENT ON TABLE table_metrics IS 'optimizer table metrics';
+COMMENT ON TABLE job_metrics IS 'optimizer job metrics';
+COMMENT ON COLUMN table_metrics.id IS 'auto increment id';
+COMMENT ON COLUMN table_metrics.table_identifier IS 'normalized table identifier';
+COMMENT ON COLUMN table_metrics.metric_name IS 'metric name';
+COMMENT ON COLUMN table_metrics.table_partition IS 'normalized partition identifier';
+COMMENT ON COLUMN table_metrics.metric_ts IS 'metric timestamp in epoch seconds';
+COMMENT ON COLUMN table_metrics.metric_value IS 'metric value payload';
+COMMENT ON COLUMN job_metrics.id IS 'auto increment id';
+COMMENT ON COLUMN job_metrics.job_identifier IS 'normalized job identifier';
+COMMENT ON COLUMN job_metrics.metric_name IS 'metric name';
+COMMENT ON COLUMN job_metrics.metric_ts IS 'metric timestamp in epoch seconds';
+COMMENT ON COLUMN job_metrics.metric_value IS 'metric value payload';

@@ -2,83 +2,76 @@ name: Flink Integration Test
 
 # Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
+  workflow_dispatch:
   push:
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
   pull_request:
     types: [labeled]
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-
-  # Integration test for AMD64 architecture
-  test-amd64-arch:
+  changes:
+    runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, large]
-    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+        id: filter
+        with:
+          filters: |
+            source_changes:
+              - .github/**
+              - api/**
+              - bin/**
+              - catalogs/**
+              - clients/client-java/**
+              - clients/client-java-runtime/**
+              - common/**
+              - conf/**
+              - core/**
+              - dev/**
+              - flink-connector/**
+              - gradle/**
+              # todo: uncomment the following line after the flink-connector support Iceberg
+              # - iceberg/**
+              - integration-test-common/**
+              - meta/**
+              - scripts/**
+              - server/**
+              - server-common/**
+              - build.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+
+  FlinkIT-on-push:
+    needs: changes
+    if: (github.event_name == 'push' && needs.changes.outputs.source_changes == 'true')
     strategy:
       matrix:
         architecture: [linux/amd64]
         java-version: [ 17 ]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+    uses: ./.github/workflows/flink-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+    secrets: inherit
 
-      - uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.java-version }}
-          distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Check required command
-        run: |
-          gravitino-internal/dev/ci/check_commands.sh
-
-      - name: Package Gravitino
-        run: |
-          ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
-
-      - name: Free up disk space
-        run: |
-          gravitino-internal/dev/ci/util_free_space.sh
-
-      - name: Copy distribution package
-        run: |
-          sed -i '/= *opensearch/d' ./distribution/package/conf/gravitino.conf
-          sed -i '/= *search/d' ./distribution/package/conf/gravitino.conf
-          echo "gravitino.datastrato.search.storage.impl = memory" >> ./distribution/package/conf/gravitino.conf 
-          cp -r -f ./distribution ./gravitino-internal
-
-      - name: Flink Integration Test
-        id: integrationTest
-        run: |
-          ./gradlew -p gravitino-internal -PskipTests -PtestMode=deploy -PjdkVersion=${{ matrix.java-version }} -PskipDockerTests=false :flink-connector:test --tests "org.apache.gravitino.flink.connector.integration.test.**"
-
-      - name: Upload integrate tests reports
-        uses: actions/upload-artifact@v4
-        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
-        with:
-          name: flink-connector-integrate-test-reports-${{ matrix.java-version }}
-          path: |
-            gravitino-internal/build/reports
-            gravitino-internal/flink-connector/build/flink-connector-integration-test.log
-            gravitino-internal/flink-connector/build/*.tar
-            gravitino-internal/distribution/package/logs/gravitino-server.out
-            gravitino-internal/distribution/package/logs/gravitino-server.log
-            gravitino-internal/catalogs/**/*.log
-            gravitino-internal/catalogs/**/*.tar
+  FlinkIT-on-pr:
+    needs: changes
+    if: (github.event_name == 'pull_request' && needs.changes.outputs.source_changes == 'true')
+    strategy:
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [ 17 ]
+    uses: ./.github/workflows/flink-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+    secrets: inherit

@@ -32,6 +32,7 @@ public class TestSearchEntityPO {
             .withUserPermissions(null)
             .withRolePermissions(null)
             .build();
+    Assertions.assertNotNull(searchEntityPO);
   }
 
   @Test
@@ -40,24 +41,23 @@ public class TestSearchEntityPO {
         Assertions.assertThrows(
             IllegalArgumentException.class,
             () -> {
-              SearchEntityPO searchEntityPO =
-                  SearchEntityPOBuilder.builder()
-                      .withEntityId(-1L)
-                      .withEntityType(EntityType.SCHEMA)
-                      .withInUse(true)
-                      .withMetalake("metalake")
-                      .withEntityName("entityName")
-                      .withEntityComment("entityComment")
-                      .withCatalogName("catalogName")
-                      .withFullQualifiedName("fullQualifiedName")
-                      .withTags(
-                          Lists.newArrayList(
-                              SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
-                      .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
-                      .withOwner("owner")
-                      .withUserPermissions(null)
-                      .withRolePermissions(null)
-                      .build();
+              SearchEntityPOBuilder.builder()
+                  .withEntityId(-1L)
+                  .withEntityType(EntityType.SCHEMA)
+                  .withInUse(true)
+                  .withMetalake("metalake")
+                  .withEntityName("entityName")
+                  .withEntityComment("entityComment")
+                  .withCatalogName("catalogName")
+                  .withFullQualifiedName("fullQualifiedName")
+                  .withTags(
+                      Lists.newArrayList(
+                          SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
+                  .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
+                  .withOwner("owner")
+                  .withUserPermissions(null)
+                  .withRolePermissions(null)
+                  .build();
             });
     Assertions.assertTrue(exception.getMessage().contains("entityId must be positive"));
 
@@ -65,24 +65,23 @@ public class TestSearchEntityPO {
         Assertions.assertThrows(
             IllegalArgumentException.class,
             () -> {
-              SearchEntityPO searchEntityPO =
-                  SearchEntityPOBuilder.builder()
-                      .withEntityId(1L)
-                      .withEntityType(null)
-                      .withInUse(true)
-                      .withMetalake("metalake")
-                      .withEntityName("entityName")
-                      .withEntityComment("entityComment")
-                      .withCatalogName("catalogName")
-                      .withFullQualifiedName("fullQualifiedName")
-                      .withTags(
-                          Lists.newArrayList(
-                              SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
-                      .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
-                      .withOwner("owner")
-                      .withUserPermissions(null)
-                      .withRolePermissions(null)
-                      .build();
+              SearchEntityPOBuilder.builder()
+                  .withEntityId(1L)
+                  .withEntityType(null)
+                  .withInUse(true)
+                  .withMetalake("metalake")
+                  .withEntityName("entityName")
+                  .withEntityComment("entityComment")
+                  .withCatalogName("catalogName")
+                  .withFullQualifiedName("fullQualifiedName")
+                  .withTags(
+                      Lists.newArrayList(
+                          SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
+                  .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
+                  .withOwner("owner")
+                  .withUserPermissions(null)
+                  .withRolePermissions(null)
+                  .build();
             });
     Assertions.assertTrue(exception.getMessage().contains("entityType cannot be null"));
 
@@ -90,24 +89,23 @@ public class TestSearchEntityPO {
         Assertions.assertThrows(
             IllegalArgumentException.class,
             () -> {
-              SearchEntityPO searchEntityPO =
-                  SearchEntityPOBuilder.builder()
-                      .withEntityId(1L)
-                      .withEntityType(EntityType.SCHEMA)
-                      .withInUse(true)
-                      .withMetalake("")
-                      .withEntityName("entityName")
-                      .withEntityComment("entityComment")
-                      .withCatalogName("catalogName")
-                      .withFullQualifiedName("fullQualifiedName")
-                      .withTags(
-                          Lists.newArrayList(
-                              SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
-                      .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
-                      .withOwner("owner")
-                      .withUserPermissions(null)
-                      .withRolePermissions(null)
-                      .build();
+              SearchEntityPOBuilder.builder()
+                  .withEntityId(1L)
+                  .withEntityType(EntityType.SCHEMA)
+                  .withInUse(true)
+                  .withMetalake("")
+                  .withEntityName("entityName")
+                  .withEntityComment("entityComment")
+                  .withCatalogName("catalogName")
+                  .withFullQualifiedName("fullQualifiedName")
+                  .withTags(
+                      Lists.newArrayList(
+                          SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
+                  .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
+                  .withOwner("owner")
+                  .withUserPermissions(null)
+                  .withRolePermissions(null)
+                  .build();
             });
     Assertions.assertTrue(exception.getMessage().contains("metalake cannot be blank"));
 
@@ -115,24 +113,23 @@ public class TestSearchEntityPO {
         Assertions.assertThrows(
             IllegalArgumentException.class,
             () -> {
-              SearchEntityPO searchEntityPO =
-                  SearchEntityPOBuilder.builder()
-                      .withEntityId(1L)
-                      .withEntityType(EntityType.SCHEMA)
-                      .withInUse(true)
-                      .withMetalake("test")
-                      .withEntityName(null)
-                      .withEntityComment("entityComment")
-                      .withCatalogName("catalogName")
-                      .withFullQualifiedName("fullQualifiedName")
-                      .withTags(
-                          Lists.newArrayList(
-                              SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
-                      .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
-                      .withOwner("owner")
-                      .withUserPermissions(null)
-                      .withRolePermissions(null)
-                      .build();
+              SearchEntityPOBuilder.builder()
+                  .withEntityId(1L)
+                  .withEntityType(EntityType.SCHEMA)
+                  .withInUse(true)
+                  .withMetalake("test")
+                  .withEntityName(null)
+                  .withEntityComment("entityComment")
+                  .withCatalogName("catalogName")
+                  .withFullQualifiedName("fullQualifiedName")
+                  .withTags(
+                      Lists.newArrayList(
+                          SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
+                  .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
+                  .withOwner("owner")
+                  .withUserPermissions(null)
+                  .withRolePermissions(null)
+                  .build();
             });
     Assertions.assertTrue(exception.getMessage().contains("entityName cannot be blank"));
 
@@ -140,24 +137,23 @@ public class TestSearchEntityPO {
         Assertions.assertThrows(
             IllegalArgumentException.class,
             () -> {
-              SearchEntityPO searchEntityPO =
-                  SearchEntityPOBuilder.builder()
-                      .withEntityId(1L)
-                      .withEntityType(EntityType.SCHEMA)
-                      .withInUse(true)
-                      .withMetalake("test")
-                      .withEntityName("entityName")
-                      .withEntityComment("entityComment")
-                      .withCatalogName(null)
-                      .withFullQualifiedName("fullQualifiedName")
-                      .withTags(
-                          Lists.newArrayList(
-                              SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
-                      .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
-                      .withOwner("owner")
-                      .withUserPermissions(null)
-                      .withRolePermissions(null)
-                      .build();
+              SearchEntityPOBuilder.builder()
+                  .withEntityId(1L)
+                  .withEntityType(EntityType.SCHEMA)
+                  .withInUse(true)
+                  .withMetalake("test")
+                  .withEntityName("entityName")
+                  .withEntityComment("entityComment")
+                  .withCatalogName(null)
+                  .withFullQualifiedName("fullQualifiedName")
+                  .withTags(
+                      Lists.newArrayList(
+                          SearchEntityPO.SearchTagPO.builder().withTagName("good").build()))
+                  .withSearchAudit(SearchEntityPO.SearchAuditPO.builder().build())
+                  .withOwner("owner")
+                  .withUserPermissions(null)
+                  .withRolePermissions(null)
+                  .build();
             });
 
     Assertions.assertTrue(exception.getMessage().contains("catalogName cannot be blank"));

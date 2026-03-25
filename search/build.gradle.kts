@@ -11,17 +11,17 @@ plugins {
 }
 
 dependencies {
-  implementation("org.apache.gravitino:api")
-  implementation("org.apache.gravitino:core")
-  implementation("org.apache.gravitino:common")
-  implementation("org.apache.gravitino:iceberg-rest-server")
+  implementation(project(":api"))
+  implementation(project(":core"))
+  implementation(project(":common"))
+  implementation(project(":iceberg:iceberg-rest-server"))
   // RenameTableRequest is referenced in TableEventHandler via IcebergRenameTableEvent;
   // the jar is present at runtime through iceberg-rest-server's transitive deps.
   compileOnly(libs.iceberg.core)
 
   testCompileOnly(libs.iceberg.core)
 
-  implementation("org.apache.gravitino:server-common")
+  implementation(project(":server-common"))
   antlr(libs.antlr4)
   implementation(libs.antlr4.runtime)
 
@@ -73,7 +73,7 @@ val antlrSourcePath = "build/generated/java/com/datastrato/gravitino/search/antl
 sourceSets {
   main {
     java {
-      srcDirs("src/main/java", "build/generated/java")
+      srcDir("build/generated/java")
     }
   }
 }
@@ -87,4 +87,16 @@ tasks.generateGrammarSource {
 
 tasks.spotlessJava {
   dependsOn(tasks.generateGrammarSource)
+}
+
+tasks.sourcesJar {
+  dependsOn(tasks.generateGrammarSource)
+}
+
+tasks.javadoc {
+  isFailOnError = false
+}
+
+tasks.compileJava {
+  mustRunAfter(project(":iceberg:iceberg-rest-server").tasks.named("copyDepends"))
 }

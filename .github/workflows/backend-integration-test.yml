@@ -4,100 +4,118 @@ name: Backend Integration Test
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
   pull_request:
     types: [labeled]
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Integration test for AMD64 architecture
-  test-amd64-arch:
+  changes:
+    runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
-    timeout-minutes: 120
-    strategy:
-      matrix:
-        architecture: [linux/amd64]
-        java-version: [ 17 ]
-        test-mode: [ deploy ]
-        backend: [ mysql ]
-    env:
-      PLATFORM: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
-          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
-
-      - uses: actions/setup-java@v4
+          fetch-depth: 0
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+        id: filter
         with:
-          java-version: ${{ matrix.java-version }}
-          distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Check required command
+          filters: |
+            source_changes:
+              - .github/**
+              - api/**
+              - bin/**
+              - catalogs/**
+              - catalogs-contrib/**
+              - clients/client-java/**
+              - clients/client-java-runtime/**
+              - clients/filesystem-hadoop3/**
+              - clients/cli/**
+              - common/**
+              - conf/**
+              - core/**
+              - dev/**
+              - gradle/**
+              - iceberg/**
+              - integration-test-common/**
+              - meta/**
+              - scripts/**
+              - server/**
+              - bundles/**
+              - server-common/**
+              - build.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+      - name: Detect changed catalogs-contrib modules
+        id: contrib
         run: |
-          gravitino-internal/dev/ci/check_commands.sh
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
 
-      - name: Install dependencies
-        run: |
-          wget https://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb
-          sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb      
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-list --max-parents=0 "$HEAD_SHA" | tail -n 1)"
+          fi
 
-      - name: Package Gravitino
-        if : ${{ matrix.test-mode == 'deploy' }}
-        run: |
-          ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
+          MERGE_BASE_SHA="$(git merge-base "$BASE_SHA" "$HEAD_SHA" || true)"
+          if [ -z "$MERGE_BASE_SHA" ]; then
+            MERGE_BASE_SHA="$BASE_SHA"
+          fi
 
-      - name: Free up disk space
-        run: |
-          gravitino-internal/dev/ci/util_free_space.sh
+          CHANGED_FILES="$(git diff --name-only "$MERGE_BASE_SHA" "$HEAD_SHA")"
+          CHANGED_MODULES="$(echo "$CHANGED_FILES" | awk -F/ '/^catalogs-contrib\/[^/]+\// {print $2}' | sort -u | xargs)"
 
-      - name: Copy distribution package
-        run: |
-          sed -i '/= *opensearch/d' ./distribution/package/conf/gravitino.conf
-          sed -i '/= *search/d' ./distribution/package/conf/gravitino.conf
-          echo "gravitino.datastrato.search.storage.impl = memory" >> ./distribution/package/conf/gravitino.conf 
-          cp -r -f ./distribution ./gravitino-internal
+          # If shared catalogs-contrib build logic changes, run all contrib catalog tests.
+          if echo "$CHANGED_FILES" | grep -q '^catalogs-contrib/build.gradle.kts$'; then
+            CHANGED_MODULES="__all__"
+          fi
 
-      - name: Run Backend Integration Test
-        id: integrationTest
-        run: >
-          ./gradlew -p gravitino-internal test -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PjdbcBackend=${{ matrix.backend }} -PskipDockerTests=false
-          -x :web:web:test -x :web:integration-test:test -x :web-v2:web:test -x :web-v2:integration-test:test -x :clients:client-python:test -x :flink-connector:flink:test -x :spark-connector:spark-common:test 
-          -x :spark-connector:spark-3.3:test -x :spark-connector:spark-3.4:test -x :spark-connector:spark-3.5:test 
-          -x :spark-connector:spark-runtime-3.3:test -x :spark-connector:spark-runtime-3.4:test -x :spark-connector:spark-runtime-3.5:test
-          -x :authorizations:authorization-ranger:test -x :trino-connector:integration-test:test -x :trino-connector:trino-connector:test
-          -x :catalogs-contrib:catalog-jdbc-oceanbase:test -x :catalogs-contrib:catalog-jdbc-clickhouse:test
+          echo "changed_catalogs_contrib_modules=$CHANGED_MODULES" >> "$GITHUB_OUTPUT"
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+      changed_catalogs_contrib_modules: ${{ steps.contrib.outputs.changed_catalogs_contrib_modules }}
 
-      - name: Upload integrate tests reports
-        uses: actions/upload-artifact@v4
-        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
-        with:
-          name: integrate-test-reports-${{ matrix.java-version }}-${{ matrix.test-mode }}-${{ matrix.backend }}
-          path: |
-            gravitino-internal/build/reports
-            gravitino-internal/iceberg/iceberg-rest-server/build/*.log
-            gravitino-internal/integration-test/build/*.log
-            gravitino-internal/integration-test/build/*.tar
-            gravitino-internal/integration-test/build/trino-ci-container-log/hive/*.*
-            gravitino-internal/integration-test/build/trino-ci-container-log/hdfs/*.*
-            gravitino-internal/distribution/package/logs/*.out
-            gravitino-internal/distribution/package/logs/*.log
-            gravitino-internal/catalogs/**/*.log
-            gravitino-internal/catalogs/**/*.tar
-            gravitino-internal/distribution/**/*.log
+  BackendIT-on-push:
+    needs: changes
+    if: (github.event_name == 'push' && needs.changes.outputs.source_changes == 'true')
+    strategy:
+      matrix:
+        architecture: [ linux/amd64 ]
+        java-version: [ 17 ]
+        backend: [ mysql ]
+        test-mode: [ deploy ]
+    uses: ./.github/workflows/backend-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+      backend: ${{ matrix.backend }}
+      test-mode: ${{ matrix.test-mode }}
+      changed-catalogs-contrib-modules: ${{ needs.changes.outputs.changed_catalogs_contrib_modules }}
+    secrets: inherit
 
+  BackendIT-on-pr:
+    needs: changes
+    if: (github.event_name == 'pull_request' && needs.changes.outputs.source_changes == 'true')
+    strategy:
+      matrix:
+        architecture: [ linux/amd64 ]
+        java-version: [ 17 ]
+        backend: [ mysql ]
+        test-mode: [ deploy ]
+    uses: ./.github/workflows/backend-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+      backend: ${{ matrix.backend }}
+      test-mode: ${{ matrix.test-mode }}
+      changed-catalogs-contrib-modules: ${{ needs.changes.outputs.changed_catalogs_contrib_modules }}
+    secrets: inherit

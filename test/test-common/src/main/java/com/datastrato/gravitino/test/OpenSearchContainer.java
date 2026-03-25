@@ -8,9 +8,11 @@ import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static org.testcontainers.containers.output.OutputFrame.OutputType.END;
 
+import com.google.common.collect.ImmutableMap;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.awaitility.Awaitility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
@@ -18,8 +20,6 @@ import org.testcontainers.containers.output.BaseConsumer;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.ImageFromDockerfile;
-import org.testcontainers.shaded.com.google.common.collect.ImmutableMap;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
 
 public class OpenSearchContainer extends GenericContainer<OpenSearchContainer> {
   public static final Logger LOG = LoggerFactory.getLogger(OpenSearchContainer.class);
@@ -100,10 +100,7 @@ public class OpenSearchContainer extends GenericContainer<OpenSearchContainer> {
                 DEFAULT_PASSWORD));
     container.start();
 
-    LOG.info(
-        "OpenSearch started at: {}:{}",
-        container.getContainerIpAddress(),
-        container.getMappedPort(9200));
+    LOG.info("OpenSearch started at: {}:{}", container.getHost(), container.getMappedPort(9200));
     long timestamp = System.currentTimeMillis();
     do {
       try {

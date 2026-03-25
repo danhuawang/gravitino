@@ -8,7 +8,6 @@ import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchModelEntityPO.SearchModelVersionPO;
 import com.datastrato.gravitino.search.utils.EntityConverterUtils;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableList.Builder;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -50,7 +49,7 @@ class ModelSearchEntitySource extends LeafSearchEntitySource {
       return ImmutableList.of();
     }
 
-    Builder<SearchModelVersionPO> builder = ImmutableList.builder();
+    ImmutableList.Builder<SearchModelVersionPO> builder = ImmutableList.builder();
     for (int version : versions) {
       ModelVersion modelVersion =
           GravitinoEnv.getInstance()

@@ -4,7 +4,6 @@
  */
 package org.apache.gravitino.server;
 
-import com.datastrato.gravitino.DatastratoGravitinoEnv;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import org.apache.gravitino.Configs;
@@ -16,11 +15,8 @@ import org.slf4j.LoggerFactory;
 public class DatastratoGravitinoServer extends GravitinoServer {
   private static final Logger LOG = LoggerFactory.getLogger(DatastratoGravitinoServer.class);
 
-  private final DatastratoGravitinoEnv datastratoGravitinoEnv;
-
   public DatastratoGravitinoServer(ServerConfig config, GravitinoEnv gravitinoEnv) {
     super(config, gravitinoEnv);
-    this.datastratoGravitinoEnv = (DatastratoGravitinoEnv) gravitinoEnv;
   }
 
   public static void main(String[] args) {

@@ -1,65 +1,124 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
- * This software is licensed under the Apache License version 2.
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 plugins {
   id("org.gradle.toolchains.foojay-resolver-convention") version("0.7.0")
 }
 
-rootProject.name = "datastrato-gravitino"
+rootProject.name = "gravitino"
 
-includeBuild("gravitino-internal") {
-  dependencySubstitution {
-    substitute(module("org.apache.gravitino:api"))
-      .using(project(":api"))
+val scalaVersion: String = gradle.startParameter.projectProperties["scalaVersion"]?.toString()
+  ?: settings.extra["defaultScalaVersion"].toString()
 
-    substitute(module("org.apache.gravitino:catalog-common"))
-      .using(project(":catalogs:catalog-common"))
+include("api", "common", "core", "server", "server-common")
+include("catalogs:catalog-common")
+include("catalogs:catalog-hive")
+include("catalogs:hive-metastore-common")
+include("catalogs:hive-metastore2-libs", "catalogs:hive-metastore3-libs")
+include("catalogs:catalog-lakehouse-iceberg")
+include("catalogs:catalog-lakehouse-paimon")
+include("catalogs:catalog-lakehouse-hudi")
+include("catalogs:catalog-lakehouse-generic")
+include(
+  "catalogs:catalog-jdbc-common",
+  "catalogs:catalog-jdbc-bigquery",
+  "catalogs:catalog-jdbc-doris",
+  "catalogs:catalog-jdbc-maxcompute",
+  "catalogs:catalog-jdbc-mysql",
+  "catalogs:catalog-jdbc-postgresql",
+  "catalogs:catalog-jdbc-starrocks"
+)
 
-    substitute(module("org.apache.gravitino:client-java-runtime"))
-      .using(project(":clients:client-java-runtime"))
+include("catalogs:catalog-fileset")
+include("catalogs:catalog-kafka")
+include("catalogs:catalog-model")
 
-    substitute(module("org.apache.gravitino:client-java"))
-      .using(project(":clients:client-java"))
+include("catalogs-contrib:catalog-jdbc-clickhouse")
+include("catalogs-contrib:catalog-jdbc-hologres")
+include("catalogs-contrib:catalog-jdbc-oceanbase")
 
-    substitute(module("org.apache.gravitino:common"))
-      .using(project(":common"))
-
-    substitute(module("org.apache.gravitino:core"))
-      .using(project(":core"))
-
-    substitute(module("org.apache.gravitino:lineage"))
-      .using(project(":lineage"))
-
-    substitute(module("org.apache.gravitino:server"))
-      .using(project(":server"))
-
-    substitute(module("org.apache.gravitino:server-common"))
-      .using(project(":server-common"))
-
-    substitute(module("org.apache.gravitino:docs"))
-      .using(project(":docs"))
-
-    substitute(module("org.apache.gravitino:authorizations:authorization-common"))
-      .using(project(":authorizations:authorization-common"))
-
-    substitute(module("org.apache.gravitino:integration-test-common"))
-      .using(project(":integration-test-common"))
-
-    substitute(module("org.apache.gravitino:iceberg-rest-server"))
-      .using(project(":iceberg:iceberg-rest-server"))
-
-    substitute(module("org.apache.gravitino:lance-common"))
-      .using(project(":lance:lance-common"))
-  }
+include(
+  "clients:client-java",
+  "clients:client-java-runtime",
+  "clients:filesystem-hadoop3",
+  "clients:filesystem-hadoop3-runtime",
+  "clients:client-python",
+  "clients:cli"
+)
+if (gradle.startParameter.projectProperties["enableFuse"]?.toBoolean() == true) {
+  include("clients:filesystem-fuse")
+} else {
+  println("Skipping filesystem-fuse module since enableFuse is set to false")
 }
+include("iceberg:iceberg-common")
+include("iceberg:iceberg-rest-server")
+include("lance:lance-common")
+include("lance:lance-rest-server")
+include("authorizations:authorization-ranger", "authorizations:authorization-common", "authorizations:authorization-chain")
+include(
+  "trino-connector:trino-connector",
+  "trino-connector:trino-connector-435-439",
+  "trino-connector:trino-connector-440-445",
+  "trino-connector:trino-connector-446-451",
+  "trino-connector:trino-connector-452-468",
+  "trino-connector:trino-connector-469-472",
+  "trino-connector:trino-connector-473-478",
+  "trino-connector:integration-test"
+)
+include("spark-connector:spark-common")
+if (scalaVersion == "2.12") {
+  // flink only support scala 2.12
+  include("flink-connector:flink")
+  include("flink-connector:flink-runtime")
+}
+include("spark-connector:spark-3.3", "spark-connector:spark-runtime-3.3")
+project(":spark-connector:spark-3.3").projectDir = file("spark-connector/v3.3/spark")
+project(":spark-connector:spark-runtime-3.3").projectDir = file("spark-connector/v3.3/spark-runtime")
+include("spark-connector:spark-3.4", "spark-connector:spark-runtime-3.4", "spark-connector:spark-3.5", "spark-connector:spark-runtime-3.5")
+project(":spark-connector:spark-3.4").projectDir = file("spark-connector/v3.4/spark")
+project(":spark-connector:spark-runtime-3.4").projectDir = file("spark-connector/v3.4/spark-runtime")
+project(":spark-connector:spark-3.5").projectDir = file("spark-connector/v3.5/spark")
+project(":spark-connector:spark-runtime-3.5").projectDir = file("spark-connector/v3.5/spark-runtime")
+include("web:web", "web:integration-test")
+include("web-v2:web", "web-v2:integration-test")
+include("docs-oss")
+include("integration-test-common")
+include(":bundles:aws", ":bundles:aws-bundle", ":bundles:iceberg-aws-bundle")
+include(":bundles:gcp", ":bundles:gcp-bundle", ":bundles:iceberg-gcp-bundle")
+include(":bundles:aliyun", ":bundles:aliyun-bundle", ":bundles:iceberg-aliyun-bundle")
+include(":bundles:azure", ":bundles:azure-bundle", ":bundles:iceberg-azure-bundle")
+include(":catalogs:hadoop-common")
+include(":lineage")
+include(":mcp-server")
+include(
+  ":maintenance:optimizer-api",
+  ":maintenance:updaters",
+  ":maintenance:optimizer",
+  ":maintenance:jobs"
+)
 
+// Enterprise-specific modules
 include("common-extension")
 include("core-extension")
 include("datastrato-server")
-include("docs")
 include("authorization-jdbc-enterprise")
 include("search")
 include("lineage-extension")
 include("metrics")
 include("test:search-integration-test", "test:test-common")
+include("docs")

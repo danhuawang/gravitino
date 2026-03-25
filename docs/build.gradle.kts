@@ -14,8 +14,7 @@ configure<NodeExtension> {
   version = "21.6.1"
   npmVersion = "10.2.4"
   download = true
-  nodeProjectDir = file(".node")
-  workDir = file(".node")
+  nodeProjectDir.set(file("$rootDir/.node"))
 }
 
 tasks {

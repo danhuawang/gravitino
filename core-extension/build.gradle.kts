@@ -10,9 +10,9 @@ plugins {
 }
 
 dependencies {
-  implementation("org.apache.gravitino:api")
-  implementation("org.apache.gravitino:core")
-  implementation("org.apache.gravitino:common")
+  implementation(project(":api"))
+  implementation(project(":core"))
+  implementation(project(":common"))
 
   implementation(libs.bundles.log4j)
   implementation(libs.commons.codec)

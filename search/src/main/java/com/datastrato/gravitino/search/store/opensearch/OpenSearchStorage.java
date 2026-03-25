@@ -529,7 +529,7 @@ public class OpenSearchStorage implements SearchStorage {
                 .build());
       } catch (TimeoutException e) {
         LOG.error("Query timeout in open search", e);
-        throw new GravitinoRuntimeException("Query timeout in open search", e);
+        throw new GravitinoRuntimeException(e, "Query timeout in open search");
       } catch (Exception e) {
         LOG.error("Failed to query OpenSearch", e);
         throw new RuntimeException(e);

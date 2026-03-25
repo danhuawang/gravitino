@@ -13,11 +13,11 @@ import com.datastrato.gravitino.search.parser.Condition.OrCondition;
 import com.datastrato.gravitino.search.parser.Condition.TermCondition;
 import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor.QueryCondition;
 import com.datastrato.gravitino.search.utils.FilterConditionUtils;
+import com.google.common.collect.ImmutableMap;
 import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
-import org.testcontainers.shaded.com.google.common.collect.ImmutableMap;
 
 public class TestQueryParser {
 

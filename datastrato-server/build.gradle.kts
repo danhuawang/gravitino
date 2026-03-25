@@ -10,11 +10,11 @@ plugins {
 }
 
 dependencies {
-  implementation("org.apache.gravitino:api")
-  implementation("org.apache.gravitino:core")
-  implementation("org.apache.gravitino:common")
-  implementation("org.apache.gravitino:server")
-  implementation("org.apache.gravitino:server-common")
+  implementation(project(":api"))
+  implementation(project(":core"))
+  implementation(project(":common"))
+  implementation(project(":server"))
+  implementation(project(":server-common"))
 
   implementation(project(":common-extension"))
   implementation(project(":core-extension"))
@@ -31,7 +31,7 @@ dependencies {
 
   compileOnly(libs.lombok)
 
-  testImplementation("org.apache.gravitino:server-common")
+  testImplementation(project(":server-common"))
   testImplementation(libs.commons.lang3)
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")

@@ -9,6 +9,8 @@ import static java.util.Collections.emptyMap;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,6 +30,7 @@ import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.tag.TagChange;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -36,9 +39,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.shaded.com.google.common.collect.ImmutableMap;
-import org.testcontainers.shaded.com.google.common.collect.Maps;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
 
 @Tag("gravitino-docker-test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -191,7 +191,7 @@ public class DataDiscoveryTest extends BaseIT {
       for (int i = 0; i < numberOfSchemas; i++) {
         Schema schema = createdSchemas.get(i);
         boolean tagged = false;
-        if (random.nextInt() % 5 == 0) {
+        if (random.nextInt(5) == 0) {
           schema.supportsTags().associateTags(new String[] {"tag2"}, null);
           totalTagSchemaEntities++;
           totalTagTableEntities += numberOfTables;
@@ -199,7 +199,7 @@ public class DataDiscoveryTest extends BaseIT {
         }
         if (!tagged) {
           for (Table table : createdTables.get(i)) {
-            if (random.nextInt() % 100 == 0) {
+            if (random.nextInt(100) == 0) {
               table.supportsTags().associateTags(new String[] {"tag2"}, null);
               totalTagTableEntities++;
             }

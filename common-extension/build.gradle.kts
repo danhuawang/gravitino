@@ -10,8 +10,8 @@ plugins {
 }
 
 dependencies {
-  implementation("org.apache.gravitino:api")
-  implementation("org.apache.gravitino:common")
+  implementation(project(":api"))
+  implementation(project(":common"))
 
   implementation(libs.commons.lang3)
   implementation(libs.guava)
@@ -20,7 +20,7 @@ dependencies {
   annotationProcessor(libs.lombok)
   compileOnly(libs.lombok)
 
-  testImplementation("org.apache.gravitino:api")
+  testImplementation(project(":api"))
   testImplementation(libs.jackson.databind)
   testImplementation(libs.junit.jupiter.api)
 

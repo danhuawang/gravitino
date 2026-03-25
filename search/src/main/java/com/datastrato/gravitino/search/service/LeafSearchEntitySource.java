@@ -6,7 +6,6 @@ package com.datastrato.gravitino.search.service;
 
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,13 +28,13 @@ abstract class LeafSearchEntitySource implements SearchEntitySource {
 
     synchronized (this) {
       if (finished) {
-        return Collections.emptyList();
+        return new ArrayList<>();
       }
 
       // check if we have already processed all the metadata
       if (currentIndex >= metadataList.size()) {
         finished = true;
-        return Collections.emptyList();
+        return new ArrayList<>();
       }
       // consume the current batch and move the next index
       startIndex = currentIndex;

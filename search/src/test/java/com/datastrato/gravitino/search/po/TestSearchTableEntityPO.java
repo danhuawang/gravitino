@@ -35,6 +35,7 @@ public class TestSearchTableEntityPO {
             .withUserPermissions(null)
             .withRolePermissions(null)
             .build();
+    Assertions.assertNotNull(searchTableEntityPO);
   }
 
   @Test
