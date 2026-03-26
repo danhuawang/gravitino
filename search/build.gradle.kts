@@ -14,13 +14,6 @@ dependencies {
   implementation(project(":api"))
   implementation(project(":core"))
   implementation(project(":common"))
-  implementation(project(":iceberg:iceberg-rest-server"))
-  // RenameTableRequest is referenced in TableEventHandler via IcebergRenameTableEvent;
-  // the jar is present at runtime through iceberg-rest-server's transitive deps.
-  compileOnly(libs.iceberg.core)
-
-  testCompileOnly(libs.iceberg.core)
-
   implementation(project(":server-common"))
   antlr(libs.antlr4)
   implementation(libs.antlr4.runtime)
@@ -95,8 +88,4 @@ tasks.sourcesJar {
 
 tasks.javadoc {
   isFailOnError = false
-}
-
-tasks.compileJava {
-  mustRunAfter(project(":iceberg:iceberg-rest-server").tasks.named("copyDepends"))
 }
