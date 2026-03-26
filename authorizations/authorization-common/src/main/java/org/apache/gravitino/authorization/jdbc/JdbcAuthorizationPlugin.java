@@ -410,6 +410,13 @@ public abstract class JdbcAuthorizationPlugin implements AuthorizationPlugin, Jd
   }
 
   private void grantObjectPrivileges(Role role, SecurableObject object) {
+    // Ensure the role exists before granting privileges. The role may not yet exist in the
+    // underlying system if onRoleUpdated is called without a prior onRoleCreated call.
+    List<String> createRoleSQLs = getCreateRoleSQL(role.name());
+    for (String sql : createRoleSQLs) {
+      executeUpdateSQL(sql, "already exists");
+    }
+
     List<AuthorizationSecurableObject> authObjects = mappingProvider.translatePrivilege(object);
     for (AuthorizationSecurableObject authObject : authObjects) {
       List<AuthorizationSecurableObject> convertedObjects = Lists.newArrayList();

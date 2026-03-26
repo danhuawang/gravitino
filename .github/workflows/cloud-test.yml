@@ -69,7 +69,7 @@ jobs:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
           cache: 'gradle'
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -103,11 +103,11 @@ jobs:
 
       - name: IRC IcebergRESTS3TokenIT Test
         run: |
-          ./gradlew-PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTS3TokenIT"
+          ./gradlew -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTS3TokenIT"
 
       - name: IRC IcebergRESTGCSIT Test
         run: |
-          ./gradlew-PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTGCSIT"
+          ./gradlew -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTGCSIT"
 
       - name: Fileset Cloud Integration Test python
         id: integrationTest1
@@ -137,7 +137,7 @@ jobs:
 
       - name: Fileset Cloud Integration Test java
         run: |
-          ./gradlew-PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PjdbcBackend=${{ matrix.backend }} -PskipDockerTests=false :clients:filesystem-hadoop3:test --tests "org.apache.gravitino.filesystem.hadoop.integration.test.**"
+          ./gradlew -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PjdbcBackend=${{ matrix.backend }} -PskipDockerTests=false :clients:filesystem-hadoop3:test --tests "org.apache.gravitino.filesystem.hadoop.integration.test.**"
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v4
