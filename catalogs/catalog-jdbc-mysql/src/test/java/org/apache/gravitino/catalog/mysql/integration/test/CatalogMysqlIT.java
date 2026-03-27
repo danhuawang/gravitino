@@ -124,6 +124,16 @@ public class CatalogMysqlIT extends BaseIT {
   }
 
   @BeforeAll
+  @Override
+  public void startIntegrationTest() throws Exception {
+    Map<String, String> configs = Maps.newHashMap();
+    configs.put("gravitino.eventListener.names", "");
+    configs.put("gravitino.eventListener.search.class", "");
+    registerCustomConfigs(configs);
+    super.startIntegrationTest();
+    startup();
+  }
+
   public void startup() throws IOException, SQLException {
     TEST_DB_NAME = TestDatabaseName.MYSQL_CATALOG_MYSQL_IT;
 

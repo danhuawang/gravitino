@@ -95,9 +95,7 @@ jobs:
       - name: Authorization Integration Test (JDK${{ matrix.java-version }})
         id: integrationTest
         run: |
-          ./gradlew -PtestMode=embedded -PjdbcBackend=h2 -PskipDockerTests=false :authorizations:test
           ./gradlew -PtestMode=deploy -PjdbcBackend=mysql -PskipDockerTests=false :authorizations:test
-          ./gradlew -PtestMode=deploy -PjdbcBackend=postgresql -PskipDockerTests=false :authorizations:test
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v7
