@@ -202,6 +202,8 @@ jobs:
             -PskipITs
             -PskipDockerTests=false
             -x :clients:client-python:build
+            -x :web:build
+            -x :web-v2:web:build
           )
 
           if [ "${{ needs.changes.outputs.mcp_server_changes }}" != "true" ]; then
@@ -209,7 +211,6 @@ jobs:
               -x :mcp-server:build
               -x :mcp-server:test
               -x :mcp-server:pylint
-              -x :web-v2:web:build
             )
           fi
 
