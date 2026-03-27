@@ -50,6 +50,11 @@ public class DataDiscoveryListener implements EventListenerPlugin {
   public void stop() throws RuntimeException {}
 
   @Override
+  public Mode mode() {
+    return Mode.ASYNC_ISOLATED;
+  }
+
+  @Override
   public void onPostEvent(Event event) {
     try {
       EventHandler handler = null;
