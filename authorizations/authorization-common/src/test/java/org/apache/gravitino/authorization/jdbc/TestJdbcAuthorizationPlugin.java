@@ -149,7 +149,7 @@ public class TestJdbcAuthorizationPlugin {
 
     // Test metalake object and different role change
     resetSQLIndex();
-    expectSQLs = Lists.newArrayList("GRANT SELECT ON TABLE *.* TO ROLE tmp");
+    expectSQLs = Lists.newArrayList("CREATE ROLE tmp", "GRANT SELECT ON TABLE *.* TO ROLE tmp");
     SecurableObject metalakeObject =
         SecurableObjects.ofMetalake("metalake", Lists.newArrayList(Privileges.SelectTable.allow()));
     RoleChange roleChange = RoleChange.addSecurableObject("tmp", metalakeObject);
@@ -163,7 +163,9 @@ public class TestJdbcAuthorizationPlugin {
     resetSQLIndex();
     expectSQLs =
         Lists.newArrayList(
-            "REVOKE SELECT ON TABLE *.* FROM ROLE tmp", "GRANT CREATE ON TABLE *.* TO ROLE tmp");
+            "REVOKE SELECT ON TABLE *.* FROM ROLE tmp",
+            "CREATE ROLE tmp",
+            "GRANT CREATE ON TABLE *.* TO ROLE tmp");
     SecurableObject newMetalakeObject =
         SecurableObjects.ofMetalake("metalake", Lists.newArrayList(Privileges.CreateTable.allow()));
     roleChange = RoleChange.updateSecurableObject("tmp", metalakeObject, newMetalakeObject);
@@ -174,7 +176,7 @@ public class TestJdbcAuthorizationPlugin {
     SecurableObject catalogObject =
         SecurableObjects.ofCatalog("catalog", Lists.newArrayList(Privileges.SelectTable.allow()));
     roleChange = RoleChange.addSecurableObject("tmp", catalogObject);
-    expectSQLs = Lists.newArrayList("GRANT SELECT ON TABLE *.* TO ROLE tmp");
+    expectSQLs = Lists.newArrayList("CREATE ROLE tmp", "GRANT SELECT ON TABLE *.* TO ROLE tmp");
     plugin.onRoleUpdated(role, roleChange);
 
     // Test schema object
@@ -183,7 +185,8 @@ public class TestJdbcAuthorizationPlugin {
         SecurableObjects.ofSchema(
             catalogObject, "schema", Lists.newArrayList(Privileges.SelectTable.allow()));
     roleChange = RoleChange.addSecurableObject("tmp", schemaObject);
-    expectSQLs = Lists.newArrayList("GRANT SELECT ON TABLE schema.* TO ROLE tmp");
+    expectSQLs =
+        Lists.newArrayList("CREATE ROLE tmp", "GRANT SELECT ON TABLE schema.* TO ROLE tmp");
     plugin.onRoleUpdated(role, roleChange);
 
     // Test table object
@@ -192,7 +195,8 @@ public class TestJdbcAuthorizationPlugin {
         SecurableObjects.ofTable(
             schemaObject, "table", Lists.newArrayList(Privileges.SelectTable.allow()));
     roleChange = RoleChange.addSecurableObject("tmp", tableObject);
-    expectSQLs = Lists.newArrayList("GRANT SELECT ON TABLE schema.table TO ROLE tmp");
+    expectSQLs =
+        Lists.newArrayList("CREATE ROLE tmp", "GRANT SELECT ON TABLE schema.table TO ROLE tmp");
     plugin.onRoleUpdated(role, roleChange);
 
     // Test the role with objects
