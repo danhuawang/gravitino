@@ -51,6 +51,7 @@ include clients/client-python/.gitignore
 
 # node env
 .node
+.npm-cache
 
 # integration test
 **/metastore_db

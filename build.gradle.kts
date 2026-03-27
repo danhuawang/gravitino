@@ -761,9 +761,11 @@ tasks.rat {
     // Exclude BigQuery catalog files (commercial license, not Apache)
     "catalogs/catalog-jdbc-bigquery/**/*",
     "catalogs/catalog-jdbc-maxcompute/**/*",
-    // Exclude node installation directory created by docs/docs-oss nodeSetup
+    // Exclude node installation and npm cache directories created by docs/docs-oss tasks
     "docs/.node/**",
     "docs-oss/.node/**",
+    "docs/.npm-cache/**",
+    "docs-oss/.npm-cache/**",
     // OSS docs moved to docs-oss/ during repo consolidation; markdown files don't need headers
     "docs-oss/**/*.md",
     // Root-level markdown/documentation files
