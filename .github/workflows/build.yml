@@ -202,7 +202,7 @@ jobs:
             -PskipITs
             -PskipDockerTests=false
             -x :clients:client-python:build
-            -x :web:build
+            -x :web:web:build
             -x :web-v2:web:build
           )
 

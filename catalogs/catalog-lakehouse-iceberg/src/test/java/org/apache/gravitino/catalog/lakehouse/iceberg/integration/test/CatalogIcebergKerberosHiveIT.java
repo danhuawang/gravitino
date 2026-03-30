@@ -207,6 +207,11 @@ public class CatalogIcebergKerberosHiveIT extends BaseIT {
     customConfigs.put("gravitino.authenticator.kerberos.keytab", TMP_DIR + GRAVITINO_SERVER_KEYTAB);
     customConfigs.put(SDK_KERBEROS_KEYTAB_KEY, TMP_DIR + GRAVITINO_CLIENT_KEYTAB);
     customConfigs.put(SDK_KERBEROS_PRINCIPAL_KEY, GRAVITINO_CLIENT_PRINCIPAL);
+    // Disable the search event listener: cascade=true on CreateCatalogEvent causes loadSchema()
+    // on pre-existing Hive schemas (e.g. "default"), triggering importSchema() which leaves
+    // extra entities in the store and makes dropCatalog(force=false) fail.
+    customConfigs.put("gravitino.eventListener.names", "");
+    customConfigs.put("gravitino.eventListener.search.class", "");
   }
 
   @Test
