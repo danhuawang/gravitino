@@ -81,10 +81,6 @@ public abstract class FlinkEnvIT extends BaseIT {
     if (lakeHouseIcebergProvider.equalsIgnoreCase(getProvider())) {
       initIcebergRestServiceEnv();
     }
-    Map<String, String> configs = new HashMap<>();
-    configs.put("gravitino.eventListener.names", "");
-    configs.put("gravitino.eventListener.search.class", "");
-    registerCustomConfigs(configs);
     // Start Gravitino server
     super.startIntegrationTest();
     initGravitinoEnv();

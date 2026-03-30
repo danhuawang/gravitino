@@ -59,6 +59,8 @@ public class DataDiscoveryTest extends BaseIT {
 
     mySQLContainer = createMySQLContainer();
     Map<String, String> configs = new HashMap<>();
+    // Explicitly enable the search event listener; BaseIT disables it by default in deploy mode.
+    configs.put("gravitino.eventListener.names", "search");
     configs.put("gravitino.datastrato.search.storage.impl", "opensearch");
     configs.put(
         "gravitino.datastrato.search.opensearch.url", openSearchContainer.getOpenSearchUrl());

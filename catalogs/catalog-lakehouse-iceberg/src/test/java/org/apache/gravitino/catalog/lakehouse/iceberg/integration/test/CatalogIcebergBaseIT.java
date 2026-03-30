@@ -124,16 +124,6 @@ public abstract class CatalogIcebergBaseIT extends BaseIT {
 
   @BeforeAll
   public void startup() throws Exception {
-    // Disable the search event listener: in deploy mode gravitino.conf enables it by default,
-    // but the search service is unavailable in this test environment. With cascade=true on
-    // CreateCatalogEvent, the listener calls loadSchema() on all Hive schemas (including
-    // pre-existing ones like "default"), triggering importSchema() which writes extra schema
-    // entities to the store. Those entities cause dropCatalog(force=false) in @AfterAll to
-    // fail with NonEmptyCatalogException.
-    Map<String, String> configs = Maps.newHashMap();
-    configs.put("gravitino.eventListener.names", "");
-    configs.put("gravitino.eventListener.search.class", "");
-    registerCustomConfigs(configs);
     super.ignoreIcebergAuxRestService = false;
     super.startIntegrationTest();
     containerSuite.startHiveContainer();
