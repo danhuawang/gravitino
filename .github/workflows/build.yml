@@ -207,6 +207,7 @@ jobs:
             -x :catalogs-contrib:catalog-jdbc-clickhouse:test
             -x :catalogs-contrib:catalog-jdbc-hologres:test
             -x :catalogs-contrib:catalog-jdbc-oceanbase:test
+            -x :test:search-integration-test:build
           )
 
           if [ "${{ needs.changes.outputs.mcp_server_changes }}" != "true" ]; then
