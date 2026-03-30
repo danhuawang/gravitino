@@ -87,6 +87,19 @@ public class CatalogKafkaIT extends BaseIT {
   private static AdminClient adminClient;
 
   @BeforeAll
+  @Override
+  public void startIntegrationTest() throws Exception {
+    // Disable the search event listener: the ASYNC_ISOLATED background thread can repopulate
+    // the catalog cache between alterCatalog's cache invalidate and cache.get calls, returning
+    // stale data (e.g. old comment instead of null after updateComment(null)).
+    Map<String, String> configs = Maps.newHashMap();
+    configs.put("gravitino.eventListener.names", "");
+    configs.put("gravitino.eventListener.search.class", "");
+    registerCustomConfigs(configs);
+    super.startIntegrationTest();
+    startUp();
+  }
+
   public void startUp() throws ExecutionException, InterruptedException {
     CONTAINER_SUITE.startKafkaContainer();
     kafkaBootstrapServers =
