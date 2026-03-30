@@ -28,6 +28,7 @@ dependencies {
   testImplementation(libs.httpclient5)
   testImplementation(libs.jackson.databind)
   testImplementation(libs.junit.jupiter.api)
+  testImplementation(libs.mysql.driver)
   testImplementation(libs.testcontainers)
 
   testRuntimeOnly(libs.junit.jupiter.engine)
