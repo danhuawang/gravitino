@@ -46,19 +46,6 @@ COPY packages/${MYSQL_JDBC_DRIVER_NAME} packages/${POSTGRESQL_JDBC_DRIVER_NAME} 
 COPY packages/${ICEBERG_AWS_BUNDLE_NAME} packages/${ICEBERG_GCP_BUNDLE_NAME} packages/${ICEBERG_AZURE_BUNDLE_NAME} packages/${GCS_CONNECTOR_NAME} /root/gravitino/iceberg-rest-server/libs/
 COPY packages/${ICEBERG_AWS_BUNDLE_NAME} packages/${ICEBERG_GCP_BUNDLE_NAME} packages/${ICEBERG_AZURE_BUNDLE_NAME} packages/${GCS_CONNECTOR_NAME} /root/gravitino/catalogs/lakehouse-iceberg/libs/
 
-# copy MySQL JDBC driver
-RUN cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-mysql/libs/ && \
-    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-doris/libs/ && \
-    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-oceanbase/libs/ && \
-    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/lakehouse-iceberg/libs/ && \
-    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-starrocks/libs/ && \
-    cp /root/gravitino/libs/${MYSQL_JDBC_DRIVER_NAME} /root/gravitino/iceberg-rest-server/libs/
-
-# copy PostgreSQL JDBC driver
-RUN cp /root/gravitino/libs/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/jdbc-postgresql/libs/ && \
-    cp /root/gravitino/libs/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/catalogs/lakehouse-iceberg/libs/ && \
-    cp /root/gravitino/libs/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/iceberg-rest-server/libs/
-
 EXPOSE 8090
 EXPOSE 9001
 

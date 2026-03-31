@@ -1,4 +1,4 @@
-name: Publish Docker Image
+name: Publish Enterprise Docker Image
 
 on:
   workflow_dispatch:
@@ -45,12 +45,12 @@ jobs:
             echo "image_name=datastratosandbox/enterprise" >> $GITHUB_ENV
             echo "tag_name=enterprise-gravitino" >> $GITHUB_ENV
           fi
-          
+
           if [ "${{ github.event.inputs.publish-latest-tag }}" == "true" ]; then
             echo "publish_latest=true" >> $GITHUB_ENV
           else
             echo "publish_latest=false" >> $GITHUB_ENV
-          fi 
+          fi
 
       - name: Check publish Docker token
         run: |
@@ -79,16 +79,16 @@ jobs:
           distribution: 'temurin'
 
       - name: Build and Push the Docker image
-        run: | 
+        run: |
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/hostedtoolcache/CodeQL
-          
+
           if [[ -n "${tag_name}" ]]; then
             full_tag_name="${tag_name}-${{ github.event.inputs.version }}"
           else
             full_tag_name="${{ github.event.inputs.version }}"
           fi
-                    
+
           if [[ "${publish_latest}" == "true" ]]; then
             echo "Publish tag ${full_tag_name}, and update latest too."
             ./dev/docker/build-docker.sh --platform all --type ${image_type} --image ${image_name} --tag ${full_tag_name} --latest

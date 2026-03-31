@@ -53,7 +53,7 @@ GCS_CONNECTOR_DOWNLOAD_URL="https://github.com/GoogleCloudDataproc/hadoop-connec
 rm -rf "${gravitino_dir}/packages"
 mkdir -p "${gravitino_dir}/packages"
 
-cp -r "${gravitino_home}/distribution/package" "${gravitino_dir}/packages/gravitino"
+cp -r "${gravitino_home}/distribution/package-all" "${gravitino_dir}/packages/gravitino"
 
 # make sure bundles are built
 "${gravitino_home}"/gradlew :bundles:gcp:build :bundles:aws:build :bundles:azure:build :bundles:aliyun-bundle:build -x test

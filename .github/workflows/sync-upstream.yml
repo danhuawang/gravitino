@@ -1,0 +1,144 @@
+# Periodically syncs apache/gravitino main into this repository's main branch.
+# - Clean merge  → opens a PR that can be merged directly.
+# - Merge conflicts → commits files with conflict markers and opens a PR
+#   labelled "upstream-conflict" so a human can resolve and merge.
+
+name: Sync Apache Gravitino Upstream
+
+on:
+  schedule:
+    # Every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout enterprise main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # A PAT is required if branch protection rules require PR reviews,
+          # because GITHUB_TOKEN cannot bypass those rules.
+          # Replace with a repo secret holding a PAT when needed.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add apache/gravitino as upstream remote
+        run: |
+          git remote add upstream https://github.com/apache/gravitino.git
+          git fetch upstream main --no-tags
+
+      - name: Determine sync branch name
+        run: |
+          echo "BRANCH=sync/upstream-$(date -u +%Y%m%d)" >> "$GITHUB_ENV"
+          echo "DATE=$(date -u +%Y-%m-%d)"               >> "$GITHUB_ENV"
+
+      - name: Create and push sync branch
+        run: |
+          git checkout -b "$BRANCH"
+
+      # ── Attempt the merge ─────────────────────────────────────────────────
+
+      - name: Merge upstream/main (no-commit so we can inspect the result)
+        id: merge
+        run: |
+          if git merge upstream/main --no-edit; then
+            echo "status=clean" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            # Stage everything (including files with conflict markers) and
+            # commit so the branch can be pushed and reviewed as a PR.
+            git add --all
+            git commit --no-verify \
+              -m "chore: sync apache/gravitino upstream $DATE (conflicts present)"
+          fi
+
+      - name: Push sync branch
+        run: git push origin "$BRANCH"
+
+      # ── Open PR – clean merge ─────────────────────────────────────────────
+
+      - name: Open PR for clean merge
+        if: steps.merge.outputs.status == 'clean'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base  main \
+            --head  "$BRANCH" \
+            --title "chore: sync apache/gravitino upstream ($DATE)" \
+            --body  "$(cat <<'EOF'
+          ## Upstream sync – ${{ env.DATE }}
+
+          This PR was opened automatically by the **Sync Apache Gravitino Upstream**
+          workflow. It merges the latest `apache/gravitino` `main` branch into this
+          repository with **no conflicts**.
+
+          ### Checklist before merging
+          - [ ] CI passes
+          - [ ] No unintended changes to enterprise-specific files
+          EOF
+          )"
+
+      # ── Open PR – conflicts present ───────────────────────────────────────
+
+      - name: Open PR for conflicted merge
+        if: steps.merge.outputs.status == 'conflict'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Collect the list of conflicted files from the merge commit.
+          CONFLICTED=$(git diff --name-only HEAD~1 HEAD | head -100 || true)
+
+          gh pr create \
+            --base   main \
+            --head   "$BRANCH" \
+            --title  "chore: sync apache/gravitino upstream ($DATE) – CONFLICTS" \
+            --label  "upstream-conflict" \
+            --body   "$(cat <<EOF
+          ## Upstream sync – ${{ env.DATE }} ⚠️ Conflicts need resolution
+
+          This PR was opened automatically by the **Sync Apache Gravitino Upstream**
+          workflow. The merge of \`apache/gravitino\` \`main\` encountered conflicts that
+          **must be resolved by a human** before this branch can be merged.
+
+          ### Files with conflict markers
+          \`\`\`
+          $CONFLICTED
+          \`\`\`
+
+          ### How to resolve
+          1. Check out this branch locally:
+             \`\`\`bash
+             git fetch origin
+             git checkout $BRANCH
+             \`\`\`
+          2. Open each file listed above, resolve the \`<<<<<<<\` / \`=======\` / \`>>>>>>>\`
+             markers, then stage and commit the result.
+          3. Push the resolved branch – CI will run and the PR can be reviewed and merged.
+          EOF
+          )"
+
+      # ── Summary ───────────────────────────────────────────────────────────
+
+      - name: Print summary
+        if: always()
+        run: |
+          echo "### Upstream sync result" >> "$GITHUB_STEP_SUMMARY"
+          echo ""                          >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.merge.outputs.status }}" = "clean" ]; then
+            echo "✅ Clean merge – PR opened, ready to review and merge." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "⚠️ Merge conflicts detected – PR opened, human resolution required." >> "$GITHUB_STEP_SUMMARY"
+          fi
