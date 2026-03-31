@@ -15,9 +15,13 @@ import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
-import com.datastrato.gravitino.test.TestUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
 import java.util.List;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
@@ -67,18 +71,34 @@ public class TestOpenSearchStorage {
   public boolean initIndexTemplate() {
     try {
       String userDir = System.getProperty("user.dir");
+      // Script was moved from search/bin/ to root bin/opensearch/
+      String binDir = Paths.get(userDir, "..", "bin").normalize().toString();
+      String scriptPath = binDir + "/opensearch/create_indices_template.sh.template";
       String[] command = {
         "/bin/bash",
-        userDir + "/bin/create_indices_template.sh",
+        scriptPath,
         "v1",
-        "--uri=" + container.getOpenSearchUrl(),
-        "--username=" + OpenSearchContainer.DEFAULT_USERNAME,
-        "--password=" + DEFAULT_PASSWORD
+        container.getOpenSearchUrl(),
+        OpenSearchContainer.DEFAULT_USERNAME,
+        DEFAULT_PASSWORD
       };
 
-      TestUtil.CommandResult result = TestUtil.execCommand(command);
-      LOG.info("Initialization index template output: {}", result.output());
-      int exitCode = result.exitCode();
+      ProcessBuilder builder = new ProcessBuilder(command);
+      // Script uses JSON_DIR="./opensearch/$VERSION", must run from bin/ directory
+      builder.directory(new File(binDir));
+      builder.redirectErrorStream(true);
+      Process process = builder.start();
+
+      BufferedReader reader =
+          new BufferedReader(
+              new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+      StringBuilder sb = new StringBuilder();
+      String line;
+      while ((line = reader.readLine()) != null) {
+        sb.append(line).append("\n");
+      }
+      int exitCode = process.waitFor();
+      LOG.info("Initialization index template output: {}", sb);
       return exitCode == 0;
     } catch (Exception e) {
       throw new RuntimeException("Failed to initialize index template", e);

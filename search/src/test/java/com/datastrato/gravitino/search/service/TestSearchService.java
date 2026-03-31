@@ -22,6 +22,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.Config;
@@ -33,18 +34,15 @@ import org.apache.gravitino.catalog.EntityCombinedTable;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.utils.NameIdentifierUtil;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.mockito.Mockito;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TestSearchService {
-  private static final Logger LOG = LoggerFactory.getLogger(TestSearchService.class);
-
   private MockedGravitinoService gravitinoService;
   private SearchService searchService;
   private InMemorySearchStorage inMemorySearchStorage;
@@ -411,16 +409,29 @@ public class TestSearchService {
     String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
     MetadataObject testObj = NameIdentifierUtil.toMetadataObject(nameIdentifier, type);
 
-    SyncTask task = searchService.synchronizeMetadata(metalake, testObj, cascading);
-    task.waitToFinished();
+    // Retry the sync until the expected count is reached. The orphan-removal step uses
+    // `update_time < task.createTime`; if both timestamps land in the same millisecond the
+    // deletion is skipped. Awaitility retries the full sync so that on the next attempt
+    // enough wall-clock time has elapsed and the condition holds.
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(10))
+        .pollInterval(Duration.ofMillis(50))
+        .untilAsserted(
+            () -> {
+              SyncTask task = searchService.synchronizeMetadata(metalake, testObj, cascading);
+              task.waitToFinished();
 
-    TaskStatusDTO taskStatus = searchService.getTaskStatus(task.getTaskId());
-    Assertions.assertNotNull(taskStatus);
-    Assertions.assertEquals(task.getTaskId(), taskStatus.getTaskId());
-    Assertions.assertEquals(TaskStatus.TaskStatusEnum.COMPLETED.name(), taskStatus.getTaskStatus());
+              TaskStatusDTO taskStatus = searchService.getTaskStatus(task.getTaskId());
+              Assertions.assertNotNull(taskStatus);
+              Assertions.assertEquals(task.getTaskId(), taskStatus.getTaskId());
+              Assertions.assertEquals(
+                  TaskStatus.TaskStatusEnum.COMPLETED.name(), taskStatus.getTaskStatus());
+
+              Assertions.assertEquals(
+                  expectedCount, inMemorySearchStorage.getSearchEntities().size());
+            });
 
     List<SearchEntityPO> searchEntityList = inMemorySearchStorage.getSearchEntities();
-    Assertions.assertEquals(expectedCount, searchEntityList.size());
     searchEntityList.forEach(
         searchEntityPO -> {
           Assertions.assertEquals(
@@ -458,8 +469,6 @@ public class TestSearchService {
       BaseCatalog catalog = original.get(key);
       try {
         gravitinoService.catalogs.remove(key);
-
-        Thread.sleep(100);
         testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, entry.getValue());
       } finally {
         original.put(key, catalog);

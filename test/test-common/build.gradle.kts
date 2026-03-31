@@ -10,7 +10,9 @@ plugins {
 }
 
 dependencies {
+  implementation(libs.awaitility)
   implementation(libs.bundles.log4j)
+  implementation(libs.guava)
   implementation(libs.testcontainers) {
     exclude(group = "com.fasterxml.jackson.core")
   }

@@ -163,7 +163,7 @@ public class InMemorySearchStorage implements SearchStorage {
         return entity -> value.equals(entity.getFullQualifiedName());
       }
       if (field.equals("entity_type")) {
-        return entity -> value.equals(entity.getEntityType());
+        return entity -> Entity.EntityType.valueOf(value).equals(entity.getEntityType());
       }
       if (field.equals("metalake")) {
         return entity -> value.equals(entity.getMetalake());

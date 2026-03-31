@@ -44,7 +44,7 @@ public class DatastratoFilesetOperationDispatcher extends FilesetOperationDispat
           try {
             return store.list(namespace, FilesetEntity.class, FILESET);
           } catch (NoSuchEntityException e) {
-            throw new NoSuchSchemaException("Schema does not exist: " + namespace);
+            throw new NoSuchSchemaException("Schema does not exist: %s", namespace);
           } catch (IOException e) {
             throw new RuntimeException(e);
           }

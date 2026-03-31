@@ -10,10 +10,10 @@ plugins {
 }
 
 dependencies {
-  implementation("org.apache.gravitino:api")
-  implementation("org.apache.gravitino:authorizations:authorization-common")
-  implementation("org.apache.gravitino:common")
-  implementation("org.apache.gravitino:core")
+  implementation(project(":api"))
+  implementation(project(":authorizations:authorization-common"))
+  implementation(project(":common"))
+  implementation(project(":core"))
 
   implementation(libs.bundles.log4j)
   implementation(libs.commons.lang3)
@@ -24,9 +24,7 @@ dependencies {
   annotationProcessor(libs.lombok)
   compileOnly(libs.lombok)
 
-  testImplementation("org.apache.gravitino:integration-test-common") {
-    targetConfiguration = "testArtifacts"
-  }
+  testImplementation(project(":integration-test-common", "testArtifacts"))
   testImplementation(libs.jackson.databind)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.testcontainers)

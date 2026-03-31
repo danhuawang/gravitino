@@ -3,21 +3,56 @@ name: Trino Integration Test
 # Controls when the workflow will run
 on:
   workflow_dispatch:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
   pull_request:
     types: [labeled]
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Integration test for AMD64 architecture
-  test-amd64-arch:
+  changes:
+    runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+        id: filter
+        with:
+          filters: |
+            source_changes:
+              - .github/**
+              - api/**
+              - bin/**
+              - catalogs/**
+              - clients/client-java/**
+              - clients/client-java-runtime/**
+              - common/**
+              - conf/**
+              - core/**
+              - dev/**
+              - gradle/**
+              - iceberg/**
+              - integration-test-common/**
+              - meta/**
+              - scripts/**
+              - server/**
+              - server-common/**
+              - trino-connector/**
+              - build.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+
+  # Integration test for AMD64 architecture
+  TrinoIT:
+    needs: changes
+    if: needs.changes.outputs.source_changes == 'true'
     runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
     timeout-minutes: 60
     strategy:
@@ -28,9 +63,6 @@ jobs:
       PLATFORM: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
 
       - uses: actions/setup-java@v4
         with:
@@ -45,48 +77,49 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Set up Docker Compose
-        uses: docker/setup-compose-action@v1
-        with:
-          version: latest
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
 
       - name: Check required command
         run: |
-          gravitino-internal/dev/ci/check_commands.sh
+          dev/ci/check_commands.sh
 
-      - name: Package Gravitino
+      - name: Build Gravitino
         run: |
-          ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
+          ./gradlew build -x test \
+            -x :web:web:build -x :web:integration-test:build \
+            -x :web-v2:web:build -x :web-v2:integration-test:build \
+            -x :clients:client-python:build \
+            -x :flink-connector:flink:build \
+            -x :spark-connector:spark-common:build \
+            -x :spark-connector:spark-3.3:build -x :spark-connector:spark-3.4:build -x :spark-connector:spark-3.5:build \
+            -x :spark-connector:spark-runtime-3.3:build -x :spark-connector:spark-runtime-3.4:build -x :spark-connector:spark-runtime-3.5:build \
+            -x :mcp-server:build -x :lineage:build \
+            -x :maintenance:optimizer:build -x :maintenance:jobs:build \
+            -x :lance:lance-common:build -x :lance:lance-rest-server:build
 
       - name: Free up disk space
         run: |
-          gravitino-internal/dev/ci/util_free_space.sh
-
-      - name: Copy distribution package
-        run: |
-          sed -i '/= *opensearch/d' ./distribution/package/conf/gravitino.conf
-          sed -i '/= *search/d' ./distribution/package/conf/gravitino.conf
-          echo "gravitino.datastrato.search.storage.impl = memory" >> ./distribution/package/conf/gravitino.conf 
-          cp -r -f ./distribution ./gravitino-internal
+          dev/ci/util_free_space.sh
 
       - name: Trino Integration Test
         id: integrationTest
         run: |
-          ./gradlew -p gravitino-internal -PskipTests -PtestMode=deploy -PjdkVersion=${{ matrix.java-version }} -PskipDockerTests=false :trino-connector:integration-test:test
+          trino-connector/integration-test/trino-test-tools/trino_integration_test.sh
+          # Disable the Trino cascading query integration test, because the connector jars are private now.
+          #trino-connector/integration-test/trino-test-tools/run_test.sh
 
       - name: Upload integrate tests reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
         with:
-          name: flink-connector-integrate-test-reports-${{ matrix.java-version }}
+          name: trino-connector-integrate-test-reports-${{ matrix.java-version }}
           path: |
-            gravitino-internal/build/reports
-            gravitino-internal/trino-connector/integrate-test/build/*.log
-            gravitino-internal/trino-connector/integrate-test/build/*.tar
-            gravitino-internal/integration-test-common/build/trino-ci-container-log
-            gravitino-internal/distribution/package/logs/gravitino-server.out
-            gravitino-internal/distribution/package/logs/gravitino-server.log
-            gravitino-internal/catalogs/**/*.log
-            gravitino-internal/catalogs/**/*.tar
+            build/reports
+            trino-connector/integration-test/build/*.log
+            trino-connector/integration-test/build/*.tar
+            trino-connector/integration-test/build/trino-cascading-env
+            integration-test-common/build/trino-ci-container-log
+            distribution/package/logs/gravitino-server.out
+            distribution/package/logs/gravitino-server.log
+            catalogs/**/*.log
+            catalogs/**/*.tar

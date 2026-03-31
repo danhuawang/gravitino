@@ -12,8 +12,6 @@ import org.apache.gravitino.listener.api.EventListenerPlugin;
 import org.apache.gravitino.listener.api.event.CatalogEvent;
 import org.apache.gravitino.listener.api.event.Event;
 import org.apache.gravitino.listener.api.event.FilesetEvent;
-import org.apache.gravitino.listener.api.event.IcebergNamespaceEvent;
-import org.apache.gravitino.listener.api.event.IcebergTableEvent;
 import org.apache.gravitino.listener.api.event.ModelEvent;
 import org.apache.gravitino.listener.api.event.OwnerEvent;
 import org.apache.gravitino.listener.api.event.SchemaEvent;
@@ -52,6 +50,11 @@ public class DataDiscoveryListener implements EventListenerPlugin {
   public void stop() throws RuntimeException {}
 
   @Override
+  public Mode mode() {
+    return Mode.ASYNC_ISOLATED;
+  }
+
+  @Override
   public void onPostEvent(Event event) {
     try {
       EventHandler handler = null;
@@ -71,13 +74,6 @@ public class DataDiscoveryListener implements EventListenerPlugin {
         handler = eventHandlers.get(ModelEvent.class);
       } else if (event instanceof OwnerEvent) {
         handler = eventHandlers.get(OwnerEvent.class);
-      } else if (event instanceof IcebergTableEvent) {
-        // IcebergTableEvent covers all successful Iceberg table operations
-        // (IcebergFailureEvent is a separate hierarchy and is excluded automatically)
-        handler = eventHandlers.get(TableEvent.class);
-      } else if (event instanceof IcebergNamespaceEvent) {
-        // Iceberg namespaces map to Gravitino schemas
-        handler = eventHandlers.get(SchemaEvent.class);
       }
 
       if (handler != null) {

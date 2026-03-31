@@ -38,6 +38,8 @@ public class MetricDataService {
   private static final MetricDataService INSTANCE = new MetricDataService();
 
   private boolean enableAuthorization;
+
+  @SuppressWarnings("unused")
   private MetricsCollector metricsCollector;
 
   private MetricDataService() {}
@@ -101,7 +103,7 @@ public class MetricDataService {
     try {
       metalakeId = MetalakeMetaService.getInstance().getMetalakeIdByName(metalakeName);
     } catch (NoSuchEntityException e) {
-      throw new NoSuchMetalakeException("Metalake not found: " + metalakeName, e);
+      throw new NoSuchMetalakeException(e, "Metalake not found: %s", metalakeName);
     }
 
     long userId = MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ;
@@ -113,7 +115,7 @@ public class MetricDataService {
         userId = userEntity.id();
       } catch (NoSuchEntityException e) {
         throw new NoSuchUserException(
-            "User not found: " + userName + " for metalake: " + metalakeName, e);
+            e, "User not found: %s for metalake: %s", userName, metalakeName);
       }
       NameIdentifier[] authResult =
           MetadataAuthzHelper.filterByExpression(

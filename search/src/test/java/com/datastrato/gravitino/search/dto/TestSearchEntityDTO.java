@@ -43,6 +43,7 @@ public class TestSearchEntityDTO {
             .withUserPermissions(null)
             .withRolePermissions(null)
             .build();
+    Assertions.assertNotNull(searchEntityDTO);
   }
 
   @Test

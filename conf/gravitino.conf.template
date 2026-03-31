@@ -1,0 +1,153 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
+# THE CONFIGURATION FOR Gravitino SERVER
+gravitino.server.shutdown.timeout = 3000
+
+# THE CONFIGURATION FOR Gravitino WEB SERVER
+# The host name of the built-in web server
+gravitino.server.webserver.host = 0.0.0.0
+# The http port number of the built-in web server
+gravitino.server.webserver.httpPort = 8090
+# The min thread size of the built-in web server
+gravitino.server.webserver.minThreads = 24
+# The max thread size of the built-in web server
+gravitino.server.webserver.maxThreads = 200
+# The stop timeout of the built-in web server
+gravitino.server.webserver.stopTimeout = 30000
+# The timeout of idle connections
+gravitino.server.webserver.idleTimeout = 30000
+# The executor thread pool work queue size of the built-in web server
+gravitino.server.webserver.threadPoolWorkQueueSize = 100
+# The request header size of the built-in web server
+gravitino.server.webserver.requestHeaderSize = 131072
+# The response header size of the built-in web server
+gravitino.server.webserver.responseHeaderSize = 131072
+
+# THE CONFIGURATION FOR Gravitino ENTITY STORE
+# The entity store to use, we only supports relational
+gravitino.entity.store = relational
+# The backend for the entity store, we only supports JDBC
+gravitino.entity.store.relational = JDBCBackend
+
+# The JDBC URL for the entity store
+gravitino.entity.store.relational.jdbcUrl = jdbc:h2
+# The JDBC driver class name
+gravitino.entity.store.relational.jdbcDriver = org.h2.Driver
+# The JDBC user name
+gravitino.entity.store.relational.jdbcUser = gravitino
+# The JDBC password
+gravitino.entity.store.relational.jdbcPassword = gravitino
+
+# THE CONFIGURATION FOR Gravitino CATALOG
+# The interval in milliseconds to evict the catalog cache
+gravitino.catalog.cache.evictionIntervalMs = 3600000
+
+# THE CONFIGURATION FOR Gravitino Entity Cache
+# Whether to enable the cached Entity store.
+gravitino.cache.enabled = true
+# Maximum number of entries allowed in the cache (effective only when weighted eviction is disabled).
+gravitino.cache.maxEntries = 10000
+# Time-to-live (TTL) for each cache entry after it is written, in milliseconds.
+gravitino.cache.expireTimeInMs = 3600000
+# Whether to enable cache statistics logging (e.g., hit/miss count, load failures, current size).
+gravitino.cache.enableStats = false
+# Whether to enable weighted cache eviction.
+# If enabled, cache entries are evicted based on their weight rather than count.
+gravitino.cache.enableWeigher = true
+# The cache implementation to use (e.g., caffeine).
+gravitino.cache.implementation = caffeine
+
+# THE CONFIGURATION FOR authorization
+# Whether Gravitino enable authorization or not
+gravitino.authorization.enable = false
+# The admins of Gravitino service, multiple admins are spitted by comma.
+gravitino.server.visibleConfigs=gravitino.authorization.serviceAdmins
+gravitino.authorization.serviceAdmins = anonymous
+
+# THE CONFIGURATION FOR AUXILIARY SERVICE
+# Auxiliary service names, separate by ',', currently support iceberg-rest and lance-rest
+gravitino.auxService.names = iceberg-rest,lance-rest
+# Iceberg REST service classpath
+gravitino.iceberg-rest.classpath = iceberg-rest-server/libs, iceberg-rest-server/conf
+# Iceberg REST service host
+gravitino.iceberg-rest.host = 0.0.0.0
+# Iceberg REST service http port
+gravitino.iceberg-rest.httpPort = 9001
+# The backend Iceberg catalog for Iceberg REST service, it's recommended to change to hive or jdbc
+gravitino.iceberg-rest.catalog-backend = memory
+# The warehouse directory of Iceberg catalog for Iceberg REST service
+gravitino.iceberg-rest.warehouse = /tmp/
+# If authorization is enabled, you must use dynamic config provider for Iceberg REST server
+# gravitino.iceberg-rest.catalog-config-provider = dynamic-config-provider
+# URI of the Gravitino server that the dynamic config provider will call to fetch catalog configs
+# gravitino.iceberg-rest.gravitino-uri = http://localhost:8090
+# Metalake name used by the dynamic config provider when querying Gravitino for Iceberg catalogs
+# gravitino.iceberg-rest.gravitino-metalake = <metalake-name>
+# Default Iceberg catalog name to use when clients do not specify one
+# gravitino.iceberg-rest.default-catalog-name = <default-iceberg-catalog>
+
+# Lance REST service classpath
+gravitino.lance-rest.classpath = lance-rest-server/libs
+# Lance REST service host
+gravitino.lance-rest.host = 0.0.0.0
+# Lance REST service http port
+gravitino.lance-rest.httpPort = 9101
+
+# THE CONFIGURATION FOR Lance namespace backend
+# The backend Lance namespace for Lance REST service, it's recommended to use Gravitino
+gravitino.lance-rest.namespace-backend = gravitino
+# The uri of the Lance REST service gravitino namespace backend
+gravitino.lance-rest.gravitino-uri = http://localhost:8090
+# The metalake name used for Lance REST service gravitino namespace backend, please create the metalake first before using it, and configure the metalake name here.
+# gravitino.lance-rest.gravitino-metalake = metalake
+
+# Comma separated list of REST API packages to expand
+gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest,com.datastrato.gravitino.search.rest,com.datastrato.gravitino.metrics.rest
+
+# Trino preview configuration
+# Default value of `gravitino.datastrato.preview.jdbcUrl` is null
+gravitino.datastrato.preview.jdbcUrl=jdbc:trino://trino:8080
+gravitino.datastrato.preview.jdbcDriver=io.trino.jdbc.TrinoDriver
+gravitino.datastrato.preview.jdbcUsername=admin
+gravitino.datastrato.preview.timeoutInSec=300
+gravitino.datastrato.preview.maxRowCount=100
+# Default value of `gravitino.datastrato.preview.jdbcPassword` is null.
+# Default value of `gravitino.datastrato.preview.sensitiveTags` is empty collection.
+
+# Lineage sink configuration
+# gravitino.lineage.sinks = log,marquez
+# gravitino.lineage.marquez.sinkClass = com.datastrato.gravitino.lineage.sink.HTTPLineageSink
+# gravitino.lineage.marquez.url = http://localhost:6000
+
+# Search storage backend configuration
+# Using memory SearchStorage for testing purpose, advanced query may not be supported
+gravitino.datastrato.search.storage.impl = memory
+# Search storage backend implementation, recommended to use opensearch in production environment
+#gravitino.datastrato.search.storage.impl = opensearch
+# OpenSearch URL
+#gravitino.datastrato.search.opensearch.url = https://localhost:9200
+# OpenSearch username
+#gravitino.datastrato.search.opensearch.username = admin
+# OpenSearch password
+#gravitino.datastrato.search.opensearch.password = ----
+
+# Search listener configuration
+gravitino.eventListener.names = search
+gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener

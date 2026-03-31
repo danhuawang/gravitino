@@ -2,85 +2,85 @@ name: Spark Integration Test
 
 # Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
+  workflow_dispatch:
   push:
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
   pull_request:
     types: [labeled]
-    branches: [ "main", "branch-*" ]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Integration test for ARM64 architecture
-  test-amd64-arch:
+  changes:
+    runs-on: ubuntu-latest
     if: contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: [self-hosted, linux, arm64, amazon, xlarge]
-    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+        id: filter
+        with:
+          filters: |
+            source_changes:
+              - .github/**
+              - api/**
+              - bin/**
+              - catalogs/**
+              - clients/client-java/**
+              - clients/client-java-runtime/**
+              - common/**
+              - conf/**
+              - core/**
+              - dev/**
+              - gradle/**
+              - iceberg/**
+              - integration-test-common/**
+              - meta/**
+              - scripts/**
+              - server/**
+              - server-common/**
+              - spark-connector/**
+              - build.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+
+  SparkIT-on-push:
+    needs: changes
+    if: (github.event_name == 'push' && needs.changes.outputs.source_changes == 'true')
     strategy:
       matrix:
-        architecture: [linux/amd64]
+        # Integration test for ARM64 architecture
+        architecture: [ linux/arm64 ]
         java-version: [ 17 ]
         scala-version: [ 2.12 ]
         test-mode: [ deploy ]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+    uses: ./.github/workflows/spark-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+      scala-version: ${{ matrix.scala-version }}
+      test-mode: ${{ matrix.test-mode }}
+    secrets: inherit
 
-      - uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.java-version }}
-          distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-
-      - name: Check required command
-        run: |
-          gravitino-internal/dev/ci/check_commands.sh
-
-      - name: Package Gravitino
-        if : ${{ matrix.test-mode == 'deploy' }}
-        run: |
-          ./gradlew compileDistribution -x test -PjdkVersion=${{ matrix.java-version }}
-
-      - name: Free up disk space
-        run: |
-          gravitino-internal/dev/ci/util_free_space.sh
-
-
-      - name: Copy distribution package
-        run: |
-          sed -i '/= *opensearch/d' ./distribution/package/conf/gravitino.conf
-          sed -i '/= *search/d' ./distribution/package/conf/gravitino.conf
-          echo "gravitino.datastrato.search.storage.impl = memory" >> ./distribution/package/conf/gravitino.conf 
-          cp -r -f ./distribution ./gravitino-internal
-
-      - name: Spark Integration Test
-        id: integrationTest
-        run: |
-          ./gradlew -p gravitino-internal -PskipTests -PtestMode=${{ matrix.test-mode }} -PjdkVersion=${{ matrix.java-version }} -PscalaVersion=${{ matrix.scala-version }} -PskipDockerTests=false :spark-connector:spark-3.4:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
-
-      - name: Upload integrate tests reports
-        uses: actions/upload-artifact@v4
-        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
-        with:
-          name: spark-connector-integrate-test-reports-${{ matrix.java-version }}-${{ matrix.test-mode }}
-          path: |
-            gravitino-internal/build/reports
-            gravitino-internal/spark-connector/v3.3/spark/build/spark-3.3-integration-test.log
-            gravitino-internal/spark-connector/v3.4/spark/build/spark-3.4-integration-test.log
-            gravitino-internal/spark-connector/v3.5/spark/build/spark-3.5-integration-test.log
-            gravitino-internal/distribution/package/logs/*.out
-            gravitino-internal/distribution/package/logs/*.log
+  SparkIT-on-pr:
+    needs: changes
+    if: (github.event_name == 'pull_request' && needs.changes.outputs.source_changes == 'true')
+    strategy:
+      matrix:
+        # Integration test for ARM64 architecture
+        architecture: [ linux/arm64 ]
+        java-version: [ 17 ]
+        scala-version: [ 2.12 ]
+        test-mode: [ deploy ]
+    uses: ./.github/workflows/spark-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+      scala-version: ${{ matrix.scala-version }}
+      test-mode: ${{ matrix.test-mode }}
+    secrets: inherit

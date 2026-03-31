@@ -55,6 +55,7 @@ public class SearchTableEntityPO extends SearchEntityPO {
     }
   }
 
+  @SuppressWarnings("unused")
   @JsonDeserialize(builder = SearchColumn.Builder.class)
   public static class SearchColumn {
     @JsonProperty("column_name")

@@ -64,6 +64,7 @@ public class SearchModelEntityPO extends SearchEntityPO {
     }
   }
 
+  @SuppressWarnings("unused")
   @JsonDeserialize(builder = SearchModelVersionPO.Builder.class)
   public static class SearchModelVersionPO {
     @JsonProperty("version")

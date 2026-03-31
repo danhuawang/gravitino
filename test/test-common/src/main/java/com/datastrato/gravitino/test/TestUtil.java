@@ -5,6 +5,7 @@
 package com.datastrato.gravitino.test;
 
 import static com.datastrato.gravitino.test.OpenSearchContainer.LOG;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -17,7 +18,8 @@ public class TestUtil {
     builder.redirectErrorStream(true);
     Process process = builder.start();
 
-    BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+    BufferedReader reader =
+        new BufferedReader(new InputStreamReader(process.getInputStream(), UTF_8));
     StringBuilder sb = new StringBuilder();
     String line;
     while ((line = reader.readLine()) != null) {

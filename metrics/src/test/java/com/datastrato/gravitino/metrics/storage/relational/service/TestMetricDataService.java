@@ -8,6 +8,7 @@ import static com.datastrato.gravitino.metrics.storage.relational.service.Metric
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_MAX_CONNECTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.datastrato.gravitino.metrics.AssetNode;
 import com.datastrato.gravitino.metrics.MetalakeSnapshot;
 import com.datastrato.gravitino.metrics.MetricsCollector;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
@@ -68,17 +69,17 @@ class TestMetricDataService {
             i -> {
               Map<String, MetalakeSnapshot> snapshots = new HashMap<>();
               MetalakeSnapshot snapshot1 = Mockito.mock(MetalakeSnapshot.class);
-              Mockito.when(snapshot1.getAssetTreeRoot()).thenReturn(Mockito.mock());
+              Mockito.when(snapshot1.getAssetTreeRoot()).thenReturn(Mockito.mock(AssetNode.class));
               Mockito.when(snapshot1.getAssetTreeRoot().getId()).thenReturn(1L);
               snapshots.put(metalakeName1, snapshot1);
 
               MetalakeSnapshot snapshot2 = Mockito.mock(MetalakeSnapshot.class);
-              Mockito.when(snapshot2.getAssetTreeRoot()).thenReturn(Mockito.mock());
+              Mockito.when(snapshot2.getAssetTreeRoot()).thenReturn(Mockito.mock(AssetNode.class));
               Mockito.when(snapshot2.getAssetTreeRoot().getId()).thenReturn(2L);
               snapshots.put(metalakeName2, snapshot2);
 
               MetalakeSnapshot snapshot3 = Mockito.mock(MetalakeSnapshot.class);
-              Mockito.when(snapshot3.getAssetTreeRoot()).thenReturn(Mockito.mock());
+              Mockito.when(snapshot3.getAssetTreeRoot()).thenReturn(Mockito.mock(AssetNode.class));
               Mockito.when(snapshot3.getAssetTreeRoot().getId()).thenReturn(3L);
               snapshots.put(metalakeName3, snapshot3);
               return snapshots;
@@ -167,21 +168,12 @@ class TestMetricDataService {
     String gravitinoHome = System.getenv("GRAVITINO_HOME");
     String createTableSqls =
         FileUtils.readFileToString(
-                new File(
-                    gravitinoHome
-                        + "/scripts/h2/schema-"
-                        + ConfigConstants.CURRENT_SCRIPT_VERSION
-                        + "-h2.sql"),
-                StandardCharsets.UTF_8)
-            + "\n"
-            + FileUtils.readFileToString(
-                new File(
-                    gravitinoHome
-                        + "/gravitino-internal"
-                        + "/scripts/h2/schema-"
-                        + ConfigConstants.CURRENT_SCRIPT_VERSION
-                        + "-h2.sql"),
-                StandardCharsets.UTF_8);
+            new File(
+                gravitinoHome
+                    + "/scripts/h2/schema-"
+                    + ConfigConstants.CURRENT_SCRIPT_VERSION
+                    + "-h2.sql"),
+            StandardCharsets.UTF_8);
 
     String auditInfo = "{\"creator\":\"test\",\"createTime\":\"2024-01-01T00:00:00Z\"}";
     String schemaVersion = "{\"majorVersion\":\"0\",\"minorVersion\":\"1\"}";

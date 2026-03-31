@@ -32,10 +32,10 @@ paths:
 
   /web/preview/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
     parameters:
-      - $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/parameters/metalake"
-      - $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/parameters/catalog"
-      - $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/parameters/schema"
-      - $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/parameters/table"
+      - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/catalog"
+      - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/schema"
+      - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/table"
     get:
       tags:
         - table
@@ -52,24 +52,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/PreviewResponse"
         "400":
-          $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "404":
           description: Not Found - The target table does not exist
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+                $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/ErrorModel"
               examples:
                 NoSuchMetalakeException:
-                  $ref: "./../../gravitino-internal/docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                  $ref: "../../docs-oss/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
                 NoSuchCatalogException:
-                  $ref: "./../../gravitino-internal/docs/open-api/catalogs.yaml#/components/examples/NoSuchCatalogException"
+                  $ref: "../../docs-oss/open-api/catalogs.yaml#/components/examples/NoSuchCatalogException"
                 NoSuchSchemaException:
-                  $ref: "./../../gravitino-internal/docs/open-api/schemas.yaml#/components/examples/NoSuchSchemaException"
+                  $ref: "../../docs-oss/open-api/schemas.yaml#/components/examples/NoSuchSchemaException"
                 NoSuchTableException:
-                  $ref: "./../../gravitino-internal/docs/open-api/tables.yaml#/components/examples/NoSuchTableException"
+                  $ref: "../../docs-oss/open-api/tables.yaml#/components/examples/NoSuchTableException"
         "5xx":
-          $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
 components:
   schemas:
@@ -97,7 +97,7 @@ components:
           type: array
           description: A list of column objects
           items:
-            $ref: "./../../gravitino-internal/docs/open-api/tables.yaml#/components/schemas/Column"
+            $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/Column"
         result:
           type: array
           description: A list of table data preview

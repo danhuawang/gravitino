@@ -260,6 +260,7 @@ public class SearchEntityPO {
     }
   }
 
+  @SuppressWarnings("unused")
   @JsonDeserialize(builder = SearchAuditPO.Builder.class)
   public static class SearchAuditPO {
     @JsonProperty("create_time")
@@ -319,6 +320,7 @@ public class SearchEntityPO {
     }
   }
 
+  @SuppressWarnings("unused")
   @JsonDeserialize(builder = SearchUserPermissionPO.Builder.class)
   public static class SearchUserPermissionPO {
     @JsonProperty("name")
@@ -358,6 +360,7 @@ public class SearchEntityPO {
     }
   }
 
+  @SuppressWarnings("unused")
   @JsonDeserialize(builder = SearchRolePermissionPO.Builder.class)
   public static class SearchRolePermissionPO {
     @JsonProperty("name")

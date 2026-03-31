@@ -182,8 +182,7 @@ public class SearchService implements Closeable {
     boolean metalakeExists =
         GravitinoEnv.getInstance().metalakeDispatcher().metalakeExists(NameIdentifier.of(metalake));
     if (!metalakeExists) {
-      throw new NoSuchMetalakeException(
-          String.format("The metalake '%s' does not exist.", metalake));
+      throw new NoSuchMetalakeException("The metalake '%s' does not exist.", metalake);
     }
 
     Preconditions.checkArgument(metadataObject != null, "The metadata object cannot be null.");

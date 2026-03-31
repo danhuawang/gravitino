@@ -6,7 +6,7 @@
 package com.datastrato.gravitino.search.dto;
 
 import com.google.common.collect.Lists;
-import org.apache.gravitino.Catalog.Type;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity.EntityType;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -17,7 +17,7 @@ public class TestSearchCatalogEntityDTO {
   void testSearchCatalogEntity() {
     SearchCatalogEntityDTO searchCatalogEntityDTO =
         SearchCatalogEntityDTO.SearchCatalogEntityDTOBuilder.builder()
-            .withType(Type.RELATIONAL)
+            .withType(Catalog.Type.RELATIONAL)
             .withProvider("provider")
             .withEntityId(1L)
             .withEntityType(EntityType.CATALOG)
@@ -35,6 +35,7 @@ public class TestSearchCatalogEntityDTO {
             .withUserPermissions(null)
             .withRolePermissions(null)
             .build();
+    Assertions.assertNotNull(searchCatalogEntityDTO);
   }
 
   @Test
@@ -70,7 +71,7 @@ public class TestSearchCatalogEntityDTO {
             IllegalArgumentException.class,
             () -> {
               SearchCatalogEntityDTO.SearchCatalogEntityDTOBuilder.builder()
-                  .withType(Type.RELATIONAL)
+                  .withType(Catalog.Type.RELATIONAL)
                   .withEntityId(1L)
                   .withEntityType(EntityType.CATALOG)
                   .withInUse(true)

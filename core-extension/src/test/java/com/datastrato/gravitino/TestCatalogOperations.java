@@ -57,7 +57,6 @@ import org.apache.gravitino.messaging.TopicChange;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
-import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.model.Model;
 import org.apache.gravitino.model.ModelCatalog;
 import org.apache.gravitino.model.ModelChange;
@@ -275,17 +274,6 @@ public class TestCatalogOperations
     } else {
       schemas.put(ident, schema);
     }
-
-    StringIdentifier stringId = StringIdentifier.fromProperties(properties);
-    SchemaEntity schemaEntity =
-        SchemaEntity.builder()
-            .withName(ident.name())
-            .withId(stringId.id())
-            .withNamespace(ident.namespace())
-            .withComment(comment)
-            .withProperties(properties)
-            .withAuditInfo(auditInfo)
-            .build();
 
     return schema;
   }

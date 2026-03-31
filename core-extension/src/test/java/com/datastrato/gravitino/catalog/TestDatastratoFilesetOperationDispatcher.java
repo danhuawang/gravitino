@@ -146,7 +146,7 @@ public class TestDatastratoFilesetOperationDispatcher extends TestDatastratoOper
     Assertions.assertEquals(fileset1.name(), alteredFileset2.name());
     Assertions.assertEquals("new comment", alteredFileset2.comment());
 
-    FilesetChange[] changes3 = new FilesetChange[] {FilesetChange.removeComment()};
+    FilesetChange[] changes3 = new FilesetChange[] {FilesetChange.updateComment(null)};
 
     Fileset alteredFileset3 = filesetOperationDispatcher.alterFileset(filesetIdent1, changes3);
     Assertions.assertEquals(fileset1.name(), alteredFileset3.name());

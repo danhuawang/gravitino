@@ -60,9 +60,9 @@ paths:
                   - $ref: "#/components/schemas/TopicListResponse"
                   - $ref: "#/components/schemas/ModelListResponse"
         "400":
-          $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "5xx":
-          $ref: "./../../gravitino-internal/docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
 components:
   schemas:
@@ -79,7 +79,7 @@ components:
           type: array
           description: A list of catalog objects
           items:
-            $ref: "./../../gravitino-internal/docs/open-api/catalogs.yaml#/components/schemas/Catalog"
+            $ref: "../../docs-oss/open-api/catalogs.yaml#/components/schemas/Catalog"
 
     SchemaListResponse:
       type: object
@@ -94,7 +94,7 @@ components:
           type: array
           description: A list of schema objects
           items:
-            $ref: "./../../gravitino-internal/docs/open-api/schemas.yaml#/components/schemas/Schema"
+            $ref: "../../docs-oss/open-api/schemas.yaml#/components/schemas/Schema"
 
     TableListResponse:
       type: object
@@ -109,7 +109,7 @@ components:
           type: array
           description: A list of table objects
           items:
-            $ref: "./../../gravitino-internal/docs/open-api/tables.yaml#/components/schemas/Table"
+            $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/Table"
 
     FilesetListResponse:
       type: object
@@ -124,7 +124,7 @@ components:
           type: array
           description: A list of fileset objects
           items:
-            $ref: "./../../gravitino-internal/docs/open-api/filesets.yaml#/components/schemas/Fileset"
+            $ref: "../../docs-oss/open-api/filesets.yaml#/components/schemas/Fileset"
 
     TopicListResponse:
       type: object
@@ -139,7 +139,7 @@ components:
           type: array
           description: A list of topic objects
           items:
-            $ref: "./../../gravitino-internal/docs/open-api/topics.yaml#/components/schemas/Topic"
+            $ref: "../../docs-oss/open-api/topics.yaml#/components/schemas/Topic"
 
     ModelListResponse:
       type: object
@@ -154,4 +154,4 @@ components:
           type: array
           description: A list of model objects
           items:
-            $ref: "./../../gravitino-internal/docs/open-api/models.yaml#/components/schemas/Model"
+            $ref: "../../docs-oss/open-api/models.yaml#/components/schemas/Model"

@@ -65,6 +65,7 @@ public class SearchModelEntityDTO extends SearchEntityDTO {
   }
 
   @JsonDeserialize(builder = SearchModelVersionDTO.Builder.class)
+  @SuppressWarnings("unused") // Fields are accessed by Jackson via reflection
   public static class SearchModelVersionDTO {
     @JsonProperty("version")
     private final int version;

@@ -14,14 +14,14 @@ configure<NodeExtension> {
   version = "21.6.1"
   npmVersion = "10.2.4"
   download = true
-  nodeProjectDir = file(".node")
-  workDir = file(".node")
+  nodeProjectDir.set(file("$rootDir/.node"))
 }
 
 tasks {
   val lintOpenAPI by registering(NpxTask::class) {
     command.set("@redocly/cli@1.23.1")
     args.set(listOf("lint", "--extends=recommended-strict", "${project.projectDir}/open-api/openapi.yaml"))
+    environment.set(mapOf("npm_config_cache" to "${project.projectDir}/.npm-cache"))
   }
 
   build {

@@ -1,6 +1,20 @@
 --
--- Copyright 2023 Datastrato Pvt Ltd.
--- This software is licensed under the Apache License version 2.
+-- Licensed to the Apache Software Foundation (ASF) under one
+-- or more contributor license agreements.  See the NOTICE file--
+--  distributed with this work for additional information
+-- regarding copyright ownership.  The ASF licenses this file
+-- to you under the Apache License, Version 2.0 (the
+-- "License"). You may not use this file except in compliance
+-- with the License.  You may obtain a copy of the License at
+--
+--  http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing,
+-- software distributed under the License is distributed on an
+-- "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+-- KIND, either express or implied.  See the License for the
+-- specific language governing permissions and limitations
+-- under the License.
 --
 
 CREATE TABLE IF NOT EXISTS `function_meta` (
@@ -67,3 +81,30 @@ CREATE TABLE IF NOT EXISTS partition_statistic_meta (
 );
 
 CREATE INDEX IF NOT EXISTS idx_table_partition ON partition_statistic_meta(table_id, partition_name);
+
+-- Add optimizer metrics storage tables
+CREATE TABLE IF NOT EXISTS `table_metrics` (
+    `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'auto increment id',
+    `table_identifier` VARCHAR(1024) NOT NULL COMMENT 'normalized table identifier',
+    `metric_name` VARCHAR(1024) NOT NULL COMMENT 'metric name',
+    `table_partition` VARCHAR(1024) DEFAULT NULL COMMENT 'normalized partition identifier',
+    `metric_ts` BIGINT(20) NOT NULL COMMENT 'metric timestamp in epoch seconds',
+    `metric_value` VARCHAR(1024) NOT NULL COMMENT 'metric value payload',
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB COMMENT='optimizer table metrics';
+
+CREATE TABLE IF NOT EXISTS `job_metrics` (
+    `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'auto increment id',
+    `job_identifier` VARCHAR(1024) NOT NULL COMMENT 'normalized job identifier',
+    `metric_name` VARCHAR(1024) NOT NULL COMMENT 'metric name',
+    `metric_ts` BIGINT(20) NOT NULL COMMENT 'metric timestamp in epoch seconds',
+    `metric_value` VARCHAR(1024) NOT NULL COMMENT 'metric value payload',
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB COMMENT='optimizer job metrics';
+
+CREATE INDEX IF NOT EXISTS `idx_table_metrics_metric_ts` ON `table_metrics`(`metric_ts`);
+CREATE INDEX IF NOT EXISTS `idx_job_metrics_metric_ts` ON `job_metrics`(`metric_ts`);
+CREATE INDEX IF NOT EXISTS `idx_table_metrics_composite`
+  ON `table_metrics`(`table_identifier`, `table_partition`, `metric_ts`);
+CREATE INDEX IF NOT EXISTS `idx_job_metrics_identifier_metric_ts`
+  ON `job_metrics`(`job_identifier`, `metric_ts`);

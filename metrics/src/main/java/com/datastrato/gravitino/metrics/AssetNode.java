@@ -58,7 +58,7 @@ public class AssetNode {
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
+    if (!(o instanceof AssetNode)) return false;
     AssetNode assetNode = (AssetNode) o;
     return Objects.equals(nameIdent, assetNode.nameIdent);
   }

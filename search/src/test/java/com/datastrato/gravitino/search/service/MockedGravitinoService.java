@@ -21,7 +21,6 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
-import org.apache.gravitino.MetadataObject.Type;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
@@ -85,7 +84,7 @@ public class MockedGravitinoService {
               if (metalakes.containsKey(name)) {
                 return metalakes.get(name);
               } else {
-                throw new NoSuchMetalakeException("No such metalake: " + name);
+                throw new NoSuchMetalakeException("No such metalake: %s", name);
               }
             });
     Mockito.when(metalakeDispatcher.metalakeExists(any(NameIdentifier.class)))
@@ -122,7 +121,7 @@ public class MockedGravitinoService {
               if (catalogs.containsKey(name.toString())) {
                 return catalogs.get(name.toString());
               } else {
-                throw new NoSuchMetalakeException("No such catalog: " + name);
+                throw new NoSuchMetalakeException("No such catalog: %s", name);
               }
             });
 
@@ -154,7 +153,7 @@ public class MockedGravitinoService {
               if (schemas.containsKey(name.toString())) {
                 return schemas.get(name.toString());
               } else {
-                throw new NoSuchMetalakeException("No such schema: " + name);
+                throw new NoSuchMetalakeException("No such schema: %s", name);
               }
             });
     return schemaDispatcher;
@@ -185,7 +184,7 @@ public class MockedGravitinoService {
               if (tables.containsKey(name.toString())) {
                 return tables.get(name.toString());
               } else {
-                throw new NoSuchMetalakeException("No such table: " + name);
+                throw new NoSuchMetalakeException("No such table: %s", name);
               }
             });
     return tableDispatcher;
@@ -209,7 +208,6 @@ public class MockedGravitinoService {
     Mockito.when(tagDispatcher.listMetadataObjectsForTag(anyString(), anyString()))
         .thenAnswer(
             args -> {
-              String metalake = args.getArgument(0);
               String tagName = args.getArgument(1);
               return objTags.entrySet().stream()
                   .filter(
@@ -219,19 +217,19 @@ public class MockedGravitinoService {
                         // This is a simple mock, so we assume the metadata object is just metalake,
                         // catalog, schema, and table
                         String[] parts = entry.getKey().split("\\.");
-                        Type type;
+                        MetadataObject.Type type;
                         switch (parts.length) {
                           case 1:
-                            type = Type.CATALOG;
+                            type = MetadataObject.Type.CATALOG;
                             break;
                           case 2:
-                            type = Type.CATALOG;
+                            type = MetadataObject.Type.CATALOG;
                             break;
                           case 3:
-                            type = Type.SCHEMA;
+                            type = MetadataObject.Type.SCHEMA;
                             break;
                           case 4:
-                            type = Type.TABLE;
+                            type = MetadataObject.Type.TABLE;
                             break;
                           default:
                             throw new IllegalArgumentException(

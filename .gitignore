@@ -26,6 +26,9 @@ replay_pid*
 **/target
 **/.gradle
 **/.idea
+!/.idea/icon.svg
+!.idea/vcs.xml
+**/.vscode
 **/build
 gen
 **/.DS_Store
@@ -33,6 +36,7 @@ gen
 out/**
 *.iws
 *.ipr
+**/keytabs/
 
 distribution
 common/src/main/resources/gravitino-build-info.properties
@@ -47,8 +51,16 @@ include clients/client-python/.gitignore
 
 # node env
 .node
+.npm-cache
 
 # integration test
 **/metastore_db
 **/spark-warehouse
 derby.log
+
+web/node_modules
+web/dist
+web/.next
+
+.venv/
+.worktrees/

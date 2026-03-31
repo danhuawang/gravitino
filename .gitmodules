@@ -1,4 +1,0 @@
-[submodule "gravitino-internal"]
-	path = gravitino-internal
-	url = https://github.com/datastrato/gravitino-internal.git
-	branch = internal-main
