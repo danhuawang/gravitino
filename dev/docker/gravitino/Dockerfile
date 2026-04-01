@@ -37,10 +37,8 @@ COPY packages/gravitino /opt/gravitino
 # Set permissions for OpenShift compatibility:
 # - chgrp -R 0: Set group to root (GID 0) - OpenShift always uses GID 0
 # - chmod -R g=u: Give group same permissions as user - allows any UID in root group to access files
-# - chmod -R g+w: Ensure group write permissions for directories that need it
 RUN chgrp -R 0 /opt/gravitino && \
     chmod -R g=u /opt/gravitino && \
-    chmod -R g+w /opt/gravitino/logs /opt/gravitino/data && \
     chmod +x /opt/gravitino/bin/*.sh
 
 EXPOSE 8090
