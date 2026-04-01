@@ -504,16 +504,29 @@ livenessProbe:
   initialDelaySeconds: 20
   timeoutSeconds: 5
 
+## Pod-level security context configuration
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+##
+podSecurityContext: {}
+
 ## Container-specific security context configuration
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
 ##
 containerSecurityContext:
   runAsNonRoot: false
   runAsUser: 0
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
 
 ## Container Environment
 ##
 env:
+  - name: GRAVITINO_HOME
+    value: /root/gravitino
   - name: GRAVITINO_MEM
     value: "-Xms1024m -Xmx1024m -XX:MaxMetaspaceSize=512m"
 
