@@ -131,7 +131,7 @@ entity:
   ## The JDBC password
   ##
   jdbcPassword: gravitino
-  storagePath: /root/gravitino/data/jdbc
+  storagePath: /opt/gravitino/data/jdbc
 
 ## THE CONFIGURATION FOR Gravitino SERVER
 ##
@@ -361,7 +361,7 @@ extraVolumes:
 ##
 extraVolumeMounts:
   - name: gravitino-log
-    mountPath: /root/gravitino/logs
+    mountPath: /opt/gravitino/logs
 
 ## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
 ## If you set enabled as "True", you need :
@@ -504,18 +504,49 @@ livenessProbe:
   initialDelaySeconds: 20
   timeoutSeconds: 5
 
+## Pod-level security context configuration
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+##
+podSecurityContext:
+  # Leave empty for OpenShift compatibility (allows dynamic UID/GID assignment)
+  # OpenShift will automatically assign a UID from its range and set fsGroup
+  # For standard Kubernetes, you can override these values if needed
+  {}
+  # fsGroup: 1000
+  # runAsUser: 1000
+  # runAsGroup: 1000
+
 ## Container-specific security context configuration
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
 ##
 containerSecurityContext:
-  runAsNonRoot: false
-  runAsUser: 0
+  # Run as non-root user for security
+  runAsNonRoot: true
+  # Do NOT set runAsUser/runAsGroup here to allow OpenShift dynamic UID assignment
+  # For standard Kubernetes, the Dockerfile USER 1000 will be used
+  # runAsUser: 1000
+  # runAsGroup: 1000
+  
+  # Drop all capabilities for minimal privileges
+  capabilities:
+    drop:
+    - ALL
+  
+  # Prevent privilege escalation
+  allowPrivilegeEscalation: false
+  
+  # Use runtime default seccomp profile to restrict syscalls
+  seccompProfile:
+    type: RuntimeDefault
+  
+  # Set to false if application needs to write logs/data
+  readOnlyRootFilesystem: false
 
 ## Container Environment
 ##
 env:
   - name: GRAVITINO_HOME
-    value: /root/gravitino
+    value: /opt/gravitino
   - name: GRAVITINO_MEM
     value: "-Xms1024m -Xmx1024m -XX:MaxMetaspaceSize=512m"
 

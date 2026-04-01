@@ -1,0 +1,68 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
+# OpenShift-specific values for Gravitino Helm chart
+# This configuration is optimized for OpenShift Security Context Constraints (SCC)
+# 
+# Usage:
+#   helm install gravitino ./dev/charts/gravitino -f ./dev/charts/gravitino/resources/scenarios/openshift-values.yaml
+
+# Pod-level security context
+# Leave empty to allow OpenShift to dynamically assign UID/GID from its range
+podSecurityContext: {}
+
+# Container-level security context
+# This configuration satisfies OpenShift's restricted-v2 and restricted-v3 SCC requirements
+containerSecurityContext:
+  runAsNonRoot: true
+  # Do NOT set runAsUser - OpenShift will assign a UID from its range (e.g., 1014560000)
+  # Do NOT set runAsGroup - OpenShift will use GID 0 (root group)
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  seccompProfile:
+    type: RuntimeDefault
+  readOnlyRootFilesystem: false
+
+# Environment variables
+env:
+  - name: GRAVITINO_HOME
+    value: /opt/gravitino
+  - name: GRAVITINO_MEM
+    value: "-Xms1024m -Xmx1024m -XX:MaxMetaspaceSize=512m"
+
+# Storage path for entity store
+entity:
+  storagePath: /opt/gravitino/data/jdbc
+
+# Volume mounts
+extraVolumeMounts:
+  - name: gravitino-log
+    mountPath: /opt/gravitino/logs
+
+# Note: OpenShift will automatically create a Route for the service
+# You can access Gravitino via the Route URL instead of using Ingress
+service:
+  type: ClusterIP
+  port: 8090
+  targetPort: 8090
+
+# If you need to expose Gravitino externally, create an OpenShift Route:
+# oc expose service gravitino --port=8090

@@ -20,15 +20,33 @@ FROM eclipse-temurin:17.0.16_8-jdk-jammy
 LABEL maintainer="dev@gravitino.apache.org"
 
 RUN apt-get update && apt-get install -y \
-    python-is-python3
+    python-is-python3 && \
+    rm -rf /var/lib/apt/lists/*
 
-WORKDIR /root/gravitino
+# Create gravitino user and group without specifying UID/GID
+# This allows OpenShift to assign dynamic UIDs while maintaining compatibility with standard K8s
+RUN groupadd -r gravitino && \
+    useradd -r -g gravitino -m -s /bin/bash gravitino
 
-COPY packages/gravitino /root/gravitino
+# Use /opt instead of /root for better compatibility
+WORKDIR /opt/gravitino
+
+# Copy application files
+COPY packages/gravitino /opt/gravitino
+
+# Set permissions for OpenShift compatibility:
+# - chgrp -R 0: Set group to root (GID 0) - OpenShift always uses GID 0
+# - chmod -R g=u: Give group same permissions as user - allows any UID in root group to access files
+# - chmod -R g+w: Ensure group write permissions for directories that need it
+RUN chgrp -R 0 /opt/gravitino && \
+    chmod -R g=u /opt/gravitino && \
+    chmod -R g+w /opt/gravitino/logs /opt/gravitino/data && \
+    chmod +x /opt/gravitino/bin/*.sh
 
 EXPOSE 8090
 EXPOSE 9001
 
-RUN chmod +x /root/gravitino/bin/start-gravitino.sh
+# Switch to non-root user (OpenShift will override the UID but keep GID 0)
+USER 1000
 
-ENTRYPOINT ["/bin/bash", "/root/gravitino/bin/start-gravitino.sh"]
+ENTRYPOINT ["/bin/bash", "/opt/gravitino/bin/start-gravitino.sh"]

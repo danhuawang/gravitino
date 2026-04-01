@@ -48,6 +48,10 @@ spec:
           {{- end }}
     spec:
       serviceAccountName: {{ .Values.serviceAccountName }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -60,8 +64,8 @@ spec:
             - /bin/bash
             - -c
             - |
-              cp -r /root/gravitino/scripts/*  /tmp/scripts/
-              VERSION=$(ls /root/gravitino/libs/gravitino-server-* | grep -oP '[0-9]+\.[0-9]+\.[0-9]+'|head -1)
+              cp -r /opt/gravitino/scripts/*  /tmp/scripts/
+              VERSION=$(ls /opt/gravitino/libs/gravitino-server-* | grep -oP '[0-9]+\.[0-9]+\.[0-9]+'|head -1)
               echo $VERSION > /tmp/scripts/version.txt
           resources:
             {{- toYaml .Values.initResources | nindent 12 }}
