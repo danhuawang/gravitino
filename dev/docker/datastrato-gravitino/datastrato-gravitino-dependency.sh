@@ -45,6 +45,18 @@ GCS_CONNECTOR_VERSION_SHORT=${GCS_CONNECTOR_VERSION_SHORT:-"2.2.18"}
 GCS_CONNECTOR_NAME="gcs-connector-${GCS_CONNECTOR_VERSION}-shaded.jar"
 GCS_CONNECTOR_DOWNLOAD_URL="https://github.com/GoogleCloudDataproc/hadoop-connectors/releases/download/v${GCS_CONNECTOR_VERSION_SHORT}/${GCS_CONNECTOR_NAME}"
 
+SIMBA_BIGQUERY_JDBC_VERSION=${SIMBA_BIGQUERY_JDBC_VERSION:-"1.6.5.1001"}
+SIMBA_BIGQUERY_ZIP_NAME="SimbaJDBCDriverforGoogleBigQuery42_${SIMBA_BIGQUERY_JDBC_VERSION}.zip"
+SIMBA_BIGQUERY_DOWNLOAD_URL="https://storage.googleapis.com/simba-bq-release/jdbc/${SIMBA_BIGQUERY_ZIP_NAME}"
+
+ODPS_JDBC_VERSION=${ODPS_JDBC_VERSION:-"3.8.8"}
+ODPS_JDBC_DRIVER_NAME="odps-jdbc-${ODPS_JDBC_VERSION}-jar-with-dependencies.jar"
+ODPS_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/aliyun/odps/odps-jdbc/${ODPS_JDBC_VERSION}/${ODPS_JDBC_DRIVER_NAME}"
+
+CLICKHOUSE_JDBC_VERSION=${CLICKHOUSE_JDBC_VERSION:-"0.7.1"}
+CLICKHOUSE_JDBC_DRIVER_NAME="clickhouse-jdbc-${CLICKHOUSE_JDBC_VERSION}-all.jar"
+CLICKHOUSE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/clickhouse/clickhouse-jdbc/${CLICKHOUSE_JDBC_VERSION}/${CLICKHOUSE_JDBC_DRIVER_NAME}"
+
 # Prepare compile Gravitino packages
 "${gravitino_home}"/gradlew clean
 "${gravitino_home}"/gradlew compileDistribution -x test -x :docs:build -x :docs-oss:build -x :clients:client-python:build
@@ -95,6 +107,38 @@ fi
 if [ ! -f "${gravitino_dir}/packages/${GCS_CONNECTOR_NAME}" ]; then
   curl -L -s -o "${gravitino_dir}/packages/${GCS_CONNECTOR_NAME}" "${GCS_CONNECTOR_DOWNLOAD_URL}"
 fi
+
+# Download and install BigQuery Simba JDBC driver
+gravitino_bigquery_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-bigquery/libs"
+simba_tmp_dir="${gravitino_dir}/packages/simba-bigquery-tmp"
+if [ ! -f "${gravitino_dir}/packages/${SIMBA_BIGQUERY_ZIP_NAME}" ]; then
+  curl -L -s -o "${gravitino_dir}/packages/${SIMBA_BIGQUERY_ZIP_NAME}" "${SIMBA_BIGQUERY_DOWNLOAD_URL}"
+fi
+if [ -d "${simba_tmp_dir}" ]; then
+  rm -rf "${simba_tmp_dir}"
+fi
+mkdir -p "${simba_tmp_dir}"
+# Use jar to extract ZIP (available via JDK, no unzip dependency needed)
+(cd "${simba_tmp_dir}" && jar xf "${gravitino_dir}/packages/${SIMBA_BIGQUERY_ZIP_NAME}")
+# Copy all JARs except Jackson JARs to avoid dependency conflicts with Gravitino
+find "${simba_tmp_dir}" -name '*.jar' ! -name 'jackson-*.jar' -exec cp -v {} "${gravitino_bigquery_catalog_dir}" \;
+if [ -d "${simba_tmp_dir}" ]; then
+  rm -rf "${simba_tmp_dir}"
+fi
+
+# Download and install MaxCompute ODPS JDBC driver
+gravitino_maxcompute_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-maxcompute/libs"
+if [ ! -f "${gravitino_dir}/packages/${ODPS_JDBC_DRIVER_NAME}" ]; then
+  curl -L -s -o "${gravitino_dir}/packages/${ODPS_JDBC_DRIVER_NAME}" "${ODPS_JDBC_DOWNLOAD_URL}"
+fi
+cp "${gravitino_dir}/packages/${ODPS_JDBC_DRIVER_NAME}" "${gravitino_maxcompute_catalog_dir}"
+
+# Download and install ClickHouse JDBC driver
+gravitino_clickhouse_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-clickhouse/libs"
+if [ ! -f "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" ]; then
+  curl -L -s -o "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${CLICKHOUSE_JDBC_DOWNLOAD_URL}"
+fi
+cp "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${gravitino_clickhouse_catalog_dir}"
 
 # Keeping the container running at all times
 cat <<EOF >> "${gravitino_dir}/packages/gravitino/bin/gravitino.sh"
