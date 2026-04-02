@@ -24,10 +24,9 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          # A PAT is required if branch protection rules require PR reviews,
-          # because GITHUB_TOKEN cannot bypass those rules.
-          # Replace with a repo secret holding a PAT when needed.
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT is used instead of GITHUB_TOKEN to allow PR creation when
+          # organization or ruleset restrictions block the Actions bot.
+          token: ${{ secrets.GRAVITINO_ENTERPRISE_SYNC }}
 
       - name: Configure git identity
         run: |
@@ -46,7 +45,7 @@ jobs:
 
       - name: Create and push sync branch
         run: |
-          git checkout -b "$BRANCH"
+          git checkout -B "$BRANCH"
 
       # ── Attempt the merge ─────────────────────────────────────────────────
 
@@ -56,33 +55,48 @@ jobs:
           if git merge upstream/main --no-edit; then
             echo "status=clean" >> "$GITHUB_OUTPUT"
           else
-            echo "status=conflict" >> "$GITHUB_OUTPUT"
-            # Stage everything (including files with conflict markers) and
-            # commit so the branch can be pushed and reviewed as a PR.
+            # Stage everything so file-location conflicts (e.g. from directory
+            # renames) are resolved automatically before checking for real conflicts.
             git add --all
-            git commit --no-verify \
-              -m "chore: sync apache/gravitino upstream $DATE (conflicts present)"
+            if git ls-files --unmerged | grep -q .; then
+              # Real content conflicts remain — commit with markers for human review.
+              echo "status=conflict" >> "$GITHUB_OUTPUT"
+              git commit --no-verify \
+                -m "chore: sync apache/gravitino upstream $DATE (conflicts present)"
+            else
+              # All conflicts were resolved automatically (e.g. file-location only).
+              echo "status=clean" >> "$GITHUB_OUTPUT"
+              git commit --no-verify \
+                -m "chore: sync apache/gravitino upstream $DATE"
+            fi
           fi
 
       - name: Push sync branch
-        run: git push origin "$BRANCH"
+        run: |
+          # Fetch the remote branch state so --force-with-lease can detect
+          # in-progress conflict resolution by a human before overwriting.
+          git fetch origin "$BRANCH" || true
+          git push --force-with-lease origin "$BRANCH"
+          # Wait for GitHub to propagate the branch before opening a PR
+          sleep 5
 
       # ── Open PR – clean merge ─────────────────────────────────────────────
 
       - name: Open PR for clean merge
         if: steps.merge.outputs.status == 'clean'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GRAVITINO_ENTERPRISE_SYNC }}
         run: |
-          gh pr create \
-            --base  main \
-            --head  "$BRANCH" \
-            --title "chore: sync apache/gravitino upstream ($DATE)" \
-            --body  "$(cat <<'EOF'
-          ## Upstream sync – ${{ env.DATE }}
+          gh api repos/${{ github.repository }}/pulls \
+            --method POST \
+            --field base="main" \
+            --field head="$BRANCH" \
+            --field title="chore: sync apache/gravitino upstream ($DATE)" \
+            --field body="$(cat <<EOF
+          ## Upstream sync – $DATE
 
           This PR was opened automatically by the **Sync Apache Gravitino Upstream**
-          workflow. It merges the latest `apache/gravitino` `main` branch into this
+          workflow. It merges the latest \`apache/gravitino\` \`main\` branch into this
           repository with **no conflicts**.
 
           ### Checklist before merging
@@ -96,18 +110,18 @@ jobs:
       - name: Open PR for conflicted merge
         if: steps.merge.outputs.status == 'conflict'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GRAVITINO_ENTERPRISE_SYNC }}
         run: |
           # Collect the list of conflicted files from the merge commit.
           CONFLICTED=$(git diff --name-only HEAD~1 HEAD | head -100 || true)
 
-          gh pr create \
-            --base   main \
-            --head   "$BRANCH" \
-            --title  "chore: sync apache/gravitino upstream ($DATE) – CONFLICTS" \
-            --label  "upstream-conflict" \
-            --body   "$(cat <<EOF
-          ## Upstream sync – ${{ env.DATE }} ⚠️ Conflicts need resolution
+          PR_NUMBER=$(gh api repos/${{ github.repository }}/pulls \
+            --method POST \
+            --field base="main" \
+            --field head="$BRANCH" \
+            --field title="chore: sync apache/gravitino upstream ($DATE) – CONFLICTS" \
+            --field body="$(cat <<EOF
+          ## Upstream sync – $DATE ⚠️ Conflicts need resolution
 
           This PR was opened automatically by the **Sync Apache Gravitino Upstream**
           workflow. The merge of \`apache/gravitino\` \`main\` encountered conflicts that
@@ -124,11 +138,14 @@ jobs:
              git fetch origin
              git checkout $BRANCH
              \`\`\`
-          2. Open each file listed above, resolve the \`<<<<<<<\` / \`=======\` / \`>>>>>>>\`
-             markers, then stage and commit the result.
+          2. Open each file listed above, resolve the conflict markers, then stage and commit.
           3. Push the resolved branch – CI will run and the PR can be reviewed and merged.
           EOF
-          )"
+          )" \
+            --jq '.number')
+          # Add the upstream-conflict label using the PR number from the response
+          gh api repos/${{ github.repository }}/issues/$PR_NUMBER/labels \
+            --method POST --field labels[]="upstream-conflict" || true
 
       # ── Summary ───────────────────────────────────────────────────────────
 
