@@ -695,6 +695,40 @@ subprojects {
   }
 }
 
+val datastratoRatExclusions = listOf(
+  "authorization-jdbc-enterprise/**",
+  "common-extension/**",
+  "core-extension/**",
+  "datastrato-server/**",
+  "docs/build.gradle.kts",
+  "lineage-extension/**",
+  "metrics/**",
+  "search/**",
+  "test/search-integration-test/**",
+  "test/test-common/**",
+  "bin/index.sh.template",
+  "bin/gravitino-metrics-service.sh.template",
+  "bin/opensearch/**",
+  "conf/gravitino-metrics-server.conf.template"
+)
+
+val datastratoLicenseCheckIncludes = listOf(
+  "authorization-jdbc-enterprise/**",
+  "common-extension/**",
+  "core-extension/**",
+  "datastrato-server/**",
+  "docs/build.gradle.kts",
+  "lineage-extension/**",
+  "metrics/**",
+  "search/**",
+  "test/search-integration-test/**",
+  "test/test-common/**",
+  "bin/index.sh.template",
+  "bin/gravitino-metrics-service.sh.template",
+  "bin/opensearch/**",
+  "conf/gravitino-metrics-server.conf.template"
+)
+
 tasks.rat {
   approvedLicense("Apache License Version 2.0")
 
@@ -771,26 +805,9 @@ tasks.rat {
     // Root-level markdown/documentation files
     "README.md",
     "repo-consolidation-design.md",
-    // Enterprise-specific modules use Datastrato short header format which rat's AL20 matcher
-    // does not recognize. These modules were not subject to rat before the consolidation.
-    // TODO: standardize to full Apache License 2.0 header in a follow-up PR.
-    "authorization-jdbc-enterprise/**",
-    "common-extension/**",
-    "core-extension/**",
-    "datastrato-server/**",
-    "docs/build.gradle.kts",
-    "lineage-extension/**",
-    "metrics/**",
-    "search/**",
-    "test/search-integration-test/**",
-    "test/test-common/**",
-    // Scripts and configs moved from enterprise modules to root bin/conf during consolidation.
-    // They retain Datastrato short headers; covered by the TODO above.
-    "bin/index.sh.template",
-    "bin/gravitino-metrics-service.sh.template",
-    "bin/opensearch/**",
-    "conf/gravitino-metrics-server.conf.template"
+    // Datastrato short header format is verified by checkDatastratoLicenseHeaders.
   )
+  exclusions.addAll(datastratoRatExclusions)
 
   // Add .gitignore excludes to the Apache Rat exclusion list.
   val gitIgnore = project(":").file(".gitignore")
@@ -806,7 +823,54 @@ tasks.rat {
   setExcludes(exclusions)
 }
 
-tasks.check.get().dependsOn(tasks.rat)
+tasks.register("checkDatastratoLicenseHeaders") {
+  group = "verification"
+  description = "Checks Datastrato header format for enterprise-owned files."
+
+  val supportedExtensions = setOf(
+    "java",
+    "scala",
+    "kt",
+    "kts",
+    "py",
+    "sh",
+    "template",
+    "conf"
+  )
+
+  doLast {
+    val filesToCheck = fileTree(rootDir) {
+      datastratoLicenseCheckIncludes.forEach { include(it) }
+      exclude("**/build/**", "**/.gradle/**", "**/.idea/**", "**/node_modules/**", "**/dist/**")
+    }.files.filter { file ->
+      file.isFile &&
+        (supportedExtensions.contains(file.extension) || file.name in setOf("Dockerfile", "Jenkinsfile"))
+    }
+
+    val violations = mutableListOf<String>()
+    filesToCheck.forEach { file ->
+      val content = file.readText()
+      val hasCopyright =
+        Regex("Copyright\\s+\\d{4}\\s+Datastrato Pvt Ltd\\.")
+          .containsMatchIn(content)
+      val hasLicenseSentence =
+        content.contains("This software is licensed under the Apache License version 2.") ||
+          content.contains("This software is licensed under the Apache License Version 2.")
+      if (!hasCopyright || !hasLicenseSentence) {
+        violations.add(file.relativeTo(rootDir).path)
+      }
+    }
+
+    if (violations.isNotEmpty()) {
+      throw GradleException(
+        "Datastrato license header check failed for ${violations.size} file(s):\n" +
+          violations.sorted().joinToString("\n")
+      )
+    }
+  }
+}
+
+tasks.check.get().dependsOn(tasks.rat, tasks.named("checkDatastratoLicenseHeaders"))
 
 tasks.cyclonedxBom {
   setIncludeConfigs(listOf("runtimeClasspath"))
