@@ -26,7 +26,7 @@ paths:
       description: |
         Get asset metrics under the specified metalake for the request user, this endpoint is used for dashboard in Web UI.
       parameters:
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
         - name: metrics
           in: query
           description: The metrics to retrieve, comma-separated list of metric names, if not specified, all metrics will be returned
@@ -63,9 +63,9 @@ paths:
                 $ref: "#/components/schemas/MetricsResponse"
 
         "400":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "5xx":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
 components:
   schemas:

@@ -19,7 +19,7 @@ paths:
 
   /web/with-tags/metalakes/{metalake}/catalogs:
     parameters:
-      - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     post:
       tags:
         - catalog
@@ -42,17 +42,17 @@ paths:
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/ErrorModel"
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
               examples:
                 CatalogAlreadyExistsException:
-                  $ref: "../../docs-oss/open-api/catalogs.yaml#/components/examples/CatalogAlreadyExistsException"
+                  $ref: "../../docs/open-api/catalogs.yaml#/components/examples/CatalogAlreadyExistsException"
         "5xx":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
   /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas:
     parameters:
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
     post:
       tags:
         - schema
@@ -75,18 +75,18 @@ paths:
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/ErrorModel"
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
               examples:
                 SchemaAlreadyExistsException:
-                  $ref: "../../docs-oss/open-api/schemas.yaml#/components/examples/SchemaAlreadyExistsException"
+                  $ref: "../../docs/open-api/schemas.yaml#/components/examples/SchemaAlreadyExistsException"
         "5xx":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
   /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables:
     parameters:
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/catalog"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/schema"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"
     post:
       tags:
         - table
@@ -108,18 +108,18 @@ paths:
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/ErrorModel"
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
               examples:
                 TableAlreadyExistsErrorResponse:
-                  $ref: "../../docs-oss/open-api/tables.yaml#/components/examples/TableAlreadyExistsException"
+                  $ref: "../../docs/open-api/tables.yaml#/components/examples/TableAlreadyExistsException"
         "5xx":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
   /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/filesets:
     parameters:
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/catalog"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/schema"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"
     post:
       tags:
         - fileset
@@ -141,18 +141,18 @@ paths:
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/ErrorModel"
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
               examples:
                 FilesetAlreadyExistsErrorResponse:
-                  $ref: "../../docs-oss/open-api/filesets.yaml#/components/examples/FilesetAlreadyExistsException"
+                  $ref: "../../docs/open-api/filesets.yaml#/components/examples/FilesetAlreadyExistsException"
         "5xx":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
   /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/topics:
     parameters:
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/catalog"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/schema"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"
     post:
       tags:
         - topic
@@ -174,18 +174,18 @@ paths:
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/ErrorModel"
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
               examples:
                 TopicAlreadyExistsErrorResponse:
-                  $ref: "../../docs-oss/open-api/topics.yaml#/components/examples/TopicAlreadyExistsException"
+                  $ref: "../../docs/open-api/topics.yaml#/components/examples/TopicAlreadyExistsException"
         "5xx":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
   /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/models:
     parameters:
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/catalog"
-        - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/schema"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"
     post:
       tags:
         - model
@@ -207,12 +207,12 @@ paths:
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/ErrorModel"
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
               examples:
                 ModelAlreadyExistsErrorResponse:
-                  $ref: "../../docs-oss/open-api/models.yaml#/components/examples/ModelAlreadyExistsException"
+                  $ref: "../../docs/open-api/models.yaml#/components/examples/ModelAlreadyExistsException"
         "5xx":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
 components:
   schemas:
@@ -253,7 +253,7 @@ components:
           description: A comment about the catalog
           nullable: true
         audit:
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/Audit"
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
         tags:
           type: array
           description: A list of tags for the catalog
@@ -359,7 +359,7 @@ components:
           description: A comment describing the schema
           nullable: true
         audit:
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/Audit"
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
         tags:
           type: array
           description: A list of tags for the schema
@@ -386,7 +386,7 @@ components:
           type: array
           description: A list of columns
           items:
-            $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/Column"
+            $ref: "../../docs/open-api/tables.yaml#/components/schemas/Column"
         comment:
           type: string
           description: The comment of the table
@@ -404,23 +404,23 @@ components:
           nullable: true
           default: [ ]
           items:
-            $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/SortOrder"
+            $ref: "../../docs/open-api/tables.yaml#/components/schemas/SortOrder"
         distribution:
-          $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/Distribution"
+          $ref: "../../docs/open-api/tables.yaml#/components/schemas/Distribution"
         partitioning:
           type: array
           description: partitioning of the table data
           nullable: true
           default: [ ]
           items:
-            $ref: "../../docs-oss/open-api/partitioning.yaml#/components/schemas/PartitioningSpec"
+            $ref: "../../docs/open-api/partitioning.yaml#/components/schemas/PartitioningSpec"
         indexes:
           type: array
           description: Indexes of the table
           nullable: true
           default: [ ]
           items:
-            $ref: "../../docs-oss/open-api/indexes.yaml#/components/schemas/IndexSpec"
+            $ref: "../../docs/open-api/indexes.yaml#/components/schemas/IndexSpec"
         tagsToAdd:
           type: array
           description: A list of tags to add to the table
@@ -455,13 +455,13 @@ components:
           type: array
           description: A list of columns
           items:
-            $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/Column"
+            $ref: "../../docs/open-api/tables.yaml#/components/schemas/Column"
         comment:
           type: string
           description: The comment of the table
           nullable: true
         audit:
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/Audit"
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
         properties:
           type: object
           description: A map of table properties
@@ -470,28 +470,28 @@ components:
           additionalProperties:
             type: string
         distribution:
-          $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/Distribution"
+          $ref: "../../docs/open-api/tables.yaml#/components/schemas/Distribution"
         sortOrders:
           type: array
           description: Describes the sort order of the table data
           nullable: true
           default: [ ]
           items:
-            $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/SortOrder"
+            $ref: "../../docs/open-api/tables.yaml#/components/schemas/SortOrder"
         partitioning:
           type: array
           description: partitioning of the table data
           nullable: true
           default: [ ]
           items:
-            $ref: "../../docs-oss/open-api/partitioning.yaml#/components/schemas/PartitioningSpec"
+            $ref: "../../docs/open-api/partitioning.yaml#/components/schemas/PartitioningSpec"
         indexes:
           type: array
           description: Indexes of the table
           nullable: true
           default: [ ]
           items:
-            $ref: "../../docs-oss/open-api/indexes.yaml#/components/schemas/IndexSpec"
+            $ref: "../../docs/open-api/indexes.yaml#/components/schemas/IndexSpec"
         tags:
           type: array
           description: A list of tags for the table
@@ -572,7 +572,7 @@ components:
           additionalProperties:
             type: string
         audit:
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/Audit"
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
         tags:
           type: array
           description: A list of tags for the fileset
@@ -626,7 +626,7 @@ components:
           additionalProperties:
             type: string
         audit:
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/Audit"
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
         tags:
           type: array
           description: A list of tags for the topic
@@ -681,7 +681,7 @@ components:
           additionalProperties:
             type: string
         audit:
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/Audit"
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
         tags:
           type: array
           description: A list of tags for the model
@@ -703,7 +703,7 @@ components:
                 enum:
                   - 0
               catalog:
-                $ref: "../../docs-oss/open-api/catalogs.yaml#/components/schemas/Catalog"
+                $ref: "../../docs/open-api/catalogs.yaml#/components/schemas/Catalog"
               tags:
                 type: array
                 description: A list of tags for the catalog
@@ -727,7 +727,7 @@ components:
                 enum:
                   - 0
               schema:
-                $ref: "../../docs-oss/open-api/schemas.yaml#/components/schemas/Schema"
+                $ref: "../../docs/open-api/schemas.yaml#/components/schemas/Schema"
               tags:
                 type: array
                 description: A list of tags for the schema
@@ -752,7 +752,7 @@ components:
                 enum:
                   - 0
               table:
-                $ref: "../../docs-oss/open-api/tables.yaml#/components/schemas/Table"
+                $ref: "../../docs/open-api/tables.yaml#/components/schemas/Table"
               tags:
                 type: array
                 description: A list of tags for the table
@@ -785,7 +785,7 @@ components:
                 enum:
                   - 0
               fileset:
-                $ref: "../../docs-oss/open-api/filesets.yaml#/components/schemas/Fileset"
+                $ref: "../../docs/open-api/filesets.yaml#/components/schemas/Fileset"
               tags:
                 type: array
                 description: A list of tags for the fileset
@@ -809,7 +809,7 @@ components:
                 enum:
                   - 0
               topic:
-                $ref: "../../docs-oss/open-api/topics.yaml#/components/schemas/Topic"
+                $ref: "../../docs/open-api/topics.yaml#/components/schemas/Topic"
               tags:
                 type: array
                 description: A list of tags for the topic
@@ -833,7 +833,7 @@ components:
                 enum:
                   - 0
               model:
-                $ref: "../../docs-oss/open-api/models.yaml#/components/schemas/Model"
+                $ref: "../../docs/open-api/models.yaml#/components/schemas/Model"
               tags:
                 type: array
                 description: A list of tags for the model

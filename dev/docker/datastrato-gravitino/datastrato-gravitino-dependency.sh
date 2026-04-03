@@ -59,7 +59,7 @@ CLICKHOUSE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/clickhouse/clic
 
 # Prepare compile Gravitino packages
 "${gravitino_home}"/gradlew clean
-"${gravitino_home}"/gradlew compileDistribution -x test -x :docs:build -x :docs-oss:build -x :clients:client-python:build
+"${gravitino_home}"/gradlew compileDistribution -x test -x :docs:build -x :docs-enterprise:build -x :clients:client-python:build
 
 # Removed old packages, Avoid multiple re-executions using the wrong file
 rm -rf "${gravitino_dir}/packages"

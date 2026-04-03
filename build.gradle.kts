@@ -552,7 +552,7 @@ subprojects {
     }
   }
 
-  if (project.name in listOf("web", "web-v2", "docs", "docs-oss")) {
+  if (project.name in listOf("web", "web-v2", "docs", "docs-enterprise")) {
     plugins.apply(NodePlugin::class)
     configure<NodeExtension> {
       version.set("20.19.0")
@@ -567,6 +567,7 @@ subprojects {
     publications {
       create<MavenPublication>("MavenJava") {
         if (project.name == "docs" ||
+          project.name == "docs-enterprise" ||
           project.name == "integration-test" ||
           project.name == "integration-test-common" ||
           project.name == "web"
@@ -695,12 +696,11 @@ subprojects {
   }
 }
 
-val datastratoRatExclusions = listOf(
+val AFSRatExclusions = listOf(
   "authorization-jdbc-enterprise/**",
   "common-extension/**",
   "core-extension/**",
   "datastrato-server/**",
-  "docs/build.gradle.kts",
   "lineage-extension/**",
   "metrics/**",
   "search/**",
@@ -717,7 +717,6 @@ val datastratoLicenseCheckIncludes = listOf(
   "common-extension/**",
   "core-extension/**",
   "datastrato-server/**",
-  "docs/build.gradle.kts",
   "lineage-extension/**",
   "metrics/**",
   "search/**",
@@ -795,19 +794,20 @@ tasks.rat {
     // Exclude BigQuery catalog files (commercial license, not Apache)
     "catalogs/catalog-jdbc-bigquery/**/*",
     "catalogs/catalog-jdbc-maxcompute/**/*",
-    // Exclude node installation and npm cache directories created by docs/docs-oss tasks
+    // Exclude node installation and npm cache directories created by docs/docs-enterprise tasks
     "docs/.node/**",
-    "docs-oss/.node/**",
+    "docs-enterprise/.node/**",
     "docs/.npm-cache/**",
-    "docs-oss/.npm-cache/**",
-    // OSS docs moved to docs-oss/ during repo consolidation; markdown files don't need headers
-    "docs-oss/**/*.md",
+    "docs-enterprise/.npm-cache/**",
+    // OSS docs are in docs/; markdown files don't need headers
+    "docs/**/*.md",
     // Root-level markdown/documentation files
     "README.md",
     "repo-consolidation-design.md",
     // Datastrato short header format is verified by checkDatastratoLicenseHeaders.
   )
-  exclusions.addAll(datastratoRatExclusions)
+  // Excludes files checked by checkDatastratoLicenseHeaders.
+  exclusions.addAll(AFSRatExclusions)
 
   // Add .gitignore excludes to the Apache Rat exclusion list.
   val gitIgnore = project(":").file(".gitignore")
@@ -1226,7 +1226,7 @@ tasks {
         it.name != "hadoop-common" &&
         it.name != "integration-test" &&
         it.name != "docs" &&
-        it.name != "docs-oss" &&
+        it.name != "docs-enterprise" &&
         it.parent?.name != "bundles" &&
         it.parent?.name != "maintenance" &&
         it.parent?.name != "test" &&
@@ -1276,7 +1276,7 @@ tasks {
         !it.name.startsWith("optimizer") &&
         it.name != "hive-metastore-common" &&
         it.name != "docs" &&
-        it.name != "docs-oss" &&
+        it.name != "docs-enterprise" &&
         it.name != "hadoop-common" &&
         it.name != "web" &&
         it.name != "web-v2" &&

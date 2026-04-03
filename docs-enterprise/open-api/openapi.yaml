@@ -1,0 +1,108 @@
+# Copyright 2024 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+openapi: 3.0.3
+info:
+  title: Datastrato REST API
+  license:
+
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  version: 1.0.0-SNAPSHOT-1.0.0-SNAPSHOT
+  description: |
+    Defines the specification for the Datastrato Gravitino REST API.
+
+
+servers:
+  - url: "{scheme}://{host}:{port}/{basePath}"
+    description: Generic base server URL, with all parts configurable.
+    variables:
+      scheme:
+        description: The scheme of the URI, either http or https.
+        default: http
+      host:
+        description: The host address for the specified server
+        default: localhost
+      port:
+        description: The port used when addressing the host
+        default: "8090"
+      basePath:
+        description: Optional prefix to be appended to all routes
+        default: "api"
+
+security:
+  - OAuth2WithJWT: [serviceAudience]
+  - BasicAuth: []
+
+paths:
+  /web/entities:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./entities.yaml#/paths/~1web~1entities"
+
+  /web/with-tags/metalakes/{metalake}/catalogs:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/filesets:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1filesets"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/topics:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1topics"
+
+  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/models:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1models"
+
+  /web/preview/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./preview.yaml#/paths/~1web~1preview~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables~1%7Btable%7D"
+
+  /web/metrics/metalakes/{metalake}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./metrics.yaml#/paths/~1web~1metrics~1metalakes~1%7Bmetalake%7D"
+
+  /web/security/metalakes/{metalake}/roles/{role}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D"
+
+components:
+  securitySchemes:
+
+    OAuth2WithJWT:
+      type: oauth2
+      description: OAuth2 with JWT
+      flows:
+        clientCredentials:
+          tokenUrl: https://external-oauth-server.com/token
+          scopes:
+            serviceAudience: The audience name when Gravitino uses OAuth as the authenticator.
+
+    BasicAuth:
+      type: http
+      scheme: basic
+
+    KerberosAuth:
+      type: http
+      scheme: negotiate

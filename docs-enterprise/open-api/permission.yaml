@@ -32,8 +32,8 @@ paths:
 
   /web/security/metalakes/{metalake}/roles/{role}:
     parameters:
-      - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/metalake"
-      - $ref: "../../docs-oss/open-api/openapi.yaml#/components/parameters/role"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/role"
     put:
       tags:
         - permissions
@@ -54,22 +54,22 @@ paths:
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs-oss/open-api/roles.yaml#/components/responses/RoleResponse"
+                $ref: "../../docs/open-api/roles.yaml#/components/responses/RoleResponse"
         "400":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "404":
           description: Not Found - The target role does not exist
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs-oss/open-api/openapi.yaml#/components/schemas/ErrorModel"
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
               examples:
                 NoSuchMetalakeException:
-                  $ref: "../../docs-oss/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
                 NoSuchRoleException:
-                  $ref: "../../docs-oss/open-api/roles.yaml#/components/examples/NoSuchRoleException"
+                  $ref: "../../docs/open-api/roles.yaml#/components/examples/NoSuchRoleException"
         "5xx":
-          $ref: "../../docs-oss/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
 components:
   schemas:
@@ -80,4 +80,4 @@ components:
           type: array
           description: A list of securable objects to update
           items:
-            $ref: "../../docs-oss/open-api/roles.yaml#/components/schemas/SecurableObject"
+            $ref: "../../docs/open-api/roles.yaml#/components/schemas/SecurableObject"
