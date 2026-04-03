@@ -702,6 +702,7 @@ val AFSRatExclusions = listOf(
   "core-extension/**",
   "datastrato-server/**",
   "lineage-extension/**",
+  "docs-enterprise/**",
   "metrics/**",
   "search/**",
   "test/search-integration-test/**",
