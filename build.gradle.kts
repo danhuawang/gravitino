@@ -804,7 +804,7 @@ tasks.rat {
     "docs/**/*.md",
     // Root-level markdown/documentation files
     "README.md",
-    "repo-consolidation-design.md",
+    "repo-consolidation-design.md"
     // Datastrato short header format is verified by checkDatastratoLicenseHeaders.
   )
   // Excludes files checked by checkDatastratoLicenseHeaders.
