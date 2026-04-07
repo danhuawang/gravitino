@@ -696,23 +696,6 @@ subprojects {
   }
 }
 
-val AFSRatExclusions = listOf(
-  "authorization-jdbc-enterprise/**",
-  "common-extension/**",
-  "core-extension/**",
-  "datastrato-server/**",
-  "lineage-extension/**",
-  "docs-enterprise/**",
-  "metrics/**",
-  "search/**",
-  "test/search-integration-test/**",
-  "test/test-common/**",
-  "bin/index.sh.template",
-  "bin/gravitino-metrics-service.sh.template",
-  "bin/opensearch/**",
-  "conf/gravitino-metrics-server.conf.template"
-)
-
 val datastratoLicenseCheckIncludes = listOf(
   "authorization-jdbc-enterprise/**",
   "common-extension/**",
@@ -808,7 +791,7 @@ tasks.rat {
     // Datastrato short header format is verified by checkDatastratoLicenseHeaders.
   )
   // Excludes files checked by checkDatastratoLicenseHeaders.
-  exclusions.addAll(AFSRatExclusions)
+  exclusions.addAll(datastratoLicenseCheckIncludes)
 
   // Add .gitignore excludes to the Apache Rat exclusion list.
   val gitIgnore = project(":").file(".gitignore")
@@ -855,8 +838,7 @@ tasks.register("checkDatastratoLicenseHeaders") {
         Regex("Copyright\\s+\\d{4}\\s+Datastrato Pvt Ltd\\.")
           .containsMatchIn(content)
       val hasLicenseSentence =
-        content.contains("This software is licensed under the Apache License version 2.") ||
-          content.contains("This software is licensed under the Apache License Version 2.")
+        content.contains("This software is licensed under the Apache License version 2.")
       if (!hasCopyright || !hasLicenseSentence) {
         violations.add(file.relativeTo(rootDir).path)
       }
