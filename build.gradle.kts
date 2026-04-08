@@ -701,6 +701,7 @@ val datastratoLicenseCheckIncludes = listOf(
   "common-extension/**",
   "core-extension/**",
   "datastrato-server/**",
+  "docs-enterprise/**",
   "lineage-extension/**",
   "metrics/**",
   "search/**",
