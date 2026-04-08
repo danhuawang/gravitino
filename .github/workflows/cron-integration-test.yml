@@ -10,46 +10,9 @@ concurrency:
   cancel-in-progress: ${{ contains(github.ref, 'main') }}
 
 jobs:
-  changes:
-    if: github.repository == 'apache/gravitino'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
-        id: filter
-        with:
-          filters: |
-            source_changes:
-              - .github/**
-              - api/**
-              - bin/**
-              - catalogs/**
-              - clients/**
-              - common/**
-              - conf/**
-              - core/**
-              - dev/**
-              - gradle/**
-              - iceberg/**
-              - integration-test/**
-              - meta/**
-              - server/**
-              - server-common/**
-              - spark-connector/**
-              - trino-connector/**
-              - web/**
-              - docs/open-api/**
-              - build.gradle.kts
-              - gradle.properties
-              - gradlew
-              - settings.gradle.kts
-    outputs:
-      source_changes: ${{ steps.filter.outputs.source_changes }}
-
   # Integration test for AMD64 architecture
   test-amd64-arch:
-    needs: changes
-    if: needs.changes.outputs.source_changes == 'true'
+    if: github.repository == 'apache/gravitino'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:

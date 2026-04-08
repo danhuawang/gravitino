@@ -26,19 +26,23 @@ jobs:
             source_changes:
               - .github/**
               - api/**
+              - authorization-jdbc-enterprise/**
               - authorizations/**
               - bin/**
+              - bundles/**
               - catalogs/**
               - clients/client-java/**
               - clients/client-java-runtime/**
               - common/**
+              - common-extension/**
               - conf/**
               - core/**
+              - core-extension/**
+              - datastrato-server/**
               - dev/**
               - gradle/**
               - iceberg/**
               - integration-test-common/**
-              - meta/**
               - scripts/**
               - server/**
               - server-common/**

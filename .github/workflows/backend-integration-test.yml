@@ -28,24 +28,30 @@ jobs:
             source_changes:
               - .github/**
               - api/**
+              - authorization-jdbc-enterprise/**
+              - authorizations/**
               - bin/**
+              - bundles/**
               - catalogs/**
               - catalogs-contrib/**
               - clients/client-java/**
               - clients/client-java-runtime/**
-              - clients/filesystem-hadoop3/**
               - clients/cli/**
+              - clients/filesystem-hadoop3/**
               - common/**
+              - common-extension/**
               - conf/**
               - core/**
+              - core-extension/**
+              - datastrato-server/**
               - dev/**
               - gradle/**
               - iceberg/**
               - integration-test-common/**
-              - meta/**
+              - lance/**
+              - lineage/**
               - scripts/**
               - server/**
-              - bundles/**
               - server-common/**
               - build.gradle.kts
               - gradle.properties
