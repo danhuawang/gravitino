@@ -14,9 +14,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+        id: filter
+        with:
+          filters: |
+            source_changes:
+              - .github/**
+              - api/**
+              - authorization-jdbc-enterprise/**
+              - bin/**
+              - common/**
+              - common-extension/**
+              - conf/**
+              - core/**
+              - core-extension/**
+              - datastrato-server/**
+              - dev/**
+              - gradle/**
+              - iceberg/**
+              - integration-test-common/**
+              - lance/**
+              - scripts/**
+              - search/**
+              - server/**
+              - server-common/**
+              - test/**
+              - build.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+
   # Integration test for AMD64 architecture
   test-amd64-arch:
-    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    needs: changes
+    if: needs.changes.outputs.source_changes == 'true'
     runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
     timeout-minutes: 120
     strategy:

@@ -770,6 +770,7 @@ tasks.rat {
     // OSS docs are in docs/; markdown files don't need headers
     "docs/**/*.md",
     // Root-level markdown/documentation files
+    "design-docs",
     "README.md",
     "repo-consolidation-design.md",
     // Enterprise-specific modules use Datastrato short header format which rat's AL20 matcher
