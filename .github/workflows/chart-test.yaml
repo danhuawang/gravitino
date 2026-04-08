@@ -19,8 +19,7 @@ jobs:
         with:
           filters: |
             source_changes:
-              - .github/workflows/**
-              - dev/charts/**
+              - 'non-existent-path-to-disable-workflow/**'
     outputs:
       source_changes: ${{ steps.filter.outputs.source_changes }}
 
