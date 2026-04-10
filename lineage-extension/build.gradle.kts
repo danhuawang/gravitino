@@ -11,7 +11,11 @@ plugins {
 
 dependencies {
   implementation(project(":core"))
-  implementation(project(":lineage"))
+  implementation(project(":lineage")) {
+    exclude(group = "com.fasterxml.jackson.core")
+    exclude(group = "com.fasterxml.jackson.dataformat")
+    exclude(group = "com.fasterxml.jackson.datatype")
+  }
   implementation(project(":server-common"))
   implementation(project(":common"))
 
@@ -22,8 +26,18 @@ dependencies {
   implementation(libs.jackson.databind)
   implementation(libs.jakarta.rs.api)
   implementation(libs.openlineage.java) {
+    exclude(group = "com.fasterxml.jackson.core")
+    exclude(group = "com.fasterxml.jackson.dataformat")
+    exclude(group = "com.fasterxml.jackson.datatype")
+
     exclude("commons-logging")
     exclude("org.slf4j")
+
+    exclude("org.hdrhistogram")
+    exclude("io.micrometer")
+    exclude("org.apache.commons", "commons-lang3")
+    exclude("org.yaml", "snakeyaml")
+    exclude(group = "commons-codec", module = "commons-codec")
   }
 
   annotationProcessor(libs.lombok)

@@ -49,7 +49,7 @@ def get_gravitino_server_version(**kwargs):
 
 def check_gravitino_server_status(**kwargs) -> bool:
     gravitino_server_running = False
-    for i in range(5):
+    for i in range(10):
         logger.info("Monitoring Gravitino server status. Attempt %s", i + 1)
         if get_gravitino_server_version(**kwargs):
             logger.debug("Gravitino Server is running")
@@ -57,7 +57,7 @@ def check_gravitino_server_status(**kwargs) -> bool:
             break
         else:
             logger.debug("Gravitino Server is not running")
-            time.sleep(1)
+            time.sleep(2)
     return gravitino_server_running
 
 

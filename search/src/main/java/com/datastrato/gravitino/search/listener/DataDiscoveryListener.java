@@ -6,6 +6,7 @@ package com.datastrato.gravitino.search.listener;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.search.service.SearchService;
+import com.datastrato.gravitino.search.utils.IcebergEventUtils;
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
 import org.apache.gravitino.listener.api.EventListenerPlugin;
@@ -26,6 +27,7 @@ public class DataDiscoveryListener implements EventListenerPlugin {
 
   private SearchService searchService;
   private Map<Class, EventHandler> eventHandlers;
+  private IcebergEventHandler icebergEventHandler;
 
   @Override
   public void init(Map<String, String> properties) throws RuntimeException {
@@ -41,6 +43,8 @@ public class DataDiscoveryListener implements EventListenerPlugin {
             FilesetEvent.class, new FilesetEventHandler(searchService),
             ModelEvent.class, new ModelEventHandler(searchService),
             OwnerEvent.class, new OwnerEventHandler(searchService));
+
+    this.icebergEventHandler = new IcebergEventHandler(searchService);
   }
 
   @Override
@@ -57,6 +61,7 @@ public class DataDiscoveryListener implements EventListenerPlugin {
   @Override
   public void onPostEvent(Event event) {
     try {
+
       EventHandler handler = null;
       if (event instanceof TableEvent) {
         handler = eventHandlers.get(TableEvent.class);
@@ -74,6 +79,15 @@ public class DataDiscoveryListener implements EventListenerPlugin {
         handler = eventHandlers.get(ModelEvent.class);
       } else if (event instanceof OwnerEvent) {
         handler = eventHandlers.get(OwnerEvent.class);
+      }
+
+      // Iceberg REST events are dispatched from the isolated Iceberg REST auxiliary service
+      // class loader. Their concrete types are not visible here, so check via class-name walk
+      // before falling through to the instanceof chain for Gravitino-native events.
+      if (IcebergEventUtils.isSubclassOf(event, IcebergEventUtils.ICEBERG_TABLE_EVENT_CLASS)
+          || IcebergEventUtils.isSubclassOf(
+              event, IcebergEventUtils.ICEBERG_NAMESPACE_EVENT_CLASS)) {
+        handler = icebergEventHandler;
       }
 
       if (handler != null) {

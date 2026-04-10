@@ -942,38 +942,6 @@ tasks {
           delete(projectDir.dir("distribution/package/catalogs/$catalogName"))
         }
       }
-
-      // Deduplicate Jackson JARs: keep only the newest version to avoid classpath conflicts.
-      // Multiple Jackson versions (e.g. 2.15.2 from core and 2.19.2 from iceberg-rest-server)
-      // in the same libs directory cause NoSuchMethodError at runtime because jackson-databind
-      // 2.19.x calls ParserMinimalBase(StreamReadConstraints) which only exists in jackson-core 2.16+.
-      fun deduplicateJacksonJars(libsDir: File) {
-        val jacksonModulePattern = Regex("^(jackson-[\\w-]+)-(\\d+(?:\\.\\d+)+)\\.jar$")
-        val jacksonJars = libsDir.listFiles()
-          ?.filter { jacksonModulePattern.matches(it.name) }
-          ?: emptyList()
-
-        jacksonJars
-          .groupBy { jacksonModulePattern.find(it.name)!!.groupValues[1] }
-          .values
-          .filter { it.size > 1 }
-          .forEach { versions ->
-            // Pad each version component for correct lexicographic comparison
-            val sorted = versions.sortedWith(
-              compareBy {
-                jacksonModulePattern.find(it.name)?.groupValues?.get(2)
-                  ?.split(".")?.joinToString(".") { part -> part.padStart(6, '0') }
-              }
-            )
-            sorted.dropLast(1).forEach { oldJar ->
-              logger.lifecycle("Removing conflicting Jackson JAR: ${oldJar.name}")
-              oldJar.delete()
-            }
-          }
-      }
-
-      deduplicateJacksonJars(file(outputDir.dir("package/libs")))
-      deduplicateJacksonJars(file(outputDir.dir("package-all/libs")))
     }
   }
 

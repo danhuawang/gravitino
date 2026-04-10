@@ -34,6 +34,14 @@ dependencies {
   implementation(libs.open.search.java) {
     exclude(group = "com.fasterxml.jackson.core", module = "jackson-core")
     exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")
+    exclude(group = "com.fasterxml.jackson.datatype", module = "jackson-datatype-jdk8")
+    exclude(group = "com.fasterxml.jackson.datatype", module = "jackson-datatype-jsr310")
+    exclude(group = "com.fasterxml.jackson.core", module = "jackson-annotations")
+    exclude(group = "commons-logging", module = "commons-logging")
+    exclude(group = "commons-codec", module = "commons-codec")
+    exclude(group = "org.apache.httpcomponents.client5", module = "httpclient5")
+    exclude(group = "org.apache.httpcomponents.core5", module = "httpcore5")
+    exclude(group = "org.apache.httpcomponents.core5", module = "httpcore5-h2")
   }
   implementation(libs.open.search.rest)
 
@@ -42,6 +50,8 @@ dependencies {
   testImplementation(project(":core-extension", "testArtifacts"))
   testImplementation(project(":test:test-common"))
 
+  testImplementation(project(":iceberg:iceberg-rest-server"))
+  testImplementation(libs.iceberg.core)
   testImplementation(libs.awaitility)
   testImplementation(libs.commons.lang3)
   testImplementation(libs.jersey.test.framework.core) {
@@ -88,4 +98,15 @@ tasks.sourcesJar {
 
 tasks.javadoc {
   isFailOnError = false
+}
+
+// The Iceberg REST server test dependency is produced by copyDepends.
+// Make the execution order explicit to satisfy Gradle task validation.
+tasks.named<Test>("test") {
+  dependsOn(":iceberg:iceberg-rest-server:copyDepends")
+}
+
+// compileTestJava also consumes the copied Iceberg REST server artifact.
+tasks.named<JavaCompile>("compileTestJava") {
+  dependsOn(":iceberg:iceberg-rest-server:copyDepends")
 }
