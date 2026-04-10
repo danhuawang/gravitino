@@ -12,8 +12,6 @@ import org.junit.jupiter.api.Test;
 
 public class TestOracleDatabaseOperations {
 
-  private static final String UNSUPPORTED_MSG = "To be implemented in the future";
-
   private static final class OracleDatabaseOperationsForTest extends OracleDatabaseOperations {
     String generateCreateDatabaseSqlForTest(String databaseName) {
       return super.generateCreateDatabaseSql(databaseName, null, Collections.emptyMap());
