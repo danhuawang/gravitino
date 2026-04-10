@@ -710,7 +710,8 @@ val datastratoLicenseCheckIncludes = listOf(
   "bin/index.sh.template",
   "bin/gravitino-metrics-service.sh.template",
   "bin/opensearch/**",
-  "conf/gravitino-metrics-server.conf.template"
+  "conf/gravitino-metrics-server.conf.template",
+  "catalogs/catalog-jdbc-oracle/**/*"
 )
 
 tasks.rat {
@@ -788,8 +789,7 @@ tasks.rat {
     "docs/**/*.md",
     // Root-level markdown/documentation files
     "design-docs",
-    "README.md",
-    "repo-consolidation-design.md"
+    "README.md"
     // Datastrato short header format is verified by checkDatastratoLicenseHeaders.
   )
   // Excludes files checked by checkDatastratoLicenseHeaders.
@@ -1301,7 +1301,8 @@ tasks {
       ":catalogs:catalog-lakehouse-generic:copyLibAndConfig",
       ":catalogs-contrib:catalog-jdbc-hologres:copyLibAndConfig",
       ":catalogs-contrib:catalog-jdbc-oceanbase:copyLibAndConfig",
-      ":catalogs-contrib:catalog-jdbc-clickhouse:copyLibAndConfig"
+      ":catalogs-contrib:catalog-jdbc-clickhouse:copyLibAndConfig",
+      ":catalogs:catalog-jdbc-oracle:copyLibAndConfig"
     )
   }
 
