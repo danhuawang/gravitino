@@ -3,6 +3,7 @@ name: Test Charts
 # Controls when the workflow will run
 on:
   pull_request:
+    types: [labeled]
     branches: [ "main", "branch-*" ]
 
 concurrency:
@@ -12,6 +13,7 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
