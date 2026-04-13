@@ -711,7 +711,10 @@ val datastratoLicenseCheckIncludes = listOf(
   "bin/gravitino-metrics-service.sh.template",
   "bin/opensearch/**",
   "conf/gravitino-metrics-server.conf.template",
-  "catalogs/catalog-jdbc-oracle/**/*"
+  "catalogs/catalog-jdbc-oracle/**/*",
+  "catalogs/catalog-jdbc-bigquery/**/*",
+  "catalogs/catalog-jdbc-maxcompute/**/*",
+  "catalogs/catalog-jdbc-sqlserver/**/*"
 )
 
 tasks.rat {
@@ -777,9 +780,6 @@ tasks.rat {
     "web-v2/web/src/lib/utils/axios/**/*",
     "web-v2/web/src/types/axios.d.ts",
     "web-v2/web/yarn.lock",
-    // Exclude BigQuery catalog files (commercial license, not Apache)
-    "catalogs/catalog-jdbc-bigquery/**/*",
-    "catalogs/catalog-jdbc-maxcompute/**/*",
     // Exclude node installation and npm cache directories created by docs/docs-enterprise tasks
     "docs/.node/**",
     "docs-enterprise/.node/**",
@@ -1258,6 +1258,7 @@ tasks {
       ":catalogs:catalog-jdbc-maxcompute:copyLibAndConfig",
       ":catalogs:catalog-jdbc-mysql:copyLibAndConfig",
       ":catalogs:catalog-jdbc-postgresql:copyLibAndConfig",
+      ":catalogs:catalog-jdbc-sqlserver:copyLibAndConfig",
       ":catalogs:catalog-jdbc-starrocks:copyLibAndConfig",
       ":catalogs:catalog-kafka:copyLibAndConfig",
       ":catalogs:catalog-lakehouse-hudi:copyLibAndConfig",

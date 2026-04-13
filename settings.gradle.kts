@@ -42,6 +42,7 @@ include(
   "catalogs:catalog-jdbc-mysql",
   "catalogs:catalog-jdbc-oracle",
   "catalogs:catalog-jdbc-postgresql",
+  "catalogs:catalog-jdbc-sqlserver",
   "catalogs:catalog-jdbc-starrocks"
 )
 
