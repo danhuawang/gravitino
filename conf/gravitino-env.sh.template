@@ -36,3 +36,8 @@ GRAVITINO_VERSION=GRAVITINO_VERSION_PLACEHOLDER
 # - By default this template does not set `GRAVITINO_USE_WEB_V2`, so the container or environment can control which UI is used.
 # - To force the v1 UI, explicitly set it to `false`; to enable the v2 UI, set it to `true` (for example: `export GRAVITINO_USE_WEB_V2=true`).
 # GRAVITINO_USE_WEB_V2=false
+
+# Set the Datastrato enterprise license key. The license key is required to start Gravitino
+# in enterprise mode. It can be supplied via gravitino.conf (gravitino.datastrato.license.key),
+# which takes precedence over this environment variable.
+# export GRAVITINO_LICENSE_KEY=

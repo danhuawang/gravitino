@@ -116,6 +116,8 @@ include(
 )
 
 // Enterprise-specific modules
+include(":licensing:license-client")
+include(":licensing:license-tools")
 include("common-extension")
 include("core-extension")
 include("datastrato-server")

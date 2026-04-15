@@ -714,7 +714,8 @@ val datastratoLicenseCheckIncludes = listOf(
   "catalogs/catalog-jdbc-oracle/**/*",
   "catalogs/catalog-jdbc-bigquery/**/*",
   "catalogs/catalog-jdbc-maxcompute/**/*",
-  "catalogs/catalog-jdbc-sqlserver/**/*"
+  "catalogs/catalog-jdbc-sqlserver/**/*",
+  "licensing/**"
 )
 
 tasks.rat {
@@ -827,7 +828,14 @@ tasks.register("checkDatastratoLicenseHeaders") {
   doLast {
     val filesToCheck = fileTree(rootDir) {
       datastratoLicenseCheckIncludes.forEach { include(it) }
-      exclude("**/build/**", "**/.gradle/**", "**/.idea/**", "**/node_modules/**", "**/dist/**")
+      exclude(
+        "**/build/**",
+        "**/.gradle/**",
+        "**/.idea/**",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/.node/**"
+      )
     }.files.filter { file ->
       file.isFile &&
         (supportedExtensions.contains(file.extension) || file.name in setOf("Dockerfile", "Jenkinsfile"))
@@ -1183,6 +1191,7 @@ tasks {
         it.parent?.name != "bundles" &&
         it.parent?.name != "maintenance" &&
         it.parent?.name != "test" &&
+        it.name != "license-tools" &&
         it.name != "mcp-server"
       ) {
         from(it.configurations.runtimeClasspath) {
@@ -1236,6 +1245,8 @@ tasks {
         it.parent?.name != "bundles" &&
         it.parent?.name != "maintenance" &&
         it.parent?.name != "test" &&
+        it.parent?.name != "licensing" &&
+        it.name != "licensing" &&
         it.name != "mcp-server"
       ) {
         dependsOn("${it.name}:build")

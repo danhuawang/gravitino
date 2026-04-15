@@ -98,6 +98,9 @@ jobs:
     runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
     needs: changes
     if: needs.changes.outputs.source_changes != 'true'
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -124,6 +127,9 @@ jobs:
     timeout-minutes: 45
     needs: changes
     if: needs.changes.outputs.spark_connector_changes == 'true'
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -161,6 +167,9 @@ jobs:
     timeout-minutes: 120
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it

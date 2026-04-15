@@ -146,6 +146,7 @@ aspectj = "1.9.24"
 ql-expression = "4.0.3"
 simba-bigquery-jdbc = "1.6.5.1001"
 commons-compress = "1.27.1"
+google-cloud-kms = "2.61.0"
 
 [libraries]
 aspectj-aspectjrt = { group = "org.aspectj", name = "aspectjrt", version.ref = "aspectj" }
@@ -220,6 +221,7 @@ hadoop3-client-api = { group = "org.apache.hadoop", name = "hadoop-client-api", 
 hadoop3-client-runtime = { group = "org.apache.hadoop", name = "hadoop-client-runtime", version.ref = "hadoop3"}
 hadoop3-minicluster = { group = "org.apache.hadoop", name = "hadoop-minicluster", version.ref = "hadoop-minikdc"}
 hadoop3-gcs = { group = "com.google.cloud.bigdataoss", name = "gcs-connector", version.ref = "hadoop3-gcs"}
+google-cloud-kms = { group = "com.google.cloud", name = "google-cloud-kms", version.ref = "google-cloud-kms" }
 hadoop3-oss = { group = "org.apache.hadoop", name = "hadoop-aliyun", version.ref = "hadoop3-aliyun"}
 hadoop3-abs = { group = "org.apache.hadoop", name = "hadoop-azure", version.ref = "hadoop3-abs"}
 htrace-core4 = { group = "org.apache.htrace", name = "htrace-core4", version.ref = "htrace-core4" }

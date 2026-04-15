@@ -30,6 +30,11 @@ on:
         type: boolean
         default: false
 
+      public-key-url:
+        description: 'Raw URL of the ECDSA public key to embed in the server jar. Use the prod/ URL for customer releases and the test/ URL for staging builds.'
+        required: true
+        type: string
+
 jobs:
   publish-docker-image:
     runs-on: ubuntu-latest
@@ -37,7 +42,40 @@ jobs:
     env:
       input_token: ${{ github.event.inputs.token }}
       secrets_token: ${{ secrets.PUBLISH_DOCKER_TOKEN }}
+      LICENSE_PUBLIC_KEY_URL: ${{ github.event.inputs.public-key-url }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
     steps:
+      - name: Verify and identify public key
+        run: |
+          KEY_URL="${{ github.event.inputs.public-key-url }}"
+          http_code=$(curl -s -o /tmp/gravitino-master.pub -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}" \
+            -H "Accept: application/vnd.github.raw+json" \
+            "${KEY_URL}")
+          if [[ "${http_code}" != "200" ]]; then
+            echo "ERROR: public-key-url returned HTTP ${http_code}. Please verify the URL is correct and PRIVATE_REPO_ACCESS_TOKEN has read access."
+            exit 1
+          fi
+
+          # Identify key environment from URL path
+          if [[ "${KEY_URL}" == */prod/* ]]; then
+            key_env="PRODUCTION"
+          elif [[ "${KEY_URL}" == */test/* ]]; then
+            key_env="TEST"
+          else
+            key_env="UNKNOWN (neither /prod/ nor /test/ found in URL)"
+          fi
+
+          fingerprint=$(sha256sum /tmp/gravitino-master.pub | awk '{print $1}')
+          echo "============================================"
+          echo "  Public key environment : ${key_env}"
+          echo "  SHA-256 fingerprint    : ${fingerprint}"
+          echo "  URL                    : ${KEY_URL}"
+          echo "============================================"
+
+          if [[ "${key_env}" == "UNKNOWN"* ]]; then
+            echo "WARNING: Could not determine key environment from URL. Please confirm this is the correct key before proceeding."
+          fi
       - name: Set environment variables
         run: |
           if [ "${{ github.event.inputs.image }}" == "enterprise-gravitino" ]; then

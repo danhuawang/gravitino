@@ -54,6 +54,9 @@ jobs:
       GRAVITINO_S3_REGION: ${{ vars.S3_REGION }}
       GRAVITINO_S3_ROLE_ARN: ${{ vars.S3_ROLE_ARN }}
       GRAVITINO_S3_SECRET_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
     timeout-minutes: 60
     strategy:
       matrix:

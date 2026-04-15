@@ -18,6 +18,7 @@ dependencies {
 
   implementation(project(":common-extension"))
   implementation(project(":core-extension"))
+  implementation(project(":licensing:license-client"))
   implementation(project(":metrics"))
   implementation(project(":search")) {
     exclude(group = "org.antlr", module = "antlr4")
