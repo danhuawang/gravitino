@@ -1,109 +1,178 @@
 name: Cron Integration Test
 
-# Controls when the workflow will run
 on:
-  schedule: # Runs by default on main branch
+  schedule: # Runs by default on the default branch
     - cron: '0 19 * * *' # Runs every day at 19:00 PM UTC, equal to 03:00 AM the next day in GMT+8 time zone
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ contains(github.ref, 'main') }}
 
 jobs:
-  changes:
-    if: github.repository == 'apache/gravitino'
+  repo-guard:
+    if: ${{ github.repository == 'danhuawang/gravitino' }}
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
-        id: filter
-        with:
-          filters: |
-            source_changes:
-              - .github/**
-              - api/**
-              - bin/**
-              - catalogs/**
-              - clients/**
-              - common/**
-              - conf/**
-              - core/**
-              - dev/**
-              - gradle/**
-              - iceberg/**
-              - integration-test/**
-              - meta/**
-              - server/**
-              - server-common/**
-              - spark-connector/**
-              - trino-connector/**
-              - web/**
-              - docs/open-api/**
-              - build.gradle.kts
-              - gradle.properties
-              - gradlew
-              - settings.gradle.kts
     outputs:
-      source_changes: ${{ steps.filter.outputs.source_changes }}
+      run: ${{ steps.guard.outputs.run }}
+    steps:
+      - id: guard
+        run: echo "run=true" >> "$GITHUB_OUTPUT"
 
-  # Integration test for AMD64 architecture
-  test-amd64-arch:
-    needs: changes
-    if: needs.changes.outputs.source_changes == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
+  backend-integration-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
     strategy:
+      fail-fast: false
       matrix:
         architecture: [linux/amd64]
-        java-version: [ 17 ]
-        test-mode: [ embedded, deploy ]
-    env:
-      DOCKER_RUN_NAME: hive-amd64
-      PLATFORM: ${{ matrix.architecture }}
-    steps:
-      - uses: actions/checkout@v4
+        java-version: [17]
+        backend: [mysql]
+        test-mode: [embedded, deploy]
+    uses: ./.github/workflows/backend-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+      backend: ${{ matrix.backend }}
+      test-mode: ${{ matrix.test-mode }}
+    secrets: inherit
 
-      - uses: actions/setup-java@v4
-        with:
-          java-version: ${{ matrix.java-version }}
-          distribution: 'temurin'
-          cache: 'gradle'
+  flink-integration-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [17]
+    uses: ./.github/workflows/flink-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+    secrets: inherit
 
+  spark-integration-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [linux/arm64]
+        java-version: [17]
+        scala-version: ['2.12']
+        test-mode: [deploy]
+    uses: ./.github/workflows/spark-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+      scala-version: ${{ matrix.scala-version }}
+      test-mode: ${{ matrix.test-mode }}
+    secrets: inherit
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+  maintenance-integration-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [17]
+    uses: ./.github/workflows/maintenance-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+    secrets: inherit
 
-      - name: Package Gravitino
-        run: |
-          ./gradlew compileDistribution -PskipWeb=true -x test
+  access-control-integration-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [17]
+        test-mode: [embedded, deploy]
+        jdbc-backend: [h2, mysql, postgresql]
+        exclude:
+          - test-mode: embedded
+            jdbc-backend: mysql
+          - test-mode: embedded
+            jdbc-backend: postgresql
+          - test-mode: deploy
+            jdbc-backend: h2
+    uses: ./.github/workflows/access-control-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+      test-mode: ${{ matrix.test-mode }}
+      jdbc-backend: ${{ matrix.jdbc-backend }}
+    secrets: inherit
 
-      - name: Free up disk space
-        run: |
-          dev/ci/util_free_space.sh
+  frontend-integration-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [17]
+    uses: ./.github/workflows/frontend-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+    secrets: inherit
 
-      - name: Integration Test
-        id: integrationTest
-        run: |
-          ./gradlew test -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false -PskipWeb=true
+  python-integration-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [17]
+    uses: ./.github/workflows/python-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+    secrets: inherit
 
-      - name: Upload integrate tests reports
-        uses: actions/upload-artifact@v7
-        if: ${{ failure() && steps.integrationTest.outcome == 'failure' }}
-        with:
-          name: integrate test reports
-          path: |
-            build/reports
-            iceberg/iceberg-rest-server/build/*.log
-            integration-test/build/*.log
-            integration-test/build/*.tar
-            integration-test/build/trino-ci-container-log
-            distribution/package/logs/*.out
-            distribution/package/logs/*.log
-            catalogs/**/*.log
-            catalogs/**/*.tar
-            distribution/**/*.log
-            spark-connector/v3.3/spark/build/spark-3.3-integration-test.log
-            spark-connector/v3.4/spark/build/spark-3.4-integration-test.log
-            spark-connector/v3.5/spark/build/spark-3.5-integration-test.log
-            flink-connector/build/flink-connector-integration-test.log
-            flink-connector/build/*.tar
+  trino-integration-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [17]
+    uses: ./.github/workflows/trino-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+    secrets: inherit
+
+  gvfs-fuse-build-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [17]
+    uses: ./.github/workflows/gvfs-fuse-build-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+    secrets: inherit
+
+  chart-test:
+    needs: repo-guard
+    if: ${{ needs.repo-guard.outputs.run == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ['17']
+    uses: ./.github/workflows/chart-test-action.yml
+    with:
+      java-version: ${{ matrix.java-version }}
+      run-all-charts: true
+    secrets: inherit
