@@ -1,0 +1,64 @@
+name: Frontend Integration Test Action
+
+# run frontend integration test
+on:
+  workflow_call:
+    inputs:
+      architecture:
+        required: true
+        description: 'Architecture of the platform'
+        type: string
+      java-version:
+        required: true
+        description: 'Java version'
+        type: string
+
+jobs:
+  start-runner:
+    name: JDK${{ inputs.java-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PLATFORM: ${{ inputs.architecture }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Check required command
+        run: |
+          dev/ci/check_commands.sh
+
+      - name: Package Gravitino
+        run: |
+          GRAVITINO_USE_WEB_V2=true ./gradlew compileDistribution compileTrinoConnector -x test
+
+      - name: Free up disk space
+        run: |
+          dev/ci/util_free_space.sh
+
+      - name: Frontend Integration Test
+        id: integrationTest
+        run: |
+          GRAVITINO_USE_WEB_V2=true ./gradlew -PskipTests -PtestMode=deploy -PskipDockerTests=false :web-v2:integration-test:test
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v7
+        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
+        with:
+          name: integrate-test-reports-${{ inputs.java-version }}
+          path: |
+            build/reports
+            integration-test-common/build/*.log
+            distribution/package/logs/gravitino-server.out
+            distribution/package/logs/gravitino-server.log
+            catalogs/**/*.log
+            catalogs/**/*.tar
+            web-v2/integration-test/build/*.log
