@@ -43,18 +43,20 @@ dependencies {
 }
 
 // Downloads the ECDSA public key from a private GitHub repo at build time and embeds it in the jar.
+// The public key is NOT committed to this repo — it is fetched from a dedicated private GitHub repo.
 // Required env vars (set in CI):
 //   LICENSE_PUBLIC_KEY_URL — raw GitHub URL, e.g.
 //     https://raw.githubusercontent.com/datastrato/gravitino-license-keys/main/gravitino-master.pub
 //   GITHUB_TOKEN           — PAT or GitHub App token with read access to the key repo
-// Falls back to the committed test key when env vars are not set (local dev).
+//                            (auto-injected in GitHub Actions)
+// For local development, tests use in-memory key pairs (TestKeyPairUtil) and do not need this key.
 tasks.register("downloadPublicKey") {
   doLast {
     val keyUrl = System.getenv("LICENSE_PUBLIC_KEY_URL")
     val githubToken = System.getenv("GITHUB_TOKEN")
     if (keyUrl == null || githubToken == null) {
       logger.lifecycle(
-        "LICENSE_PUBLIC_KEY_URL or GITHUB_TOKEN not set — using committed test public key"
+        "LICENSE_PUBLIC_KEY_URL or GITHUB_TOKEN not set — skipping public key download (local dev)"
       )
       return@doLast
     }
