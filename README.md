@@ -29,7 +29,13 @@ If you want to build a distribution package, please run:
 
 to build a distribution package.
 
-Or:
+Skip building and packaging both Web UIs:
+
+```bash
+./gradlew compileDistribution -PskipWebBuild=true -x test
+```
+
+Or compressed package:
 
 ```shell
 ./gradlew assembleDistribution -x test
