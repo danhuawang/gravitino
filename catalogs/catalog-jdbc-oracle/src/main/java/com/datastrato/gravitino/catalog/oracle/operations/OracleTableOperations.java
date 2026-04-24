@@ -34,6 +34,7 @@ import org.apache.gravitino.catalog.jdbc.operation.JdbcTableOperations;
 import org.apache.gravitino.catalog.jdbc.utils.JdbcConnectorUtils;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.rel.TableChange;
+import org.apache.gravitino.rel.expressions.Expression;
 import org.apache.gravitino.rel.expressions.distributions.Distribution;
 import org.apache.gravitino.rel.expressions.distributions.Distributions;
 import org.apache.gravitino.rel.expressions.sorts.SortOrder;
@@ -41,6 +42,7 @@ import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.rel.indexes.Indexes;
+import org.apache.gravitino.rel.types.Type;
 
 /** Table operations for Oracle. */
 public class OracleTableOperations extends JdbcTableOperations {
@@ -223,13 +225,54 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   @Override
   protected String generateRenameTableSql(String oldTableName, String newTableName) {
-    throw new UnsupportedOperationException("Oracle table rename is tracked by #601");
+    return String.format(
+        "ALTER TABLE %s RENAME TO %s", quotedName(oldTableName), quotedName(newTableName));
   }
 
   @Override
   protected String generateAlterTableSql(
       String databaseName, String tableName, TableChange... changes) {
-    throw new UnsupportedOperationException("Oracle table alter is tracked by #601");
+    List<String> alterSqlList = generateAlterTableSqlList(databaseName, tableName, changes);
+    if (alterSqlList.isEmpty()) {
+      return "";
+    }
+    return String.join("\n", alterSqlList);
+  }
+
+  @Override
+  public void alterTable(String databaseName, String tableName, TableChange... changes)
+      throws NoSuchTableException {
+    LOG.info("Attempting to alter table {} from schema {}", tableName, databaseName);
+    List<String> alterSqlList = generateAlterTableSqlList(databaseName, tableName, changes);
+    if (alterSqlList.isEmpty()) {
+      LOG.info("No table changes to apply for {} from schema {}", tableName, databaseName);
+      return;
+    }
+    List<String> executedSqlList = new ArrayList<>();
+    String failedSql = null;
+    // Oracle has limited ALTER TABLE capabilities compared to some other databases, so we generate
+    // individual ALTER statements for each change and execute them sequentially. Note that some
+    // changes (like dropping a column) may fail if there are dependent objects, and Oracle does not
+    // support transactional DDL, so partial changes may be committed even if a later change fails.
+    // We log each executed statement to help with troubleshooting in such cases.
+    try (Connection connection = getConnection(databaseName)) {
+      for (String sql : alterSqlList) {
+        failedSql = sql;
+        JdbcConnectorUtils.executeUpdate(connection, sql);
+        executedSqlList.add(sql);
+      }
+      LOG.info("Altered table {} from schema {}", tableName, databaseName);
+    } catch (final SQLException se) {
+      LOG.error(
+          "Failed to alter table {} from schema {} with SQL: {}. "
+              + "Already executed SQLs may have been committed by Oracle: {}",
+          tableName,
+          databaseName,
+          failedSql,
+          executedSqlList,
+          se);
+      throw exceptionMapper.toGravitinoException(se);
+    }
   }
 
   @Override
@@ -372,5 +415,232 @@ public class OracleTableOperations extends JdbcTableOperations {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(databaseName), "Schema name cannot be null or blank.");
     return databaseName.toUpperCase(Locale.ROOT);
+  }
+
+  private List<String> generateAlterTableSqlList(
+      String databaseName, String tableName, TableChange... changes) {
+    JdbcTable lazyLoadTable = null;
+    String qualifiedTableName = qualifiedTableName(databaseName, tableName);
+    List<String> sqlList = new ArrayList<>();
+
+    for (TableChange change : changes) {
+      if (change instanceof TableChange.AddColumn) {
+        TableChange.AddColumn addColumn = (TableChange.AddColumn) change;
+        sqlList.add(generateAddColumnSql(qualifiedTableName, addColumn));
+        if (StringUtils.isNotBlank(addColumn.getComment())) {
+          sqlList.add(
+              generateUpdateColumnCommentSql(
+                  qualifiedTableName, addColumn.getFieldName(), addColumn.getComment()));
+        }
+      } else if (change instanceof TableChange.UpdateColumnType) {
+        TableChange.UpdateColumnType updateColumnType = (TableChange.UpdateColumnType) change;
+        sqlList.add(
+            generateModifyColumnSql(
+                qualifiedTableName,
+                updateColumnType.fieldName(),
+                null,
+                null,
+                updateColumnType.getNewDataType()));
+      } else if (change instanceof TableChange.UpdateColumnDefaultValue) {
+        TableChange.UpdateColumnDefaultValue updateDefault =
+            (TableChange.UpdateColumnDefaultValue) change;
+        sqlList.add(
+            generateModifyColumnSql(
+                qualifiedTableName,
+                updateDefault.fieldName(),
+                null,
+                updateDefault.getNewDefaultValue(),
+                null));
+      } else if (change instanceof TableChange.UpdateColumnNullability) {
+        TableChange.UpdateColumnNullability updateNullability =
+            (TableChange.UpdateColumnNullability) change;
+        sqlList.add(
+            generateModifyColumnSql(
+                qualifiedTableName,
+                updateNullability.fieldName(),
+                updateNullability.nullable(),
+                null,
+                null));
+      } else if (change instanceof TableChange.UpdateColumnComment) {
+        TableChange.UpdateColumnComment updateColumnComment =
+            (TableChange.UpdateColumnComment) change;
+        sqlList.add(
+            generateUpdateColumnCommentSql(
+                qualifiedTableName,
+                updateColumnComment.fieldName(),
+                updateColumnComment.getNewComment()));
+      } else if (change instanceof TableChange.DeleteColumn) {
+        TableChange.DeleteColumn deleteColumn = (TableChange.DeleteColumn) change;
+        if (Boolean.TRUE.equals(deleteColumn.getIfExists())) {
+          lazyLoadTable = getOrCreateTable(databaseName, tableName, lazyLoadTable);
+        }
+        String deleteSql = generateDeleteColumnSql(qualifiedTableName, deleteColumn, lazyLoadTable);
+        if (StringUtils.isNotBlank(deleteSql)) {
+          sqlList.add(deleteSql);
+        }
+      } else if (change instanceof TableChange.RenameColumn) {
+        TableChange.RenameColumn renameColumn = (TableChange.RenameColumn) change;
+        sqlList.add(generateRenameColumnSql(qualifiedTableName, renameColumn));
+      } else if (change instanceof TableChange.UpdateComment) {
+        TableChange.UpdateComment updateComment = (TableChange.UpdateComment) change;
+        sqlList.add(
+            String.format(
+                "COMMENT ON TABLE %s IS '%s'",
+                qualifiedTableName,
+                escapeSqlComment(StringUtils.defaultString(updateComment.getNewComment()))));
+      } else if (change instanceof TableChange.UpdateColumnPosition) {
+        throw new UnsupportedOperationException("Oracle does not support reordering columns.");
+      } else if (change instanceof TableChange.UpdateColumnAutoIncrement) {
+        throw new UnsupportedOperationException(
+            "Oracle 11g does not support AUTO_INCREMENT column.");
+      } else if (change instanceof TableChange.AddIndex) {
+        TableChange.AddIndex addIndex = (TableChange.AddIndex) change;
+        sqlList.add(generateAddConstraintSql(qualifiedTableName, addIndex));
+      } else if (change instanceof TableChange.DeleteIndex) {
+        TableChange.DeleteIndex deleteIndex = (TableChange.DeleteIndex) change;
+        sqlList.add(generateDropConstraintSql(qualifiedTableName, deleteIndex.getName()));
+      } else if (change instanceof TableChange.SetProperty
+          || change instanceof TableChange.RemoveProperty) {
+        throw new UnsupportedOperationException(
+            "Oracle does not support table property changes: " + change.getClass().getSimpleName());
+      } else {
+        throw new UnsupportedOperationException(
+            "Unsupported table change type: " + change.getClass().getSimpleName());
+      }
+    }
+
+    return sqlList;
+  }
+
+  private String generateAddColumnSql(String qualifiedTableName, TableChange.AddColumn addColumn) {
+    Preconditions.checkArgument(
+        addColumn.getFieldName().length == 1, "Oracle does not support nested column names.");
+    Preconditions.checkArgument(
+        addColumn.getPosition() == TableChange.ColumnPosition.defaultPos(),
+        "Oracle does not support specifying column position.");
+    if (addColumn.isAutoIncrement()) {
+      throw new UnsupportedOperationException("Oracle 11g does not support AUTO_INCREMENT column.");
+    }
+    String columnDefinition =
+        buildColumnDefinition(
+            addColumn.getFieldName()[0],
+            addColumn.getDataType(),
+            addColumn.isNullable(),
+            addColumn.getDefaultValue());
+    return String.format("ALTER TABLE %s ADD (%s)", qualifiedTableName, columnDefinition);
+  }
+
+  private String generateModifyColumnSql(
+      String qualifiedTableName,
+      String[] fieldName,
+      Boolean nullable,
+      Expression defaultValue,
+      Type type) {
+    Preconditions.checkArgument(
+        fieldName.length == 1, "Oracle does not support nested column names.");
+
+    StringBuilder columnDefinition = new StringBuilder();
+    columnDefinition.append(quotedName(fieldName[0]));
+    if (type != null) {
+      columnDefinition.append(" ").append(typeConverter.fromGravitino(type));
+    }
+    if (nullable != null) {
+      if (nullable) {
+        columnDefinition.append(" NULL");
+      } else {
+        columnDefinition.append(" NOT NULL");
+      }
+    }
+    if (defaultValue != null) {
+      if (DEFAULT_VALUE_NOT_SET.equals(defaultValue)) {
+        columnDefinition.append(" DEFAULT NULL");
+      } else {
+        columnDefinition
+            .append(" DEFAULT ")
+            .append(columnDefaultValueConverter.fromGravitino(defaultValue));
+      }
+    }
+    return String.format("ALTER TABLE %s MODIFY (%s)", qualifiedTableName, columnDefinition);
+  }
+
+  private String generateDeleteColumnSql(
+      String qualifiedTableName, TableChange.DeleteColumn deleteColumn, JdbcTable table) {
+    Preconditions.checkArgument(
+        deleteColumn.fieldName().length == 1, "Oracle does not support nested column names.");
+    String columnName = deleteColumn.fieldName()[0];
+    if (Boolean.TRUE.equals(deleteColumn.getIfExists()) && !columnExists(table, columnName)) {
+      return "";
+    }
+    return String.format(
+        "ALTER TABLE %s DROP COLUMN %s", qualifiedTableName, quotedName(columnName));
+  }
+
+  private String generateRenameColumnSql(
+      String qualifiedTableName, TableChange.RenameColumn renameColumn) {
+    Preconditions.checkArgument(
+        renameColumn.fieldName().length == 1, "Oracle does not support nested column names.");
+    return String.format(
+        "ALTER TABLE %s RENAME COLUMN %s TO %s",
+        qualifiedTableName,
+        quotedName(renameColumn.fieldName()[0]),
+        quotedName(renameColumn.getNewName()));
+  }
+
+  private String generateUpdateColumnCommentSql(
+      String qualifiedTableName, String[] fieldName, String comment) {
+    Preconditions.checkArgument(
+        fieldName.length == 1, "Oracle does not support nested column names.");
+    if (comment == null) {
+      return String.format(
+          "COMMENT ON COLUMN %s.%s IS NULL", qualifiedTableName, quotedName(fieldName[0]));
+    }
+    return String.format(
+        "COMMENT ON COLUMN %s.%s IS '%s'",
+        qualifiedTableName, quotedName(fieldName[0]), escapeSqlComment(comment));
+  }
+
+  private String generateAddConstraintSql(
+      String qualifiedTableName, TableChange.AddIndex addIndex) {
+    Preconditions.checkArgument(
+        StringUtils.isNotBlank(addIndex.getName()), "Oracle constraint requires a name.");
+    String columns = formatIndexColumns(addIndex.getFieldNames());
+    if (addIndex.getType() == Index.IndexType.PRIMARY_KEY) {
+      return String.format(
+          "ALTER TABLE %s ADD CONSTRAINT %s PRIMARY KEY (%s)",
+          qualifiedTableName, quotedName(addIndex.getName()), columns);
+    }
+    if (addIndex.getType() == Index.IndexType.UNIQUE_KEY) {
+      return String.format(
+          "ALTER TABLE %s ADD CONSTRAINT %s UNIQUE (%s)",
+          qualifiedTableName, quotedName(addIndex.getName()), columns);
+    }
+    throw new UnsupportedOperationException(
+        "Oracle supports only PRIMARY_KEY and UNIQUE_KEY indexes.");
+  }
+
+  private String generateDropConstraintSql(String qualifiedTableName, String constraintName) {
+    Preconditions.checkArgument(
+        StringUtils.isNotBlank(constraintName), "Oracle DROP CONSTRAINT requires a name.");
+    return String.format(
+        "ALTER TABLE %s DROP CONSTRAINT %s", qualifiedTableName, quotedName(constraintName));
+  }
+
+  private String buildColumnDefinition(
+      String columnName, Type type, boolean nullable, Expression defaultValue) {
+    StringBuilder definition = new StringBuilder();
+    definition.append(quotedName(columnName)).append(" ").append(typeConverter.fromGravitino(type));
+    if (!nullable) {
+      definition.append(" NOT NULL");
+    }
+    if (!DEFAULT_VALUE_NOT_SET.equals(defaultValue)) {
+      definition
+          .append(" DEFAULT ")
+          .append(columnDefaultValueConverter.fromGravitino(defaultValue));
+    }
+    return definition.toString();
+  }
+
+  private String qualifiedTableName(String databaseName, String tableName) {
+    return quotedName(normalizeSchemaName(databaseName)) + "." + quotedName(tableName);
   }
 }

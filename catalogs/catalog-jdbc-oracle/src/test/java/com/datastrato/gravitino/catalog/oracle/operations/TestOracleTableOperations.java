@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,9 +35,11 @@ import java.util.Map;
 import javax.sql.DataSource;
 import org.apache.gravitino.catalog.jdbc.JdbcColumn;
 import org.apache.gravitino.catalog.jdbc.JdbcTable;
+import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.distributions.Distributions;
+import org.apache.gravitino.rel.expressions.literals.Literals;
 import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
@@ -48,6 +51,7 @@ import org.junit.jupiter.api.Test;
 public class TestOracleTableOperations {
 
   private OracleTableOperationsForTest operations;
+  private DataSource dataSource;
   private Connection connection;
 
   private static final class OracleTableOperationsForTest extends OracleTableOperations {
@@ -110,7 +114,7 @@ public class TestOracleTableOperations {
   @BeforeEach
   void setUp() throws Exception {
     operations = new OracleTableOperationsForTest();
-    DataSource dataSource = mock(DataSource.class);
+    dataSource = mock(DataSource.class);
     connection = mock(Connection.class);
     when(dataSource.getConnection()).thenReturn(connection);
     operations.initialize(
@@ -261,17 +265,170 @@ public class TestOracleTableOperations {
     assertFalse(operations.getAutoIncrementInfoForTest(null));
     assertEquals(0, operations.getTablePartitioningForTest(connection, "APP_USER", "T1").length);
 
-    UnsupportedOperationException renameException =
-        assertThrows(
-            UnsupportedOperationException.class,
-            () -> operations.generateRenameTableSql("T1", "T2"));
-    assertTrue(renameException.getMessage().contains("#601"));
+    assertEquals(
+        "ALTER TABLE \"T1\" RENAME TO \"T2\"", operations.generateRenameTableSql("T1", "T2"));
+    assertEquals("", operations.generateAlterTableSql("APP_USER", "T1", new TableChange[0]));
+  }
 
-    UnsupportedOperationException alterException =
-        assertThrows(
-            UnsupportedOperationException.class,
-            () -> operations.generateAlterTableSql("APP_USER", "T1", new TableChange[0]));
-    assertTrue(alterException.getMessage().contains("#601"));
+  @Test
+  void testGenerateAlterTableSql() {
+    String sql =
+        operations.generateAlterTableSql(
+            "APP_USER",
+            "T1",
+            TableChange.addColumn(
+                new String[] {"new_col"},
+                Types.VarCharType.of(100),
+                "new col comment",
+                TableChange.ColumnPosition.defaultPos(),
+                true,
+                false,
+                Literals.stringLiteral("v1")),
+            TableChange.updateColumnType(new String[] {"new_col"}, Types.LongType.get()),
+            TableChange.updateColumnDefaultValue(
+                new String[] {"new_col"}, Literals.longLiteral(10L)),
+            TableChange.updateColumnNullability(new String[] {"new_col"}, false),
+            TableChange.renameColumn(new String[] {"new_col"}, "new_col_2"),
+            TableChange.updateColumnComment(new String[] {"new_col_2"}, "updated"),
+            TableChange.deleteColumn(new String[] {"old_col"}, false),
+            TableChange.updateComment("table comment"));
+
+    assertTrue(
+        sql.contains(
+            "ALTER TABLE \"APP_USER\".\"T1\" ADD (\"new_col\" VARCHAR2(100) DEFAULT 'v1')"));
+    assertTrue(
+        sql.contains("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"new_col\" IS 'new col comment'"));
+    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"new_col\" NUMBER(19))"));
+    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"new_col\" DEFAULT 10)"));
+    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"new_col\" NOT NULL)"));
+    assertTrue(
+        sql.contains("ALTER TABLE \"APP_USER\".\"T1\" RENAME COLUMN \"new_col\" TO \"new_col_2\""));
+    assertTrue(sql.contains("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"new_col_2\" IS 'updated'"));
+    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" DROP COLUMN \"old_col\""));
+    assertTrue(sql.contains("COMMENT ON TABLE \"APP_USER\".\"T1\" IS 'table comment'"));
+  }
+
+  @Test
+  void testGenerateAlterTableSqlNormalizesSchemaName() {
+    String sql =
+        operations.generateAlterTableSql(
+            "app_user", "T1", TableChange.updateComment("table comment"));
+
+    assertEquals("COMMENT ON TABLE \"APP_USER\".\"T1\" IS 'table comment'", sql);
+  }
+
+  @Test
+  void testGenerateAlterTableSqlSupportsNullColumnComment() {
+    String sql =
+        operations.generateAlterTableSql(
+            "app_user", "T1", TableChange.updateColumnComment(new String[] {"col_a"}, null));
+
+    assertEquals("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"col_a\" IS NULL", sql);
+  }
+
+  @Test
+  void testAlterTableExecutesGeneratedSqls() throws Exception {
+    Statement sessionStatement = mock(Statement.class);
+    Statement ddlStatement1 = mock(Statement.class);
+    Statement ddlStatement2 = mock(Statement.class);
+    when(connection.createStatement()).thenReturn(sessionStatement, ddlStatement1, ddlStatement2);
+
+    operations.alterTable(
+        "app_user",
+        "T1",
+        TableChange.updateComment("table comment"),
+        TableChange.updateColumnComment(new String[] {"col_a"}, "column comment"));
+
+    verify(sessionStatement).execute(eq("ALTER SESSION SET CURRENT_SCHEMA = \"APP_USER\""));
+    verify(connection).setSchema("APP_USER");
+    verify(ddlStatement1)
+        .executeUpdate(eq("COMMENT ON TABLE \"APP_USER\".\"T1\" IS 'table comment'"));
+    verify(ddlStatement2)
+        .executeUpdate(eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"col_a\" IS 'column comment'"));
+  }
+
+  @Test
+  void testAlterTableThrowsWhenExecutingGeneratedSqlFails() throws Exception {
+    Statement sessionStatement = mock(Statement.class);
+    Statement ddlStatement1 = mock(Statement.class);
+    Statement ddlStatement2 = mock(Statement.class);
+    when(connection.createStatement()).thenReturn(sessionStatement, ddlStatement1, ddlStatement2);
+    when(ddlStatement2.executeUpdate(
+            eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"col_a\" IS 'column comment'")))
+        .thenThrow(new SQLException("failed"));
+
+    assertThrows(
+        GravitinoRuntimeException.class,
+        () ->
+            operations.alterTable(
+                "app_user",
+                "T1",
+                TableChange.updateComment("table comment"),
+                TableChange.updateColumnComment(new String[] {"col_a"}, "column comment")));
+
+    verify(ddlStatement1)
+        .executeUpdate(eq("COMMENT ON TABLE \"APP_USER\".\"T1\" IS 'table comment'"));
+    verify(ddlStatement2)
+        .executeUpdate(eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"col_a\" IS 'column comment'"));
+  }
+
+  @Test
+  void testAlterTableSkipsExecutionWhenNoChanges() throws Exception {
+    operations.alterTable("APP_USER", "T1", new TableChange[0]);
+
+    verify(dataSource, never()).getConnection();
+  }
+
+  @Test
+  void testGenerateAlterTableSqlIndexChanges() {
+    String addPkSql =
+        operations.generateAlterTableSql(
+            "APP_USER",
+            "T1",
+            TableChange.addIndex(
+                Index.IndexType.PRIMARY_KEY, "PK_T1", new String[][] {new String[] {"id"}}));
+    assertTrue(
+        addPkSql.contains(
+            "ALTER TABLE \"APP_USER\".\"T1\" ADD CONSTRAINT \"PK_T1\" PRIMARY KEY (\"id\")"));
+
+    String addUkSql =
+        operations.generateAlterTableSql(
+            "APP_USER",
+            "T1",
+            TableChange.addIndex(
+                Index.IndexType.UNIQUE_KEY, "UK_T1_NAME", new String[][] {new String[] {"name"}}));
+    assertTrue(
+        addUkSql.contains(
+            "ALTER TABLE \"APP_USER\".\"T1\" ADD CONSTRAINT \"UK_T1_NAME\" UNIQUE (\"name\")"));
+
+    String dropSql =
+        operations.generateAlterTableSql("APP_USER", "T1", TableChange.deleteIndex("PK_T1", false));
+    assertTrue(dropSql.contains("ALTER TABLE \"APP_USER\".\"T1\" DROP CONSTRAINT \"PK_T1\""));
+  }
+
+  @Test
+  void testGenerateAlterTableSqlUnsupportedOperations() {
+    assertThrows(
+        UnsupportedOperationException.class,
+        () ->
+            operations.generateAlterTableSql(
+                "APP_USER",
+                "T1",
+                TableChange.updateColumnPosition(
+                    new String[] {"id"}, TableChange.ColumnPosition.first())));
+
+    assertThrows(
+        UnsupportedOperationException.class,
+        () ->
+            operations.generateAlterTableSql(
+                "APP_USER",
+                "T1",
+                TableChange.updateColumnAutoIncrement(new String[] {"id"}, true)));
+
+    assertThrows(
+        UnsupportedOperationException.class,
+        () ->
+            operations.generateAlterTableSql("APP_USER", "T1", TableChange.setProperty("k", "v")));
   }
 
   @Test
