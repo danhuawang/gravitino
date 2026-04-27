@@ -17,9 +17,37 @@
 -- under the License.
 --
 
--- Gravitino DB upgrade script: 1.2.0 → 1.3.0 (H2)
--- Adds the license_nodes table for enterprise license node tracking.
+-- using default '{}' to fill in the new column for compatibility
+ALTER TABLE `view_meta`
+    ADD COLUMN `audit_info` CLOB NOT NULL DEFAULT '{}' COMMENT 'view audit info';
 
+-- remove the default value for audit_info
+ALTER TABLE `view_meta`
+    ALTER COLUMN `audit_info` DROP DEFAULT;
+
+CREATE TABLE IF NOT EXISTS `view_version_info` (
+    `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'auto increment id',
+    `metalake_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'metalake id',
+    `catalog_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'catalog id',
+    `schema_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'schema id',
+    `view_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'view id',
+    `version` INT UNSIGNED NOT NULL COMMENT 'view version',
+    `view_comment` CLOB DEFAULT NULL COMMENT 'view version comment',
+    `columns` CLOB NOT NULL COMMENT 'view columns snapshot (JSON)',
+    `properties` CLOB DEFAULT NULL COMMENT 'view properties (JSON)',
+    `default_catalog` VARCHAR(128) DEFAULT NULL COMMENT 'default catalog for view SQL resolution',
+    `default_schema` VARCHAR(128) DEFAULT NULL COMMENT 'default schema for view SQL resolution',
+    `representations` CLOB NOT NULL COMMENT 'view representations (JSON array)',
+    `audit_info` CLOB NOT NULL COMMENT 'view version audit info',
+    `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'view version deleted at',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_vid_ver_del` (`view_id`, `version`, `deleted_at`),
+    KEY `idx_vvmid` (`metalake_id`),
+    KEY `idx_vvcid` (`catalog_id`),
+    KEY `idx_vvsid` (`schema_id`)
+) ENGINE=InnoDB;
+
+-- Enterprise: adds the license_nodes table for enterprise license node tracking.
 CREATE TABLE IF NOT EXISTS `license_nodes` (
     `node_id`        VARCHAR(64)  NOT NULL COMMENT 'node identifier from gravitino.datastrato.license.nodeId',
     `registered_at`  BIGINT       NOT NULL COMMENT 'epoch millis when node first registered',

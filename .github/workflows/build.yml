@@ -6,16 +6,12 @@ on:
   push:
     branches: [ "main", "branch-*" ]
     paths-ignore:
-      - '**/*.md'
-      - '**/*.mdx'
       - 'docs/assets/**'
       - 'web-v2/**'
   pull_request:
     types: [labeled]
     branches: [ "main", "branch-*" ]
     paths-ignore:
-      - '**/*.md'
-      - '**/*.mdx'
       - 'docs/assets/**'
       - 'web-v2/**'
 
@@ -54,8 +50,8 @@ jobs:
               - '**/*.rs'
               - '**/resources/**'
               - '**/src/**'
-              - '!**/*.md'
-              - '!**/*.mdx'
+              - '**/*.md'
+              - '**/*.mdx'
               - '!docs/**/*.png'
               - '!docs/**/*.svg'
               - '!docs/**/*.jpg'
@@ -104,11 +100,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: ./.github/actions/setup-java-toolchains
         with:
           java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -175,11 +169,9 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: ./.github/actions/setup-java-toolchains
         with:
           java-version: ${{ matrix.java-version }}
-          distribution: 'temurin'
-          cache: 'gradle'
 
       - name: Test publish to local
         run: ./gradlew publishToMavenLocal -PskipWeb=true -x test
