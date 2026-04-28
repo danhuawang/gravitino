@@ -39,11 +39,15 @@ import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.distributions.Distributions;
+import org.apache.gravitino.rel.expressions.literals.Literal;
 import org.apache.gravitino.rel.expressions.literals.Literals;
 import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.rel.indexes.Indexes;
+import org.apache.gravitino.rel.partitions.ListPartition;
+import org.apache.gravitino.rel.partitions.Partitions;
+import org.apache.gravitino.rel.partitions.RangePartition;
 import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,6 +69,21 @@ public class TestOracleTableOperations {
           Transforms.EMPTY_TRANSFORM,
           Distributions.NONE,
           indexes);
+    }
+
+    String createSqlWithPartitionForTest(
+        String tableName,
+        JdbcColumn[] columns,
+        Map<String, String> properties,
+        Transform[] partitioning) {
+      return super.generateCreateTableSql(
+          tableName,
+          columns,
+          "table comment",
+          properties,
+          partitioning,
+          Distributions.NONE,
+          new Index[0]);
     }
 
     String dropSqlForTest(String tableName) {
@@ -227,6 +246,255 @@ public class TestOracleTableOperations {
   }
 
   @Test
+  void testCreateTableWithPartitioning() {
+    JdbcColumn[] columns =
+        new JdbcColumn[] {
+          JdbcColumn.builder()
+              .withName("id")
+              .withType(Types.IntegerType.get())
+              .withNullable(false)
+              .build(),
+          JdbcColumn.builder()
+              .withName("region")
+              .withType(Types.VarCharType.of(32))
+              .withNullable(true)
+              .build()
+        };
+    Map<String, String> props = Map.of();
+
+    // HASH partitioning
+    String hashSql =
+        operations.createSqlWithPartitionForTest(
+            "T1", columns, props, new Transform[] {Transforms.bucket(4, new String[] {"id"})});
+    assertTrue(hashSql.contains("PARTITION BY HASH (\"id\") PARTITIONS 4"));
+
+    // RANGE partitioning without assignments
+    String rangeSql =
+        operations.createSqlWithPartitionForTest(
+            "T1", columns, props, new Transform[] {Transforms.range(new String[] {"id"})});
+    assertTrue(rangeSql.contains("PARTITION BY RANGE (\"id\")"));
+    assertFalse(rangeSql.contains("VALUES LESS THAN"));
+
+    // RANGE partitioning with assignments
+    String rangeWithPartsSql =
+        operations.createSqlWithPartitionForTest(
+            "T1",
+            columns,
+            props,
+            new Transform[] {
+              Transforms.range(
+                  new String[] {"id"},
+                  new RangePartition[] {
+                    Partitions.range("p1", Literals.longLiteral(100L), Literals.NULL, Map.of()),
+                    Partitions.range(
+                        "p_date", Literals.dateLiteral("2026-04-27"), Literals.NULL, Map.of()),
+                    Partitions.range(
+                        "p\"quote", Literals.longLiteral(200L), Literals.NULL, Map.of()),
+                    Partitions.range("p2", Literals.NULL, Literals.NULL, Map.of())
+                  })
+            });
+    assertTrue(rangeWithPartsSql.contains("PARTITION BY RANGE (\"id\")"));
+    assertTrue(rangeWithPartsSql.contains("PARTITION \"p1\" VALUES LESS THAN (100)"));
+    assertTrue(rangeWithPartsSql.contains("PARTITION \"p_date\" VALUES LESS THAN ('2026-04-27')"));
+    assertTrue(rangeWithPartsSql.contains("PARTITION \"p\"\"quote\" VALUES LESS THAN (200)"));
+    assertTrue(rangeWithPartsSql.contains("PARTITION \"p2\" VALUES LESS THAN (MAXVALUE)"));
+
+    // LIST partitioning without assignments
+    String listSql =
+        operations.createSqlWithPartitionForTest(
+            "T1",
+            columns,
+            props,
+            new Transform[] {Transforms.list(new String[][] {new String[] {"region"}})});
+    assertTrue(listSql.contains("PARTITION BY LIST (\"region\")"));
+    assertFalse(listSql.contains("VALUES"));
+
+    // LIST partitioning with assignments
+    String listWithPartsSql =
+        operations.createSqlWithPartitionForTest(
+            "T1",
+            columns,
+            props,
+            new Transform[] {
+              Transforms.list(
+                  new String[][] {new String[] {"region"}},
+                  new ListPartition[] {
+                    Partitions.list(
+                        "p_east",
+                        new Literal<?>[][] {new Literal<?>[] {Literals.stringLiteral("East")}},
+                        Map.of()),
+                    Partitions.list(
+                        "p_west",
+                        new Literal<?>[][] {new Literal<?>[] {Literals.stringLiteral("West")}},
+                        Map.of())
+                  })
+            });
+    assertTrue(listWithPartsSql.contains("PARTITION BY LIST (\"region\")"));
+    assertTrue(listWithPartsSql.contains("PARTITION \"p_east\" VALUES ('East')"));
+    assertTrue(listWithPartsSql.contains("PARTITION \"p_west\" VALUES ('West')"));
+  }
+
+  @Test
+  void testCreateTableWithUnsupportedPartitioning() {
+    JdbcColumn[] columns =
+        new JdbcColumn[] {
+          JdbcColumn.builder().withName("id").withType(Types.IntegerType.get()).build(),
+          JdbcColumn.builder().withName("region").withType(Types.VarCharType.of(32)).build()
+        };
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            operations.createSqlWithPartitionForTest(
+                "T1",
+                columns,
+                Map.of(),
+                new Transform[] {
+                  Transforms.range(
+                      new String[] {"id"},
+                      new RangePartition[] {
+                        Partitions.range(
+                            "p1", Literals.longLiteral(100L), Literals.longLiteral(1L), Map.of())
+                      })
+                }));
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            operations.createSqlWithPartitionForTest(
+                "T1",
+                columns,
+                Map.of(),
+                new Transform[] {
+                  Transforms.list(new String[][] {new String[] {"nested", "field"}})
+                }));
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            operations.createSqlWithPartitionForTest(
+                "T1",
+                columns,
+                Map.of(),
+                new Transform[] {Transforms.bucket(4, new String[] {"nested", "field"})}));
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            operations.createSqlWithPartitionForTest(
+                "T1",
+                columns,
+                Map.of(),
+                new Transform[] {
+                  Transforms.list(
+                      new String[][] {new String[] {"id"}, new String[] {"region"}},
+                      new ListPartition[] {
+                        Partitions.list(
+                            "p1",
+                            new Literal<?>[][] {new Literal<?>[] {Literals.integerLiteral(1)}},
+                            Map.of())
+                      })
+                }));
+  }
+
+  @Test
+  void testGetTablePartitioning() throws Exception {
+    PreparedStatement typeStmt = mock(PreparedStatement.class);
+    ResultSet typeRs = mock(ResultSet.class);
+    PreparedStatement colStmt = mock(PreparedStatement.class);
+    ResultSet colRs = mock(ResultSet.class);
+
+    when(connection.prepareStatement(anyString())).thenReturn(typeStmt, colStmt);
+    when(typeStmt.executeQuery()).thenReturn(typeRs);
+    when(typeRs.next()).thenReturn(true);
+    when(typeRs.getString("PARTITIONING_TYPE")).thenReturn("HASH");
+    when(typeRs.getInt("PARTITION_COUNT")).thenReturn(4);
+    when(colStmt.executeQuery()).thenReturn(colRs);
+    when(colRs.next()).thenReturn(true, false);
+    when(colRs.getString("COLUMN_NAME")).thenReturn("ID");
+
+    Transform[] transforms = operations.getTablePartitioningForTest(connection, "APP_USER", "T1");
+    assertEquals(1, transforms.length);
+    assertTrue(transforms[0] instanceof Transforms.BucketTransform);
+    assertEquals(4, ((Transforms.BucketTransform) transforms[0]).numBuckets());
+    verify(typeStmt).setString(1, "APP_USER");
+    verify(typeStmt).setString(2, "T1");
+    verify(colStmt).setString(1, "APP_USER");
+    verify(colStmt).setString(2, "T1");
+
+    // RANGE: reset mocks
+    PreparedStatement typeStmt2 = mock(PreparedStatement.class);
+    ResultSet typeRs2 = mock(ResultSet.class);
+    PreparedStatement colStmt2 = mock(PreparedStatement.class);
+    ResultSet colRs2 = mock(ResultSet.class);
+    when(connection.prepareStatement(anyString())).thenReturn(typeStmt2, colStmt2);
+    when(typeStmt2.executeQuery()).thenReturn(typeRs2);
+    when(typeRs2.next()).thenReturn(true);
+    when(typeRs2.getString("PARTITIONING_TYPE")).thenReturn("RANGE");
+    when(typeRs2.getInt("PARTITION_COUNT")).thenReturn(2);
+    when(colStmt2.executeQuery()).thenReturn(colRs2);
+    when(colRs2.next()).thenReturn(true, false);
+    when(colRs2.getString("COLUMN_NAME")).thenReturn("ORDER_DATE");
+
+    Transform[] rangeTransforms =
+        operations.getTablePartitioningForTest(connection, "APP_USER", "T1");
+    assertEquals(1, rangeTransforms.length);
+    assertTrue(rangeTransforms[0] instanceof Transforms.RangeTransform);
+    assertEquals("ORDER_DATE", ((Transforms.RangeTransform) rangeTransforms[0]).fieldName()[0]);
+
+    PreparedStatement typeStmt3 = mock(PreparedStatement.class);
+    ResultSet typeRs3 = mock(ResultSet.class);
+    PreparedStatement colStmt3 = mock(PreparedStatement.class);
+    ResultSet colRs3 = mock(ResultSet.class);
+    when(connection.prepareStatement(anyString())).thenReturn(typeStmt3, colStmt3);
+    when(typeStmt3.executeQuery()).thenReturn(typeRs3);
+    when(typeRs3.next()).thenReturn(true);
+    when(typeRs3.getString("PARTITIONING_TYPE")).thenReturn("LIST");
+    when(colStmt3.executeQuery()).thenReturn(colRs3);
+    when(colRs3.next()).thenReturn(true, true, false);
+    when(colRs3.getString("COLUMN_NAME")).thenReturn("REGION", "CATEGORY");
+
+    Transform[] listTransforms =
+        operations.getTablePartitioningForTest(connection, "APP_USER", "MixedTable");
+    assertEquals(1, listTransforms.length);
+    assertTrue(listTransforms[0] instanceof Transforms.ListTransform);
+    assertEquals("REGION", ((Transforms.ListTransform) listTransforms[0]).fieldNames()[0][0]);
+    assertEquals("CATEGORY", ((Transforms.ListTransform) listTransforms[0]).fieldNames()[1][0]);
+    verify(typeStmt3).setString(2, "MixedTable");
+    verify(colStmt3).setString(2, "MixedTable");
+
+    PreparedStatement typeStmt4 = mock(PreparedStatement.class);
+    ResultSet typeRs4 = mock(ResultSet.class);
+    PreparedStatement colStmt4 = mock(PreparedStatement.class);
+    ResultSet colRs4 = mock(ResultSet.class);
+    when(connection.prepareStatement(anyString())).thenReturn(typeStmt4, colStmt4);
+    when(typeStmt4.executeQuery()).thenReturn(typeRs4);
+    when(typeRs4.next()).thenReturn(true);
+    when(typeRs4.getString("PARTITIONING_TYPE")).thenReturn("RANGE");
+    when(colStmt4.executeQuery()).thenReturn(colRs4);
+    when(colRs4.next()).thenReturn(true, true, false);
+    when(colRs4.getString("COLUMN_NAME")).thenReturn("C1", "C2");
+
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> operations.getTablePartitioningForTest(connection, "APP_USER", "T1"));
+
+    PreparedStatement typeStmt5 = mock(PreparedStatement.class);
+    ResultSet typeRs5 = mock(ResultSet.class);
+    PreparedStatement colStmt5 = mock(PreparedStatement.class);
+    ResultSet colRs5 = mock(ResultSet.class);
+    when(connection.prepareStatement(anyString())).thenReturn(typeStmt5, colStmt5);
+    when(typeStmt5.executeQuery()).thenReturn(typeRs5);
+    when(typeRs5.next()).thenReturn(true);
+    when(typeRs5.getString("PARTITIONING_TYPE")).thenReturn("INTERVAL");
+    when(colStmt5.executeQuery()).thenReturn(colRs5);
+    when(colRs5.next()).thenReturn(true, false);
+    when(colRs5.getString("COLUMN_NAME")).thenReturn("ORDER_DATE");
+
+    assertEquals(0, operations.getTablePartitioningForTest(connection, "APP_USER", "T1").length);
+  }
+
+  @Test
   void testGetTablePropertiesThrowsWhenTableMissing() throws Exception {
     PreparedStatement propertiesStmt = mock(PreparedStatement.class);
     ResultSet propertiesRs = mock(ResultSet.class);
@@ -242,7 +510,12 @@ public class TestOracleTableOperations {
   @Test
   void testMetadataAndUnsupportedPaths() throws Exception {
     Statement statement = mock(Statement.class);
+    PreparedStatement partitionTypeStmt = mock(PreparedStatement.class);
+    ResultSet partitionTypeRs = mock(ResultSet.class);
     when(connection.createStatement()).thenReturn(statement);
+    when(connection.prepareStatement(anyString())).thenReturn(partitionTypeStmt);
+    when(partitionTypeStmt.executeQuery()).thenReturn(partitionTypeRs);
+    when(partitionTypeRs.next()).thenReturn(false);
     when(connection.getSchema()).thenReturn("APP_USER");
     Connection schemaConnection = operations.getConnection("app_user");
     assertEquals(connection, schemaConnection);

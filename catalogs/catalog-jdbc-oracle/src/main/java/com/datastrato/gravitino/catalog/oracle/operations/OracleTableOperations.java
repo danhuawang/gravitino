@@ -37,11 +37,15 @@ import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.Expression;
 import org.apache.gravitino.rel.expressions.distributions.Distribution;
 import org.apache.gravitino.rel.expressions.distributions.Distributions;
+import org.apache.gravitino.rel.expressions.literals.Literal;
+import org.apache.gravitino.rel.expressions.literals.Literals;
 import org.apache.gravitino.rel.expressions.sorts.SortOrder;
 import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.rel.indexes.Indexes;
+import org.apache.gravitino.rel.partitions.ListPartition;
+import org.apache.gravitino.rel.partitions.RangePartition;
 import org.apache.gravitino.rel.types.Type;
 
 /** Table operations for Oracle. */
@@ -60,6 +64,12 @@ public class OracleTableOperations extends JdbcTableOperations {
           + "WHERE ac.OWNER = ? AND ac.TABLE_NAME = ? "
           + "AND ac.CONSTRAINT_TYPE IN ('P', 'U') "
           + "ORDER BY ac.CONSTRAINT_NAME, acc.POSITION";
+  private static final String GET_PARTITION_TYPE_SQL =
+      "SELECT PARTITIONING_TYPE, PARTITION_COUNT FROM ALL_PART_TABLES "
+          + "WHERE OWNER = ? AND TABLE_NAME = ?";
+  private static final String GET_PARTITION_COLUMNS_SQL =
+      "SELECT COLUMN_NAME FROM ALL_PART_KEY_COLUMNS "
+          + "WHERE OWNER = ? AND NAME = ? ORDER BY COLUMN_POSITION";
 
   @Override
   protected String generateCreateTableSql(
@@ -71,16 +81,13 @@ public class OracleTableOperations extends JdbcTableOperations {
       Distribution distribution,
       Index[] indexes) {
     Preconditions.checkArgument(
-        ArrayUtils.isEmpty(partitioning), "Oracle does not support table partitioning in #600.");
-    Preconditions.checkArgument(
         distribution == null || Distributions.NONE.equals(distribution),
-        "Oracle does not support table distribution in #600.");
+        "Oracle does not support table distribution.");
 
     List<String> columnDefinitions = new ArrayList<>();
     for (JdbcColumn column : columns) {
       if (column.autoIncrement()) {
-        throw new UnsupportedOperationException(
-            "Oracle 11g does not support AUTO_INCREMENT column.");
+        throw new UnsupportedOperationException("Oracle does not support AUTO_INCREMENT column.");
       }
 
       StringBuilder columnSql = new StringBuilder();
@@ -104,13 +111,18 @@ public class OracleTableOperations extends JdbcTableOperations {
     // Quote the table name and column names to preserve case sensitivity, as Oracle treats unquoted
     // identifiers as uppercase by default. This allows users to create tables with mixed-case names
     // if desired, but requires consistent quoting when referencing them.
-    String sql =
-        String.format(
-            "CREATE TABLE %s (%s)", quotedName(tableName), String.join(", ", columnDefinitions));
+    StringBuilder sql =
+        new StringBuilder(
+            String.format(
+                "CREATE TABLE %s (%s)",
+                quotedName(tableName), String.join(", ", columnDefinitions)));
     if (properties.containsKey(TABLESPACE) && StringUtils.isNotBlank(properties.get(TABLESPACE))) {
-      sql = sql + " TABLESPACE " + quotedName(properties.get(TABLESPACE));
+      sql.append(" TABLESPACE ").append(quotedName(properties.get(TABLESPACE)));
     }
-    return sql;
+    if (!ArrayUtils.isEmpty(partitioning)) {
+      sql.append(generatePartitionClauseSql(partitioning));
+    }
+    return sql.toString();
   }
 
   @Override
@@ -206,7 +218,39 @@ public class OracleTableOperations extends JdbcTableOperations {
   @Override
   protected Transform[] getTablePartitioning(
       Connection connection, String databaseName, String tableName) throws SQLException {
-    return Transforms.EMPTY_TRANSFORM;
+    try (PreparedStatement typeStmt = connection.prepareStatement(GET_PARTITION_TYPE_SQL)) {
+      typeStmt.setString(1, databaseName);
+      typeStmt.setString(2, tableName);
+      try (ResultSet typeRs = typeStmt.executeQuery()) {
+        if (!typeRs.next()) {
+          return Transforms.EMPTY_TRANSFORM;
+        }
+        String partitionType = typeRs.getString("PARTITIONING_TYPE");
+        int partitionCount = typeRs.getInt("PARTITION_COUNT");
+        String[] columns = getPartitionKeyColumns(connection, databaseName, tableName);
+        if (columns.length == 0) {
+          return Transforms.EMPTY_TRANSFORM;
+        }
+        switch (partitionType) {
+          case "RANGE":
+            if (columns.length != 1) {
+              throw new UnsupportedOperationException(
+                  "Oracle composite RANGE partitioning is not supported.");
+            }
+            return new Transform[] {Transforms.range(columns)};
+          case "LIST":
+            String[][] listColumns =
+                Arrays.stream(columns).map(c -> new String[] {c}).toArray(String[][]::new);
+            return new Transform[] {Transforms.list(listColumns)};
+          case "HASH":
+            String[][] hashColumns =
+                Arrays.stream(columns).map(c -> new String[] {c}).toArray(String[][]::new);
+            return new Transform[] {Transforms.bucket(partitionCount, hashColumns)};
+          default:
+            return Transforms.EMPTY_TRANSFORM;
+        }
+      }
+    }
   }
 
   @Override
@@ -317,6 +361,142 @@ public class OracleTableOperations extends JdbcTableOperations {
   @Override
   protected boolean getAutoIncrementInfo(ResultSet resultSet) throws SQLException {
     return false;
+  }
+
+  private String[] getPartitionKeyColumns(
+      Connection connection, String databaseName, String tableName) throws SQLException {
+    List<String> columns = new ArrayList<>();
+    try (PreparedStatement stmt = connection.prepareStatement(GET_PARTITION_COLUMNS_SQL)) {
+      stmt.setString(1, databaseName);
+      stmt.setString(2, tableName);
+      try (ResultSet rs = stmt.executeQuery()) {
+        while (rs.next()) {
+          columns.add(rs.getString("COLUMN_NAME"));
+        }
+      }
+    }
+    return columns.toArray(new String[0]);
+  }
+
+  private String generatePartitionClauseSql(Transform[] partitioning) {
+    Preconditions.checkArgument(
+        partitioning.length == 1, "Oracle supports single-level partitioning only.");
+    Transform transform = partitioning[0];
+    if (transform instanceof Transforms.RangeTransform) {
+      return generateRangePartitionSql((Transforms.RangeTransform) transform);
+    }
+    if (transform instanceof Transforms.ListTransform) {
+      return generateListPartitionSql((Transforms.ListTransform) transform);
+    }
+    if (transform instanceof Transforms.BucketTransform) {
+      return generateHashPartitionSql((Transforms.BucketTransform) transform);
+    }
+    throw new UnsupportedOperationException(
+        "Oracle supports only RANGE, LIST, and HASH partitioning.");
+  }
+
+  private String generateRangePartitionSql(Transforms.RangeTransform rangeTransform) {
+    Preconditions.checkArgument(
+        rangeTransform.fieldName().length == 1,
+        "Oracle RANGE partition supports only a single column.");
+    String col = quotedName(rangeTransform.fieldName()[0]);
+    StringBuilder sb = new StringBuilder(String.format(" PARTITION BY RANGE (%s)", col));
+    RangePartition[] assignments = rangeTransform.assignments();
+    if (ArrayUtils.isNotEmpty(assignments)) {
+      String partitions =
+          Arrays.stream(assignments)
+              .map(
+                  p -> {
+                    validateRangePartition(p);
+                    return String.format(
+                        "PARTITION %s VALUES LESS THAN (%s)",
+                        quotedName(p.name()), formatRangeUpperBound(p.upper()));
+                  })
+              .collect(Collectors.joining(", "));
+      sb.append(" (").append(partitions).append(")");
+    }
+    return sb.toString();
+  }
+
+  private String generateListPartitionSql(Transforms.ListTransform listTransform) {
+    String[][] fieldNames = listTransform.fieldNames();
+    String cols = formatPartitionColumns(fieldNames);
+    StringBuilder sb = new StringBuilder(String.format(" PARTITION BY LIST (%s)", cols));
+    ListPartition[] assignments = listTransform.assignments();
+    if (ArrayUtils.isNotEmpty(assignments)) {
+      String partitions =
+          Arrays.stream(assignments)
+              .map(
+                  p ->
+                      String.format(
+                          "PARTITION %s VALUES (%s)",
+                          quotedName(p.name()),
+                          formatListPartitionValues(p.lists(), fieldNames.length)))
+              .collect(Collectors.joining(", "));
+      sb.append(" (").append(partitions).append(")");
+    }
+    return sb.toString();
+  }
+
+  private String generateHashPartitionSql(Transforms.BucketTransform bucketTransform) {
+    String cols = formatPartitionColumns(bucketTransform.fieldNames());
+    return String.format(
+        " PARTITION BY HASH (%s) PARTITIONS %d", cols, bucketTransform.numBuckets());
+  }
+
+  private String formatPartitionColumns(String[][] fieldNames) {
+    Preconditions.checkArgument(
+        ArrayUtils.isNotEmpty(fieldNames), "Partition fields cannot be empty.");
+    return Arrays.stream(fieldNames)
+        .map(
+            names -> {
+              Preconditions.checkArgument(
+                  names.length == 1, "Oracle does not support nested partition fields.");
+              return quotedName(names[0]);
+            })
+        .collect(Collectors.joining(", "));
+  }
+
+  private void validateRangePartition(RangePartition partition) {
+    Preconditions.checkArgument(
+        partition.lower() == null || Objects.equals(partition.lower(), Literals.NULL),
+        "Oracle RANGE partition does not support explicit lower bounds: %s",
+        partition.name());
+  }
+
+  private String formatRangeUpperBound(Literal<?> upper) {
+    if (upper == null || Literals.NULL.equals(upper)) {
+      return "MAXVALUE";
+    }
+    return columnDefaultValueConverter.fromGravitino(upper);
+  }
+
+  private String formatListPartitionValues(Literal<?>[][] lists, int numCols) {
+    Preconditions.checkArgument(
+        ArrayUtils.isNotEmpty(lists), "List partition values cannot be empty.");
+    return Arrays.stream(lists)
+        .map(
+            row -> {
+              Preconditions.checkArgument(
+                  row.length == numCols,
+                  "List partition value count must match partition column count.");
+              if (numCols == 1) {
+                return formatPartitionLiteral(row[0]);
+              }
+              return "("
+                  + Arrays.stream(row)
+                      .map(this::formatPartitionLiteral)
+                      .collect(Collectors.joining(", "))
+                  + ")";
+            })
+        .collect(Collectors.joining(", "));
+  }
+
+  private String formatPartitionLiteral(Literal<?> literal) {
+    if (Literals.NULL.equals(literal)) {
+      return "NULL";
+    }
+    return columnDefaultValueConverter.fromGravitino(literal);
   }
 
   private List<String> buildConstraintDefinitions(Index[] indexes) {
@@ -491,8 +671,7 @@ public class OracleTableOperations extends JdbcTableOperations {
       } else if (change instanceof TableChange.UpdateColumnPosition) {
         throw new UnsupportedOperationException("Oracle does not support reordering columns.");
       } else if (change instanceof TableChange.UpdateColumnAutoIncrement) {
-        throw new UnsupportedOperationException(
-            "Oracle 11g does not support AUTO_INCREMENT column.");
+        throw new UnsupportedOperationException("Oracle does not support AUTO_INCREMENT column.");
       } else if (change instanceof TableChange.AddIndex) {
         TableChange.AddIndex addIndex = (TableChange.AddIndex) change;
         sqlList.add(generateAddConstraintSql(qualifiedTableName, addIndex));
@@ -519,7 +698,7 @@ public class OracleTableOperations extends JdbcTableOperations {
         addColumn.getPosition() == TableChange.ColumnPosition.defaultPos(),
         "Oracle does not support specifying column position.");
     if (addColumn.isAutoIncrement()) {
-      throw new UnsupportedOperationException("Oracle 11g does not support AUTO_INCREMENT column.");
+      throw new UnsupportedOperationException("Oracle does not support AUTO_INCREMENT column.");
     }
     String columnDefinition =
         buildColumnDefinition(
