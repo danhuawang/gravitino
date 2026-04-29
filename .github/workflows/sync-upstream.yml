@@ -55,16 +55,19 @@ jobs:
           if git merge upstream/main --no-edit; then
             echo "status=clean" >> "$GITHUB_OUTPUT"
           else
-            # Stage everything so file-location conflicts (e.g. from directory
-            # renames) are resolved automatically before checking for real conflicts.
-            git add --all
+            # Check for real content conflicts BEFORE staging, because
+            # git add --all clears the unmerged index entries and makes
+            # git ls-files --unmerged always return nothing afterwards.
             if git ls-files --unmerged | grep -q .; then
-              # Real content conflicts remain — commit with markers for human review.
+              # Real content conflicts remain — stage with markers for human review.
+              git add --all
               echo "status=conflict" >> "$GITHUB_OUTPUT"
               git commit --no-verify \
                 -m "chore: sync apache/gravitino upstream $DATE (conflicts present)"
             else
-              # All conflicts were resolved automatically (e.g. file-location only).
+              # All conflicts were file-location only (e.g. directory renames);
+              # stage and commit as a clean merge.
+              git add --all
               echo "status=clean" >> "$GITHUB_OUTPUT"
               git commit --no-verify \
                 -m "chore: sync apache/gravitino upstream $DATE"
