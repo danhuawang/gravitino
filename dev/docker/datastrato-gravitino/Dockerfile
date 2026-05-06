@@ -29,24 +29,41 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-ARG MYSQL_JDBC_DRIVER_NAME
-ARG POSTGRESQL_JDBC_DRIVER_NAME
-ARG ICEBERG_AWS_BUNDLE_NAME
-ARG ICEBERG_GCP_BUNDLE_NAME
-ARG ICEBERG_AZURE_BUNDLE_NAME
-ARG GCS_CONNECTOR_NAME
+WORKDIR /opt/gravitino
 
-WORKDIR /root/gravitino
+COPY packages/gravitino /opt/gravitino
 
-COPY packages/gravitino /root/gravitino
+# Create soft links for JDBC drivers
+RUN if [ -d "/opt/gravitino/jdbc-drivers" ]; then \
+      mkdir -p /opt/gravitino/libs && \
+      find /opt/gravitino/jdbc-drivers -name "*.jar" -exec ln -sfv {} /opt/gravitino/libs/ ';' ; \
+    fi
 
-# copy JDBC driver
-COPY packages/${MYSQL_JDBC_DRIVER_NAME} packages/${POSTGRESQL_JDBC_DRIVER_NAME} /root/gravitino/libs/
-# copy Iceberg Cloud bundle
-COPY packages/${ICEBERG_AWS_BUNDLE_NAME} packages/${ICEBERG_GCP_BUNDLE_NAME} packages/${ICEBERG_AZURE_BUNDLE_NAME} packages/${GCS_CONNECTOR_NAME} /root/gravitino/iceberg-rest-server/libs/
-COPY packages/${ICEBERG_AWS_BUNDLE_NAME} packages/${ICEBERG_GCP_BUNDLE_NAME} packages/${ICEBERG_AZURE_BUNDLE_NAME} packages/${GCS_CONNECTOR_NAME} /root/gravitino/catalogs/lakehouse-iceberg/libs/
+# Create soft links for Iceberg bundles
+RUN if [ -d "/opt/gravitino/iceberg-bundles" ]; then \
+      mkdir -p /opt/gravitino/catalogs/lakehouse-iceberg/libs && \
+      mkdir -p /opt/gravitino/iceberg-rest-server/libs && \
+      find /opt/gravitino/iceberg-bundles -name '*.jar' -exec ln -sfv {} /opt/gravitino/catalogs/lakehouse-iceberg/libs/ ';' -exec ln -sfv {} /opt/gravitino/iceberg-rest-server/libs/ ';' ; \
+    fi
+
+# Create soft links for GCS connector
+RUN if [ -d "/opt/gravitino/gcs-connector" ]; then \
+      mkdir -p /opt/gravitino/catalogs/lakehouse-iceberg/libs && \
+      mkdir -p /opt/gravitino/iceberg-rest-server/libs && \
+      find /opt/gravitino/gcs-connector -name '*.jar' -exec ln -sfv {} /opt/gravitino/catalogs/lakehouse-iceberg/libs/ ';' -exec ln -sfv {} /opt/gravitino/iceberg-rest-server/libs/ ';' ; \
+    fi
+
+# Set permissions for OpenShift compatibility:
+# OpenShift runs containers with arbitrary UIDs but always uses GID 0 (root group)
+# chmod g+rwX: Add read/write for group, execute only for directories and already-executable files
+RUN chmod -R g+rwX /opt/gravitino \
+    && chgrp -R 0 /opt/gravitino \
+    && useradd -u 1000 -g 0 -M -s /sbin/nologin gravitino 
 
 EXPOSE 8090
 EXPOSE 9001
 
-ENTRYPOINT ["/bin/bash", "/root/gravitino/bin/gravitino.sh", "start"]
+# Switch to non-root user (OpenShift will override the UID but keep GID 0)
+USER 1000
+
+ENTRYPOINT ["/bin/bash", "/opt/gravitino/bin/gravitino.sh", "start"]

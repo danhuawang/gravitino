@@ -19,4 +19,14 @@
 FROM opensearchproject/opensearch:2.17.1
 LABEL maintainer="support@datastrato.com"
 
+USER root
+
 RUN /usr/share/opensearch/bin/opensearch-plugin install --batch https://get.infini.cloud/opensearch/analysis-ik/2.17.1
+
+# Make the image OpenShift-compatible by setting proper permissions for arbitrary user IDs
+# OpenShift runs containers with random UIDs but always uses GID 0 (root group)
+RUN chgrp -R 0 /usr/share/opensearch && \
+    chmod -R g+rwX /usr/share/opensearch
+
+# Switch back to non-root user (OpenShift will override the UID but keep GID 0)
+USER 1000

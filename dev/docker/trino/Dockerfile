@@ -21,22 +21,30 @@ LABEL maintainer="dev@gravitino.apache.org"
 
 USER root
 
-COPY --chown=trino:trino packages/trino/conf /etc/trino
-COPY --chown=trino:trino packages/gravitino-trino-connector/mysql-connector-java-8.0.27.jar /usr/lib/trino/plugin/iceberg/
-COPY --chown=trino:trino packages/gravitino-trino-connector/postgresql-42.7.0.jar /usr/lib/trino/plugin/iceberg/
+# Copy configuration and connectors
+COPY --chown=trino:root packages/trino/conf /etc/trino
+COPY --chown=trino:root packages/gravitino-trino-connector/mysql-connector-java-8.0.27.jar /usr/lib/trino/plugin/iceberg/
+COPY --chown=trino:root packages/gravitino-trino-connector/postgresql-42.7.0.jar /usr/lib/trino/plugin/iceberg/
 
 RUN mkdir /tmp/gravitino
-COPY --chown=trino:trino packages/gravitino-trino-connector /tmp/gravitino
+COPY --chown=trino:root packages/gravitino-trino-connector /tmp/gravitino
 
 ARG TAG_NAME
 RUN case "$TAG_NAME" in \
-    trino-*) \
+    trino-*|enterprise-trino-*) \
         mv /tmp/gravitino /usr/lib/trino/plugin/; \
         ;; \
     *) \
         echo "Copying files for other images"; \
         ;; \
     esac
+
+# Set permissions for OpenShift compatibility:
+# OpenShift runs containers with arbitrary UIDs but always uses GID 0 (root group)
+RUN chgrp -R 0 /etc/trino /usr/lib/trino /data/trino && \
+    chmod -R g+rwX /etc/trino /usr/lib/trino /data/trino
+
+USER 1000
 
 # The following ENV are needed to update configuration file before starting Trino server, you need to
 # pass these ENV variables to the container when starting it like `docker run --env GRAVITINO_HOST_IP=xxx --env GRAVITINO_HOST_PORT=xxxx`

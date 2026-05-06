@@ -21,24 +21,14 @@ set -ex
 gravitino_dir="$(dirname "${BASH_SOURCE-$0}")"
 gravitino_dir="$(cd "${gravitino_dir}">/dev/null; pwd)"
 gravitino_home="$(cd "${gravitino_dir}/../../..">/dev/null; pwd)"
-gravitino_iceberg_rest_dir="${gravitino_dir}/packages/gravitino/iceberg-rest-server/libs/"
-gravitino_iceberg_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/lakehouse-iceberg/libs"
 
 MYSQL_JDBC_DRIVER_VERSION=${MYSQL_VERSION:-"8.0.26"}
 MYSQL_JDBC_DRIVER_NAME="mysql-connector-java-${MYSQL_JDBC_DRIVER_VERSION}.jar"
-MYSQL_JDBC_DIVER_DOWNLOAD_URL="https://repo1.maven.org/maven2/mysql/mysql-connector-java/${MYSQL_JDBC_DRIVER_VERSION}/${MYSQL_JDBC_DRIVER_NAME}"
+MYSQL_JDBC_DRIVER_DOWNLOAD_URL="https://repo1.maven.org/maven2/mysql/mysql-connector-java/${MYSQL_JDBC_DRIVER_VERSION}/${MYSQL_JDBC_DRIVER_NAME}"
 
 POSTGRESQL_JDBC_DRIVER_VERSION=${POSTGRESQL_VERSION:-"42.7.0"}
 POSTGRESQL_JDBC_DRIVER_NAME="postgresql-${POSTGRESQL_JDBC_DRIVER_VERSION}.jar"
 POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL="https://jdbc.postgresql.org/download/${POSTGRESQL_JDBC_DRIVER_NAME}"
-
-ICEBERG_VERSION=${ICEBERG_VERSION:-"1.9.2"}
-ICEBERG_AWS_BUNDLE_NAME="iceberg-aws-bundle-${ICEBERG_VERSION}.jar"
-ICEBERG_AWS_BUNDLE_DOWNLOAD_URL="https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/${ICEBERG_VERSION}/${ICEBERG_AWS_BUNDLE_NAME}"
-ICEBERG_GCP_BUNDLE_NAME="iceberg-gcp-bundle-${ICEBERG_VERSION}.jar"
-ICEBERG_GCP_BUNDLE_DOWNLOAD_URL="https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-gcp-bundle/${ICEBERG_VERSION}/${ICEBERG_GCP_BUNDLE_NAME}"
-ICEBERG_AZURE_BUNDLE_NAME="iceberg-azure-bundle-${ICEBERG_VERSION}.jar"
-ICEBERG_AZURE_BUNDLE_DOWNLOAD_URL="https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-azure-bundle/${ICEBERG_VERSION}/${ICEBERG_AZURE_BUNDLE_NAME}"
 
 GCS_CONNECTOR_VERSION=${GCS_CONNECTOR_VERSION:-"hadoop2-2.2.18"}
 GCS_CONNECTOR_VERSION_SHORT=${GCS_CONNECTOR_VERSION_SHORT:-"2.2.18"}
@@ -69,43 +59,36 @@ cp -r "${gravitino_home}/distribution/package-all" "${gravitino_dir}/packages/gr
 
 # make sure bundles are built
 "${gravitino_home}"/gradlew :bundles:gcp:build :bundles:aws:build :bundles:azure:build :bundles:aliyun-bundle:build -x test
+
 # Copy the all file system bundles to the Hadoop catalog libs
 cp -r ${gravitino_home}/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/fileset/libs"
 
-# Copy the all file system bundles to the Iceberg REST server libs
-find ${gravitino_home}/bundles/gcp/build/libs/ -name 'gravitino-gcp-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
-find ${gravitino_home}/bundles/aws/build/libs/ -name 'gravitino-aws-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
-find ${gravitino_home}/bundles/azure/build/libs/ -name 'gravitino-azure-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
-find ${gravitino_home}/bundles/aliyun-bundle/build/libs/ -name 'gravitino-aliyun-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_rest_dir}" \;
+# Copy the Aliyun, AWS, GCP and Azure bundles to the Iceberg bundles directory
+iceberg_bundle_dir="${gravitino_dir}/packages/gravitino/iceberg-bundles"
+mkdir -p "${iceberg_bundle_dir}"
+find ${gravitino_home}/bundles/iceberg-gcp-bundle/build/libs/ -name 'gravitino-iceberg-gcp-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${iceberg_bundle_dir}" \;
+find ${gravitino_home}/bundles/iceberg-aws-bundle/build/libs/ -name 'gravitino-iceberg-aws-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${iceberg_bundle_dir}" \;
+find ${gravitino_home}/bundles/iceberg-azure-bundle/build/libs/ -name 'gravitino-iceberg-azure-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${iceberg_bundle_dir}" \;
+find ${gravitino_home}/bundles/iceberg-aliyun-bundle/build/libs/ -name 'gravitino-iceberg-aliyun-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${iceberg_bundle_dir}" \;
 
-# Copy the all file system bundles to the Iceberg catalog libs
-find ${gravitino_home}/bundles/gcp/build/libs/ -name 'gravitino-gcp-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
-find ${gravitino_home}/bundles/aws/build/libs/ -name 'gravitino-aws-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
-find ${gravitino_home}/bundles/azure/build/libs/ -name 'gravitino-azure-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
-find ${gravitino_home}/bundles/aliyun-bundle/build/libs/ -name 'gravitino-aliyun-bundle-*.jar' ! -name '*-empty.jar' -exec cp -v {} "${gravitino_iceberg_catalog_dir}" \;
+jdbc_driver_dir="${gravitino_dir}/packages/gravitino/jdbc-drivers"
+mkdir -p "${jdbc_driver_dir}"
 
-if [ ! -f "${gravitino_dir}/packages/${MYSQL_JDBC_DRIVER_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${MYSQL_JDBC_DRIVER_NAME}" "${MYSQL_JDBC_DIVER_DOWNLOAD_URL}"
+gcs_connector_dir="${gravitino_dir}/packages/gravitino/gcs-connector"
+mkdir -p "${gcs_connector_dir}"
+
+# Download JDBC drivers to dedicated directory
+if [ ! -f "${jdbc_driver_dir}/${MYSQL_JDBC_DRIVER_NAME}" ]; then
+  curl -L -s -o "${jdbc_driver_dir}/${MYSQL_JDBC_DRIVER_NAME}" "${MYSQL_JDBC_DRIVER_DOWNLOAD_URL}"
 fi
 
-if [ ! -f "${gravitino_dir}/packages/${POSTGRESQL_JDBC_DRIVER_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${POSTGRESQL_JDBC_DRIVER_NAME}" "${POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL}"
+if [ ! -f "${jdbc_driver_dir}/${POSTGRESQL_JDBC_DRIVER_NAME}" ]; then
+  curl -L -s -o "${jdbc_driver_dir}/${POSTGRESQL_JDBC_DRIVER_NAME}" "${POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL}"
 fi
 
-if [ ! -f "${gravitino_dir}/packages/${ICEBERG_AWS_BUNDLE_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${ICEBERG_AWS_BUNDLE_NAME}" "${ICEBERG_AWS_BUNDLE_DOWNLOAD_URL}"
-fi
-
-if [ ! -f "${gravitino_dir}/packages/${ICEBERG_GCP_BUNDLE_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${ICEBERG_GCP_BUNDLE_NAME}" "${ICEBERG_GCP_BUNDLE_DOWNLOAD_URL}"
-fi
-
-if [ ! -f "${gravitino_dir}/packages/${ICEBERG_AZURE_BUNDLE_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${ICEBERG_AZURE_BUNDLE_NAME}" "${ICEBERG_AZURE_BUNDLE_DOWNLOAD_URL}"
-fi
-
-if [ ! -f "${gravitino_dir}/packages/${GCS_CONNECTOR_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${GCS_CONNECTOR_NAME}" "${GCS_CONNECTOR_DOWNLOAD_URL}"
+# Download GCS connector to dedicated directory
+if [ ! -f "${gcs_connector_dir}/${GCS_CONNECTOR_NAME}" ]; then
+  curl -L -s -o "${gcs_connector_dir}/${GCS_CONNECTOR_NAME}" "${GCS_CONNECTOR_DOWNLOAD_URL}"
 fi
 
 # Download and install BigQuery Simba JDBC driver
