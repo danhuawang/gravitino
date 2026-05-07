@@ -81,6 +81,7 @@ public class ContainerSuite implements Closeable {
   private static volatile Map<PGImageName, PostgreSQLContainer> pgContainerMap =
       new EnumMap<>(PGImageName.class);
   private static volatile OceanBaseContainer oceanBaseContainer;
+  private static volatile OracleContainer oracleContainer;
   private static volatile ClickHouseContainer clickHouseContainer;
   private static volatile ClickHouseContainer clickHouseClusterContainer;
   private static volatile ZooKeeperContainer zooKeeperContainer;
@@ -435,6 +436,39 @@ public class ContainerSuite implements Closeable {
   public void startPostgreSQLContainer(TestDatabaseName testDatabaseName) {
     // Apply default image
     startPostgreSQLContainer(testDatabaseName, PGImageName.VERSION_13);
+  }
+
+  public void startOracleContainer(TestDatabaseName testDatabaseName) {
+    ITUtils.cleanDisk();
+    if (oracleContainer == null) {
+      synchronized (ContainerSuite.class) {
+        if (oracleContainer == null) {
+          initIfNecessary();
+          OracleContainer.Builder oracleBuilder =
+              OracleContainer.builder()
+                  .withHostName(OracleContainer.HOST_NAME)
+                  .withEnvVars(
+                      ImmutableMap.<String, String>builder()
+                          .put("ORACLE_PASSWORD", OracleContainer.PASSWORD)
+                          .put("APP_USER", OracleContainer.APP_USER)
+                          .put("APP_USER_PASSWORD", OracleContainer.PASSWORD)
+                          .build())
+                  .withExposePorts(ImmutableSet.of(OracleContainer.ORACLE_PORT))
+                  .withNetwork(network);
+
+          OracleContainer container = closer.register(oracleBuilder.build());
+          container.start();
+          oracleContainer = container;
+        }
+      }
+    }
+    synchronized (OracleContainer.class) {
+      oracleContainer.createDatabase(testDatabaseName);
+    }
+  }
+
+  public OracleContainer getOracleContainer() {
+    return oracleContainer;
   }
 
   public void startOceanBaseContainer() {
@@ -883,6 +917,7 @@ public class ContainerSuite implements Closeable {
       closer.close();
       mySQLContainer = null;
       mySQLVersion5Container = null;
+      oracleContainer = null;
       hiveContainer = null;
       hiveRangerContainer = null;
       trinoContainer = null;

@@ -714,14 +714,111 @@ val datastratoLicenseCheckIncludes = listOf(
   "bin/opensearch/**",
   "conf/gravitino-metrics-server.conf.template",
   "catalogs/catalog-jdbc-oracle/**/*",
+  "integration-test-common/src/test/java/org/apache/gravitino/integration/test/container/OracleContainer.java",
   "catalogs/catalog-jdbc-bigquery/**/*",
   "catalogs/catalog-jdbc-maxcompute/**/*",
   "catalogs/catalog-jdbc-sqlserver/**/*",
   "licensing/**"
 )
 
+val printRatFailures by tasks.registering {
+  group = "verification"
+  description = "Prints Apache Rat files with unapproved licenses in CI-friendly text."
+
+  val ratReport = layout.buildDirectory.file("reports/rat/rat-report.xml")
+  inputs.file(ratReport).optional()
+
+  doLast {
+    val reportFile = ratReport.get().asFile
+    if (!reportFile.isFile) {
+      return@doLast
+    }
+
+    fun unescapeXml(value: String): String =
+      value
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+
+    fun displayName(resourceName: String): String =
+      runCatching { file(resourceName).relativeTo(rootDir).path }.getOrElse { resourceName }
+
+    fun parseResource(resourceXml: String): String? {
+      if (!resourceXml.contains("<license-approval name='false'") &&
+        !resourceXml.contains("<license-approval name=\"false\"")
+      ) {
+        return null
+      }
+      val resourceName =
+        Regex("<resource\\s+name=(['\"])(.*?)\\1").find(resourceXml)?.groupValues?.get(2)
+          ?: return null
+      return displayName(unescapeXml(resourceName))
+    }
+
+    val unapprovedFiles = runCatching {
+      val files = mutableListOf<String>()
+      val buffer = StringBuilder()
+      val chunk = CharArray(64 * 1024)
+
+      reportFile.bufferedReader().use { reader ->
+        while (true) {
+          val read = reader.read(chunk)
+          if (read < 0) {
+            break
+          }
+          buffer.append(chunk, 0, read)
+
+          while (true) {
+            val resourceStart = buffer.indexOf("<resource ")
+            if (resourceStart < 0) {
+              if (buffer.length > 1024) {
+                buffer.delete(0, buffer.length - 1024)
+              }
+              break
+            }
+
+            val resourceEnd = buffer.indexOf("</resource>", resourceStart)
+            if (resourceEnd < 0) {
+              if (resourceStart > 0) {
+                buffer.delete(0, resourceStart)
+              }
+              break
+            }
+
+            val resourceCloseEnd = resourceEnd + "</resource>".length
+            parseResource(buffer.substring(resourceStart, resourceCloseEnd))?.let { files.add(it) }
+            buffer.delete(0, resourceCloseEnd)
+          }
+        }
+      }
+
+      parseResource(buffer.toString())?.let { files.add(it) }
+      files
+    }.getOrElse {
+      logger.warn("Unable to parse Apache Rat report at ${reportFile.toURI()}: ${it.message}")
+      emptyList()
+    }
+
+    if (unapprovedFiles.isNotEmpty()) {
+      val maxPrintedFiles = 200
+      val sortedFiles = unapprovedFiles.distinct().sorted()
+      logger.error(
+        "Apache Rat found ${sortedFiles.size} file(s) with unapproved licenses. " +
+          "Add a license header or update the Rat exclusions if the file is intentionally exempt:"
+      )
+      sortedFiles.take(maxPrintedFiles).forEach { logger.error("  - $it") }
+      if (sortedFiles.size > maxPrintedFiles) {
+        logger.error("  ... ${sortedFiles.size - maxPrintedFiles} more file(s) omitted")
+      }
+    }
+  }
+}
+
 tasks.rat {
   approvedLicense("Apache License Version 2.0")
+  finalizedBy(printRatFailures)
 
   // Set input directory to that of the root project instead of the CWD. This
   // makes .gitignore rules (added below) work properly.

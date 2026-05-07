@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Pvt Ltd.
  * This software is licensed under the Apache License version 2.
  */
 package com.datastrato.gravitino.catalog.oracle.converter;
@@ -56,21 +56,45 @@ public class TestOracleTypeConverter {
     nchar.setColumnSize(10);
     Assertions.assertEquals(Types.ExternalType.of("NCHAR(10)"), CONVERTER.toGravitino(nchar));
 
+    // Oracle JDBC normally returns "TIMESTAMP(6)" in TYPE_NAME, but some drivers may return
+    // just "TIMESTAMP" without parentheses; in that case the precision comes from DECIMAL_DIGITS
+    // (mapped to scale on the type bean), NOT from COLUMN_SIZE which is the byte width.
     JdbcTypeConverter.JdbcTypeBean ts =
         new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.TIMESTAMP);
-    ts.setColumnSize(6);
+    ts.setScale(6);
     Assertions.assertEquals(Types.TimestampType.withoutTimeZone(6), CONVERTER.toGravitino(ts));
 
-    JdbcTypeConverter.JdbcTypeBean tsWithTimeZone =
-        new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.TIMESTAMP_WITH_TIME_ZONE);
-    tsWithTimeZone.setColumnSize(3);
+    JdbcTypeConverter.JdbcTypeBean tsWithPrecision =
+        new JdbcTypeConverter.JdbcTypeBean("TIMESTAMP(3)");
     Assertions.assertEquals(
-        Types.TimestampType.withTimeZone(3), CONVERTER.toGravitino(tsWithTimeZone));
+        Types.TimestampType.withoutTimeZone(3), CONVERTER.toGravitino(tsWithPrecision));
 
-    JdbcTypeConverter.JdbcTypeBean tsWithLocalTimeZone =
-        new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.TIMESTAMP_WITH_LOCAL_TIME_ZONE);
+    JdbcTypeConverter.JdbcTypeBean tsWithTimeZone =
+        new JdbcTypeConverter.JdbcTypeBean("TIMESTAMP(4) WITH TIME ZONE");
     Assertions.assertEquals(
-        Types.TimestampType.withTimeZone(), CONVERTER.toGravitino(tsWithLocalTimeZone));
+        Types.TimestampType.withTimeZone(4), CONVERTER.toGravitino(tsWithTimeZone));
+
+    JdbcTypeConverter.JdbcTypeBean tsWithTimeZoneByScale =
+        new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.TIMESTAMP_WITH_TIME_ZONE);
+    tsWithTimeZoneByScale.setScale(3);
+    Assertions.assertEquals(
+        Types.TimestampType.withTimeZone(3), CONVERTER.toGravitino(tsWithTimeZoneByScale));
+
+    // TIMESTAMP WITH LOCAL TIME ZONE is rejected: Gravitino TimestampType cannot
+    // distinguish it from TIMESTAMP WITH TIME ZONE, so a round trip would lose
+    // semantics. We refuse the conversion instead of mapping it lossily.
+    JdbcTypeConverter.JdbcTypeBean tsWithLocalTimeZone =
+        new JdbcTypeConverter.JdbcTypeBean("TIMESTAMP(6) WITH LOCAL TIME ZONE");
+    UnsupportedOperationException localTzWithPrecisionEx =
+        Assertions.assertThrows(
+            UnsupportedOperationException.class, () -> CONVERTER.toGravitino(tsWithLocalTimeZone));
+    Assertions.assertTrue(localTzWithPrecisionEx.getMessage().contains("WITH LOCAL TIME ZONE"));
+
+    JdbcTypeConverter.JdbcTypeBean tsWithLocalTimeZoneNoPrecision =
+        new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.TIMESTAMP_WITH_LOCAL_TIME_ZONE);
+    Assertions.assertThrows(
+        UnsupportedOperationException.class,
+        () -> CONVERTER.toGravitino(tsWithLocalTimeZoneNoPrecision));
   }
 
   @Test

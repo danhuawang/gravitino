@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Pvt Ltd.
  * This software is licensed under the Apache License version 2.
  */
 package com.datastrato.gravitino.catalog.oracle.operations;
@@ -59,6 +59,16 @@ public class TestOracleTableOperations {
   private Connection connection;
 
   private static final class OracleTableOperationsForTest extends OracleTableOperations {
+    JdbcTable tableForLoad;
+
+    @Override
+    public JdbcTable load(String databaseName, String tableName) {
+      if (tableForLoad != null) {
+        return tableForLoad;
+      }
+      return super.load(databaseName, tableName);
+    }
+
     String createSqlForTest(
         String tableName, JdbcColumn[] columns, Map<String, String> properties, Index[] indexes) {
       return super.generateCreateTableSql(
@@ -217,12 +227,14 @@ public class TestOracleTableOperations {
     when(propertiesRs.getString("COMPRESSION")).thenReturn("DISABLED");
     when(propertiesRs.getString("COMMENTS")).thenReturn("table comment");
 
-    Map<String, String> properties = operations.getTablePropertiesForTest(connection, "t1");
+    Map<String, String> properties = operations.getTablePropertiesForTest(connection, "mixedCase");
     assertEquals("USERS", properties.get(TABLESPACE));
     assertEquals("NO", properties.get(PARTITIONED));
     assertEquals("DISABLED", properties.get(ROW_MOVEMENT));
     assertEquals("DISABLED", properties.get(COMPRESSION));
     assertEquals("table comment", properties.get(COMMENT_KEY));
+    verify(propertiesStmt).setString(1, "APP_USER");
+    verify(propertiesStmt).setString(2, "mixedCase");
 
     JdbcTable.Builder builder = JdbcTable.builder().withComment("").withProperties(properties);
     operations.correctJdbcTableFieldsForTest(connection, "APP_USER", "T1", builder);
@@ -239,8 +251,6 @@ public class TestOracleTableOperations {
     assertEquals(Index.IndexType.PRIMARY_KEY, indexes.get(0).type());
     assertEquals(Index.IndexType.UNIQUE_KEY, indexes.get(1).type());
 
-    verify(propertiesStmt).setString(1, "APP_USER");
-    verify(propertiesStmt).setString(2, "t1");
     verify(indexStmt).setString(1, "APP_USER");
     verify(indexStmt).setString(2, "T1");
   }
@@ -677,6 +687,24 @@ public class TestOracleTableOperations {
     String dropSql =
         operations.generateAlterTableSql("APP_USER", "T1", TableChange.deleteIndex("PK_T1", false));
     assertTrue(dropSql.contains("ALTER TABLE \"APP_USER\".\"T1\" DROP CONSTRAINT \"PK_T1\""));
+
+    operations.tableForLoad =
+        JdbcTable.builder()
+            .withName("T1")
+            .withDatabaseName("APP_USER")
+            .withColumns(new JdbcColumn[0])
+            .withIndexes(new Index[] {Indexes.primary("PK_T1", new String[][] {{"id"}})})
+            .build();
+
+    String skipMissingIndexSql =
+        operations.generateAlterTableSql(
+            "APP_USER", "T1", TableChange.deleteIndex("MISSING_INDEX", true));
+    assertEquals("", skipMissingIndexSql);
+
+    String dropExistingIndexSql =
+        operations.generateAlterTableSql("APP_USER", "T1", TableChange.deleteIndex("PK_T1", true));
+    assertTrue(
+        dropExistingIndexSql.contains("ALTER TABLE \"APP_USER\".\"T1\" DROP CONSTRAINT \"PK_T1\""));
   }
 
   @Test

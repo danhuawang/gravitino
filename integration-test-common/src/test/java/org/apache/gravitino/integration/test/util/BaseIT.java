@@ -123,6 +123,7 @@ public class BaseIT {
       ImmutableMap.of(
           "mysql", Pattern.compile("mysql-connector-java-([\\d.]+)\\.jar"),
           "postgresql", Pattern.compile("postgresql-([\\d.]+)\\.jar"),
+          "oracle", Pattern.compile("ojdbc8-([\\d.]+)\\.jar"),
           "clickhouse", Pattern.compile("clickhouse-jdbc-([\\d.]+)(-all)?\\.jar"));
 
   private TestDatabaseName META_DATA;
@@ -197,7 +198,7 @@ public class BaseIT {
     }
   }
 
-  private void setupJdbcDrivers() throws IOException {
+  protected void setupJdbcDrivers() throws IOException {
     String[] driverUrls = {
       DOWNLOAD_MYSQL_JDBC_DRIVER_URL,
       DOWNLOAD_POSTGRESQL_JDBC_DRIVER_URL,
@@ -223,13 +224,13 @@ public class BaseIT {
     }
   }
 
-  private void downloadJdbcDrivers(String[] driverUrls, String[] dirs) throws IOException {
+  protected void downloadJdbcDrivers(String[] driverUrls, String[] dirs) throws IOException {
     for (String driverUrl : driverUrls) {
       DownloaderUtils.downloadFile(driverUrl, dirs);
     }
   }
 
-  private void cleanJdbcDriverConflicts(String[] driverUrls, String[] dirs) throws IOException {
+  protected void cleanJdbcDriverConflicts(String[] driverUrls, String[] dirs) throws IOException {
     for (String driverUrl : driverUrls) {
       checkAndCleanDriverConflicts(driverUrl, dirs);
     }

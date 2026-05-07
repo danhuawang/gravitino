@@ -36,6 +36,10 @@ public class OracleTypeConverter extends JdbcTypeConverter {
     Integer precision = typeBean.getColumnSize();
     Integer scale = typeBean.getScale();
 
+    if (typeName.startsWith(TIMESTAMP)) {
+      return toGravitinoTimestampType(typeName, scale);
+    }
+
     switch (typeName) {
       case NUMBER:
         if (precision == null && scale == null) {
@@ -77,15 +81,6 @@ public class OracleTypeConverter extends JdbcTypeConverter {
         return Types.FloatType.get();
       case DATE:
         return Types.TimestampType.withoutTimeZone();
-      case TIMESTAMP:
-        return precision == null
-            ? Types.TimestampType.withoutTimeZone()
-            : Types.TimestampType.withoutTimeZone(precision);
-      case TIMESTAMP_WITH_TIME_ZONE:
-      case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
-        return precision == null
-            ? Types.TimestampType.withTimeZone()
-            : Types.TimestampType.withTimeZone(precision);
       default:
         return Types.ExternalType.of(typeBean.getTypeName());
     }
@@ -158,5 +153,41 @@ public class OracleTypeConverter extends JdbcTypeConverter {
 
   private static int safeInt(Integer value, int defaultValue) {
     return value == null ? defaultValue : value;
+  }
+
+  private static Type toGravitinoTimestampType(String typeName, Integer scale) {
+    // Gravitino TimestampType cannot distinguish "WITH TIME ZONE" from
+    // "WITH LOCAL TIME ZONE", so a round trip would silently change semantics.
+    // Reject LOCAL TIME ZONE explicitly instead of accepting a lossy mapping.
+    if (typeName.contains("WITH LOCAL TIME ZONE")) {
+      throw new UnsupportedOperationException(
+          "Oracle TIMESTAMP WITH LOCAL TIME ZONE is not supported by Gravitino "
+              + "because it cannot be distinguished from TIMESTAMP WITH TIME ZONE.");
+    }
+    boolean hasTimeZone = typeName.contains("WITH TIME ZONE");
+    Integer precision = extractTimestampPrecision(typeName, scale);
+    if (hasTimeZone) {
+      return precision == null
+          ? Types.TimestampType.withTimeZone()
+          : Types.TimestampType.withTimeZone(precision);
+    }
+    return precision == null
+        ? Types.TimestampType.withoutTimeZone()
+        : Types.TimestampType.withoutTimeZone(precision);
+  }
+
+  // Oracle JDBC reports the fractional seconds precision in two places:
+  //   - TYPE_NAME usually carries it inline, e.g. "TIMESTAMP(6)".
+  //   - DECIMAL_DIGITS (mapped to scale) also carries the same value.
+  // COLUMN_SIZE is the byte width (e.g. 11 for TIMESTAMP(6)) and must NOT be
+  // used as precision. We prefer parsing from the type name and fall back to
+  // scale only when the type name has no parentheses.
+  private static Integer extractTimestampPrecision(String typeName, Integer scale) {
+    int leftParen = typeName.indexOf('(');
+    int rightParen = typeName.indexOf(')', leftParen + 1);
+    if (leftParen >= 0 && rightParen > leftParen) {
+      return Integer.parseInt(typeName.substring(leftParen + 1, rightParen));
+    }
+    return scale;
   }
 }

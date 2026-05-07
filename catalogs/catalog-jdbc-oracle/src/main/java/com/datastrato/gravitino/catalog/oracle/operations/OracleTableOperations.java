@@ -12,6 +12,7 @@ import static org.apache.gravitino.catalog.jdbc.JdbcTablePropertiesMetadata.COMM
 import static org.apache.gravitino.rel.Column.DEFAULT_VALUE_NOT_SET;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -32,6 +33,7 @@ import org.apache.gravitino.catalog.jdbc.JdbcColumn;
 import org.apache.gravitino.catalog.jdbc.JdbcTable;
 import org.apache.gravitino.catalog.jdbc.operation.JdbcTableOperations;
 import org.apache.gravitino.catalog.jdbc.utils.JdbcConnectorUtils;
+import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.Expression;
@@ -95,13 +97,14 @@ public class OracleTableOperations extends JdbcTableOperations {
           .append(quotedName(column.name()))
           .append(" ")
           .append(typeConverter.fromGravitino(column.dataType()));
-      if (!column.nullable()) {
-        columnSql.append(" NOT NULL");
-      }
+      // Oracle requires DEFAULT to precede NOT NULL in a column definition (ORA-03076 otherwise).
       if (!DEFAULT_VALUE_NOT_SET.equals(column.defaultValue())) {
         columnSql
             .append(" DEFAULT ")
             .append(columnDefaultValueConverter.fromGravitino(column.defaultValue()));
+      }
+      if (!column.nullable()) {
+        columnSql.append(" NOT NULL");
       }
       columnDefinitions.add(columnSql.toString());
     }
@@ -335,6 +338,26 @@ public class OracleTableOperations extends JdbcTableOperations {
         e.addSuppressed(closeException);
       }
       throw e;
+    }
+  }
+
+  @Override
+  public List<String> listTables(String databaseName) throws NoSuchSchemaException {
+    // Oracle returns TABLE_CAT=null in DatabaseMetaData.getTables, so the catalog-based filter in
+    // JdbcTableOperations.listTables would drop every row. Filter by TABLE_SCHEM (== Oracle owner)
+    // instead.
+    List<String> names = Lists.newArrayList();
+    try (Connection connection = getConnection(databaseName);
+        ResultSet tables = getTables(connection)) {
+      String schema = connection.getSchema();
+      while (tables.next()) {
+        if (Objects.equals(tables.getString("TABLE_SCHEM"), schema)) {
+          names.add(tables.getString("TABLE_NAME"));
+        }
+      }
+      return names;
+    } catch (SQLException se) {
+      throw exceptionMapper.toGravitinoException(se);
     }
   }
 
@@ -677,6 +700,12 @@ public class OracleTableOperations extends JdbcTableOperations {
         sqlList.add(generateAddConstraintSql(qualifiedTableName, addIndex));
       } else if (change instanceof TableChange.DeleteIndex) {
         TableChange.DeleteIndex deleteIndex = (TableChange.DeleteIndex) change;
+        if (deleteIndex.isIfExists()) {
+          lazyLoadTable = getOrCreateTable(databaseName, tableName, lazyLoadTable);
+          if (!indexExists(lazyLoadTable, deleteIndex.getName())) {
+            continue;
+          }
+        }
         sqlList.add(generateDropConstraintSql(qualifiedTableName, deleteIndex.getName()));
       } else if (change instanceof TableChange.SetProperty
           || change instanceof TableChange.RemoveProperty) {
@@ -804,17 +833,22 @@ public class OracleTableOperations extends JdbcTableOperations {
         "ALTER TABLE %s DROP CONSTRAINT %s", qualifiedTableName, quotedName(constraintName));
   }
 
+  private boolean indexExists(JdbcTable table, String indexName) {
+    return Arrays.stream(table.index()).anyMatch(index -> Objects.equals(index.name(), indexName));
+  }
+
   private String buildColumnDefinition(
       String columnName, Type type, boolean nullable, Expression defaultValue) {
     StringBuilder definition = new StringBuilder();
     definition.append(quotedName(columnName)).append(" ").append(typeConverter.fromGravitino(type));
-    if (!nullable) {
-      definition.append(" NOT NULL");
-    }
+    // Oracle requires DEFAULT to precede NOT NULL in a column definition (ORA-03076 otherwise).
     if (!DEFAULT_VALUE_NOT_SET.equals(defaultValue)) {
       definition
           .append(" DEFAULT ")
           .append(columnDefaultValueConverter.fromGravitino(defaultValue));
+    }
+    if (!nullable) {
+      definition.append(" NOT NULL");
     }
     return definition.toString();
   }

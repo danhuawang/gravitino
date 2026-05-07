@@ -122,6 +122,12 @@ public enum TestDatabaseName {
   CLICKHOUSE_CLUSTER_CLICKHOUSE_IT,
   CLICKHOUSE_ENGINE_IT,
 
+  /**
+   * Represents the Oracle database for
+   * com.datastrato.gravitino.catalog.oracle.integration.test.CatalogOracleIT.
+   */
+  ORACLE_CATALOG_ORACLE_IT,
+
   /** Represents the PostgreSQL database for partition statistics integration tests. */
   PG_TEST_PARTITION_STATS {
     /** PostgreSQL only accept lowercase database name */

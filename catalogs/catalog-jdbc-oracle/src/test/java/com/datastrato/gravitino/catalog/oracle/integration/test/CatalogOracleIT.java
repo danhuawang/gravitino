@@ -1,0 +1,882 @@
+/*
+ * Copyright 2026 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+package com.datastrato.gravitino.catalog.oracle.integration.test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.datastrato.gravitino.catalog.oracle.integration.test.service.OracleService;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import org.apache.gravitino.Catalog;
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.Namespace;
+import org.apache.gravitino.Schema;
+import org.apache.gravitino.SupportsSchemas;
+import org.apache.gravitino.catalog.jdbc.config.JdbcConfig;
+import org.apache.gravitino.client.GravitinoMetalake;
+import org.apache.gravitino.exceptions.NoSuchSchemaException;
+import org.apache.gravitino.integration.test.container.ContainerSuite;
+import org.apache.gravitino.integration.test.container.OracleContainer;
+import org.apache.gravitino.integration.test.util.BaseIT;
+import org.apache.gravitino.integration.test.util.GravitinoITUtils;
+import org.apache.gravitino.integration.test.util.ITUtils;
+import org.apache.gravitino.integration.test.util.TestDatabaseName;
+import org.apache.gravitino.rel.Column;
+import org.apache.gravitino.rel.Table;
+import org.apache.gravitino.rel.TableCatalog;
+import org.apache.gravitino.rel.TableChange;
+import org.apache.gravitino.rel.expressions.FunctionExpression;
+import org.apache.gravitino.rel.expressions.distributions.Distributions;
+import org.apache.gravitino.rel.expressions.literals.Literal;
+import org.apache.gravitino.rel.expressions.literals.Literals;
+import org.apache.gravitino.rel.expressions.sorts.SortOrder;
+import org.apache.gravitino.rel.expressions.transforms.Transform;
+import org.apache.gravitino.rel.expressions.transforms.Transforms;
+import org.apache.gravitino.rel.indexes.Index;
+import org.apache.gravitino.rel.indexes.Indexes;
+import org.apache.gravitino.rel.partitions.ListPartition;
+import org.apache.gravitino.rel.partitions.Partitions;
+import org.apache.gravitino.rel.partitions.RangePartition;
+import org.apache.gravitino.rel.types.Types;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestInstance.Lifecycle;
+
+@Tag("gravitino-docker-test")
+@TestInstance(Lifecycle.PER_CLASS)
+public class CatalogOracleIT extends BaseIT {
+  private static final ContainerSuite containerSuite = ContainerSuite.getInstance();
+  private static final String provider = "jdbc-oracle";
+  private static final String ORACLE_JDBC_DRIVER_URL =
+      "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc8/23.4.0.24.05/ojdbc8-23.4.0.24.05.jar";
+  private static final TestDatabaseName TEST_DB_NAME = TestDatabaseName.ORACLE_CATALOG_ORACLE_IT;
+
+  // Oracle identifiers are upper-cased by default; keep these ASCII-safe to satisfy
+  // OracleCatalogCapability's name pattern and Oracle's 30-char limit on pre-12.2 syntax.
+  private final String metalakeName = GravitinoITUtils.genRandomName("oracle_it_metalake");
+  private final String catalogName = GravitinoITUtils.genRandomName("oracle_it_catalog");
+
+  // In Oracle a schema is the APP_USER that owns its objects — it is created by the container
+  // image at boot and cannot be created or dropped via the Gravitino catalog.
+  private final String schemaName = OracleContainer.APP_USER;
+
+  private GravitinoMetalake metalake;
+  private Catalog catalog;
+  private OracleService oracleService;
+  private OracleContainer oracleContainer;
+
+  @Override
+  protected void setupJdbcDrivers() throws IOException {
+    super.setupJdbcDrivers();
+    if (!ITUtils.DEPLOY_TEST_MODE.equals(testMode)) {
+      return;
+    }
+
+    String gravitinoHome = System.getenv("GRAVITINO_HOME");
+    String[] oracleDriverDirs = {
+      ITUtils.joinPath(gravitinoHome, "catalogs", "jdbc-oracle", "libs")
+    };
+    String[] oracleDriverUrls = {ORACLE_JDBC_DRIVER_URL};
+    downloadJdbcDrivers(oracleDriverUrls, oracleDriverDirs);
+    cleanJdbcDriverConflicts(oracleDriverUrls, oracleDriverDirs);
+  }
+
+  @BeforeAll
+  @Override
+  public void startIntegrationTest() throws Exception {
+    super.startIntegrationTest();
+    containerSuite.startOracleContainer(TEST_DB_NAME);
+    oracleContainer = containerSuite.getOracleContainer();
+
+    oracleService = new OracleService(oracleContainer, TEST_DB_NAME);
+    createMetalake();
+    catalog = createCatalog(catalogName);
+  }
+
+  @AfterAll
+  public void stop() {
+    clearTables();
+    if (metalake != null) {
+      // In Oracle a schema is the APP_USER and cannot be dropped; force-drop removes the catalog
+      // despite the non-empty GRAVITINO schema.
+      metalake.disableCatalog(catalogName);
+      metalake.dropCatalog(catalogName, true);
+      client.disableMetalake(metalakeName);
+      client.dropMetalake(metalakeName);
+    }
+    if (oracleService != null) {
+      oracleService.close();
+    }
+  }
+
+  @AfterEach
+  public void resetTables() {
+    clearTables();
+  }
+
+  private void clearTables() {
+    if (catalog == null) {
+      return;
+    }
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    NameIdentifier[] tables = tableCatalog.listTables(Namespace.of(schemaName));
+    for (NameIdentifier ident : tables) {
+      tableCatalog.purgeTable(ident);
+    }
+  }
+
+  private void createMetalake() {
+    GravitinoMetalake[] existing = client.listMetalakes();
+    Assertions.assertEquals(0, existing.length);
+
+    client.createMetalake(metalakeName, "comment", Collections.emptyMap());
+    GravitinoMetalake loaded = client.loadMetalake(metalakeName);
+    Assertions.assertEquals(metalakeName, loaded.name());
+    metalake = loaded;
+  }
+
+  private Catalog createCatalog(String catalogName) throws SQLException {
+    Map<String, String> catalogProperties = Maps.newHashMap();
+    catalogProperties.put(JdbcConfig.JDBC_URL.getKey(), oracleContainer.getJdbcUrl(TEST_DB_NAME));
+    catalogProperties.put(
+        JdbcConfig.JDBC_DRIVER.getKey(), oracleContainer.getDriverClassName(TEST_DB_NAME));
+    catalogProperties.put(JdbcConfig.USERNAME.getKey(), oracleContainer.getUsername());
+    catalogProperties.put(JdbcConfig.PASSWORD.getKey(), oracleContainer.getPassword());
+
+    Catalog created =
+        metalake.createCatalog(
+            catalogName, Catalog.Type.RELATIONAL, provider, "comment", catalogProperties);
+    Catalog loaded = metalake.loadCatalog(catalogName);
+    Assertions.assertEquals(created, loaded);
+    return loaded;
+  }
+
+  // Column comments are deliberately null in most tests. Oracle's JDBC driver only returns REMARKS
+  // when the connection is opened with remarksReporting=true, which Gravitino does not set by
+  // default, so round-tripping comments through loadTable would give flaky equality checks. We
+  // verify column comments via OracleService (ALL_COL_COMMENTS) in testAlterTableColumnOperations
+  // when we want to assert the COMMENT ON COLUMN statement actually ran.
+  private Column[] simpleColumns() {
+    return new Column[] {
+      Column.of("id", Types.IntegerType.get(), null, false, false, null),
+      Column.of("name", Types.VarCharType.of(64), null, true, false, null),
+      Column.of("score", Types.DecimalType.of(10, 2), null, true, false, null),
+      Column.of("created_at", Types.TimestampType.withoutTimeZone(), null, true, false, null)
+    };
+  }
+
+  private Table createTable(String name, Column[] columns) {
+    return createTable(name, columns, null, ImmutableMap.of(), Transforms.EMPTY_TRANSFORM);
+  }
+
+  private Table createTable(
+      String name,
+      Column[] columns,
+      String comment,
+      Map<String, String> properties,
+      Transform[] partitioning) {
+    return catalog
+        .asTableCatalog()
+        .createTable(
+            NameIdentifier.of(schemaName, name),
+            columns,
+            comment,
+            properties,
+            partitioning,
+            Distributions.NONE,
+            new SortOrder[0]);
+  }
+
+  // ----------------------------------------------------------------------
+  // Connection & schema
+  // ----------------------------------------------------------------------
+
+  @Test
+  void testTestConnectionFailure() throws SQLException {
+    Map<String, String> catalogProperties = Maps.newHashMap();
+    catalogProperties.put(JdbcConfig.JDBC_URL.getKey(), oracleContainer.getJdbcUrl(TEST_DB_NAME));
+    catalogProperties.put(
+        JdbcConfig.JDBC_DRIVER.getKey(), oracleContainer.getDriverClassName(TEST_DB_NAME));
+    catalogProperties.put(JdbcConfig.USERNAME.getKey(), oracleContainer.getUsername());
+    catalogProperties.put(JdbcConfig.PASSWORD.getKey(), "wrong_password");
+
+    // testConnection wraps Oracle driver failures into RuntimeException in some code paths, so we
+    // accept either the specific ConnectionFailedException or a generic RuntimeException.
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            metalake.testConnection(
+                GravitinoITUtils.genRandomName("oracle_it_catalog"),
+                Catalog.Type.RELATIONAL,
+                provider,
+                "comment",
+                catalogProperties));
+  }
+
+  @Test
+  void testListAndLoadSchemas() {
+    SupportsSchemas schemas = catalog.asSchemas();
+    String[] names = schemas.listSchemas();
+    Set<String> schemaSet = Sets.newHashSet(names);
+    assertTrue(
+        schemaSet.contains(schemaName),
+        "Expected APP_USER schema " + schemaName + " to appear in " + schemaSet);
+
+    Schema loaded = schemas.loadSchema(schemaName);
+    assertEquals(schemaName, loaded.name());
+  }
+
+  @Test
+  void testCreateAndDropSchemaUnsupported() {
+    SupportsSchemas schemas = catalog.asSchemas();
+    // Oracle does not expose CREATE SCHEMA — the catalog refuses the request with a clear error.
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            schemas.createSchema(
+                GravitinoITUtils.genRandomName("unsupported"), null, Collections.emptyMap()));
+
+    // And the same holds for DROP SCHEMA — even targeting the existing APP_USER schema.
+    assertThrows(RuntimeException.class, () -> schemas.dropSchema(schemaName, false));
+
+    assertThrows(NoSuchSchemaException.class, () -> schemas.loadSchema("does_not_exist"));
+  }
+
+  // ----------------------------------------------------------------------
+  // Table basics
+  // ----------------------------------------------------------------------
+
+  @Test
+  void testCreateAndLoadTable() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_CREATE_TBL";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+    Column[] columns = simpleColumns();
+
+    Table created =
+        createTable(name, columns, "table_comment", ImmutableMap.of(), Transforms.EMPTY_TRANSFORM);
+    assertEquals(name, created.name());
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    assertEquals(name, loaded.name());
+    assertEquals("table_comment", loaded.comment());
+    assertEquals(columns.length, loaded.columns().length);
+    for (int i = 0; i < columns.length; i++) {
+      assertEquals(columns[i].name(), loaded.columns()[i].name());
+      assertEquals(columns[i].nullable(), loaded.columns()[i].nullable());
+    }
+
+    // Tablespace is not asserted: Oracle Free 23c's default tablespace for APP_USER may come back
+    // as null under ALL_TABLES.TABLESPACE_NAME, and the property metadata drops null values.
+    assertTrue(oracleService.tableExists(name));
+  }
+
+  @Test
+  void testListAndDropTable() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    NameIdentifier t1 = NameIdentifier.of(schemaName, "IT_LIST_TBL_1");
+    NameIdentifier t2 = NameIdentifier.of(schemaName, "IT_LIST_TBL_2");
+
+    createTable("IT_LIST_TBL_1", simpleColumns());
+    createTable("IT_LIST_TBL_2", simpleColumns());
+
+    // Sanity-check that the two tables actually exist in Oracle via ALL_TABLES before we ask the
+    // catalog to list them — listTables goes through DatabaseMetaData.getTables, and on Oracle
+    // Free 23c the driver can return an empty set when the schema pattern does not exactly match
+    // the stored OWNER (see GRAVITINO-600 follow-up).
+    assertTrue(oracleService.tableExists("IT_LIST_TBL_1"), "IT_LIST_TBL_1 missing from ALL_TABLES");
+    assertTrue(oracleService.tableExists("IT_LIST_TBL_2"), "IT_LIST_TBL_2 missing from ALL_TABLES");
+
+    // listTables may return the Oracle-stored form of the identifier (either upper- or
+    // lowercase depending on JDBC driver/version), so normalize for comparison.
+    Set<String> listed =
+        Arrays.stream(tableCatalog.listTables(Namespace.of(schemaName)))
+            .map(ident -> ident.name().toUpperCase())
+            .collect(Collectors.toSet());
+    assertTrue(listed.contains("IT_LIST_TBL_1"), "Listed tables: " + listed);
+    assertTrue(listed.contains("IT_LIST_TBL_2"), "Listed tables: " + listed);
+
+    assertTrue(tableCatalog.dropTable(t1));
+    assertFalse(oracleService.tableExists("IT_LIST_TBL_1"));
+
+    // Drop + purge both translate to "DROP TABLE ... PURGE" for Oracle.
+    assertTrue(tableCatalog.purgeTable(t2));
+    assertFalse(oracleService.tableExists("IT_LIST_TBL_2"));
+  }
+
+  // ----------------------------------------------------------------------
+  // Column types
+  // ----------------------------------------------------------------------
+
+  @Test
+  void testColumnTypeCoverage() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_TYPES_TBL";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          // NUMBER(p, s) precision-driven integral round-trips:
+          // Byte (3), Short (5), Integer (10), Long (19).
+          Column.of("c_byte", Types.ByteType.get(), null, true, false, null),
+          Column.of("c_short", Types.ShortType.get(), null, true, false, null),
+          Column.of("c_int", Types.IntegerType.get(), null, true, false, null),
+          // Oracle NUMBER(19, 0) can hold values outside Java signed long, but Gravitino writes
+          // LongType as NUMBER(19), so OracleTypeConverter maps precision <= 19 back to LongType
+          // to preserve Gravitino LongType round trips.
+          Column.of("c_long", Types.LongType.get(), null, true, false, null),
+          Column.of("c_decimal", Types.DecimalType.of(12, 4), null, true, false, null),
+          // BINARY_FLOAT / BINARY_DOUBLE are the Oracle-native IEEE-754 types.
+          Column.of("c_float", Types.FloatType.get(), null, true, false, null),
+          Column.of("c_double", Types.DoubleType.get(), null, true, false, null),
+          Column.of("c_varchar", Types.VarCharType.of(200), null, true, false, null),
+          Column.of("c_char", Types.FixedCharType.of(10), null, true, false, null),
+          Column.of("c_string", Types.StringType.get(), null, true, false, null),
+          Column.of("c_binary", Types.BinaryType.get(), null, true, false, null),
+          Column.of("c_ts", Types.TimestampType.withoutTimeZone(), null, true, false, null)
+        };
+
+    createTable(name, columns);
+    Table loaded = tableCatalog.loadTable(tableIdent);
+
+    Map<String, Column> loadedByName =
+        Arrays.stream(loaded.columns())
+            .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
+
+    assertEquals(Types.ByteType.get(), loadedByName.get("c_byte").dataType());
+    assertEquals(Types.ShortType.get(), loadedByName.get("c_short").dataType());
+    assertEquals(Types.IntegerType.get(), loadedByName.get("c_int").dataType());
+    // LongType is NUMBER(19) -> LongType on read under the precision <= 19 integral mapping.
+    assertEquals(Types.LongType.get(), loadedByName.get("c_long").dataType());
+    assertEquals(Types.DecimalType.of(12, 4), loadedByName.get("c_decimal").dataType());
+    assertEquals(Types.FloatType.get(), loadedByName.get("c_float").dataType());
+    assertEquals(Types.DoubleType.get(), loadedByName.get("c_double").dataType());
+    assertEquals(Types.VarCharType.of(200), loadedByName.get("c_varchar").dataType());
+    assertEquals(Types.FixedCharType.of(10), loadedByName.get("c_char").dataType());
+    assertEquals(Types.StringType.get(), loadedByName.get("c_string").dataType());
+    assertEquals(Types.BinaryType.get(), loadedByName.get("c_binary").dataType());
+    assertEquals(Types.TimestampType.withoutTimeZone(6), loadedByName.get("c_ts").dataType());
+  }
+
+  // ----------------------------------------------------------------------
+  // Identifier case sensitivity
+  // ----------------------------------------------------------------------
+  //
+  // Oracle folds unquoted identifiers to upper case, but OracleTableOperations always wraps column
+  // and table names in double quotes (see quotedName()). Quoted identifiers are case-sensitive in
+  // Oracle, so the cases below verify that:
+  //   1. Column names round-trip with their exact original casing (lower / mixed / upper),
+  //   2. Two columns whose names differ only in case can coexist in the same table,
+  //   3. Mixed-case names also work for ALTER TABLE add/drop, since those code paths quote too.
+
+  @Test
+  void testColumnNameCasePreservedAcrossLoad() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_COL_CASE_TBL";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    // Three column names exercising the three identifier-case shapes Gravitino users commonly use.
+    Column[] columns =
+        new Column[] {
+          Column.of("lowercol", Types.IntegerType.get(), null, true, false, null),
+          Column.of("MixedCol", Types.VarCharType.of(32), null, true, false, null),
+          Column.of("UPPERCOL", Types.IntegerType.get(), null, true, false, null)
+        };
+
+    createTable(name, columns);
+    Table loaded = tableCatalog.loadTable(tableIdent);
+
+    // Order preservation: Oracle returns columns in their CREATE TABLE order through getColumns(),
+    // and OracleTableOperations passes them through unchanged.
+    assertEquals(columns.length, loaded.columns().length);
+    for (int i = 0; i < columns.length; i++) {
+      assertEquals(
+          columns[i].name(),
+          loaded.columns()[i].name(),
+          "Column at index " + i + " should preserve its original casing exactly");
+    }
+
+    Set<String> loadedNames =
+        Arrays.stream(loaded.columns()).map(Column::name).collect(Collectors.toSet());
+    assertTrue(loadedNames.contains("lowercol"), "Lower-case name not preserved: " + loadedNames);
+    assertTrue(loadedNames.contains("MixedCol"), "Mixed-case name not preserved: " + loadedNames);
+    assertTrue(loadedNames.contains("UPPERCOL"), "Upper-case name not preserved: " + loadedNames);
+  }
+
+  @Test
+  void testColumnNamesAreCaseSensitive() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_COL_CASE_DISTINCT";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    // "value" and "VALUE" are distinct identifiers in Oracle once they are double-quoted, so the
+    // catalog should be able to create both in the same table without collision.
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("value", Types.VarCharType.of(16), null, true, false, null),
+          Column.of("VALUE", Types.IntegerType.get(), null, true, false, null)
+        };
+
+    createTable(name, columns);
+    Table loaded = tableCatalog.loadTable(tableIdent);
+
+    // Both case-variant columns must come back, and each must keep its declared type — that proves
+    // the JDBC round trip did not silently merge them into a single column.
+    Map<String, Column> byExactName =
+        Arrays.stream(loaded.columns()).collect(Collectors.toMap(Column::name, c -> c));
+    assertTrue(
+        byExactName.containsKey("value"), "lowercase 'value' missing: " + byExactName.keySet());
+    assertTrue(
+        byExactName.containsKey("VALUE"), "uppercase 'VALUE' missing: " + byExactName.keySet());
+    assertEquals(Types.VarCharType.of(16), byExactName.get("value").dataType());
+    assertEquals(Types.IntegerType.get(), byExactName.get("VALUE").dataType());
+  }
+
+  @Test
+  void testAlterTableColumnCaseSensitive() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_COL_CASE_ALTER";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("KeepMe", Types.VarCharType.of(16), null, true, false, null)
+        };
+    createTable(name, columns);
+
+    // Add a mixed-case column; the ALTER TABLE ADD path goes through quotedName() too.
+    tableCatalog.alterTable(
+        tableIdent,
+        TableChange.addColumn(
+            new String[] {"NewCol"},
+            Types.IntegerType.get(),
+            null,
+            TableChange.ColumnPosition.defaultPos(),
+            true,
+            false,
+            null));
+
+    Table afterAdd = tableCatalog.loadTable(tableIdent);
+    Set<String> namesAfterAdd =
+        Arrays.stream(afterAdd.columns()).map(Column::name).collect(Collectors.toSet());
+    assertTrue(
+        namesAfterAdd.contains("NewCol"),
+        "NewCol should be added with exact case: " + namesAfterAdd);
+    assertTrue(
+        namesAfterAdd.contains("KeepMe"), "KeepMe should still be present: " + namesAfterAdd);
+
+    // Drop the mixed-case column with the exact original casing.
+    tableCatalog.alterTable(tableIdent, TableChange.deleteColumn(new String[] {"NewCol"}, false));
+
+    Table afterDrop = tableCatalog.loadTable(tableIdent);
+    Set<String> namesAfterDrop =
+        Arrays.stream(afterDrop.columns()).map(Column::name).collect(Collectors.toSet());
+    assertFalse(namesAfterDrop.contains("NewCol"), "NewCol should be dropped: " + namesAfterDrop);
+    assertTrue(
+        namesAfterDrop.contains("KeepMe"), "KeepMe should still be present: " + namesAfterDrop);
+  }
+
+  // ----------------------------------------------------------------------
+  // Column default values
+  // ----------------------------------------------------------------------
+
+  @Test
+  void testColumnDefaultValues() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_DEFAULTS_TBL";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          // Integer literal default.
+          Column.of(
+              "qty",
+              Types.IntegerType.get(),
+              null,
+              true,
+              false,
+              Literals.of("5", Types.IntegerType.get())),
+          // String literal default — stored as 'hello' in DDL.
+          Column.of(
+              "tag",
+              Types.VarCharType.of(32),
+              null,
+              true,
+              false,
+              Literals.of("hello", Types.VarCharType.of(32))),
+          // NULL default on a nullable column.
+          Column.of("memo", Types.VarCharType.of(64), null, true, false, Literals.NULL),
+          // Oracle function defaults commonly used for audit columns.
+          Column.of(
+              "created_at",
+              Types.TimestampType.withoutTimeZone(),
+              null,
+              true,
+              false,
+              FunctionExpression.of("SYSTIMESTAMP")),
+          Column.of(
+              "created_date",
+              Types.TimestampType.withoutTimeZone(),
+              null,
+              true,
+              false,
+              FunctionExpression.of("SYSDATE"))
+        };
+
+    createTable(name, columns);
+    Table loaded = tableCatalog.loadTable(tableIdent);
+
+    Map<String, Column> byName =
+        Arrays.stream(loaded.columns())
+            .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
+
+    // Literals.of("5", IntegerType) holds a String value, so the Oracle catalog emits DEFAULT '5'
+    // and reads it back as a StringType literal (the surrounding quotes are stripped by the
+    // default-value converter). This is the same fate as the "hello" VARCHAR2 default below.
+    assertEquals(Literals.stringLiteral("5"), byName.get("qty").defaultValue());
+
+    assertEquals(Literals.stringLiteral("hello"), byName.get("tag").defaultValue());
+
+    // DEFAULT NULL on a nullable column comes back as Literals.NULL.
+    assertEquals(Literals.NULL, byName.get("memo").defaultValue());
+
+    assertEquals(FunctionExpression.of("SYSTIMESTAMP"), byName.get("created_at").defaultValue());
+    assertEquals(FunctionExpression.of("SYSDATE"), byName.get("created_date").defaultValue());
+  }
+
+  // ----------------------------------------------------------------------
+  // Indexes
+  // ----------------------------------------------------------------------
+
+  @Test
+  void testTableWithIndexes() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_INDEX_TBL";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("code", Types.VarCharType.of(32), null, false, false, null),
+          Column.of(
+              "qty",
+              Types.IntegerType.get(),
+              null,
+              false,
+              false,
+              Literals.of("1", Types.IntegerType.get()))
+        };
+
+    Index[] indexes =
+        new Index[] {
+          Indexes.primary("PK_IT_INDEX_TBL", new String[][] {new String[] {"id"}}),
+          Indexes.unique("UK_IT_INDEX_TBL_CODE", new String[][] {new String[] {"code"}})
+        };
+
+    catalog
+        .asTableCatalog()
+        .createTable(
+            tableIdent,
+            columns,
+            null,
+            ImmutableMap.of(),
+            Transforms.EMPTY_TRANSFORM,
+            Distributions.NONE,
+            new SortOrder[0],
+            indexes);
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    Set<Index.IndexType> types =
+        Arrays.stream(loaded.index()).map(Index::type).collect(Collectors.toSet());
+    assertTrue(types.contains(Index.IndexType.PRIMARY_KEY));
+    assertTrue(types.contains(Index.IndexType.UNIQUE_KEY));
+
+    Column qty =
+        Arrays.stream(loaded.columns())
+            .filter(c -> "qty".equalsIgnoreCase(c.name()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("qty column missing"));
+    assertEquals(Literals.stringLiteral("1"), qty.defaultValue());
+  }
+
+  // ----------------------------------------------------------------------
+  // Alter table
+  // ----------------------------------------------------------------------
+
+  @Test
+  void testAlterTableRename() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String oldName = "IT_RENAME_OLD";
+    String newName = "IT_RENAME_NEW";
+    NameIdentifier oldIdent = NameIdentifier.of(schemaName, oldName);
+    NameIdentifier newIdent = NameIdentifier.of(schemaName, newName);
+
+    createTable(oldName, simpleColumns());
+
+    tableCatalog.alterTable(oldIdent, TableChange.rename(newName));
+
+    Table renamed = tableCatalog.loadTable(newIdent);
+    assertEquals(newName, renamed.name());
+    assertFalse(oracleService.tableExists(oldName));
+    assertTrue(oracleService.tableExists(newName));
+  }
+
+  @Test
+  void testAlterTableUpdateTableComment() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_COMMENT_TBL";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+    createTable(name, simpleColumns(), "initial", ImmutableMap.of(), Transforms.EMPTY_TRANSFORM);
+
+    tableCatalog.alterTable(tableIdent, TableChange.updateComment("updated comment"));
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    assertEquals("updated comment", loaded.comment());
+  }
+
+  @Test
+  void testAlterTableColumnOperations() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_ALTER_COLS";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("name", Types.VarCharType.of(32), null, false, false, null),
+          Column.of("to_drop", Types.VarCharType.of(16), null, true, false, null)
+        };
+    createTable(name, columns);
+
+    // Add a new nullable column with a default value and a comment.
+    tableCatalog.alterTable(
+        tableIdent,
+        TableChange.addColumn(
+            new String[] {"qty"},
+            Types.IntegerType.get(),
+            "qty_comment",
+            TableChange.ColumnPosition.defaultPos(),
+            true,
+            false,
+            Literals.of("0", Types.IntegerType.get())));
+
+    // Widen VARCHAR2(32) to VARCHAR2(64).
+    tableCatalog.alterTable(
+        tableIdent, TableChange.updateColumnType(new String[] {"name"}, Types.VarCharType.of(64)));
+
+    // Rename `id` to `pk_id`.
+    tableCatalog.alterTable(tableIdent, TableChange.renameColumn(new String[] {"id"}, "pk_id"));
+
+    // Switch `pk_id` from NOT NULL to nullable so later nullability/default writes have room.
+    tableCatalog.alterTable(
+        tableIdent, TableChange.updateColumnNullability(new String[] {"pk_id"}, true));
+
+    // Set a new default for `pk_id`.
+    tableCatalog.alterTable(
+        tableIdent,
+        TableChange.updateColumnDefaultValue(
+            new String[] {"pk_id"}, Literals.of("42", Types.IntegerType.get())));
+
+    // Drop the no-longer-needed column.
+    tableCatalog.alterTable(tableIdent, TableChange.deleteColumn(new String[] {"to_drop"}, false));
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+
+    Map<String, Column> byName =
+        Arrays.stream(loaded.columns())
+            .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
+
+    assertTrue(byName.containsKey("pk_id"));
+    assertFalse(byName.containsKey("id"));
+    assertTrue(byName.get("pk_id").nullable());
+    // NUMBER default values round-trip as StringType literals; see testColumnDefaultValues.
+    assertEquals(Literals.stringLiteral("42"), byName.get("pk_id").defaultValue());
+
+    assertEquals(Types.VarCharType.of(64), byName.get("name").dataType());
+
+    assertTrue(byName.containsKey("qty"));
+    assertEquals(Types.IntegerType.get(), byName.get("qty").dataType());
+    assertEquals(Literals.stringLiteral("0"), byName.get("qty").defaultValue());
+
+    assertFalse(byName.containsKey("to_drop"));
+  }
+
+  @Test
+  void testAlterTableIndexOperations() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_ALTER_IDX";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("code", Types.VarCharType.of(32), null, false, false, null)
+        };
+    createTable(name, columns);
+
+    // Add a primary key via AddIndex.
+    tableCatalog.alterTable(
+        tableIdent,
+        TableChange.addIndex(
+            Index.IndexType.PRIMARY_KEY, "PK_IT_ALTER_IDX", new String[][] {new String[] {"id"}}));
+
+    // Add a unique constraint.
+    tableCatalog.alterTable(
+        tableIdent,
+        TableChange.addIndex(
+            Index.IndexType.UNIQUE_KEY,
+            "UK_IT_ALTER_IDX_CODE",
+            new String[][] {new String[] {"code"}}));
+
+    Table afterAdd = tableCatalog.loadTable(tableIdent);
+    Set<Index.IndexType> typesAfterAdd =
+        Arrays.stream(afterAdd.index()).map(Index::type).collect(Collectors.toSet());
+    assertTrue(typesAfterAdd.contains(Index.IndexType.PRIMARY_KEY));
+    assertTrue(typesAfterAdd.contains(Index.IndexType.UNIQUE_KEY));
+
+    // Drop the unique constraint.
+    tableCatalog.alterTable(tableIdent, TableChange.deleteIndex("UK_IT_ALTER_IDX_CODE", false));
+
+    Table afterDrop = tableCatalog.loadTable(tableIdent);
+    Set<Index.IndexType> typesAfterDrop =
+        Arrays.stream(afterDrop.index()).map(Index::type).collect(Collectors.toSet());
+    assertTrue(typesAfterDrop.contains(Index.IndexType.PRIMARY_KEY));
+    assertFalse(typesAfterDrop.contains(Index.IndexType.UNIQUE_KEY));
+  }
+
+  @Test
+  void testAlterTableUnsupportedChanges() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_UNSUPPORTED_ALTER";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+    createTable(name, simpleColumns());
+
+    // Column reordering is not supported by the Oracle catalog.
+    assertThrows(
+        UnsupportedOperationException.class,
+        () ->
+            tableCatalog.alterTable(
+                tableIdent,
+                TableChange.updateColumnPosition(
+                    new String[] {"name"}, TableChange.ColumnPosition.first())));
+
+    // Table properties are derived from Oracle system views, not settable through Gravitino.
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> tableCatalog.alterTable(tableIdent, TableChange.setProperty("tablespace", "USERS")));
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> tableCatalog.alterTable(tableIdent, TableChange.removeProperty("tablespace")));
+  }
+
+  // ----------------------------------------------------------------------
+  // Partitioning
+  // ----------------------------------------------------------------------
+
+  @Test
+  void testCreateRangePartitionedTable() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_RANGE_PART";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("bucket", Types.IntegerType.get(), null, false, false, null)
+        };
+
+    RangePartition p1 =
+        Partitions.range(
+            "p_low",
+            Literals.of("100", Types.IntegerType.get()),
+            Literals.NULL,
+            Collections.emptyMap());
+    RangePartition p2 =
+        Partitions.range("p_rest", Literals.NULL, Literals.NULL, Collections.emptyMap());
+
+    Transform[] partitioning = {
+      Transforms.range(new String[] {"bucket"}, new RangePartition[] {p1, p2})
+    };
+
+    createTable(name, columns, null, ImmutableMap.of(), partitioning);
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    assertTrue(loaded.partitioning().length > 0, "Expected partitioning to be reported");
+    assertInstanceOf(Transforms.RangeTransform.class, loaded.partitioning()[0]);
+    // The "partitioned" property is derived from ALL_TABLES.PARTITIONED and is filtered from the
+    // returned property map when it's null/empty — don't assert on it here.
+  }
+
+  @Test
+  void testCreateListPartitionedTable() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_LIST_PART";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("region", Types.VarCharType.of(16), null, false, false, null)
+        };
+
+    Literal<?>[][] asiaValues = {{Literals.of("CN", Types.VarCharType.of(16))}};
+    Literal<?>[][] euValues = {{Literals.of("DE", Types.VarCharType.of(16))}};
+    ListPartition pAsia = Partitions.list("p_asia", asiaValues, Collections.emptyMap());
+    ListPartition pEu = Partitions.list("p_eu", euValues, Collections.emptyMap());
+
+    Transform[] partitioning = {
+      Transforms.list(new String[][] {{"region"}}, new ListPartition[] {pAsia, pEu})
+    };
+
+    createTable(name, columns, null, ImmutableMap.of(), partitioning);
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    assertNotNull(loaded.partitioning());
+    assertTrue(loaded.partitioning().length > 0);
+    assertInstanceOf(Transforms.ListTransform.class, loaded.partitioning()[0]);
+  }
+
+  @Test
+  void testCreateHashPartitionedTable() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_HASH_PART";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("bucket", Types.IntegerType.get(), null, false, false, null)
+        };
+
+    Transform[] partitioning = {Transforms.bucket(4, new String[] {"bucket"})};
+
+    createTable(name, columns, null, ImmutableMap.of(), partitioning);
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    assertTrue(loaded.partitioning().length > 0);
+    assertInstanceOf(Transforms.BucketTransform.class, loaded.partitioning()[0]);
+  }
+}
