@@ -29,6 +29,7 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.internal.hash.ChecksumService
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.kotlin.dsl.support.serviceOf
+import org.nosphere.apache.rat.RatTask
 import java.io.IOException
 import java.util.Locale
 
@@ -725,7 +726,10 @@ val printRatFailures by tasks.registering {
   group = "verification"
   description = "Prints Apache Rat files with unapproved licenses in CI-friendly text."
 
-  val ratReport = layout.buildDirectory.file("reports/rat/rat-report.xml")
+  mustRunAfter(allprojects.map { it.tasks.withType<Test>() })
+
+  val ratTask = tasks.named<RatTask>("rat")
+  val ratReport = ratTask.flatMap { it.reportDir.file("rat-report.xml") }
   inputs.file(ratReport).optional()
 
   doLast {

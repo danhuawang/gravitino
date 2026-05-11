@@ -10,9 +10,11 @@ plugins {
 }
 
 dependencies {
-  implementation(project(":licensing:license-client"))
-  implementation(libs.bundles.log4j)
+  implementation(project(":licensing:license-client")) {
+    exclude(group = "*")
+  }
   implementation(libs.commons.cli.new)
+  implementation(libs.commons.lang3)
   implementation(libs.google.cloud.kms)
 
   testImplementation(libs.junit.jupiter.api)
@@ -24,9 +26,18 @@ tasks.withType<ShadowJar>(ShadowJar::class.java) {
   configurations = listOf(project.configurations.runtimeClasspath.get())
   archiveClassifier.set("")
   manifest {
-    attributes["Main-Class"] = "com.datastrato.gravitino.tools.license.LicenseToolsCli"
+    attributes["Main-Class"] = "com.datastrato.gravitino.license.tools.LicenseToolsCli"
   }
   mergeServiceFiles()
+
+  // Exclude any remaining server/runtime artifacts that should not be in the CLI fat jar
+  exclude("org/apache/kerby/**")
+  exclude("org/apache/arrow/**")
+  exclude("org/casbin/**")
+  exclude("io/netty/**")
+  exclude("com/google/flatbuffers/**")
+  exclude("ognl/**")
+  exclude("org/jline/**")
 }
 
 tasks.jar {
