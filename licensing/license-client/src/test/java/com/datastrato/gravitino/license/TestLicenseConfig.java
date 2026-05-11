@@ -13,7 +13,8 @@ class TestLicenseConfig {
   void testDefaults() {
     LicenseConfig config = new LicenseConfig(Map.of());
     Assertions.assertEquals(24, config.getCheckIntervalHours());
-    Assertions.assertEquals(48, config.getNodeStaleHours());
+    Assertions.assertEquals(5, config.getNodeHeartbeatIntervalMinutes());
+    Assertions.assertEquals(15, config.getNodeStaleMinutes());
     Assertions.assertEquals(30, config.getWarnDaysBeforeExpiry());
     Assertions.assertEquals("https://datastrato.ai/renew", config.getRenewalContactUrl());
   }
@@ -24,11 +25,11 @@ class TestLicenseConfig {
         new LicenseConfig(
             Map.of(
                 "gravitino.datastrato.license.checkIntervalHours", "12",
-                "gravitino.datastrato.license.nodeStaleHours", "24",
-                "gravitino.datastrato.license.nodeId", "node-1"));
+                "gravitino.datastrato.license.nodeHeartbeatIntervalMinutes", "10",
+                "gravitino.datastrato.license.nodeStaleMinutes", "30"));
     Assertions.assertEquals(12, config.getCheckIntervalHours());
-    Assertions.assertEquals(24, config.getNodeStaleHours());
-    Assertions.assertEquals("node-1", config.getNodeId());
+    Assertions.assertEquals(10, config.getNodeHeartbeatIntervalMinutes());
+    Assertions.assertEquals(30, config.getNodeStaleMinutes());
   }
 
   @Test

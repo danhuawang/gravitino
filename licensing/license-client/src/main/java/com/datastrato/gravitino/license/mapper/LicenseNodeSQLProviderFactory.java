@@ -33,12 +33,12 @@ public class LicenseNodeSQLProviderFactory {
     return getProvider().deleteStaleNodes();
   }
 
-  public static String updateHeartbeat() {
-    return getProvider().updateHeartbeat();
-  }
-
   public static String countActiveNodes() {
     return getProvider().countActiveNodes();
+  }
+
+  public static String rankNode() {
+    return getProvider().rankNode();
   }
 
   private static LicenseNodeBaseSQLProvider getProvider() {

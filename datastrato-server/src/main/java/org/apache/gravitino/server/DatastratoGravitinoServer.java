@@ -5,6 +5,7 @@
 package org.apache.gravitino.server;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
+import com.datastrato.gravitino.license.rest.LicenseStatusResource;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
@@ -78,6 +79,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
             bind(metricDataService).to(MetricDataService.class).ranked(1);
           }
         });
+    register(LicenseStatusResource.class);
   }
 
   @Override

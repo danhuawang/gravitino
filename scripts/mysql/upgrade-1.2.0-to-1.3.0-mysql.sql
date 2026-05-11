@@ -1,7 +1,7 @@
 --
 -- Licensed to the Apache Software Foundation (ASF) under one
--- or more contributor license agreements.  See the NOTICE file--
---  distributed with this work for additional information
+-- or more contributor license agreements.  See the NOTICE file
+-- distributed with this work for additional information
 -- regarding copyright ownership.  The ASF licenses this file
 -- to you under the Apache License, Version 2.0 (the
 -- "License"). You may not use this file except in compliance
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS `view_version_info` (
 
 -- Enterprise: adds the license_nodes table for enterprise license node tracking.
 CREATE TABLE IF NOT EXISTS `license_nodes` (
-    `node_id`        VARCHAR(64)  NOT NULL COMMENT 'node identifier from gravitino.datastrato.license.nodeId',
+    `node_id`        VARCHAR(64)  NOT NULL COMMENT 'unique node identifier',
     `registered_at`  BIGINT       NOT NULL COMMENT 'epoch millis when node first registered',
     `last_heartbeat` BIGINT       NOT NULL COMMENT 'epoch millis of last heartbeat',
     PRIMARY KEY (`node_id`)

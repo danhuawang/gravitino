@@ -575,7 +575,7 @@ CREATE TABLE IF NOT EXISTS `dashboard_metrics` (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `license_nodes` (
-    `node_id`        VARCHAR(64)  NOT NULL COMMENT 'node identifier from gravitino.datastrato.license.nodeId',
+    `node_id`        VARCHAR(64)  NOT NULL COMMENT 'unique node identifier',
     `registered_at`  BIGINT       NOT NULL COMMENT 'epoch millis when node first registered',
     `last_heartbeat` BIGINT       NOT NULL COMMENT 'epoch millis of last heartbeat',
     PRIMARY KEY (`node_id`)

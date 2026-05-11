@@ -5,6 +5,7 @@
 
 package com.datastrato.gravitino;
 
+import com.datastrato.gravitino.license.LicenseManager;
 import com.datastrato.gravitino.search.service.SearchService;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
@@ -27,10 +28,12 @@ public class ExtendedDatastratoGravitinoEnv extends DatastratoGravitinoEnv {
   public void initializeFullComponents(Config config) {
     this.searchService = new SearchService(config);
     super.initializeFullComponents(config);
+    LicenseManager.getInstance().initialize(config);
   }
 
   @Override
   public void shutdown() {
+    LicenseManager.getInstance().shutdown();
     if (searchService != null) {
       searchService.close();
     }

@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Represents the decoded payload embedded in a Gravitino license key.
@@ -136,7 +137,7 @@ public class LicensePayload {
           LicenseException.ErrorCode.INVALID_FORMAT,
           "maxNodes must be -1 (unlimited) or > 0, got " + maxNodes);
     }
-    if (issuedTo.isBlank()) {
+    if (StringUtils.isBlank(issuedTo)) {
       throw new LicenseException(
           LicenseException.ErrorCode.INVALID_FORMAT, "issuedTo must not be blank");
     }

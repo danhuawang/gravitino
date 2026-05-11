@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino.license;
 
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPairGenerator;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Base64;
@@ -142,15 +143,65 @@ class TestLicenseVerifier {
     Assertions.assertEquals(-1, result.getMaxNodes());
   }
 
+  /**
+   * Encodes just the payload bytes with no signature appended. decoded.length == 29 + nameLen ==
+   * payloadEnd → the new "key truncated: no signature" guard.
+   */
+  @Test
+  void testKeyWithNoSignatureBytesThrows() throws Exception {
+    byte[] payload = TestLicensePayload.buildTestPayload(); // nameLen=9, payload length=38
+    String key = "GRAV-" + Base64.getUrlEncoder().withoutPadding().encodeToString(payload);
+    LicenseException ex =
+        Assertions.assertThrows(LicenseException.class, () -> VERIFIER.verify(key));
+    Assertions.assertEquals(LicenseException.ErrorCode.INVALID_FORMAT, ex.getErrorCode());
+  }
+
+  /**
+   * Incrementing nameLen by 1 in the combined bytes (without re-signing) shifts the split one byte
+   * to the right, pulling one signature byte into the "payload". The signature verification fails,
+   * which proves the split is driven by nameLen at byte 28, not a DER scan.
+   */
+  @Test
+  void testNameLenDrivesSplitBoundary() throws Exception {
+    byte[] payload = TestLicensePayload.buildTestPayload(); // nameLen=9 at byte 28
+    byte[] sig = TestKeyPairUtil.sign(payload);
+    byte[] combined = new byte[payload.length + sig.length];
+    System.arraycopy(payload, 0, combined, 0, payload.length);
+    System.arraycopy(sig, 0, combined, payload.length, sig.length);
+    // Inflate nameLen: split shifts right by 1, pulling one signature byte into the payload region
+    combined[28] = (byte) (combined[28] + 1);
+    String key = "GRAV-" + Base64.getUrlEncoder().withoutPadding().encodeToString(combined);
+    LicenseException ex =
+        Assertions.assertThrows(LicenseException.class, () -> VERIFIER.verify(key));
+    Assertions.assertEquals(LicenseException.ErrorCode.INVALID_SIGNATURE, ex.getErrorCode());
+  }
+
+  /** A payload with a longer-than-default name round-trips through verify() correctly. */
+  @Test
+  void testLongNameRoundTrips() throws Exception {
+    byte[] name = "Acme Corporation Ltd. Legal Dept".getBytes(StandardCharsets.UTF_8);
+    byte[] base = TestLicensePayload.buildTestPayload();
+    byte[] payload = new byte[29 + name.length];
+    System.arraycopy(base, 0, payload, 0, 29);
+    payload[28] = (byte) name.length;
+    System.arraycopy(name, 0, payload, 29, name.length);
+    String key = TestKeyPairUtil.buildKey(payload);
+    LicensePayload result = VERIFIER.verify(key);
+    Assertions.assertEquals(new String(name, StandardCharsets.UTF_8), result.getIssuedTo());
+  }
+
   @Test
   void testTruncatedPayloadThrows() throws Exception {
-    // Cut the payload short so the issuedTo name is missing
+    // Cut the payload short so the issuedTo name is missing.
+    // The split uses nameLen from byte 28 (still 9), so the deterministic split at position 38
+    // pulls 5 signature bytes into the "payload", causing signature verification to fail.
+    // The key is still correctly rejected — INVALID_SIGNATURE is the expected outcome.
     byte[] full = TestLicensePayload.buildTestPayload();
     byte[] truncated = new byte[full.length - 5];
     System.arraycopy(full, 0, truncated, 0, truncated.length);
     String key = TestKeyPairUtil.buildKey(truncated);
     LicenseException ex =
         Assertions.assertThrows(LicenseException.class, () -> VERIFIER.verify(key));
-    Assertions.assertEquals(LicenseException.ErrorCode.INVALID_FORMAT, ex.getErrorCode());
+    Assertions.assertEquals(LicenseException.ErrorCode.INVALID_SIGNATURE, ex.getErrorCode());
   }
 }

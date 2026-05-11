@@ -51,26 +51,21 @@ class TestLicenseNodeMapper {
   }
 
   @Test
-  void testUpsertCountHeartbeatDelete() {
-    long now = System.currentTimeMillis();
-    long staleThreshold = now - 1000L;
+  void testUpsertCountDelete() {
+    // 1 ms interval: only rows with heartbeat older than 1 ms are pruned — fresh inserts survive.
+    long staleIntervalMs = 1L;
 
     SessionUtils.doMultipleWithCommit(
         () ->
             SessionUtils.doWithoutCommit(
-                LicenseNodeMapper.class, m -> m.deleteStaleNodes(staleThreshold)),
-        () ->
-            SessionUtils.doWithoutCommit(
-                LicenseNodeMapper.class, m -> m.upsertNode("node-1", now, now)),
+                LicenseNodeMapper.class, m -> m.deleteStaleNodes(staleIntervalMs)),
+        () -> SessionUtils.doWithoutCommit(LicenseNodeMapper.class, m -> m.upsertNode("node-1")),
         () -> {
           int count =
               SessionUtils.getWithoutCommit(
                   LicenseNodeMapper.class, LicenseNodeMapper::countActiveNodes);
           Assertions.assertEquals(1, count);
         });
-
-    SessionUtils.doWithCommit(
-        LicenseNodeMapper.class, m -> m.updateHeartbeat("node-1", now + 1000));
 
     SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode("node-1"));
 
@@ -81,17 +76,101 @@ class TestLicenseNodeMapper {
   }
 
   @Test
-  void testStaleNodePurge() {
-    long now = System.currentTimeMillis();
-    SessionUtils.doWithCommit(
-        LicenseNodeMapper.class, m -> m.upsertNode("stale-node", now - 100_000, now - 100_000));
+  void testRankNode() {
+    // Insert three nodes — ranks determined by node_id tie-breaker (rank-a < rank-b < rank-c)
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("rank-a"));
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("rank-b"));
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("rank-c"));
 
-    long staleThreshold = now - 50_000;
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteStaleNodes(staleThreshold));
+    int rankA =
+        SessionUtils.doWithCommitAndFetchResult(LicenseNodeMapper.class, m -> m.rankNode("rank-a"));
+    int rankB =
+        SessionUtils.doWithCommitAndFetchResult(LicenseNodeMapper.class, m -> m.rankNode("rank-b"));
+    int rankC =
+        SessionUtils.doWithCommitAndFetchResult(LicenseNodeMapper.class, m -> m.rankNode("rank-c"));
 
-    int count =
+    Assertions.assertEquals(1, rankA);
+    Assertions.assertEquals(2, rankB);
+    Assertions.assertEquals(3, rankC);
+
+    // Cleanup
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode("rank-a"));
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode("rank-b"));
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode("rank-c"));
+  }
+
+  /** ON DUPLICATE KEY UPDATE path: upserting the same nodeId twice must not create a second row. */
+  @Test
+  void testUpsertOnDuplicateKeyDoesNotCreateDuplicateRow() {
+    int before =
         SessionUtils.doWithCommitAndFetchResult(
             LicenseNodeMapper.class, LicenseNodeMapper::countActiveNodes);
-    Assertions.assertEquals(0, count);
+
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("dup-node"));
+    int afterFirst =
+        SessionUtils.doWithCommitAndFetchResult(
+            LicenseNodeMapper.class, LicenseNodeMapper::countActiveNodes);
+    Assertions.assertEquals(before + 1, afterFirst);
+
+    // Second upsert with the same nodeId — count must not increase
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("dup-node"));
+    int afterSecond =
+        SessionUtils.doWithCommitAndFetchResult(
+            LicenseNodeMapper.class, LicenseNodeMapper::countActiveNodes);
+    Assertions.assertEquals(before + 1, afterSecond);
+
+    // Cleanup
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode("dup-node"));
+  }
+
+  /** rankNode must return 1 when the node is the only one in the table. */
+  @Test
+  void testRankNodeSingleNode() {
+    // Use a nodeId that sorts after any node left by other tests, so rank = total count
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("zzz-solo"));
+
+    int total =
+        SessionUtils.doWithCommitAndFetchResult(
+            LicenseNodeMapper.class, LicenseNodeMapper::countActiveNodes);
+    int rank =
+        SessionUtils.doWithCommitAndFetchResult(
+            LicenseNodeMapper.class, m -> m.rankNode("zzz-solo"));
+    Assertions.assertEquals(total, rank);
+
+    // Cleanup
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode("zzz-solo"));
+  }
+
+  /** rankNode tie-breaker: nodes with the same registered_at are ordered by node_id. */
+  @Test
+  void testRankNodeTieBreaker() {
+    // Insert two nodes in quick succession — they may share the same DB-side second timestamp.
+    // The tie-breaker on node_id must still produce distinct, correct ranks.
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("tie-aaa"));
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("tie-zzz"));
+
+    int rankAaa =
+        SessionUtils.doWithCommitAndFetchResult(
+            LicenseNodeMapper.class, m -> m.rankNode("tie-aaa"));
+    int rankZzz =
+        SessionUtils.doWithCommitAndFetchResult(
+            LicenseNodeMapper.class, m -> m.rankNode("tie-zzz"));
+
+    // tie-aaa sorts before tie-zzz, so its rank must be lower
+    Assertions.assertTrue(rankAaa < rankZzz);
+    // ranks must be distinct
+    Assertions.assertNotEquals(rankAaa, rankZzz);
+
+    // Cleanup
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode("tie-aaa"));
+    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode("tie-zzz"));
+  }
+
+  @Test
+  void testRankNodeReturnsZeroWhenNodeAbsent() {
+    int rank =
+        SessionUtils.doWithCommitAndFetchResult(
+            LicenseNodeMapper.class, m -> m.rankNode("nonexistent-node-xyz-12345"));
+    Assertions.assertEquals(0, rank);
   }
 }

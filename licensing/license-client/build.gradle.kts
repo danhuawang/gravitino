@@ -20,6 +20,7 @@ dependencies {
 
   implementation(libs.bundles.jersey)
   implementation(libs.bundles.log4j)
+  implementation(libs.commons.lang3)
   implementation(libs.guava)
   implementation(libs.jackson.annotations)
   implementation(libs.jackson.databind)

@@ -15,6 +15,7 @@ dependencies {
   implementation(project(":common"))
   implementation(project(":server"))
   implementation(project(":server-common"))
+  implementation(project(":licensing:license-client"))
 
   implementation(project(":common-extension"))
   implementation(project(":core-extension"))

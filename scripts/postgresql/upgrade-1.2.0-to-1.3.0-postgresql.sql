@@ -1,7 +1,7 @@
 --
 -- Licensed to the Apache Software Foundation (ASF) under one
--- or more contributor license agreements.  See the NOTICE file--
---  distributed with this work for additional information
+-- or more contributor license agreements.  See the NOTICE file
+-- distributed with this work for additional information
 -- regarding copyright ownership.  The ASF licenses this file
 -- to you under the Apache License, Version 2.0 (the
 -- "License"). You may not use this file except in compliance
@@ -73,6 +73,6 @@ CREATE TABLE IF NOT EXISTS license_nodes (
 );
 
 COMMENT ON TABLE license_nodes IS 'tracks active Gravitino nodes for license enforcement';
-COMMENT ON COLUMN license_nodes.node_id IS 'node identifier from gravitino.datastrato.license.nodeId';
+COMMENT ON COLUMN license_nodes.node_id IS 'unique node identifier';
 COMMENT ON COLUMN license_nodes.registered_at IS 'epoch millis when node first registered';
 COMMENT ON COLUMN license_nodes.last_heartbeat IS 'epoch millis of last heartbeat';

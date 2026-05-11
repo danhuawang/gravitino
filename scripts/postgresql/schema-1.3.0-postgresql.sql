@@ -995,6 +995,6 @@ CREATE TABLE IF NOT EXISTS license_nodes (
 );
 
 COMMENT ON TABLE license_nodes IS 'tracks active Gravitino nodes for license enforcement';
-COMMENT ON COLUMN license_nodes.node_id IS 'node identifier from gravitino.datastrato.license.nodeId';
+COMMENT ON COLUMN license_nodes.node_id IS 'unique node identifier';
 COMMENT ON COLUMN license_nodes.registered_at IS 'epoch millis when node first registered';
 COMMENT ON COLUMN license_nodes.last_heartbeat IS 'epoch millis of last heartbeat';

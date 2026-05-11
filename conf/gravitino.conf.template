@@ -153,3 +153,24 @@ gravitino.datastrato.search.storage.impl = memory
 # Search listener configuration
 gravitino.eventListener.names = search
 gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener
+
+# ── Gravitino Enterprise License ─────────────────────────────────────────────
+# Required: the GRAV-... license key string issued by Datastrato.
+# Can also be set via the GRAVITINO_LICENSE_KEY environment variable (env var takes precedence).
+# The server will not start without a valid key.
+#gravitino.datastrato.license.key =
+
+# How often the periodic expiry check runs (hours). Default: 24.
+#gravitino.datastrato.license.checkIntervalHours = 24
+
+# How often the node heartbeat and maxNodes enforcement check run (minutes). Default: 5.
+#gravitino.datastrato.license.nodeHeartbeatIntervalMinutes = 5
+
+# Minutes after which a node with no heartbeat is considered stale and removed. Default: 15.
+#gravitino.datastrato.license.nodeStaleMinutes = 15
+
+# Start daily warnings this many days before the license expires. Default: 30.
+#gravitino.datastrato.license.warnDaysBeforeExpiry = 30
+
+# URL shown in expiry warnings and the REST status endpoint. Default: https://datastrato.ai/renew
+#gravitino.datastrato.license.renewalContactUrl = https://datastrato.ai/renew

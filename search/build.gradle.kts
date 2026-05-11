@@ -15,6 +15,7 @@ dependencies {
   implementation(project(":core"))
   implementation(project(":common"))
   implementation(project(":server-common"))
+  implementation(project(":licensing:license-client"))
   antlr(libs.antlr4)
   implementation(libs.antlr4.runtime)
 
