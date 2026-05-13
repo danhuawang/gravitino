@@ -47,7 +47,7 @@ dependencies {
 // The public key is NOT committed to this repo — it is fetched from a dedicated private GitHub repo.
 // Required env vars (set in CI):
 //   LICENSE_PUBLIC_KEY_URL — raw GitHub URL, e.g.
-//     https://raw.githubusercontent.com/datastrato/gravitino-license-keys/main/gravitino-master.pub
+//     https://raw.githubusercontent.com/datastrato/enterprise-license-keys/main/test/gravitino-master.pub
 //   GITHUB_TOKEN           — PAT or GitHub App token with read access to the key repo
 //                            (auto-injected in GitHub Actions)
 // For local development, tests use in-memory key pairs (TestKeyPairUtil) and do not need this key.
