@@ -46,6 +46,7 @@ import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.PartitionDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
+import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
 import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.listener.EventBus;
@@ -177,6 +178,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public PartitionDispatcher partitionDispatcher() {
     return GravitinoEnv.getInstance().partitionDispatcher();
+  }
+
+  @Override
+  public ViewDispatcher viewDispatcher() {
+    return GravitinoEnv.getInstance().viewDispatcher();
   }
 
   @Override

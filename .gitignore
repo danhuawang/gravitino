@@ -64,7 +64,7 @@ web/.next
 
 .venv/
 .worktrees/
-.claude
+.claude/settings.local.json
 
 # Generated at build time by downloadPublicKey task
 licensing/license-client/src/main/resources/gravitino-master.pub
