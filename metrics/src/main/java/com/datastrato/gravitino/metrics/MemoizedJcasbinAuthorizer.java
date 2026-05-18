@@ -147,7 +147,7 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
   }
 
   @Override
-  public boolean isMetalakeUser(String metalake) {
+  public boolean isMetalakeUser(String metalake, AuthorizationRequestContext requestContext) {
     // since this authorizer is used for metric job to filter metadata, so it should not reach here.
     throw new UnsupportedOperationException("Unsupported operation.");
   }
