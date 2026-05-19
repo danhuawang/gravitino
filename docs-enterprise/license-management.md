@@ -204,7 +204,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 
 ```bash
 license-tools sign \
-  --kms-key-version projects/{{GCP_PROJECT}}/locations/global/keyRings/{{KEY_RING}}/cryptoKeys/{{KEY_NAME}}/cryptoKeyVersions/{{KEY_VERSION}} \
+  --kms-key-version projects/{{GCP_PROJECT}}/locations/us-central1/keyRings/{{KEY_RING}}/cryptoKeys/{{KEY_NAME}}/cryptoKeyVersions/{{KEY_VERSION}} \
   --issued-to "{{CUSTOMER_NAME}}" \
   --expires {{YYYY-MM-DD}} \
   --grace-days 30 \
