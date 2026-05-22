@@ -37,13 +37,21 @@ else
   echo "Namespace ${NAMESPACE} does not exist, skipping"
 fi
 
-# 2. Delete kind cluster (if --full)
+# 2. Delete kind cluster(s) (if --full)
+#
+# We delete every cluster whose name starts with "${CLUSTER_NAME}" so that
+# leftover clusters from older script versions (e.g. gravitino-e2e-env1-simple-auth)
+# or forked environments don't keep host ports (30080/30083/30090) bound and
+# block the next `setup-kind-env.sh` run.
 if [[ "${FULL_CLEANUP}" == "true" ]]; then
-  if kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
-    echo "=== Deleting kind cluster: ${CLUSTER_NAME} ==="
-    kind delete cluster --name "${CLUSTER_NAME}"
+  MATCHING_CLUSTERS=$(kind get clusters 2>/dev/null | grep -E "^${CLUSTER_NAME}(\$|-)" || true)
+  if [[ -n "${MATCHING_CLUSTERS}" ]]; then
+    while IFS= read -r cluster; do
+      echo "=== Deleting kind cluster: ${cluster} ==="
+      kind delete cluster --name "${cluster}"
+    done <<< "${MATCHING_CLUSTERS}"
   else
-    echo "Kind cluster ${CLUSTER_NAME} does not exist, skipping"
+    echo "No kind clusters matching '${CLUSTER_NAME}*' found, skipping"
   fi
 fi
 
@@ -63,7 +71,7 @@ fi
 echo ""
 echo "=== Cleanup complete ==="
 if [[ "${FULL_CLEANUP}" == "true" ]]; then
-  echo "✅ Namespace and kind cluster deleted"
+  echo "✅ Namespace and matching kind cluster(s) deleted"
 else
   echo "✅ Namespace deleted (kind cluster preserved)"
   echo "To delete the cluster, run: bash cleanup.sh --full"

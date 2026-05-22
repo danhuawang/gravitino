@@ -19,11 +19,16 @@
 #   COMPONENTS        – comma-separated list of optional components (alternative to --component flags)
 #
 # Supported optional components:
-#   hive   – Hive Metastore (NodePort 30083)
+#   hive       – Hive Metastore (NodePort 30083)
+#   keycloak   – Keycloak v26.0.7 (NodePort 30080)
 #
 # NodePorts exposed:
 #   30090  – Gravitino API (always)
 #   30083  – Hive Metastore (if enabled)
+#   30080  – Keycloak HTTP (if enabled)
+#
+# Extra environment variables for the keycloak component:
+#   KEYCLOAK_ADMIN_PASSWORD  – admin password (default: admin)
 #
 set -euo pipefail
 
@@ -86,7 +91,8 @@ K8S_DIR="${SCRIPT_DIR}/../k8s"
 echo "=== Components to deploy: Gravitino (core)${COMPONENT_LIST[*]:+, ${COMPONENT_LIST[*]}} ==="
 
 # ── Image tag ────────────────────────────────────────────────────────────────
-KIND_IMAGE_TAG="${KIND_IMAGE_TAG:-e2e-$(date +%s)-${RANDOM}}"
+#KIND_IMAGE_TAG="${KIND_IMAGE_TAG:-e2e-$(date +%s)-${RANDOM}}"
+KIND_IMAGE_TAG=e2e-1779334977-18495
 echo "Using Gravitino image tag: ${KIND_IMAGE_TAG}"
 
 # ── Build extra port mappings based on enabled components ─────────────────────
@@ -95,6 +101,12 @@ if component_enabled "hive"; then
   EXTRA_PORT_MAPPINGS="${EXTRA_PORT_MAPPINGS}
   - containerPort: 30083
     hostPort: 30083
+    protocol: TCP"
+fi
+if component_enabled "keycloak"; then
+  EXTRA_PORT_MAPPINGS="${EXTRA_PORT_MAPPINGS}
+  - containerPort: 30080
+    hostPort: 30080
     protocol: TCP"
 fi
 
@@ -190,6 +202,41 @@ if [[ -n "${GRAVITINO_LICENSE_KEY:-}" ]]; then
   )
 fi
 
+# ── Per-environment Helm overrides ──────────────────────────────────────────
+# env2-oauth2-auth: Gravitino validates Keycloak JWTs via JWKS. The values
+# file leaves serverUri/authority/jwksUri empty so they can be wired here
+# against the in-cluster Keycloak service deployed via the `keycloak`
+# component. The IRC dynamic-config-provider metalake is also overridden so
+# tests can target a different metalake than the values-file default.
+case "${ENV_NAME}" in
+  env2-oauth2-auth)
+    if ! component_enabled "keycloak"; then
+      echo "ERROR: ENV_NAME=${ENV_NAME} requires the 'keycloak' component (use --component keycloak)" >&2
+      exit 1
+    fi
+
+    # Both Gravitino (running inside the cluster) and the test JVM (running on
+    # the host) must agree on the Keycloak base URL so that the issuer (`iss`)
+    # claim Keycloak stamps into JWTs matches `authenticator.oauth.authority`
+    # on the server. We use the host-reachable NodePort URL on both sides:
+    # the kind control-plane node can reach its own NodePort, and the host can
+    # reach Keycloak the same way.
+    NODE_IP_FOR_KEYCLOAK="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
+    KEYCLOAK_PUBLIC_BASE="http://${NODE_IP_FOR_KEYCLOAK}:30080"
+    OAUTH2_SERVER_URI="${OAUTH2_SERVER_URI:-${KEYCLOAK_PUBLIC_BASE}}"
+    OAUTH2_AUTHORITY="${OAUTH2_AUTHORITY:-${KEYCLOAK_PUBLIC_BASE}/realms/myrealm}"
+    OAUTH2_JWKS_URI="${OAUTH2_JWKS_URI:-${KEYCLOAK_PUBLIC_BASE}/realms/myrealm/protocol/openid-connect/certs}"
+    METALAKE_NAME="${GRAVITINO_E2E_METALAKE:-test}"
+
+    HELM_SET_ARGS+=(
+      --set "authenticator.oauth.serverUri=${OAUTH2_SERVER_URI}"
+      --set "authenticator.oauth.authority=${OAUTH2_AUTHORITY}"
+      --set "authenticator.oauth.jwksUri=${OAUTH2_JWKS_URI}"
+      --set "icebergRest.dynamicConfigProvider.metalake=${METALAKE_NAME}"
+    )
+    ;;
+esac
+
 helm upgrade --install "gravitino-${ENV_NAME}" \
   "${REPO_ROOT}/dev/charts/gravitino" \
   --namespace "${NAMESPACE}" \
@@ -227,6 +274,28 @@ if component_enabled "hive"; then
   kubectl rollout status deployment/hive-metastore -n "${NAMESPACE}" --timeout=3m
 fi
 
+# ── Keycloak (per-namespace, ephemeral) ───────────────────────────────────────
+# We deploy a dedicated Keycloak instance into the test namespace so tests
+# never share state with another env / a previous run. `start-dev` uses an
+# in-memory H2 database, so any Pod restart already wipes realm/user/group
+# data. With --reset we additionally recreate the Deployment to force a
+# fresh Pod even if the Deployment spec is otherwise unchanged.
+if component_enabled "keycloak"; then
+  echo "=== Deploying Keycloak (ephemeral, namespace=${NAMESPACE}) ==="
+  KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+
+  if [[ "${RESET}" == "true" ]]; then
+    echo "Reset requested: deleting any existing Keycloak deployment in ${NAMESPACE}"
+    kubectl delete deployment/keycloak -n "${NAMESPACE}" --ignore-not-found=true
+    kubectl delete service/keycloak -n "${NAMESPACE}" --ignore-not-found=true
+  fi
+
+  sed -e "s|\${NAMESPACE}|${NAMESPACE}|g" \
+      -e "s|\${KEYCLOAK_ADMIN_PASSWORD}|${KEYCLOAK_ADMIN_PASSWORD}|g" \
+      "${K8S_DIR}/keycloak-deployment.yaml" | kubectl apply --validate=false -f -
+  kubectl rollout status deployment/keycloak -n "${NAMESPACE}" --timeout=5m
+fi
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Export connection info
 # ══════════════════════════════════════════════════════════════════════════════
@@ -240,10 +309,32 @@ if component_enabled "hive"; then
   export GRAVITINO_E2E_HIVE_URI="thrift://${NODE_IP}:30083"
 fi
 
+if component_enabled "keycloak"; then
+  export GRAVITINO_E2E_KEYCLOAK_URI="http://${NODE_IP}:30080"
+  export GRAVITINO_E2E_KEYCLOAK_TOKEN_URI="http://${NODE_IP}:30080/realms/myrealm/protocol/openid-connect/token"
+
+  # OAuth2 wiring consumed by the test JVM (e.g. GroupBasedAccessControlOAuth2IT).
+  # Defaults match the credentials baked into datastratosandbox/baseimage:keycloak-v26.0.7
+  # (realm `myrealm`, client `postman-client` with the canonical test fixture secret),
+  # which the suite uses for the bootstrap admin client_credentials grant.
+  export OAUTH2_SERVER_URI="http://${NODE_IP}:30080"
+  export OAUTH2_REALM="${OAUTH2_REALM:-myrealm}"
+  export OAUTH2_CLIENT_ID="${OAUTH2_CLIENT_ID:-postman-client}"
+  export OAUTH2_CLIENT_SECRET="${OAUTH2_CLIENT_SECRET:-JKaXEyxp1TiTeVf5ggDSjdTiVixCxj37}"
+  export OAUTH2_SCOPE="${OAUTH2_SCOPE:-openid profile email}"
+  export OAUTH2_TOKEN_PATH="${OAUTH2_TOKEN_PATH:-realms/${OAUTH2_REALM}/protocol/openid-connect/token}"
+
+  # Master-realm bootstrap admin used by tests that need to call the Keycloak Admin REST API
+  # (group/user lifecycle). The realm-level `postman-client` service account has no
+  # realm-management roles in the seeded image, so admin operations require master/admin-cli.
+  export OAUTH2_ADMIN_USER="${OAUTH2_ADMIN_USER:-admin}"
+  export OAUTH2_ADMIN_PASSWORD="${OAUTH2_ADMIN_PASSWORD:-${KEYCLOAK_ADMIN_PASSWORD:-admin}}"
+fi
+
 echo ""
 echo "=== Connection info ==="
-env | grep '^GRAVITINO_E2E_' | sort
+env | grep -E '^(GRAVITINO_E2E_|OAUTH2_)' | sort
 
 if [[ -n "${GITHUB_ENV:-}" ]]; then
-  env | grep '^GRAVITINO_E2E_' >> "${GITHUB_ENV}"
+  env | grep -E '^(GRAVITINO_E2E_|OAUTH2_)' >> "${GITHUB_ENV}"
 fi
