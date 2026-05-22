@@ -1,0 +1,61 @@
+name: E2E Test based on local k8s
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "branch-*", "internal-*" ]
+  pull_request:
+    types: [ labeled ]
+    branches: [ "main", "branch-*", "internal-*" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Path filter ─────────────────────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
+        id: filter
+        with:
+          filters: |
+            source_changes:
+              - .github/**
+              - api/**
+              - authorization-jdbc-enterprise/**
+              - catalogs/**
+              - clients/client-java/**
+              - common/**
+              - conf/**
+              - core/**
+              - dev/charts/gravitino/**
+              - iceberg/**
+              - qa/gravitino-service-e2e-test/**
+              - qa/k8s/**
+              - qa/scripts/**
+              - server/**
+              - server-common/**
+              - build.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+
+  # ── Gravitino Service E2E: Hive + Simple Auth ───────────────────────────────
+  GravitinoE2E-Env1-Hive-SimpleAuth:
+    needs: changes
+    if: needs.changes.outputs.source_changes == 'true'
+    uses: ./.github/workflows/gravitino-service-e2e-test-action.yml
+    with:
+      env-name: env1-simple-auth
+      components: hive
+      test-scenarios: function
+    secrets: inherit

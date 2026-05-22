@@ -1,0 +1,133 @@
+name: Gravitino Service E2E Test Action
+
+on:
+  workflow_call:
+    inputs:
+      env-name:
+        required: true
+        type: string
+        description: 'Environment name, e.g. env1-simple-auth'
+      components:
+        required: false
+        type: string
+        default: ''
+        description: >
+          Comma-separated list of optional components to deploy,
+          e.g. "hive". If empty, only Gravitino core is deployed.
+          Supported components: hive.
+      test-scenarios:
+        required: true
+        type: string
+        description: >
+          Comma-separated list of test scenario directory names under
+          org.apache.gravitino.integration.test.*, e.g. "function,catalog".
+          Must not be empty since each environment only supports specific scenarios.
+
+jobs:
+  GravitinoE2E:
+    name: ${{ inputs.env-name }}
+    runs-on: [ self-hosted, linux, x64, ubuntu-latest, 2xlarge ]
+    timeout-minutes: 90
+    env:
+      ENV_NAME: ${{ inputs.env-name }}
+      # Enterprise license
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@15650b3ad78fff148532a140b8a4c821796b2d7b
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.27.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Install yq
+        run: |
+          curl -Lo ./yq https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64
+          chmod +x ./yq
+          sudo mv ./yq /usr/local/bin/yq
+
+      - name: Start local Docker registry
+        run: |
+          if ! docker ps | grep -q kind-registry; then
+            docker run -d --restart=always -p 5001:5000 --name kind-registry registry:2
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          docker buildx use default
+
+      - name: Set up kind cluster with local registry
+        run: |
+          chmod +x qa/scripts/setup-kind-env.sh
+          qa/scripts/setup-kind-env.sh --reset
+        env:
+          CLUSTER_NAME: gravitino-e2e-${{ inputs.env-name }}
+          NAMESPACE: gravitino-e2e-${{ inputs.env-name }}
+          COMPONENTS: ${{ inputs.components }}
+
+      - name: Run E2E tests
+        run: |
+          TEST_SCENARIOS="${{ inputs.test-scenarios }}"
+          if [ -z "${TEST_SCENARIOS}" ]; then
+            echo "ERROR: test-scenarios must not be empty. Each environment only supports specific test scenarios."
+            exit 1
+          fi
+          TEST_ARGS=""
+          IFS=',' read -ra SCENARIOS <<< "${TEST_SCENARIOS}"
+          for scenario in "${SCENARIOS[@]}"; do
+            scenario=$(echo "${scenario}" | xargs)
+            TEST_ARGS="${TEST_ARGS} --tests org.apache.gravitino.integration.test.${scenario}.*"
+          done
+          ./gradlew :qa:gravitino-service-e2e-test:test \
+            ${TEST_ARGS} \
+            -PskipDockerTests=false
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          NAMESPACE="gravitino-e2e-${{ inputs.env-name }}"
+          mkdir -p /tmp/gravitino-e2e-logs
+          kubectl logs -n "${NAMESPACE}" -l app=gravitino-helm --tail=500 > /tmp/gravitino-e2e-logs/gravitino.log 2>&1 || true
+          kubectl logs -n "${NAMESPACE}" -l app=hive-metastore --tail=200 > /tmp/gravitino-e2e-logs/hive.log 2>&1 || true
+          # Copy log files from Gravitino container
+          GRAVITINO_POD=$(kubectl get pods -n "${NAMESPACE}" -l app=gravitino-helm -o jsonpath='{.items[0].metadata.name}') || true
+          if [ -n "${GRAVITINO_POD}" ]; then
+            kubectl cp "${NAMESPACE}/${GRAVITINO_POD}:/opt/gravitino/logs/gravitino-server.log" /tmp/gravitino-e2e-logs/gravitino-server.log 2>/dev/null || true
+            kubectl cp "${NAMESPACE}/${GRAVITINO_POD}:/opt/gravitino/logs/gravitino-server.out" /tmp/gravitino-e2e-logs/gravitino-server.out 2>/dev/null || true
+            kubectl cp "${NAMESPACE}/${GRAVITINO_POD}:/opt/gravitino/logs/gravitino_audit.log" /tmp/gravitino-e2e-logs/gravitino_audit.log 2>/dev/null || true
+          fi
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: gravitino-e2e-${{ inputs.env-name }}-reports
+          path: |
+            qa/gravitino-service-e2e-test/build/reports/
+            qa/gravitino-service-e2e-test/build/test-results/
+            /tmp/gravitino-e2e-logs/
