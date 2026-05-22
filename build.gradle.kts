@@ -29,6 +29,7 @@ import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.internal.hash.ChecksumService
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.kotlin.dsl.support.serviceOf
+import org.nosphere.apache.rat.RatTask
 import java.io.IOException
 import java.util.Locale
 
@@ -161,6 +162,21 @@ allprojects {
           "Remove Testcontainers shading",
           "import\\s+org\\.testcontainers\\.shaded\\.([^;]+);",
           "import $1;"
+        )
+        replaceRegex(
+          "Use Guava Sets instead of shadowed Avro Sets",
+          "import\\s+org\\.apache\\.avro\\.shaded\\.com\\.google\\.common\\.collect\\.Sets;",
+          "import com.google.common.collect.Sets;"
+        )
+        replaceRegex(
+          "Use Guava Maps instead of shadowed Avro Maps",
+          "import\\s+org\\.apache\\.avro\\.shaded\\.com\\.google\\.common\\.collect\\.Maps;",
+          "import com.google.common.collect.Maps;"
+        )
+        replaceRegex(
+          "Use Guava Lists instead of shadowed Avro Lists",
+          "import\\s+org\\.apache\\.avro\\.shaded\\.com\\.google\\.common\\.collect\\.Lists;",
+          "import com.google.common.collect.Lists;"
         )
 
         targetExclude("**/build/**", "**/.pnpm/***")
@@ -539,7 +555,7 @@ subprojects {
     }
   }
 
-  if (project.name in listOf("web", "web-v2", "docs")) {
+  if (project.name in listOf("web", "web-v2", "docs", "docs-enterprise")) {
     plugins.apply(NodePlugin::class)
     configure<NodeExtension> {
       version.set("20.19.0")
@@ -554,6 +570,7 @@ subprojects {
     publications {
       create<MavenPublication>("MavenJava") {
         if (project.name == "docs" ||
+          project.name == "docs-enterprise" ||
           project.name == "integration-test" ||
           project.name == "integration-test-common" ||
           project.name == "web"
@@ -682,8 +699,131 @@ subprojects {
   }
 }
 
+val datastratoLicenseCheckIncludes = listOf(
+  "authorization-jdbc-enterprise/**",
+  "common-extension/**",
+  "core-extension/**",
+  "datastrato-server/**",
+  "docs-enterprise/**",
+  "lineage-extension/**",
+  "metrics/**",
+  "qa/**",
+  "search/**",
+  "test/search-integration-test/**",
+  "test/test-common/**",
+  "bin/index.sh.template",
+  "bin/gravitino-metrics-service.sh.template",
+  "bin/opensearch/**",
+  "conf/gravitino-metrics-server.conf.template",
+  "catalogs/catalog-jdbc-oracle/**/*",
+  "integration-test-common/src/test/java/org/apache/gravitino/integration/test/container/OracleContainer.java",
+  "catalogs/catalog-jdbc-bigquery/**/*",
+  "catalogs/catalog-jdbc-maxcompute/**/*",
+  "catalogs/catalog-jdbc-sqlserver/**/*",
+  "licensing/**"
+)
+
+val printRatFailures by tasks.registering {
+  group = "verification"
+  description = "Prints Apache Rat files with unapproved licenses in CI-friendly text."
+
+  mustRunAfter(allprojects.map { it.tasks.withType<Test>() })
+
+  val ratTask = tasks.named<RatTask>("rat")
+  val ratReport = ratTask.flatMap { it.reportDir.file("rat-report.xml") }
+  inputs.file(ratReport).optional()
+
+  doLast {
+    val reportFile = ratReport.get().asFile
+    if (!reportFile.isFile) {
+      return@doLast
+    }
+
+    fun unescapeXml(value: String): String =
+      value
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+
+    fun displayName(resourceName: String): String =
+      runCatching { file(resourceName).relativeTo(rootDir).path }.getOrElse { resourceName }
+
+    fun parseResource(resourceXml: String): String? {
+      if (!resourceXml.contains("<license-approval name='false'") &&
+        !resourceXml.contains("<license-approval name=\"false\"")
+      ) {
+        return null
+      }
+      val resourceName =
+        Regex("<resource\\s+name=(['\"])(.*?)\\1").find(resourceXml)?.groupValues?.get(2)
+          ?: return null
+      return displayName(unescapeXml(resourceName))
+    }
+
+    val unapprovedFiles = runCatching {
+      val files = mutableListOf<String>()
+      val buffer = StringBuilder()
+      val chunk = CharArray(64 * 1024)
+
+      reportFile.bufferedReader().use { reader ->
+        while (true) {
+          val read = reader.read(chunk)
+          if (read < 0) {
+            break
+          }
+          buffer.append(chunk, 0, read)
+
+          while (true) {
+            val resourceStart = buffer.indexOf("<resource ")
+            if (resourceStart < 0) {
+              if (buffer.length > 1024) {
+                buffer.delete(0, buffer.length - 1024)
+              }
+              break
+            }
+
+            val resourceEnd = buffer.indexOf("</resource>", resourceStart)
+            if (resourceEnd < 0) {
+              if (resourceStart > 0) {
+                buffer.delete(0, resourceStart)
+              }
+              break
+            }
+
+            val resourceCloseEnd = resourceEnd + "</resource>".length
+            parseResource(buffer.substring(resourceStart, resourceCloseEnd))?.let { files.add(it) }
+            buffer.delete(0, resourceCloseEnd)
+          }
+        }
+      }
+
+      parseResource(buffer.toString())?.let { files.add(it) }
+      files
+    }.getOrElse {
+      logger.warn("Unable to parse Apache Rat report at ${reportFile.toURI()}: ${it.message}")
+      emptyList()
+    }
+
+    if (unapprovedFiles.isNotEmpty()) {
+      val maxPrintedFiles = 200
+      val sortedFiles = unapprovedFiles.distinct().sorted()
+      logger.error(
+        "Apache Rat found ${sortedFiles.size} file(s) with unapproved licenses. " +
+          "Add a license header or update the Rat exclusions if the file is intentionally exempt:"
+      )
+      sortedFiles.take(maxPrintedFiles).forEach { logger.error("  - $it") }
+      if (sortedFiles.size > maxPrintedFiles) {
+        logger.error("  ... ${sortedFiles.size - maxPrintedFiles} more file(s) omitted")
+      }
+    }
+  }
+}
+
 tasks.rat {
   approvedLicense("Apache License Version 2.0")
+  finalizedBy(printRatFailures)
 
   // Set input directory to that of the root project instead of the CWD. This
   // makes .gitignore rules (added below) work properly.
@@ -747,8 +887,21 @@ tasks.rat {
     "web-v2/web/src/lib/icons/svg/**/*.svg",
     "web-v2/web/src/lib/utils/axios/**/*",
     "web-v2/web/src/types/axios.d.ts",
-    "web-v2/web/yarn.lock"
+    "web-v2/web/yarn.lock",
+    // Exclude node installation and npm cache directories created by docs/docs-enterprise tasks
+    "docs/.node/**",
+    "docs-enterprise/.node/**",
+    "docs/.npm-cache/**",
+    "docs-enterprise/.npm-cache/**",
+    // OSS docs are in docs/; markdown files don't need headers
+    "docs/**/*.md",
+    // Root-level markdown/documentation files
+    "design-docs",
+    "README.md"
+    // Datastrato short header format is verified by checkDatastratoLicenseHeaders.
   )
+  // Excludes files checked by checkDatastratoLicenseHeaders.
+  exclusions.addAll(datastratoLicenseCheckIncludes)
 
   // Add .gitignore excludes to the Apache Rat exclusion list.
   val gitIgnore = project(":").file(".gitignore")
@@ -764,7 +917,60 @@ tasks.rat {
   setExcludes(exclusions)
 }
 
-tasks.check.get().dependsOn(tasks.rat)
+tasks.register("checkDatastratoLicenseHeaders") {
+  group = "verification"
+  description = "Checks Datastrato header format for enterprise-owned files."
+
+  val supportedExtensions = setOf(
+    "java",
+    "scala",
+    "kt",
+    "kts",
+    "py",
+    "sh",
+    "template",
+    "conf"
+  )
+
+  doLast {
+    val filesToCheck = fileTree(rootDir) {
+      datastratoLicenseCheckIncludes.forEach { include(it) }
+      exclude(
+        "**/build/**",
+        "**/.gradle/**",
+        "**/.idea/**",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/.node/**"
+      )
+    }.files.filter { file ->
+      file.isFile &&
+        (supportedExtensions.contains(file.extension) || file.name in setOf("Dockerfile", "Jenkinsfile"))
+    }
+
+    val violations = mutableListOf<String>()
+    filesToCheck.forEach { file ->
+      val content = file.readText()
+      val hasCopyright =
+        Regex("Copyright\\s+\\d{4}\\s+Datastrato Pvt Ltd\\.")
+          .containsMatchIn(content)
+      val hasLicenseSentence =
+        content.contains("This software is licensed under the Apache License version 2.")
+      if (!hasCopyright || !hasLicenseSentence) {
+        violations.add(file.relativeTo(rootDir).path)
+      }
+    }
+
+    if (violations.isNotEmpty()) {
+      throw GradleException(
+        "Datastrato license header check failed for ${violations.size} file(s):\n" +
+          violations.sorted().joinToString("\n")
+      )
+    }
+  }
+}
+
+tasks.check.get().dependsOn(tasks.rat, tasks.named("checkDatastratoLicenseHeaders"))
 
 tasks.cyclonedxBom {
   setIncludeConfigs(listOf("runtimeClasspath"))
@@ -787,10 +993,10 @@ tasks {
         "copyCliLib",
         "copyJobsLib",
         ":authorizations:copyLibAndConfig",
+        ":authorization-jdbc-enterprise:copyLibAndConfig",
         ":iceberg:iceberg-rest-server:copyLibAndConfigs",
         ":lance:lance-rest-server:copyLibAndConfigs",
-        ":maintenance:optimizer:copyLibAndConfigs",
-        ":plugins:idp-basic:copyLibAndConfigs"
+        ":maintenance:optimizer:copyLibAndConfigs"
       )
     if (!skipWeb) {
       dependencies.add(":web:web:build")
@@ -1102,9 +1308,12 @@ tasks {
         !it.name.startsWith("trino-connector") &&
         it.name != "hadoop-common" &&
         it.name != "integration-test" &&
+        it.name != "docs" &&
+        it.name != "docs-enterprise" &&
         it.parent?.name != "bundles" &&
         it.parent?.name != "maintenance" &&
-        it.parent?.name != "plugins" &&
+        it.parent?.name != "test" &&
+        it.name != "license-tools" &&
         it.name != "mcp-server"
       ) {
         from(it.configurations.runtimeClasspath) {
@@ -1151,13 +1360,18 @@ tasks {
         !it.name.startsWith("optimizer") &&
         it.name != "hive-metastore-common" &&
         it.name != "docs" &&
+        it.name != "docs-enterprise" &&
         it.name != "hadoop-common" &&
         it.name != "web" &&
         it.name != "web-v2" &&
         it.parent?.name != "bundles" &&
         it.parent?.name != "plugins" &&
         it.parent?.name != "maintenance" &&
-        it.name != "mcp-server"
+        it.parent?.name != "test" &&
+        it.parent?.name != "licensing" &&
+        it.name != "licensing" &&
+        it.name != "mcp-server" &&
+        it.parent?.name != "qa"
       ) {
         dependsOn("${it.name}:build")
         from("${it.name}/build/libs") {
@@ -1175,9 +1389,12 @@ tasks {
       ":catalogs:catalog-fileset:copyLibAndConfig",
       ":catalogs:catalog-glue:copyLibAndConfig",
       ":catalogs:catalog-hive:copyLibAndConfig",
+      ":catalogs:catalog-jdbc-bigquery:copyLibAndConfig",
       ":catalogs:catalog-jdbc-doris:copyLibAndConfig",
+      ":catalogs:catalog-jdbc-maxcompute:copyLibAndConfig",
       ":catalogs:catalog-jdbc-mysql:copyLibAndConfig",
       ":catalogs:catalog-jdbc-postgresql:copyLibAndConfig",
+      ":catalogs:catalog-jdbc-sqlserver:copyLibAndConfig",
       ":catalogs:catalog-jdbc-starrocks:copyLibAndConfig",
       ":catalogs:catalog-kafka:copyLibAndConfig",
       ":catalogs:catalog-lakehouse-hudi:copyLibAndConfig",
@@ -1189,7 +1406,8 @@ tasks {
       ":catalogs:catalog-lakehouse-generic:copyLibAndConfig",
       ":catalogs-contrib:catalog-jdbc-hologres:copyLibAndConfig",
       ":catalogs-contrib:catalog-jdbc-oceanbase:copyLibAndConfig",
-      ":catalogs-contrib:catalog-jdbc-clickhouse:copyLibAndConfig"
+      ":catalogs-contrib:catalog-jdbc-clickhouse:copyLibAndConfig",
+      ":catalogs:catalog-jdbc-oracle:copyLibAndConfig"
     )
   }
 

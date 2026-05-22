@@ -1,0 +1,66 @@
+#
+# Copyright 2024 Datastrato Pvt Ltd.
+# This software is licensed under the Apache License version 2.
+#
+
+# Gravitino Helm values for E2E tests (Env 1:Simple Auth)
+
+# Use a single replica for deterministic e2e tests. With multiple replicas,
+# authorization cache (5s TTL) on the replica that didn't process the privilege
+# grant can cause stale reads, leading to flaky test failures.
+replicas: 1
+
+image:
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 9090
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 2Gi
+
+cache:
+  enabled: true
+  expireTimeInMs: 5000
+
+authorization:
+  enable: true
+  serviceAdmins: "admin"
+
+authenticators: simple
+
+audit:
+  enabled: true
+
+postgresql:
+  enabled: true
+  auth:
+    username: gravitino
+    password: gravitino
+    database: gravitino
+  primary:
+    resources:
+      limits:
+        memory: 1Gi
+      requests:
+        memory: 512Mi
+
+env:
+  - name: GRAVITINO_USE_WEB_V2
+    value: "true"
+
+additionalConfigItems:
+  gravitino.datastrato.search.storage.impl: memory
+  gravitino.datastrato.preview.jdbcUrl: "jdbc:trino://trino:8080"
+  gravitino.datastrato.preview.jdbcUsername: admin
+
+initScript: |
+  cp /tmp/conf/* ${GRAVITINO_HOME}/conf
+  echo "Start the Gravitino Server"
+  /bin/bash ${GRAVITINO_HOME}/bin/gravitino.sh start      
