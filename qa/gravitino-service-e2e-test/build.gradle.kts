@@ -23,6 +23,7 @@ dependencies {
   implementation(libs.slf4j.api)
   implementation(libs.commons.lang3)
 
+  testImplementation(project(":qa:e2e-common"))
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testRuntimeOnly(libs.junit.jupiter.engine)
@@ -99,6 +100,14 @@ configurations.testCompileClasspath {
   }
   exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
   exclude(group = "org.apache.logging.log4j", module = "log4j-layout-template-json")
+}
+
+// WIP test files that depend on Gravitino APIs not yet committed in this branch.
+// Excluded from compilation so the rest of the suite (e.g. GroupBasedAccessControlOAuth2IT)
+// can be built and run. Remove these excludes once the corresponding APIs land.
+tasks.withType<JavaCompile>().matching { it.name == "compileTestJava" }.configureEach {
+  exclude("**/authorization/group/GroupBasedAccessControlIT.java")
+  exclude("**/oauth2/trino-irc/**")
 }
 
 tasks.test {
