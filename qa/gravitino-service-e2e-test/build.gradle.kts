@@ -23,7 +23,6 @@ dependencies {
   implementation(libs.slf4j.api)
   implementation(libs.commons.lang3)
 
-  testImplementation(project(":qa:e2e-common"))
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testRuntimeOnly(libs.junit.jupiter.engine)
@@ -31,6 +30,7 @@ dependencies {
   testImplementation(libs.testcontainers.mysql)
   testImplementation(libs.testcontainers.postgresql)
 
+  // Spark dependencies for Spark function privilege tests
   // Exclude log4j from all Gravitino dependencies to avoid conflicts with Spark's log4j version
   testImplementation(project(":spark-connector:spark-common")) {
     exclude("org.apache.logging.log4j")
@@ -60,22 +60,24 @@ dependencies {
   }
   testImplementation("org.apache.spark:spark-catalyst_$scalaVersion:$sparkVersion")
   testImplementation("org.apache.spark:spark-core_$scalaVersion:$sparkVersion")
+
+  // spark-hive provides org.apache.spark.sql.hive.HiveSessionStateBuilder which
+  // SparkSession.Builder.enableHiveSupport() reflects on. Without this artifact
+  // the Spark privilege tests fail with "Hive classes are not found".
+  // Jersey is excluded because it conflicts with the Gravitino server's jersey
+  // already on this module's classpath.
   testImplementation("org.apache.spark:spark-hive_$scalaVersion:$sparkVersion") {
     exclude("org.glassfish.jersey.core")
     exclude("org.glassfish.jersey.containers")
     exclude("org.glassfish.jersey.inject")
   }
-  testImplementation("org.apache.kyuubi:kyuubi-spark-connector-hive_$scalaVersion:${libs.versions.kyuubi4spark.get()}")
-  testImplementation("org.apache.iceberg:iceberg-spark-runtime-3.5_$scalaVersion:${libs.versions.iceberg.get()}")
-  testImplementation("org.apache.iceberg:iceberg-aws:${libs.versions.iceberg.get()}")
-  testImplementation(libs.aws.s3)
-  testImplementation(libs.aws.sts)
-  testImplementation(libs.aws.kms)
-  testImplementation(libs.trino.jdbc)
 
+  // Add Spark runtime dependencies needed for Hive catalog support
+  testImplementation("org.apache.kyuubi:kyuubi-spark-connector-hive_$scalaVersion:${libs.versions.kyuubi4spark.get()}")
   testImplementation(project(":clients:client-java-runtime", configuration = "shadow"))
 }
 
+// Force Spark's log4j version for all test configurations to avoid conflicts
 configurations.testRuntimeClasspath {
   resolutionStrategy {
     force("org.apache.logging.log4j:log4j-api:2.17.2")
@@ -83,6 +85,7 @@ configurations.testRuntimeClasspath {
     force("org.apache.logging.log4j:log4j-slf4j-impl:2.17.2")
     force("org.apache.logging.log4j:log4j-1.2-api:2.17.2")
   }
+  // Exclude the new log4j2 binding that conflicts with Spark's log4j binding
   exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
   exclude(group = "org.apache.logging.log4j", module = "log4j-layout-template-json")
 }
@@ -106,6 +109,12 @@ tasks.test {
 
   useJUnitPlatform()
 
+  // Fork a fresh JVM per test class. Spark plugins (org.apache.spark.api.plugin.SparkPlugin)
+  // only initialize once per SparkContext, and SparkSession.close() + getOrCreate() does not
+  // reliably tear down and rebuild the context in local[*] mode. Without this, the first test
+  // that creates a SparkSession as a low-privilege user causes the GravitinoDriverPlugin to
+  // register zero catalogs, and that empty catalog state leaks into every subsequent test in
+  // the same JVM, manifesting as "Catalog hive_catalog does not support functions".
   forkEvery = 1
 
   testLogging {
@@ -116,19 +125,23 @@ tasks.test {
     showStackTraces = true
     showStandardStreams = true
 
+    // Display test method names and descriptions
     displayGranularity = 2
 
+    // Show detailed info for each test
     info {
       events("passed", "skipped", "failed", "started")
     }
   }
 
+  // Print test description before each test
   beforeTest(
     closureOf<TestDescriptor> {
       logger.lifecycle("Running test: ${this.className} > ${this.name}")
     }
   )
 
+  // Print test result after each test
   afterTest(
     KotlinClosure2<TestDescriptor, TestResult, Unit>({ descriptor, result ->
       val status = when (result.resultType) {
@@ -141,19 +154,8 @@ tasks.test {
     })
   )
 
+  // Pass environment variables to tests
   systemProperty("gravitino.uri", System.getenv("GRAVITINO_E2E_URI") ?: "http://localhost:30090")
-  systemProperty("gravitino.irc.uri", System.getenv("GRAVITINO_E2E_IRC_URI") ?: "http://localhost:30001/iceberg/")
   systemProperty("gravitino.metalake", System.getenv("GRAVITINO_E2E_METALAKE") ?: "test")
-  systemProperty("gravitino.irc.catalog", System.getenv("GRAVITINO_E2E_IRC_CATALOG") ?: "catalog_1")
-  systemProperty("gravitino.trino.uri", System.getenv("GRAVITINO_E2E_TRINO_URI") ?: "http://localhost:30880")
   systemProperty("hive.metastore.uri", System.getenv("GRAVITINO_E2E_HIVE_URI") ?: "thrift://localhost:30083")
-
-  // Disable JVM system-proxy auto-detection. On macOS the JVM otherwise picks up the
-  // system-level SOCKS / HTTP proxy from System Preferences and routes outbound HTTP
-  // through it, which breaks the Iceberg REST client (it sees a "Malformed reply from
-  // SOCKS server" when the proxy is misconfigured / off). Tests talk to localhost or
-  // private kind-cluster IPs and never need a proxy.
-  systemProperty("java.net.useSystemProxies", "false")
-  systemProperty("http.nonProxyHosts", "*")
-  systemProperty("socksNonProxyHosts", "*")
 }
