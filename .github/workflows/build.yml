@@ -2,13 +2,14 @@ name: build
 
 # Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
+  workflow_dispatch:
   push:
     branches: [ "main", "branch-*" ]
     paths-ignore:
       - 'docs/assets/**'
       - 'web-v2/**'
   pull_request:
+    types: [labeled]
     branches: [ "main", "branch-*" ]
     paths-ignore:
       - 'docs/assets/**'
@@ -22,12 +23,13 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
         id: filter
         with:
-          list-files: shell
+          list-files: json
           filters: |
             source_changes:
               - '.github/**'
@@ -37,9 +39,9 @@ jobs:
               - 'conf/**'
               - 'dev/**'
               - 'docs/open-api/**'
+              - 'docs-enterprise/open-api/**'
               - 'gradle/**'
               - 'gradle.properties'
-              - 'meta/**'
               - 'scripts/**'
               - 'web/**'
               - '**/*.java'
@@ -63,29 +65,22 @@ jobs:
               - mcp-server/**
       - name: Determine maintenance-module-only changes
         id: maintenance_module_only
-        env:
-          SOURCE_CHANGE_FILES: ${{ steps.filter.outputs.source_changes_files }}
         run: |
           # Route to the maintenance-only build path only when every source
           # change in the PR is under maintenance/. Non-source changes are
           # already filtered out by source_changes_files.
-          source_files=()
-          if [ -n "${SOURCE_CHANGE_FILES}" ]; then
-            eval "source_files=(${SOURCE_CHANGE_FILES})"
-          fi
+          # Inline the JSON file list into the script (not an env var) to avoid
+          # "Argument list too long" when the PR touches many files.
+          source_files='${{ steps.filter.outputs.source_changes_files }}'
 
           maintenance_module_only=false
-          if [ "${#source_files[@]}" -gt 0 ]; then
+          count=$(echo "${source_files}" | jq 'length')
+          if [ "${count}" -gt 0 ]; then
             maintenance_module_only=true
-            for path in "${source_files[@]}"; do
-              case "$path" in
-                maintenance/*) ;;
-                *)
-                  maintenance_module_only=false
-                  break
-                  ;;
-              esac
-            done
+            non_maintenance=$(echo "${source_files}" | jq -r '.[] | select(startswith("maintenance/") | not)' | head -1)
+            if [ -n "${non_maintenance}" ]; then
+              maintenance_module_only=false
+            fi
           fi
 
           echo "maintenance_module_only_changes=${maintenance_module_only}" >> "${GITHUB_OUTPUT}"
@@ -96,9 +91,12 @@ jobs:
       maintenance_module_only_changes: ${{ steps.maintenance_module_only.outputs.maintenance_module_only_changes }}
 
   compile-check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
     needs: changes
     if: needs.changes.outputs.source_changes != 'true'
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -106,16 +104,26 @@ jobs:
         with:
           java-version: 17
 
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+
       - name: Build with Gradle
         run: |
           ./gradlew assemble -PskipWeb=true
 
   # To check the spark-connector is compatible with scala2.13
   spark-connector-build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    timeout-minutes: 45
     needs: changes
     if: needs.changes.outputs.spark_connector_changes == 'true'
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -136,7 +144,7 @@ jobs:
           ./gradlew :spark-connector:spark-3.5:build -PscalaVersion=2.13 -PskipITs -PskipDockerTests=false -PskipWeb=true
 
       - name: Upload unit tests report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: unit test report
@@ -146,13 +154,16 @@ jobs:
 
   build:
     # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
     strategy:
       matrix:
         java-version: [ 17 ]
-    timeout-minutes: 90
+    timeout-minutes: 120
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -194,6 +205,13 @@ jobs:
             -PskipITs
             -PskipDockerTests=false
             -x :clients:client-python:build
+            -x :web:web:build
+            -x :web-v2:web:build
+            -x :catalogs-contrib:catalog-jdbc-clickhouse:test
+            -x :catalogs-contrib:catalog-jdbc-hologres:test
+            -x :catalogs-contrib:catalog-jdbc-oceanbase:test
+            -x :test:search-integration-test:build
+            -x :qa:gravitino-service-e2e-test:test
           )
 
           if [ "${{ needs.changes.outputs.mcp_server_changes }}" != "true" ]; then
@@ -201,7 +219,6 @@ jobs:
               -x :mcp-server:build
               -x :mcp-server:test
               -x :mcp-server:pylint
-              -x :web-v2:web:build
             )
           fi
 
@@ -233,7 +250,7 @@ jobs:
 
       - name: Upload Coverage Report
         if: github.event_name == 'pull_request' && steps.coverage.outputs.has_reports == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: |
@@ -247,7 +264,7 @@ jobs:
           echo "Changed Files coverage ${{ steps.coverage.outputs.coverage-changed-files }}"
 
       - name: Upload unit tests report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: unit test report

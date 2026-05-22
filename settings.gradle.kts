@@ -37,9 +37,13 @@ include("catalogs:catalog-lakehouse-hudi")
 include("catalogs:catalog-lakehouse-generic")
 include(
   "catalogs:catalog-jdbc-common",
+  "catalogs:catalog-jdbc-bigquery",
   "catalogs:catalog-jdbc-doris",
+  "catalogs:catalog-jdbc-maxcompute",
   "catalogs:catalog-jdbc-mysql",
+  "catalogs:catalog-jdbc-oracle",
   "catalogs:catalog-jdbc-postgresql",
+  "catalogs:catalog-jdbc-sqlserver",
   "catalogs:catalog-jdbc-starrocks"
 )
 
@@ -88,24 +92,8 @@ if (!skipTrinoConnector) {
 include("spark-connector:spark-common")
 if (scalaVersion == "2.12") {
   // flink only support scala 2.12
-  include("flink-connector:flink-common")
-  include(
-    "flink-connector:flink-1.18",
-    "flink-connector:flink-runtime-1.18",
-    "flink-connector:flink-1.19",
-    "flink-connector:flink-runtime-1.19",
-    "flink-connector:flink-1.20",
-    "flink-connector:flink-runtime-1.20"
-  )
-  project(":flink-connector:flink-1.18").projectDir = file("flink-connector/v1.18/flink")
-  project(":flink-connector:flink-runtime-1.18").projectDir =
-    file("flink-connector/v1.18/flink-runtime")
-  project(":flink-connector:flink-1.19").projectDir = file("flink-connector/v1.19/flink")
-  project(":flink-connector:flink-runtime-1.19").projectDir =
-    file("flink-connector/v1.19/flink-runtime")
-  project(":flink-connector:flink-1.20").projectDir = file("flink-connector/v1.20/flink")
-  project(":flink-connector:flink-runtime-1.20").projectDir =
-    file("flink-connector/v1.20/flink-runtime")
+  include("flink-connector:flink")
+  include("flink-connector:flink-runtime")
 }
 include("spark-connector:spark-3.3", "spark-connector:spark-runtime-3.3")
 project(":spark-connector:spark-3.3").projectDir = file("spark-connector/v3.3/spark")
@@ -133,3 +121,17 @@ include(
   ":maintenance:optimizer",
   ":maintenance:jobs"
 )
+
+// Enterprise-specific modules
+include(":licensing:license-client")
+include(":licensing:license-tools")
+include("common-extension")
+include("core-extension")
+include("datastrato-server")
+include("authorization-jdbc-enterprise")
+include("search")
+include("lineage-extension")
+include("metrics")
+include("test:search-integration-test", "test:test-common")
+include("docs-enterprise")
+include(":qa:gravitino-service-e2e-test")
