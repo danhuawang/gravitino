@@ -1,0 +1,121 @@
+#
+# Copyright 2024 Datastrato Pvt Ltd.
+# This software is licensed under the Apache License version 2.
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hive-init-script
+  namespace: ${NAMESPACE}
+data:
+  init.sh: |
+    #!/bin/bash
+    set -e
+    
+    # Set default HIVE_TMP_CONF_DIR if not set
+    HIVE_TMP_CONF_DIR=${HIVE_TMP_CONF_DIR:-/tmp/conf}
+    
+    # Get container IP
+    IP=$(hostname -I | awk '{print $1}')
+    
+    # Update hive-site.xml if it exists
+    if [ -f "${HIVE_TMP_CONF_DIR}/hive-site.xml" ]; then
+      sed -i "s|<value>hdfs://__REPLACE__HOST_NAME:9000|<value>hdfs://${IP}:9000|g" ${HIVE_TMP_CONF_DIR}/hive-site.xml
+    fi
+    
+    # Start Hive services in background
+    /bin/bash /usr/local/sbin/start.sh
+    
+    # Keep container running and monitor Hive Metastore process
+    while true; do
+      if ! pgrep -f "HiveMetaStore" > /dev/null; then
+        echo "Hive Metastore process died, exiting..."
+        exit 1
+      fi
+      sleep 10
+    done
+  
+  check-status.sh: |
+    #!/bin/bash
+    # Simple health check: verify Hive Metastore port is listening
+    netstat -tuln | grep -q ':9083' && echo "Hive Metastore is ready" && exit 0
+    echo "Hive Metastore is not ready" && exit 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hive-metastore
+  namespace: ${NAMESPACE}
+  labels:
+    app: hive-metastore
+spec:
+  type: NodePort
+  ports:
+    - port: 9083
+      targetPort: 9083
+      nodePort: 30083
+      protocol: TCP
+      name: thrift
+  selector:
+    app: hive-metastore
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hive-metastore
+  namespace: ${NAMESPACE}
+  labels:
+    app: hive-metastore
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hive-metastore
+  template:
+    metadata:
+      labels:
+        app: hive-metastore
+    spec:
+      containers:
+        - name: hive-metastore
+          image: apache/gravitino-ci:hive-0.1.20
+          ports:
+            - containerPort: 9083
+              name: thrift
+          env:
+            - name: HADOOP_USER_NAME
+              value: "gravitino"
+            - name: HIVE_RUNTIME_VERSION
+              value: "hive3"
+          command:
+            - "/bin/bash"
+            - "/tmp/hive/init.sh"
+          volumeMounts:
+            - name: hive-init
+              mountPath: /tmp/hive
+          livenessProbe:
+            tcpSocket:
+              port: 9083
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          readinessProbe:
+            tcpSocket:
+              port: 9083
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: hive-init
+          configMap:
+            name: hive-init-script
+            defaultMode: 0755

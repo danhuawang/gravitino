@@ -707,6 +707,7 @@ val datastratoLicenseCheckIncludes = listOf(
   "docs-enterprise/**",
   "lineage-extension/**",
   "metrics/**",
+  "qa/**",
   "search/**",
   "test/search-integration-test/**",
   "test/test-common/**",
@@ -1369,7 +1370,8 @@ tasks {
         it.parent?.name != "test" &&
         it.parent?.name != "licensing" &&
         it.name != "licensing" &&
-        it.name != "mcp-server"
+        it.name != "mcp-server" &&
+        it.parent?.name != "qa"
       ) {
         dependsOn("${it.name}:build")
         from("${it.name}/build/libs") {

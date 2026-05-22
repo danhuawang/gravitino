@@ -89,6 +89,7 @@ jobs:
             -x :authorizations:authorization-chain:test -x :authorizations:authorization-ranger:test \
             -x :clients:cli:test -x :maintenance:jobs:test -x :maintenance:optimizer:test \
             -x :test:search-integration-test:test \
+            -x :qa:gravitino-service-e2e-test:test \
             $EXCLUDE_CONTRIB_TESTS
 
       - name: Upload integrate tests reports
