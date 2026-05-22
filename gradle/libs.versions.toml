@@ -34,6 +34,7 @@ lance-namespace = "0.7.5"
 delta-kernel = "3.3.0"
 jetty = "9.4.58.v20250814"
 jersey = "2.41"
+keycloak-admin-client = "26.0.5"
 mockito = "4.11.0"
 airlift-json = "237"
 airlift-resolver = "1.6"
@@ -207,6 +208,7 @@ jersey-media-json-jackson = { group = "org.glassfish.jersey.media", name = "jers
 jersey-hk2 = { group = "org.glassfish.jersey.inject", name = "jersey-hk2", version.ref = "jersey" }
 jersey-test-framework-core = { group = "org.glassfish.jersey.test-framework", name = "jersey-test-framework-core", version.ref = "jersey" }
 jersey-test-framework-provider-jetty = { group = "org.glassfish.jersey.test-framework.providers", name = "jersey-test-framework-provider-jetty", version.ref = "jersey" }
+keycloak-admin-client = { group = "org.keycloak", name = "keycloak-admin-client", version.ref = "keycloak-admin-client" }
 jodd-core = { group = "org.jodd", name = "jodd-core", version.ref = "jodd" }
 mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
 mockito-inline = { group = "org.mockito", name = "mockito-inline", version.ref = "mockito" }

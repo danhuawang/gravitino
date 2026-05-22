@@ -1,0 +1,103 @@
+#
+# Copyright 2024 Datastrato Pvt Ltd.
+# This software is licensed under the Apache License version 2.
+#
+# Env 2: OAuth2 / OIDC auth for E2E tests.
+#
+# This environment is used by:
+#   - the OAuth REST suite (GroupBasedAccessControlOAuth2IT, T1–T11) and
+#   - the Trino-via-IRC engine suite (TrinoIcebergRestGroupBasedAccessControlIT,
+#     T12–T15)
+
+replicas: 1
+
+image:
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 9090
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 2Gi
+
+cache:
+  enabled: true
+  expireTimeInMs: 5000
+
+authorization:
+  enable: true
+  # `admin` is the bootstrap admin used by the test harness to provision
+  # metalakes / catalogs / roles. `service-account-postman-client` matches the
+  # Keycloak service account principal mapped from the `postman-client` token.
+  serviceAdmins: "admin,service-account-postman-client"
+
+audit:
+  enabled: true
+
+# OAuth2 / OIDC authentication (Keycloak).
+authenticators: oauth
+authenticator:
+  oauth:
+    provider: oidc
+    serviceAudience: account
+    defaultSignKey: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqmmqfSy8vH9BMKZLIjPHNTClH7yyykV/J/dfNwwicoYCBQgLOLRq59nAiJ9/WOkIq7zIXQ8iZU5XmI0bRSo3Ah7G4uF6CUbpny+n4zxwTfEEJ3dVC1Aa1g3DZbf8mN76B2ykf6z4FEbTWVBp0xMZ14YBOIuOUkN4F/x8bQNYRPl0yepLBZf6uY26f2o5+yKBcpAk7K/pGoD4v+DKpt/A8bvf4fy3JpZERsMPS/veeyIqR6f+455KLjRabBpxl5xIo8iUer5O0Ci8xbQMci4ErRRemm5n1e74Kqpz5u/TcLIPdMLXJ57fLl9t7V9BtLyRTjyooJpnl/lz+kJ+VIt1kQIDAQAB"
+    tokenPath: /realms/myrealm/protocol/openid-connect/token
+    clientId: postman-client
+    scope: "openid profile email"
+    principalFields: preferred_username
+    tokenValidatorClass: org.apache.gravitino.server.authentication.JwksTokenValidator
+    # The following three fields embed the Keycloak public IP and are
+    # overridden via --set at helm install time:
+    serverUri: ""     # http://<keycloak_ip>:8080
+    authority: ""     # http://<keycloak_ip>:8080/realms/myrealm
+    jwksUri: ""       # http://<keycloak_ip>:8080/realms/myrealm/protocol/openid-connect/certs
+
+postgresql:
+  enabled: true
+  auth:
+    username: gravitino
+    password: gravitino
+    database: gravitino
+  primary:
+    resources:
+      limits:
+        memory: 1Gi
+      requests:
+        memory: 512Mi
+
+auxService:
+  names: iceberg-rest
+
+icebergRest:
+  catalogConfigProvider: dynamic-config-provider
+  dynamicConfigProvider:
+    metalake: test           
+    defaultCatalogName: catalog_1
+
+env:
+  - name: GRAVITINO_USE_WEB_V2
+    value: "true"
+
+additionalConfigItems:
+  gravitino.iceberg-rest.catalog-cache-eviction-interval-ms: "300000"
+  gravitino.iceberg-rest.table-metadata-cache-impl: "org.apache.gravitino.iceberg.common.cache.LocalTableMetadataCache"
+  gravitino.iceberg-rest.table-metadata-cache-expire-minutes: "1"
+  gravitino.iceberg-rest.scan-plan-cache-impl: "org.apache.gravitino.iceberg.service.cache.LocalScanPlanCache"
+  gravitino.iceberg-rest.scan-plan-cache-expire-minutes: "1"
+  gravitino.datastrato.search.storage.impl: memory
+  gravitino.datastrato.preview.jdbcUrl: "jdbc:trino://trino:8080"
+  gravitino.datastrato.preview.jdbcUsername: admin
+  gravitino.authenticator.oauth.groupsFields: groups 
+  gravitino.authenticator.oauth.groupMapper: regex
+  gravitino.authenticator.oauth.groupMapper.regex.pattern: ^/(.*)
+
+initScript: |
+  cp /tmp/conf/* ${GRAVITINO_HOME}/conf
+  echo "Start the Gravitino Server"
+  /bin/bash ${GRAVITINO_HOME}/bin/gravitino.sh start
