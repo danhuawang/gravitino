@@ -30,7 +30,6 @@ jobs:
     timeout-minutes: 90
     env:
       ENV_NAME: ${{ inputs.env-name }}
-      # Enterprise license
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
       GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
       GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
