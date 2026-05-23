@@ -6,7 +6,7 @@
 #
 # This environment is used by:
 #   - the OAuth REST suite (GroupBasedAccessControlOAuth2IT, T1–T11) and
-#   - the Trino-via-IRC engine suite (TrinoIcebergRestGroupBasedAccessControlIT,
+#   - the Spark-via-IRC engine suite (SparkIcebergRestGroupBasedAccessControlIT,
 #     T12–T15)
 
 replicas: 1
