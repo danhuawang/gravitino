@@ -24,6 +24,7 @@
 #
 # NodePorts exposed:
 #   30090  – Gravitino API (always)
+#   30001  – Iceberg REST aux service (env2 oauth2-auth; otherwise unbound)
 #   30083  – Hive Metastore (if enabled)
 #   30080  – Keycloak HTTP (if enabled)
 #
@@ -91,8 +92,7 @@ K8S_DIR="${SCRIPT_DIR}/../k8s"
 echo "=== Components to deploy: Gravitino (core)${COMPONENT_LIST[*]:+, ${COMPONENT_LIST[*]}} ==="
 
 # ── Image tag ────────────────────────────────────────────────────────────────
-#KIND_IMAGE_TAG="${KIND_IMAGE_TAG:-e2e-$(date +%s)-${RANDOM}}"
-KIND_IMAGE_TAG=e2e-1779334977-18495
+KIND_IMAGE_TAG="${KIND_IMAGE_TAG:-e2e-$(date +%s)-${RANDOM}}"
 echo "Using Gravitino image tag: ${KIND_IMAGE_TAG}"
 
 # ── Build extra port mappings based on enabled components ─────────────────────
@@ -121,6 +121,9 @@ nodes:
   extraPortMappings:
   - containerPort: 30090
     hostPort: 30090
+    protocol: TCP
+  - containerPort: 30001
+    hostPort: 30001
     protocol: TCP${EXTRA_PORT_MAPPINGS}
 containerdConfigPatches:
 - |-
@@ -245,23 +248,164 @@ helm upgrade --install "gravitino-${ENV_NAME}" \
   --wait --timeout 5m
 
 # ── Patch Gravitino Service to NodePort ──────────────────────────────────────
+# Port 0 (9090): Gravitino REST API → host NodePort 30090
+# Port 1 (9001): Iceberg REST aux service (env2 only; auxService.names=iceberg-rest)
+#   → host NodePort 30001. Always pinned for layout consistency; if a chart
+#   variant doesn't expose port 1 the patch silently no-ops on the missing index.
 echo "=== Patching Gravitino service to NodePort ==="
 CURRENT_TYPE=$(kubectl get svc "gravitino" -n "${NAMESPACE}" -o jsonpath='{.spec.type}')
+PORT_COUNT=$(kubectl get svc "gravitino" -n "${NAMESPACE}" -o jsonpath='{.spec.ports[*].port}' | wc -w | tr -d ' ')
+
 if [[ "${CURRENT_TYPE}" == "NodePort" ]]; then
   echo "Service already NodePort, updating nodePort value..."
-  kubectl patch svc "gravitino" -n "${NAMESPACE}" \
-    --type='json' \
-    -p='[
-      {"op":"replace","path":"/spec/ports/0/nodePort","value":30090}
-    ]'
+  PATCH_OPS='[
+    {"op":"replace","path":"/spec/ports/0/nodePort","value":30090}'
+  if [[ "${PORT_COUNT}" -ge 2 ]]; then
+    PATCH_OPS+=',
+    {"op":"replace","path":"/spec/ports/1/nodePort","value":30001}'
+  fi
+  PATCH_OPS+='
+  ]'
+  kubectl patch svc "gravitino" -n "${NAMESPACE}" --type='json' -p="${PATCH_OPS}"
 else
-  kubectl patch svc "gravitino" -n "${NAMESPACE}" \
-    --type='json' \
-    -p='[
-      {"op":"replace","path":"/spec/type","value":"NodePort"},
-      {"op":"add","path":"/spec/ports/0/nodePort","value":30090}
-    ]'
+  PATCH_OPS='[
+    {"op":"replace","path":"/spec/type","value":"NodePort"},
+    {"op":"add","path":"/spec/ports/0/nodePort","value":30090}'
+  if [[ "${PORT_COUNT}" -ge 2 ]]; then
+    PATCH_OPS+=',
+    {"op":"add","path":"/spec/ports/1/nodePort","value":30001}'
+  fi
+  PATCH_OPS+='
+  ]'
+  kubectl patch svc "gravitino" -n "${NAMESPACE}" --type='json' -p="${PATCH_OPS}"
 fi
+
+# ── Seed metalake + IRC default catalog (env2-oauth2-auth only) ─────────────
+# IRC's dynamic-config-provider in env2-oauth2-auth-values.yaml is wired to
+# `metalake=test, defaultCatalogName=catalog_1`, so any IRC-backed test
+# (Trino/Spark via IRC, T12–T19) needs both entities to exist before the
+# test JVM connects. We seed them here because:
+#   * lakehouse-iceberg requires `catalog-backend` + `uri` properties whose
+#     values point at in-cluster services (Postgres, warehouse PVC) — values
+#     the test JVM running on the host cannot reasonably guess.
+#   * the helm chart's initScript only starts gravitino.sh; it does not seed.
+#   * keeping seed logic in the same script that runs `helm upgrade` lets us
+#     use the kind cluster's NodePort as the API endpoint without an extra
+#     port-forward.
+# Idempotent: 409 (already exists) is treated as success so reruns work.
+seed_env2_metalake_and_catalog() {
+  local node_ip="$1"
+  local namespace="$2"
+  local release_name="gravitino-${ENV_NAME}"
+  local grav_url="http://${node_ip}:30090"
+  local pg_host="${release_name}-postgresql.${namespace}"
+
+  echo "=== Seeding metalake '${METALAKE_NAME}' + catalog 'catalog_1' for ${ENV_NAME} ==="
+
+  # Wait for Gravitino's HTTP layer. helm --wait covers pod readiness, but the
+  # Jetty server inside the pod may take a few extra seconds to bind the port.
+  # Accept any HTTP response (including 401) — a connection error means not ready.
+  local ready=false
+  for _ in $(seq 1 60); do
+    local http_code
+    http_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 2 \
+      "${grav_url}/configs" 2>/dev/null || echo "000")
+    if [[ "${http_code}" != "000" ]]; then
+      ready=true
+      break
+    fi
+    sleep 2
+  done
+  if [[ "${ready}" != "true" ]]; then
+    echo "ERROR: Gravitino API at ${grav_url}/configs did not become ready in 120s" >&2
+    return 1
+  fi
+
+  # Mint a service-account token for the bootstrap admin (postman-client is in
+  # serviceAdmins per env2-oauth2-auth-values.yaml).
+  local kc_client_secret="${OAUTH2_CLIENT_SECRET:-JKaXEyxp1TiTeVf5ggDSjdTiVixCxj37}"
+  local kc_token_url="${OAUTH2_SERVER_URI}/realms/myrealm/protocol/openid-connect/token"
+  local admin_token
+  admin_token=$(
+    curl -fsS -X POST "${kc_token_url}" \
+      -d 'grant_type=client_credentials' \
+      -d 'client_id=postman-client' \
+      -d "client_secret=${kc_client_secret}" \
+      -d 'scope=openid profile email' |
+      jq -r '.access_token'
+  )
+  if [[ -z "${admin_token}" || "${admin_token}" == "null" ]]; then
+    echo "ERROR: Failed to mint Keycloak service-account token from ${kc_token_url}" >&2
+    return 1
+  fi
+
+  # Create metalake (treat 409 as success — re-run safe).
+  local mlk_payload
+  mlk_payload=$(jq -nc \
+    --arg name "${METALAKE_NAME}" \
+    '{name:$name, comment:"seeded by setup-kind-env.sh", properties:{}}')
+  local mlk_status
+  mlk_status=$(
+    curl -sS -o /tmp/grav-seed-mlk.out -w '%{http_code}' \
+      -X POST "${grav_url}/api/metalakes" \
+      -H "Authorization: Bearer ${admin_token}" \
+      -H 'Content-Type: application/json' \
+      --data "${mlk_payload}"
+  )
+  case "${mlk_status}" in
+    200|201|409)
+      echo "  metalake '${METALAKE_NAME}': HTTP ${mlk_status} (ok)"
+      ;;
+    *)
+      echo "ERROR: createMetalake returned HTTP ${mlk_status}" >&2
+      cat /tmp/grav-seed-mlk.out >&2
+      return 1
+      ;;
+  esac
+
+  # Create catalog catalog_1 (lakehouse-iceberg, jdbc backend → in-cluster Postgres,
+  # warehouse on the pod's local /tmp). Treat 409 as success.
+  local cat_payload
+  cat_payload=$(jq -nc \
+    --arg uri "jdbc:postgresql://${pg_host}:5432/gravitino" \
+    --arg pgUser "gravitino" \
+    --arg pgPass "gravitino" \
+    --arg warehouse "file:///tmp/iceberg-warehouse" \
+    '{
+       name:"catalog_1",
+       type:"RELATIONAL",
+       provider:"lakehouse-iceberg",
+       comment:"IRC default catalog (seeded by setup-kind-env.sh)",
+       properties:{
+         "catalog-backend":"jdbc",
+         "uri":$uri,
+         "jdbc-user":$pgUser,
+         "jdbc-password":$pgPass,
+         "jdbc-driver":"org.postgresql.Driver",
+         "jdbc-initialize":"true",
+         "jdbc-schema-version":"V1",
+         "warehouse":$warehouse
+       }
+     }')
+  local cat_status
+  cat_status=$(
+    curl -sS -o /tmp/grav-seed-cat.out -w '%{http_code}' \
+      -X POST "${grav_url}/api/metalakes/${METALAKE_NAME}/catalogs" \
+      -H "Authorization: Bearer ${admin_token}" \
+      -H 'Content-Type: application/json' \
+      --data "${cat_payload}"
+  )
+  case "${cat_status}" in
+    200|201|409)
+      echo "  catalog 'catalog_1': HTTP ${cat_status} (ok)"
+      ;;
+    *)
+      echo "ERROR: createCatalog returned HTTP ${cat_status}" >&2
+      cat /tmp/grav-seed-cat.out >&2
+      return 1
+      ;;
+  esac
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Optional Components
@@ -296,6 +440,17 @@ if component_enabled "keycloak"; then
   kubectl rollout status deployment/keycloak -n "${NAMESPACE}" --timeout=5m
 fi
 
+# ── Per-environment seed (depends on the optional components above) ─────────
+# Done after Keycloak rollout so env2-oauth2-auth can mint a service-account
+# token for the create-metalake / create-catalog REST calls.
+case "${ENV_NAME}" in
+  env2-oauth2-auth)
+    NODE_IP_FOR_SEED="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
+    # OAUTH2_SERVER_URI is set in the env2 helm-overrides block above.
+    seed_env2_metalake_and_catalog "${NODE_IP_FOR_SEED}" "${NAMESPACE}"
+    ;;
+esac
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Export connection info
 # ══════════════════════════════════════════════════════════════════════════════
@@ -304,6 +459,12 @@ NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="
 export GRAVITINO_E2E_URI="http://${NODE_IP}:30090"
 export GRAVITINO_E2E_METALAKE="test"
 export GRAVITINO_E2E_ENV_NAME="${ENV_NAME}"
+
+# IRC URI is exposed when env2-oauth2-auth (auxService.names=iceberg-rest). Default
+# the env var so tests on other envs see a placeholder rather than an undefined
+# variable; tests that require IRC will fail clean if the URL is unreachable.
+export GRAVITINO_E2E_IRC_URI="http://${NODE_IP}:30001/iceberg/"
+export GRAVITINO_E2E_IRC_CATALOG="${GRAVITINO_E2E_IRC_CATALOG:-catalog_1}"
 
 if component_enabled "hive"; then
   export GRAVITINO_E2E_HIVE_URI="thrift://${NODE_IP}:30083"
