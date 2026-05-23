@@ -13,13 +13,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── Path filter ─────────────────────────────────────────────────────────────
   changes:
     runs-on: ubuntu-latest
     if: >
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.pull_request.labels.*.name, 'run-qa-e2e')
+      contains(github.event.pull_request.labels.*.name, 'run-ci')
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
@@ -49,7 +48,7 @@ jobs:
     outputs:
       source_changes: ${{ steps.filter.outputs.source_changes }}
 
-  GravitinoE2E-Env1-Hive-SimpleAuth:
+  GravitinoE2E-Env1-SimpleAuth:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
     uses: ./.github/workflows/gravitino-service-e2e-test-action.yml
@@ -59,15 +58,15 @@ jobs:
       test-scenarios: function
     secrets: inherit
 
-  GravitinoE2E-Env2-Hive-OAuth2:
+  GravitinoE2E-Env2-OAuth2:
     needs: changes
     if: >
       needs.changes.outputs.source_changes == 'true' &&
       (github.event_name == 'workflow_dispatch' ||
-       contains(github.event.pull_request.labels.*.name, 'run-qa-e2e'))
+       contains(github.event.pull_request.labels.*.name, 'run-ci'))
     uses: ./.github/workflows/gravitino-service-e2e-test-action.yml
     with:
       env-name: env2-oauth2-auth
-      components: hive,trino
+      components: hive,keycloak
       test-scenarios: oauth2
     secrets: inherit
