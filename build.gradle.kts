@@ -996,7 +996,8 @@ tasks {
         ":authorization-jdbc-enterprise:copyLibAndConfig",
         ":iceberg:iceberg-rest-server:copyLibAndConfigs",
         ":lance:lance-rest-server:copyLibAndConfigs",
-        ":maintenance:optimizer:copyLibAndConfigs"
+        ":maintenance:optimizer:copyLibAndConfigs",
+        ":plugins:idp-basic:copyLibAndConfigs"
       )
     if (!skipWeb) {
       dependencies.add(":web:web:build")
@@ -1314,6 +1315,7 @@ tasks {
         it.parent?.name != "maintenance" &&
         it.parent?.name != "test" &&
         it.name != "license-tools" &&
+        it.parent?.name != "plugins" &&
         it.name != "mcp-server"
       ) {
         from(it.configurations.runtimeClasspath) {
