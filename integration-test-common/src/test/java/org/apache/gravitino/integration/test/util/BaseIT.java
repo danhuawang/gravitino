@@ -380,12 +380,20 @@ public class BaseIT {
       customConfigs.put("gravitino.eventListener.names", "");
       customConfigs.put("gravitino.eventListener.search.class", "");
     }
-    if (ignoreLanceAuxRestService && ignoreIcebergAuxRestService) {
-      customConfigs.put(
-          AuxiliaryServiceManager.GRAVITINO_AUX_SERVICE_PREFIX
-              + AuxiliaryServiceManager.AUX_SERVICE_NAMES,
-          "");
+
+    List<String> auxServicesList = new ArrayList<>();
+    if (!ignoreIcebergAuxRestService) {
+      auxServicesList.add("iceberg-rest");
     }
+    if (!ignoreLanceAuxRestService) {
+      auxServicesList.add("lance-rest");
+    }
+    String auxServices = String.join(",", auxServicesList);
+
+    customConfigs.put(
+        AuxiliaryServiceManager.GRAVITINO_AUX_SERVICE_PREFIX
+            + AuxiliaryServiceManager.AUX_SERVICE_NAMES,
+        auxServices);
     if (!ignoreLanceAuxRestService) {
       customConfigs.put(
           LANCE_CONFIG_PREFIX + METALAKE_NAME.getKey(),
@@ -427,6 +435,8 @@ public class BaseIT {
 
     List<String> authenticators = new ArrayList<>();
     String authenticatorStr = customConfigs.get(Configs.AUTHENTICATORS.getKey());
+    LOG.info("Creating authenticator {}", authenticatorStr);
+
     if (authenticatorStr != null) {
       authenticators = COMMA.splitToList(authenticatorStr);
     }
