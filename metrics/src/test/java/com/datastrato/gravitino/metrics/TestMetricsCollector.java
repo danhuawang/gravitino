@@ -33,11 +33,13 @@ import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.connector.capability.Capability;
+import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.SchemaVersion;
+import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.server.ServerConfig;
@@ -173,6 +175,40 @@ class TestMetricsCollector {
       assertEquals(1, snapshot.getTableNodes().size());
       assertEquals(
           snapshot.getTableNodes(), snapshot.getSchemaNodes().iterator().next().getChildren());
+    }
+  }
+
+  @Test
+  void testLoadAllDataForMetalakeWithSchemaNotInStore() throws Exception {
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+
+      // Mock store.list() for tables to throw NoSuchEntityException (schema not in store)
+      when(store.list(
+              eq(NamespaceUtil.ofTable(metalakeName, relationalCatalogName, relationalSchemaName)),
+              eq(TableEntity.class),
+              eq(Entity.EntityType.TABLE)))
+          .thenThrow(new NoSuchEntityException("No such schema entity: %s", relationalSchemaName));
+
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      BaseMetalake metalake =
+          BaseMetalake.builder()
+              .withId(mockId)
+              .withName(metalakeName)
+              .withVersion(SchemaVersion.V_0_1)
+              .withAuditInfo(
+                  AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+              .build();
+
+      MetalakeSnapshot snapshot = collector.loadAllDataForMetalake(metalake);
+      assertNotNull(snapshot);
+      assertEquals(metalakeName, snapshot.getAssetTreeRoot().getName());
+      // Tables should still be loaded from tableDispatcher since managedTable=false
+      assertEquals(1, snapshot.getTableNodes().size());
+      assertEquals(tableName, snapshot.getTableNodes().iterator().next().getName());
     }
   }
 

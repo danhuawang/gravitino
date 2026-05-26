@@ -59,12 +59,15 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.dto.authorization.OwnerDTO;
+import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.FilesetEntity;
+import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.server.ServerConfig;
 import org.apache.gravitino.storage.relational.po.SecurableObjectPO;
@@ -603,32 +606,50 @@ public class MetricsCollector implements Closeable {
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException {
-    Set<AssetNode> tableNodes =
-        store.list(nsOfTable, TableEntity.class, Entity.EntityType.TABLE).stream()
-            .map(
-                table -> {
-                  AssetNode assetNode =
-                      new AssetNode(
-                          table.id(),
-                          table.name(),
-                          MetadataObject.Type.TABLE,
-                          schemaNode,
-                          objectIdToOwners.get(table.id()));
-                  assetNodeById.put(assetNode.getId(), assetNode);
-                  return assetNode;
-                })
-            .collect(Collectors.toSet());
+    Set<AssetNode> tableNodes = new HashSet<>();
+    try {
+      tableNodes =
+          store.list(nsOfTable, TableEntity.class, Entity.EntityType.TABLE).stream()
+              .map(
+                  table -> {
+                    AssetNode assetNode =
+                        new AssetNode(
+                            table.id(),
+                            table.name(),
+                            MetadataObject.Type.TABLE,
+                            schemaNode,
+                            objectIdToOwners.get(table.id()));
+                    assetNodeById.put(assetNode.getId(), assetNode);
+                    return assetNode;
+                  })
+              .collect(Collectors.toSet());
+    } catch (NoSuchEntityException e) {
+      LOG.warn(
+          "[batch: {}] Schema not found in store when listing tables for namespace: {}, will try dispatcher",
+          batchDate,
+          nsOfTable,
+          e);
+    }
 
     // if the tables are not managed, it means there may be external tables that have not been
     // imported, so we need to use tableDispatcher to get the full tables
     if (!managedTable) {
-      Set<AssetNode> tablesFromDispatcher =
-          Arrays.stream(tableDispatcher.listTables(nsOfTable))
-              .map(
-                  table ->
-                      new AssetNode(-1, table.name(), MetadataObject.Type.TABLE, schemaNode, null))
-              .collect(Collectors.toSet());
-      tableNodes.addAll(tablesFromDispatcher);
+      try {
+        Set<AssetNode> tablesFromDispatcher =
+            Arrays.stream(tableDispatcher.listTables(nsOfTable))
+                .map(
+                    table ->
+                        new AssetNode(
+                            -1, table.name(), MetadataObject.Type.TABLE, schemaNode, null))
+                .collect(Collectors.toSet());
+        tableNodes.addAll(tablesFromDispatcher);
+      } catch (Exception e) {
+        LOG.warn(
+            "[batch: {}] Failed to list tables from dispatcher for namespace: {}",
+            batchDate,
+            nsOfTable,
+            e);
+      }
     }
     return tableNodes;
   }
@@ -639,20 +660,29 @@ public class MetricsCollector implements Closeable {
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException {
-    return store.list(nsOfFileset, FilesetEntity.class, Entity.EntityType.FILESET).stream()
-        .map(
-            fileset -> {
-              AssetNode assetNode =
-                  new AssetNode(
-                      fileset.id(),
-                      fileset.name(),
-                      MetadataObject.Type.FILESET,
-                      schemaNode,
-                      objectIdToOwners.get(fileset.id()));
-              assetNodeById.put(assetNode.getId(), assetNode);
-              return assetNode;
-            })
-        .collect(Collectors.toSet());
+    try {
+      return store.list(nsOfFileset, FilesetEntity.class, Entity.EntityType.FILESET).stream()
+          .map(
+              fileset -> {
+                AssetNode assetNode =
+                    new AssetNode(
+                        fileset.id(),
+                        fileset.name(),
+                        MetadataObject.Type.FILESET,
+                        schemaNode,
+                        objectIdToOwners.get(fileset.id()));
+                assetNodeById.put(assetNode.getId(), assetNode);
+                return assetNode;
+              })
+          .collect(Collectors.toSet());
+    } catch (NoSuchEntityException e) {
+      LOG.warn(
+          "[batch: {}] Schema not found in store when listing filesets for namespace: {}",
+          batchDate,
+          nsOfFileset,
+          e);
+      return new HashSet<>();
+    }
   }
 
   private Set<AssetNode> getTopicNodes(
@@ -662,33 +692,50 @@ public class MetricsCollector implements Closeable {
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException {
-    Set<AssetNode> topicNodes =
-        store
-            .list(nsOfTopic, org.apache.gravitino.meta.TopicEntity.class, Entity.EntityType.TOPIC)
-            .stream()
-            .map(
-                topic -> {
-                  AssetNode assetNode =
-                      new AssetNode(
-                          topic.id(),
-                          topic.name(),
-                          MetadataObject.Type.TOPIC,
-                          schemaNode,
-                          objectIdToOwners.get(topic.id()));
-                  assetNodeById.put(assetNode.getId(), assetNode);
-                  return assetNode;
-                })
-            .collect(Collectors.toSet());
+    Set<AssetNode> topicNodes = new HashSet<>();
+    try {
+      topicNodes =
+          store.list(nsOfTopic, TopicEntity.class, Entity.EntityType.TOPIC).stream()
+              .map(
+                  topic -> {
+                    AssetNode assetNode =
+                        new AssetNode(
+                            topic.id(),
+                            topic.name(),
+                            MetadataObject.Type.TOPIC,
+                            schemaNode,
+                            objectIdToOwners.get(topic.id()));
+                    assetNodeById.put(assetNode.getId(), assetNode);
+                    return assetNode;
+                  })
+              .collect(Collectors.toSet());
+    } catch (NoSuchEntityException e) {
+      LOG.warn(
+          "[batch: {}] Schema not found in store when listing topics for namespace: {}, will try dispatcher",
+          batchDate,
+          nsOfTopic,
+          e);
+    }
+
     // if the topics are not managed, it means there may be external topics that have not been
     // imported, so we need to use topicDispatcher to get the full topics
     if (!managedTopic) {
-      Set<AssetNode> topicsFromDispatcher =
-          Arrays.stream(topicDispatcher.listTopics(nsOfTopic))
-              .map(
-                  topic ->
-                      new AssetNode(-1, topic.name(), MetadataObject.Type.TOPIC, schemaNode, null))
-              .collect(Collectors.toSet());
-      topicNodes.addAll(topicsFromDispatcher);
+      try {
+        Set<AssetNode> topicsFromDispatcher =
+            Arrays.stream(topicDispatcher.listTopics(nsOfTopic))
+                .map(
+                    topic ->
+                        new AssetNode(
+                            -1, topic.name(), MetadataObject.Type.TOPIC, schemaNode, null))
+                .collect(Collectors.toSet());
+        topicNodes.addAll(topicsFromDispatcher);
+      } catch (Exception e) {
+        LOG.warn(
+            "[batch: {}] Failed to list topics from dispatcher for namespace: {}",
+            batchDate,
+            nsOfTopic,
+            e);
+      }
     }
     return topicNodes;
   }
@@ -699,21 +746,28 @@ public class MetricsCollector implements Closeable {
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException {
-    return store
-        .list(nsOfModel, org.apache.gravitino.meta.ModelEntity.class, Entity.EntityType.MODEL)
-        .stream()
-        .map(
-            model -> {
-              AssetNode assetNode =
-                  new AssetNode(
-                      model.id(),
-                      model.name(),
-                      MetadataObject.Type.MODEL,
-                      schemaNode,
-                      objectIdToOwners.get(model.id()));
-              assetNodeById.put(assetNode.getId(), assetNode);
-              return assetNode;
-            })
-        .collect(Collectors.toSet());
+    try {
+      return store.list(nsOfModel, ModelEntity.class, Entity.EntityType.MODEL).stream()
+          .map(
+              model -> {
+                AssetNode assetNode =
+                    new AssetNode(
+                        model.id(),
+                        model.name(),
+                        MetadataObject.Type.MODEL,
+                        schemaNode,
+                        objectIdToOwners.get(model.id()));
+                assetNodeById.put(assetNode.getId(), assetNode);
+                return assetNode;
+              })
+          .collect(Collectors.toSet());
+    } catch (NoSuchEntityException e) {
+      LOG.warn(
+          "[batch: {}] Schema not found in store when listing models for namespace: {}",
+          batchDate,
+          nsOfModel,
+          e);
+      return new HashSet<>();
+    }
   }
 }
