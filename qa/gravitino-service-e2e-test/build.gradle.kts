@@ -60,19 +60,18 @@ dependencies {
   }
   testImplementation("org.apache.spark:spark-catalyst_$scalaVersion:$sparkVersion")
   testImplementation("org.apache.spark:spark-core_$scalaVersion:$sparkVersion")
-
-  // Jersey is excluded because it conflicts with the Gravitino server's jersey
-  // already on this module's classpath.
   testImplementation("org.apache.spark:spark-hive_$scalaVersion:$sparkVersion") {
     exclude("org.glassfish.jersey.core")
     exclude("org.glassfish.jersey.containers")
     exclude("org.glassfish.jersey.inject")
   }
-
-  // Add Spark runtime dependencies needed for Hive catalog support
   testImplementation("org.apache.kyuubi:kyuubi-spark-connector-hive_$scalaVersion:${libs.versions.kyuubi4spark.get()}")
-
   testImplementation("org.apache.iceberg:iceberg-spark-runtime-3.5_$scalaVersion:${libs.versions.iceberg.get()}")
+  testImplementation("org.apache.iceberg:iceberg-aws:${libs.versions.iceberg.get()}")
+  testImplementation(libs.aws.s3)
+  testImplementation(libs.aws.sts)
+  testImplementation(libs.aws.kms)
+  testImplementation(libs.trino.jdbc)
 
   testImplementation(project(":clients:client-java-runtime", configuration = "shadow"))
 }
@@ -146,6 +145,7 @@ tasks.test {
   systemProperty("gravitino.irc.uri", System.getenv("GRAVITINO_E2E_IRC_URI") ?: "http://localhost:30001/iceberg/")
   systemProperty("gravitino.metalake", System.getenv("GRAVITINO_E2E_METALAKE") ?: "test")
   systemProperty("gravitino.irc.catalog", System.getenv("GRAVITINO_E2E_IRC_CATALOG") ?: "catalog_1")
+  systemProperty("gravitino.trino.uri", System.getenv("GRAVITINO_E2E_TRINO_URI") ?: "http://localhost:30880")
   systemProperty("hive.metastore.uri", System.getenv("GRAVITINO_E2E_HIVE_URI") ?: "thrift://localhost:30083")
 
   // Disable JVM system-proxy auto-detection. On macOS the JVM otherwise picks up the
