@@ -4,14 +4,6 @@
 #
 # Keycloak (v26.0.7) deployment for Env 2 oauth2-auth e2e tests.
 #
-# The image `datastratosandbox/baseimage:keycloak-v26.0.7` ships a pre-seeded
-# realm `myrealm` with `postman-client` and the test users (alice, eve)
-# described in qa/gravitino-service-e2e-test/GROUP_BASED_AC_TEST_PLAN.md.
-#
-# Exposes Keycloak on NodePort 30080 (container 8080), so the host can reach
-# it as http://localhost:30080 and the in-cluster DNS name is
-# `keycloak.<namespace>.svc.cluster.local:8080`.
-#
 apiVersion: v1
 kind: Service
 metadata:
