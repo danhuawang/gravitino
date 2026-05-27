@@ -41,8 +41,8 @@ fi
 #
 # We delete every cluster whose name starts with "${CLUSTER_NAME}" so that
 # leftover clusters from older script versions (e.g. gravitino-e2e-env1-simple-auth)
-# or forked environments don't keep host ports (30080/30083/30090) bound and
-# block the next `setup-kind-env.sh` run.
+# or forked environments don't keep host ports (30010/30020/30075/30080/30083/
+# 30090/30880/30900) bound and block the next `setup-kind-env.sh` run.
 if [[ "${FULL_CLEANUP}" == "true" ]]; then
   MATCHING_CLUSTERS=$(kind get clusters 2>/dev/null | grep -E "^${CLUSTER_NAME}(\$|-)" || true)
   if [[ -n "${MATCHING_CLUSTERS}" ]]; then

@@ -4,10 +4,6 @@
 #
 # Env 2: OAuth2 / OIDC auth for E2E tests.
 #
-# This environment is used by:
-#   - the OAuth REST suite (GroupBasedAccessControlOAuth2IT, T1–T11) and
-#   - the Spark-via-IRC engine suite (SparkIcebergRestGroupBasedAccessControlIT,
-#     T12–T15)
 
 replicas: 1
 
