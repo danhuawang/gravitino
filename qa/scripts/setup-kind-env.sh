@@ -167,7 +167,6 @@ if [[ "${RESET}" == "true" ]]; then
   docker rmi "${PUSH_REGISTRY}/gravitino:${KIND_IMAGE_TAG}" 2>/dev/null || true
 fi
 
-# Check if image already exists in local registry
 if docker pull "${PUSH_REGISTRY}/gravitino:${KIND_IMAGE_TAG}" 2>/dev/null; then
   echo "=== Image already exists in registry, skipping build ==="
 else
@@ -217,13 +216,6 @@ case "${ENV_NAME}" in
       echo "ERROR: ENV_NAME=${ENV_NAME} requires the 'keycloak' component (use --component keycloak)" >&2
       exit 1
     fi
-
-    # Both Gravitino (running inside the cluster) and the test JVM (running on
-    # the host) must agree on the Keycloak base URL so that the issuer (`iss`)
-    # claim Keycloak stamps into JWTs matches `authenticator.oauth.authority`
-    # on the server. We use the host-reachable NodePort URL on both sides:
-    # the kind control-plane node can reach its own NodePort, and the host can
-    # reach Keycloak the same way.
     NODE_IP_FOR_KEYCLOAK="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
     KEYCLOAK_PUBLIC_BASE="http://${NODE_IP_FOR_KEYCLOAK}:30080"
     OAUTH2_SERVER_URI="${OAUTH2_SERVER_URI:-${KEYCLOAK_PUBLIC_BASE}}"
@@ -418,12 +410,6 @@ if component_enabled "hive"; then
   kubectl rollout status deployment/hive-metastore -n "${NAMESPACE}" --timeout=3m
 fi
 
-# ── Keycloak (per-namespace, ephemeral) ───────────────────────────────────────
-# We deploy a dedicated Keycloak instance into the test namespace so tests
-# never share state with another env / a previous run. `start-dev` uses an
-# in-memory H2 database, so any Pod restart already wipes realm/user/group
-# data. With --reset we additionally recreate the Deployment to force a
-# fresh Pod even if the Deployment spec is otherwise unchanged.
 if component_enabled "keycloak"; then
   echo "=== Deploying Keycloak (ephemeral, namespace=${NAMESPACE}) ==="
   KEYCLOAK_ADMIN_PASSWORD="${KEYCLOAK_ADMIN_PASSWORD:-admin}"
@@ -440,13 +426,9 @@ if component_enabled "keycloak"; then
   kubectl rollout status deployment/keycloak -n "${NAMESPACE}" --timeout=5m
 fi
 
-# ── Per-environment seed (depends on the optional components above) ─────────
-# Done after Keycloak rollout so env2-oauth2-auth can mint a service-account
-# token for the create-metalake / create-catalog REST calls.
 case "${ENV_NAME}" in
   env2-oauth2-auth)
     NODE_IP_FOR_SEED="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
-    # OAUTH2_SERVER_URI is set in the env2 helm-overrides block above.
     seed_env2_metalake_and_catalog "${NODE_IP_FOR_SEED}" "${NAMESPACE}"
     ;;
 esac
@@ -460,9 +442,6 @@ export GRAVITINO_E2E_URI="http://${NODE_IP}:30090"
 export GRAVITINO_E2E_METALAKE="test"
 export GRAVITINO_E2E_ENV_NAME="${ENV_NAME}"
 
-# IRC URI is exposed when env2-oauth2-auth (auxService.names=iceberg-rest). Default
-# the env var so tests on other envs see a placeholder rather than an undefined
-# variable; tests that require IRC will fail clean if the URL is unreachable.
 export GRAVITINO_E2E_IRC_URI="http://${NODE_IP}:30001/iceberg/"
 export GRAVITINO_E2E_IRC_CATALOG="${GRAVITINO_E2E_IRC_CATALOG:-catalog_1}"
 
@@ -474,10 +453,6 @@ if component_enabled "keycloak"; then
   export GRAVITINO_E2E_KEYCLOAK_URI="http://${NODE_IP}:30080"
   export GRAVITINO_E2E_KEYCLOAK_TOKEN_URI="http://${NODE_IP}:30080/realms/myrealm/protocol/openid-connect/token"
 
-  # OAuth2 wiring consumed by the test JVM (e.g. GroupBasedAccessControlOAuth2IT).
-  # Defaults match the credentials baked into datastratosandbox/baseimage:keycloak-v26.0.7
-  # (realm `myrealm`, client `postman-client` with the canonical test fixture secret),
-  # which the suite uses for the bootstrap admin client_credentials grant.
   export OAUTH2_SERVER_URI="http://${NODE_IP}:30080"
   export OAUTH2_REALM="${OAUTH2_REALM:-myrealm}"
   export OAUTH2_CLIENT_ID="${OAUTH2_CLIENT_ID:-postman-client}"

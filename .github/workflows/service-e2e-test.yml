@@ -67,6 +67,6 @@ jobs:
     uses: ./.github/workflows/gravitino-service-e2e-test-action.yml
     with:
       env-name: env2-oauth2-auth
-      components: hive,keycloak
-      test-scenarios: oauth2
+      components: hive,keycloak,trino
+      test-scenarios: oauth2,trino
     secrets: inherit

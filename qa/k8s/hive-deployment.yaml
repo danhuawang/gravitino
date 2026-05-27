@@ -2,6 +2,8 @@
 # Copyright 2024 Datastrato Pvt Ltd.
 # This software is licensed under the Apache License version 2.
 #
+# Hive Metastore + HDFS (NameNode + single DataNode) for E2E tests.
+#
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -11,22 +13,119 @@ data:
   init.sh: |
     #!/bin/bash
     set -e
-    
-    # Set default HIVE_TMP_CONF_DIR if not set
+
     HIVE_TMP_CONF_DIR=${HIVE_TMP_CONF_DIR:-/tmp/conf}
-    
-    # Get container IP
-    IP=$(hostname -I | awk '{print $1}')
-    
-    # Update hive-site.xml if it exists
+    HADOOP_TMP_CONF_DIR=${HADOOP_TMP_CONF_DIR:-/tmp/hadoop-conf}
+
+    # Use the Kubernetes Service name as both the NameNode advertised address
+    # and the DataNode hostname so all in-cluster clients resolve them via DNS.
+    HDFS_HOST="hive-metastore"
+
+    # Patch hive-site.xml warehouse URI to use the Service name.
     if [ -f "${HIVE_TMP_CONF_DIR}/hive-site.xml" ]; then
-      sed -i "s|<value>hdfs://__REPLACE__HOST_NAME:9000|<value>hdfs://${IP}:9000|g" ${HIVE_TMP_CONF_DIR}/hive-site.xml
+      sed -i "s|<value>hdfs://__REPLACE__HOST_NAME:9000|<value>hdfs://${HDFS_HOST}:9000|g" \
+        ${HIVE_TMP_CONF_DIR}/hive-site.xml
     fi
-    
-    # Start Hive services in background
+
+    # Rewrite hdfs-site.xml:
+    #   - NameNode binds on 0.0.0.0 so NodePort traffic (SNATed source IP)
+    #     can reach it.
+    #   - DataNode binds on conventional ports and advertises the Service
+    #     hostname so in-cluster HDFS clients can connect to it.
+    cat > ${HADOOP_TMP_CONF_DIR}/hdfs-site.xml <<EOF
+    <?xml version="1.0"?>
+    <configuration>
+      <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+      </property>
+      <property>
+        <name>dfs.webhdfs.enabled</name>
+        <value>true</value>
+      </property>
+      <property>
+        <name>dfs.namenode.rpc-bind-host</name>
+        <value>0.0.0.0</value>
+      </property>
+      <property>
+        <name>dfs.namenode.servicerpc-bind-host</name>
+        <value>0.0.0.0</value>
+      </property>
+      <property>
+        <name>dfs.namenode.http-bind-host</name>
+        <value>0.0.0.0</value>
+      </property>
+      <property>
+        <name>dfs.datanode.address</name>
+        <value>0.0.0.0:50010</value>
+      </property>
+      <property>
+        <name>dfs.datanode.http.address</name>
+        <value>0.0.0.0:50075</value>
+      </property>
+      <property>
+        <name>dfs.datanode.ipc.address</name>
+        <value>0.0.0.0:50020</value>
+      </property>
+      <property>
+        <name>dfs.datanode.use.datanode.hostname</name>
+        <value>true</value>
+      </property>
+      <property>
+        <name>dfs.datanode.hostname</name>
+        <value>${HDFS_HOST}</value>
+      </property>
+      <property>
+        <name>dfs.permissions.superusergroup</name>
+        <value>hdfs</value>
+      </property>
+    </configuration>
+    EOF
+
+    cat > ${HADOOP_TMP_CONF_DIR}/core-site.xml <<EOF
+    <?xml version="1.0"?>
+    <configuration>
+      <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://${HDFS_HOST}:9000</value>
+      </property>
+      <property>
+        <name>name</name>
+        <value>Development Cluster</value>
+      </property>
+      <property>
+        <name>hadoop.http.staticuser.user</name>
+        <value>hadoopuser</value>
+      </property>
+      <property>
+        <name>hadoop.proxyuser.hive.hosts</name>
+        <value>*</value>
+      </property>
+      <property>
+        <name>hadoop.proxyuser.hive.groups</name>
+        <value>*</value>
+      </property>
+      <property>
+        <name>hadoop.proxyuser.root.groups</name>
+        <value>*</value>
+      </property>
+      <property>
+        <name>hadoop.proxyuser.root.hosts</name>
+        <value>*</value>
+      </property>
+      <property>
+        <name>hadoop.proxyuser.gravitino.groups</name>
+        <value>*</value>
+      </property>
+      <property>
+        <name>hadoop.proxyuser.gravitino.hosts</name>
+        <value>*</value>
+      </property>
+    </configuration>
+    EOF
+
     /bin/bash /usr/local/sbin/start.sh
-    
-    # Keep container running and monitor Hive Metastore process
+
     while true; do
       if ! pgrep -f "HiveMetaStore" > /dev/null; then
         echo "Hive Metastore process died, exiting..."
@@ -34,10 +133,9 @@ data:
       fi
       sleep 10
     done
-  
+
   check-status.sh: |
     #!/bin/bash
-    # Simple health check: verify Hive Metastore port is listening
     netstat -tuln | grep -q ':9083' && echo "Hive Metastore is ready" && exit 0
     echo "Hive Metastore is not ready" && exit 1
 ---
@@ -56,6 +154,26 @@ spec:
       nodePort: 30083
       protocol: TCP
       name: thrift
+    - port: 9000
+      targetPort: 9000
+      nodePort: 30900
+      protocol: TCP
+      name: hdfs-namenode-rpc
+    - port: 50010
+      targetPort: 50010
+      nodePort: 30010
+      protocol: TCP
+      name: hdfs-datanode-data
+    - port: 50020
+      targetPort: 50020
+      nodePort: 30020
+      protocol: TCP
+      name: hdfs-datanode-ipc
+    - port: 50075
+      targetPort: 50075
+      nodePort: 30075
+      protocol: TCP
+      name: hdfs-datanode-http
   selector:
     app: hive-metastore
 ---
@@ -76,12 +194,22 @@ spec:
       labels:
         app: hive-metastore
     spec:
+      hostname: hive-metastore
+      subdomain: hive-metastore
       containers:
         - name: hive-metastore
           image: apache/gravitino-ci:hive-0.1.20
           ports:
             - containerPort: 9083
               name: thrift
+            - containerPort: 9000
+              name: hdfs-nn-rpc
+            - containerPort: 50010
+              name: hdfs-dn-data
+            - containerPort: 50020
+              name: hdfs-dn-ipc
+            - containerPort: 50075
+              name: hdfs-dn-http
           env:
             - name: HADOOP_USER_NAME
               value: "gravitino"
