@@ -51,11 +51,25 @@ postgresql:
       requests:
         memory: 512Mi
 
+auxService:
+  names: iceberg-rest
+
+icebergRest:
+  catalogConfigProvider: dynamic-config-provider
+  dynamicConfigProvider:
+    metalake: test           
+    defaultCatalogName: catalog_1
+
 env:
   - name: GRAVITINO_USE_WEB_V2
     value: "true"
 
 additionalConfigItems:
+  gravitino.iceberg-rest.catalog-cache-eviction-interval-ms: "300000"
+  gravitino.iceberg-rest.table-metadata-cache-impl: "org.apache.gravitino.iceberg.common.cache.LocalTableMetadataCache"
+  gravitino.iceberg-rest.table-metadata-cache-expire-minutes: "1"
+  gravitino.iceberg-rest.scan-plan-cache-impl: "org.apache.gravitino.iceberg.service.cache.LocalScanPlanCache"
+  gravitino.iceberg-rest.scan-plan-cache-expire-minutes: "1"
   gravitino.datastrato.search.storage.impl: memory
   gravitino.datastrato.preview.jdbcUrl: "jdbc:trino://trino:8080"
   gravitino.datastrato.preview.jdbcUsername: admin
