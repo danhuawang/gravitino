@@ -36,7 +36,9 @@ public class DatastratoSchemaEventDispatcher extends SchemaEventDispatcher
   public List<SchemaEntity> listEntities(Namespace namespace) {
     try {
       List<SchemaEntity> schemaEntities = dispatcher.listEntities(namespace);
-      eventBus.dispatchEvent(new ListSchemaEvent(PrincipalUtils.getCurrentUserName(), namespace));
+      int count = schemaEntities == null ? -1 : schemaEntities.size();
+      eventBus.dispatchEvent(
+          new ListSchemaEvent(PrincipalUtils.getCurrentUserName(), namespace, count));
       return schemaEntities;
     } catch (Exception e) {
       eventBus.dispatchEvent(

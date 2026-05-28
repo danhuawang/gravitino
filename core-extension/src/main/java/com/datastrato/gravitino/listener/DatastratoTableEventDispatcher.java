@@ -40,7 +40,9 @@ public class DatastratoTableEventDispatcher extends TableEventDispatcher
   public List<TableEntity> listEntities(Namespace namespace) {
     try {
       List<TableEntity> tableEntities = dispatcher.listEntities(namespace);
-      eventBus.dispatchEvent(new ListTableEvent(PrincipalUtils.getCurrentUserName(), namespace));
+      int count = tableEntities == null ? -1 : tableEntities.size();
+      eventBus.dispatchEvent(
+          new ListTableEvent(PrincipalUtils.getCurrentUserName(), namespace, count));
       return tableEntities;
     } catch (Exception e) {
       eventBus.dispatchEvent(
