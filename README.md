@@ -1,33 +1,129 @@
 <!--
-  Copyright 2024 Datastrato Pvt Ltd.
-  This software is licensed under the Apache License version 2.
+  Licensed to the Apache Software Foundation (ASF) under one
+  or more contributor license agreements.  See the NOTICE file
+  distributed with this work for additional information
+  regarding copyright ownership.  The ASF licenses this file
+  to you under the Apache License, Version 2.0 (the
+  "License"); you may not use this file except in compliance
+  with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing,
+  software distributed under the License is distributed on an
+  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  KIND, either express or implied.  See the License for the
+  specific language governing permissions and limitations
+  under the License.
 -->
 
-This is a enterprise edition of Apache Gravitino, which builds on top of the open source version of Apache Gravitino.
+# Apache Gravitino™
 
-## Building Datastrato Gravitino
+[![GitHub Actions Build](https://github.com/apache/gravitino/actions/workflows/build.yml/badge.svg)](https://github.com/apache/gravitino/actions/workflows/build.yml)
+[![GitHub Actions Integration Test](https://github.com/apache/gravitino/actions/workflows/integration-test.yml/badge.svg)](https://github.com/apache/gravitino/actions/workflows/integration-test.yml)
+[![License](https://img.shields.io/github/license/apache/gravitino)](https://github.com/apache/gravitino/blob/main/LICENSE)
+[![Contributors](https://img.shields.io/github/contributors/apache/gravitino)](https://github.com/apache/gravitino/graphs/contributors)
+[![Release](https://img.shields.io/github/v/release/apache/gravitino)](https://github.com/apache/gravitino/releases)
+[![Open Issues](https://img.shields.io/github/issues-raw/apache/gravitino)](https://github.com/apache/gravitino/issues)
+[![Last Committed](https://img.shields.io/github/last-commit/apache/gravitino)](https://github.com/apache/gravitino/commits/main/)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/8358/badge)](https://www.bestpractices.dev/projects/8358)
 
-Since the project is built using git submodule, there are a few extra steps to build the project.
+## Introduction
 
-Clone the repository with the `--recurse-submodules` flag to clone the submodules as well.
+Apache Gravitino is a high-performance, geo-distributed, and federated metadata lake. It manages metadata directly in different sources, types, and regions, providing users with unified metadata access for data and AI assets.
 
-```shell
-git clone --recurse-submodules git@github.com:datastrato/gravitino-enterprise.git
+![Gravitino Architecture](docs/assets/gravitino-architecture.png)
+
+## 🚀 Key Features
+
+- **Unified Metadata Management**: Manage diverse metadata sources through a single model and API (e.g., Hive, MySQL, MariaDB, HDFS, S3).
+- **End-to-End Data Governance**: Features like access control, auditing, and discovery across all metadata assets.
+- **Direct Metadata Integration**: Changes in underlying systems are immediately reflected via Gravitino’s connectors.
+- **Geo-Distribution Support**: Share metadata across regions and clouds to support global architectures.
+- **Multi-Engine Compatibility**: Seamlessly integrates with query engines without modifying SQL dialects.
+- **AI Asset Management (WIP)**: Support for AI model and feature tracking.
+
+## 🌐 Common Use Cases
+
+- Federated metadata discovery across data lakes and data warehouses
+- Multi-region metadata synchronization for hybrid or multi-cloud setups
+- Data and AI asset governance with unified audit and access control
+- Plug-and-play access for engines like Trino or Spark
+- Support for evolving metadata standards, including AI model lineage
+
+## 📚 Documentation
+
+The latest Gravitino documentation is available at [gravitino.apache.org/docs/latest](https://gravitino.apache.org/docs/latest/).
+
+This README provides a basic overview; visit the site for full installation, configuration, and development documentation.
+
+## 🧪 Quick Start
+
+### Use Gravitino Playground (Recommended)
+
+Gravitino provides a Docker Compose–based playground for a full-stack experience.  
+Clone or download the [Gravitino Playground repository](https://github.com/apache/gravitino-playground) and follow its [README](https://github.com/apache/gravitino-playground/blob/main/README.md).
+
+### Run Gravitino Locally
+
+1. [Download](https://gravitino.apache.org/downloads) and extract a binary release.
+2. Edit `conf/gravitino.conf` to configure settings.
+3. Start the server:
+
+```bash
+./bin/gravitino.sh start
 ```
 
-If you have already cloned the repository without the `--recurse-submodules` flag, you can run the following command to clone the submodules.
+4. To stop:
 
-```shell
-git submodule update --init --recursive
+```bash
+./bin/gravitino.sh stop
 ```
 
-If you want to build a distribution package, please run:
+Press `CTRL+C` to stop.
 
-```shell
+5. (Optional) Use the new UI
+
+  - To switch to the new UI at runtime: edit `conf/gravitino-env.sh` (or set the environment variable before starting) and set `GRAVITINO_USE_WEB_V2` to `true`:
+
+```bash
+export GRAVITINO_USE_WEB_V2=true
+./bin/gravitino.sh start
+```
+
+  - Alternatively, you can remove the `GRAVITINO_USE_WEB_V2=...` line from `conf/gravitino-env.sh` (the template defaults to `false`); removing that line will revert the service to the legacy UI behavior.
+
+
+## 🧊 Iceberg REST Catalog
+
+Gravitino provides a native Iceberg REST catalog service.  
+See: [Iceberg REST catalog service](https://gravitino.apache.org/docs/latest/iceberg-rest-service/)
+
+## 🗄️ Lance REST Catalog
+
+Gravitino provides a native Lance REST catalog service.  
+See: [Lance REST catalog service](https://gravitino.apache.org/docs/latest/lance-rest-service/)
+
+## 🔌 Trino Integration
+
+Gravitino includes a Trino connector for federated metadata access.  
+See: [Using Trino with Gravitino](https://gravitino.apache.org/docs/latest/trino-connector/index/)
+
+## 🛠️ Building from Source
+
+Gravitino uses Gradle. Windows is not currently supported.
+
+Clean build without tests:
+
+```bash
+./gradlew clean build -x test
+```
+
+Build a distribution:
+
+```bash
 ./gradlew compileDistribution -x test
 ```
-
-to build a distribution package.
 
 Skip building and packaging both Web UIs:
 
@@ -37,54 +133,36 @@ Skip building and packaging both Web UIs:
 
 Or compressed package:
 
-```shell
+```bash
 ./gradlew assembleDistribution -x test
 ```
 
-to build a compressed distribution package.
+Artifacts are output to the `distribution/` directory.
 
-The directory `distribution` contains the generated binary distribution package.
+More build options: [How to build Gravitino](https://gravitino.apache.org/docs/latest/how-to-build/)
 
-## Contributing to Datastrato Gravitino
+## 👨‍💻 Developer Resources
 
-Because the project contains a git submodule, there are some additional steps to be aware of when performing certain git operations.
+- [How to build Gravitino](https://gravitino.apache.org/docs/latest/how-to-build/)
+- [How to test Gravitino](https://gravitino.apache.org/docs/latest/how-to-test/)
+- [Publish Docker images](https://gravitino.apache.org/docs/latest/publish-docker-images)
 
-### 1. checkout a remote branch
+## 🤝 Contributing
 
-You should use the following command to checkout a remote branch:
+We welcome all kinds of contributions—code, documentation, testing, connectors, and more!
 
-```shell
-git checkout <branch_name> --recurse-submodules
-```
+To get started, please read our [CONTRIBUTING.md](CONTRIBUTING.md) guide.
 
-Or:
+## 🔗 ASF Resources
 
-```shell
-git checkout <branch_name> && git submodule update --init --recursive
-```
+- 📬 Mailing List: [dev@gravitino.apache.org](mailto:dev@gravitino.apache.org) ([subscribe](mailto:dev-subscribe@gravitino.apache.org))
+- 🐞 Issue Tracker: [GitHub Issues](https://github.com/apache/gravitino/issues)
 
-### 2. update submodule
+## 🪪 License
 
-Note that you cannot modify the submodule codes directly, you can only change the reference of the submodule (checkout to a specific commit, tag, or branch).
+Apache Gravitino is licensed under the Apache License, Version 2.0.  
+See the [LICENSE](LICENSE) file for details.
 
-If you want to update submodule to align with the remote parent project, you should use the following command:
+<sub>Apache®, Apache Gravitino™, Apache Hadoop®, Apache Hive™, Apache Iceberg™, Apache Kafka®, Apache Spark™, Apache Submarine™, Apache Thrift™, and Apache Zeppelin™ are trademarks of the Apache Software Foundation in the United States and/or other countries.</sub>
 
-```shell
-git submodule update --init --recursive
-```
-
-If you want to update submodule to latest commit on the `.gitmodules` file specified branch, you should use the following command:
-
-```shell
-git submodule update --remote --rebase
-```
-
-If you want to update submodule to a specific commit, you should use the following command:
-
-```shell
-cd gravitino-internal
-git checkout <commit_hash>
-cd ..
-git add gravitino-internal
-git commit -m "update submodule to <commit_hash>"
-```
+<img src="https://analytics.apache.org/matomo.php?idsite=62&rec=1&bots=1&action_name=ReadMe" style="border:0;" alt="" />

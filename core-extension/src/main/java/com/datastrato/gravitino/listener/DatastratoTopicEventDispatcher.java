@@ -37,7 +37,9 @@ public class DatastratoTopicEventDispatcher extends TopicEventDispatcher
   public List<TopicEntity> listEntities(Namespace namespace) {
     try {
       List<TopicEntity> topicEntities = dispatcher.listEntities(namespace);
-      eventBus.dispatchEvent(new ListTopicEvent(PrincipalUtils.getCurrentUserName(), namespace));
+      int count = topicEntities == null ? -1 : topicEntities.size();
+      eventBus.dispatchEvent(
+          new ListTopicEvent(PrincipalUtils.getCurrentUserName(), namespace, count));
       return topicEntities;
     } catch (Exception e) {
       eventBus.dispatchEvent(

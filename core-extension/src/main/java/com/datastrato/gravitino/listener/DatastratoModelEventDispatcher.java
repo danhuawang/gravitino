@@ -31,7 +31,9 @@ public class DatastratoModelEventDispatcher extends ModelEventDispatcher
   public List<ModelEntity> listEntities(Namespace namespace) {
     try {
       List<ModelEntity> modelEntities = dispatcher.listEntities(namespace);
-      eventBus.dispatchEvent(new ListModelEvent(PrincipalUtils.getCurrentUserName(), namespace));
+      int count = modelEntities == null ? -1 : modelEntities.size();
+      eventBus.dispatchEvent(
+          new ListModelEvent(PrincipalUtils.getCurrentUserName(), namespace, count));
       return ImmutableList.copyOf(modelEntities);
     } catch (Exception e) {
       eventBus.dispatchEvent(

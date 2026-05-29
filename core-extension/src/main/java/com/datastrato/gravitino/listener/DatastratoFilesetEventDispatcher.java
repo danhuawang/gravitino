@@ -30,7 +30,9 @@ public class DatastratoFilesetEventDispatcher extends FilesetEventDispatcher
   public List<FilesetEntity> listEntities(Namespace namespace) {
     try {
       List<FilesetEntity> filesetEntities = dispatcher.listEntities(namespace);
-      eventBus.dispatchEvent(new ListFilesetEvent(PrincipalUtils.getCurrentUserName(), namespace));
+      int count = filesetEntities == null ? -1 : filesetEntities.size();
+      eventBus.dispatchEvent(
+          new ListFilesetEvent(PrincipalUtils.getCurrentUserName(), namespace, count));
       return filesetEntities;
     } catch (Exception e) {
       eventBus.dispatchEvent(
