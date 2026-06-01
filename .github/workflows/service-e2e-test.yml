@@ -55,7 +55,7 @@ jobs:
     with:
       env-name: env1-simple-auth
       components: hive
-      test-scenarios: function
+      test-scenarios: function,view,schema
     secrets: inherit
 
   GravitinoE2E-Env2-OAuth2:
