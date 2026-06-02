@@ -153,7 +153,10 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
   }
 
   @Override
-  public boolean isSelf(Entity.EntityType type, NameIdentifier nameIdentifier) {
+  public boolean isSelf(
+      Entity.EntityType type,
+      NameIdentifier nameIdentifier,
+      AuthorizationRequestContext requestContext) {
     // since this authorizer is used for metric job to filter metadata, so it should not reach here.
     throw new UnsupportedOperationException("Unsupported operation.");
   }
