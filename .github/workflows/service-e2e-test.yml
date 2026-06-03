@@ -54,8 +54,8 @@ jobs:
     uses: ./.github/workflows/gravitino-service-e2e-test-action.yml
     with:
       env-name: env1-simple-auth
-      components: hive
-      test-scenarios: function
+      components: hive,gravitino-trino
+      test-scenarios: function,glue,schema,view
     secrets: inherit
 
   GravitinoE2E-Env2-OAuth2:

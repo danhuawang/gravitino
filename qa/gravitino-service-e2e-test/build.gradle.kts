@@ -148,6 +148,14 @@ tasks.test {
   systemProperty("gravitino.trino.uri", System.getenv("GRAVITINO_E2E_TRINO_URI") ?: "http://localhost:30880")
   systemProperty("hive.metastore.uri", System.getenv("GRAVITINO_E2E_HIVE_URI") ?: "thrift://localhost:30083")
 
+  // AWS Glue catalog properties (optional properties are only set when the env var exists)
+  systemProperty("glue.aws.region", System.getenv("GLUE_AWS_REGION") ?: "us-east-1")
+  systemProperty("glue.aws.catalog.id", System.getenv("GLUE_AWS_CATALOG_ID") ?: "730335553010")
+  systemProperty("glue.aws.warehouse", System.getenv("GLUE_AWS_WAREHOUSE") ?: "s3://gravitino-glue-test/warehouse")
+  System.getenv("GLUE_AWS_ACCESS_KEY_ID")?.let     { systemProperty("glue.aws.access.key.id", it) }
+  System.getenv("GLUE_AWS_SECRET_ACCESS_KEY")?.let { systemProperty("glue.aws.secret.access.key", it) }
+  System.getenv("GLUE_AWS_ENDPOINT")?.let          { systemProperty("glue.aws.endpoint", it) }
+
   // Disable JVM system-proxy auto-detection. On macOS the JVM otherwise picks up the
   // system-level SOCKS / HTTP proxy from System Preferences and routes outbound HTTP
   // through it, which breaks the Iceberg REST client (it sees a "Malformed reply from

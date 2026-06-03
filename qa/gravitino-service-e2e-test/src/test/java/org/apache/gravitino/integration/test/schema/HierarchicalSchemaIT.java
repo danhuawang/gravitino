@@ -27,6 +27,7 @@ import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.client.GravitinoAdminClient;
 import org.apache.gravitino.client.GravitinoMetalake;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
+import org.apache.gravitino.exceptions.NonEmptySchemaException;
 import org.apache.gravitino.function.FunctionCatalog;
 import org.apache.gravitino.function.FunctionDefinition;
 import org.apache.gravitino.function.FunctionDefinitions;
@@ -60,9 +61,9 @@ import org.slf4j.LoggerFactory;
  * </ul>
  */
 @DisplayName("Hierarchical Schema API Corner Case Tests")
-public class TestHierarchicalSchemaIT {
+public class HierarchicalSchemaIT {
 
-  private static final Logger LOG = LoggerFactory.getLogger(TestHierarchicalSchemaIT.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HierarchicalSchemaIT.class);
 
   private static GravitinoAdminClient adminClient;
   private static GravitinoMetalake metalake;
@@ -106,7 +107,7 @@ public class TestHierarchicalSchemaIT {
 
     testRunPrefix = RandomNameUtils.genRandomName("hs");
     LOG.info(
-        "TestHierarchicalSchemaIT setup complete: metalake={}, hiveCatalog={}, icebergCatalog={},"
+        "HierarchicalSchemaIT setup complete: metalake={}, hiveCatalog={}, icebergCatalog={},"
             + " prefix={}",
         metalakeName,
         hiveCatalogName,
@@ -823,9 +824,10 @@ public class TestHierarchicalSchemaIT {
         icebergCatalog.asTableCatalog().loadTable(NameIdentifier.of(child, "tbl")));
 
     // Dropping parent without cascade should fail because child schema has a table
-    Exception exception =
+    NonEmptySchemaException exception =
         Assertions.assertThrows(
-            Exception.class, () -> icebergCatalog.asSchemas().dropSchema(parent, false));
+            NonEmptySchemaException.class,
+            () -> icebergCatalog.asSchemas().dropSchema(parent, false));
     LOG.info(
         "Expected exception when dropping parent with non-empty child: {}", exception.getMessage());
 
@@ -833,8 +835,9 @@ public class TestHierarchicalSchemaIT {
     Assertions.assertNotNull(icebergCatalog.asSchemas().loadSchema(parent));
     Assertions.assertNotNull(icebergCatalog.asSchemas().loadSchema(child));
 
-    // Clean up properly: drop table first, then drop parent directly
+    // Clean up properly: drop table first, then child schema, then parent schema
     icebergCatalog.asTableCatalog().dropTable(NameIdentifier.of(child, "tbl"));
+    icebergCatalog.asSchemas().dropSchema(child, false);
     icebergCatalog.asSchemas().dropSchema(parent, false);
   }
 
@@ -847,27 +850,23 @@ public class TestHierarchicalSchemaIT {
     icebergCatalog.asSchemas().createSchema(parent, "parent", Collections.emptyMap());
     icebergCatalog.asSchemas().createSchema(child, "empty child", Collections.emptyMap());
 
-    // Dropping parent when child schema is empty — Iceberg may allow this
-    // (it drops empty child namespaces). We verify the behavior is consistent:
-    // either it succeeds and both are gone, or it throws and both remain.
-    try {
-      boolean dropped = icebergCatalog.asSchemas().dropSchema(parent, false);
-      if (dropped) {
-        LOG.info("Iceberg allowed dropping parent with empty child — both should be gone");
+    // Dropping parent when child schema is empty — Iceberg rejects this because
+    // the parent namespace still contains a child namespace.
+    NonEmptySchemaException exception =
         Assertions.assertThrows(
-            NoSuchSchemaException.class, () -> icebergCatalog.asSchemas().loadSchema(parent));
-        Assertions.assertThrows(
-            NoSuchSchemaException.class, () -> icebergCatalog.asSchemas().loadSchema(child));
-      }
-    } catch (Exception e) {
-      LOG.info(
-          "Iceberg rejected dropping parent with empty child: {} — both should remain",
-          e.getMessage());
-      Assertions.assertNotNull(icebergCatalog.asSchemas().loadSchema(parent));
-      Assertions.assertNotNull(icebergCatalog.asSchemas().loadSchema(child));
-      // Clean up — dropping parent directly removes empty children
-      icebergCatalog.asSchemas().dropSchema(parent, false);
-    }
+            NonEmptySchemaException.class,
+            () -> icebergCatalog.asSchemas().dropSchema(parent, false));
+    LOG.info(
+        "Iceberg rejected dropping parent with empty child: {} — both should remain",
+        exception.getMessage());
+
+    // Verify both schemas still exist
+    Assertions.assertNotNull(icebergCatalog.asSchemas().loadSchema(parent));
+    Assertions.assertNotNull(icebergCatalog.asSchemas().loadSchema(child));
+
+    // Clean up: drop child first, then parent
+    icebergCatalog.asSchemas().dropSchema(child, false);
+    icebergCatalog.asSchemas().dropSchema(parent, false);
   }
 
   @Test

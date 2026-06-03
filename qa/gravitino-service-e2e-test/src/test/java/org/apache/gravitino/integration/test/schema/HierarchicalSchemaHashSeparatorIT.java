@@ -44,10 +44,10 @@ import org.slf4j.LoggerFactory;
 @DisplayName("Hierarchical Schema Tests with '#' Separator")
 @Disabled(
     "Requires Gravitino server configured with gravitino.schema.separator=#. Enable manually.")
-public class TestHierarchicalSchemaHashSeparatorIT {
+public class HierarchicalSchemaHashSeparatorIT {
 
   private static final Logger LOG =
-      LoggerFactory.getLogger(TestHierarchicalSchemaHashSeparatorIT.class);
+      LoggerFactory.getLogger(HierarchicalSchemaHashSeparatorIT.class);
 
   /** The separator configured on the Gravitino server for this test. */
   private static final String SEPARATOR = "#";
@@ -75,7 +75,7 @@ public class TestHierarchicalSchemaHashSeparatorIT {
 
     testRunPrefix = RandomNameUtils.genRandomName("hash");
     LOG.info(
-        "TestHierarchicalSchemaHashSeparatorIT setup complete: metalake={}, catalog={}, prefix={}",
+        "HierarchicalSchemaHashSeparatorIT setup complete: metalake={}, catalog={}, prefix={}",
         metalakeName,
         icebergCatalogName,
         testRunPrefix);

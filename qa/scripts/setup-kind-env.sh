@@ -19,14 +19,18 @@
 #   COMPONENTS        – comma-separated list of optional components (alternative to --component flags)
 #
 # Supported optional components:
-#   hive       – Hive Metastore (NodePort 30083)
-#   keycloak   – Keycloak v26.0.7 (NodePort 30080)
+#   hive            – Hive Metastore (NodePort 30083)
+#   keycloak        – Keycloak v26.0.7 (NodePort 30080)
+#   trino           – Trino with Iceberg REST connector (NodePort 30880)
+#   gravitino-trino – Trino with Gravitino connector (NodePort 30881)
 #
 # NodePorts exposed:
 #   30090  – Gravitino API (always)
 #   30001  – Iceberg REST aux service (env2 oauth2-auth; otherwise unbound)
 #   30083  – Hive Metastore (if enabled)
 #   30080  – Keycloak HTTP (if enabled)
+#   30880  – Trino with Iceberg REST connector (if enabled)
+#   30881  – Trino with Gravitino connector (if enabled)
 #
 # Extra environment variables for the keycloak component:
 #   KEYCLOAK_ADMIN_PASSWORD  – admin password (default: admin)
@@ -107,6 +111,18 @@ if component_enabled "keycloak"; then
   EXTRA_PORT_MAPPINGS="${EXTRA_PORT_MAPPINGS}
   - containerPort: 30080
     hostPort: 30080
+    protocol: TCP"
+fi
+if component_enabled "trino"; then
+  EXTRA_PORT_MAPPINGS="${EXTRA_PORT_MAPPINGS}
+  - containerPort: 30880
+    hostPort: 30880
+    protocol: TCP"
+fi
+if component_enabled "gravitino-trino"; then
+  EXTRA_PORT_MAPPINGS="${EXTRA_PORT_MAPPINGS}
+  - containerPort: 30881
+    hostPort: 30881
     protocol: TCP"
 fi
 
@@ -426,6 +442,61 @@ if component_enabled "keycloak"; then
   kubectl rollout status deployment/keycloak -n "${NAMESPACE}" --timeout=5m
 fi
 
+# ── Trino with Gravitino Connector ───────────────────────────────────────────
+if component_enabled "gravitino-trino"; then
+  echo "=== Deploying Trino with Gravitino Connector ==="
+  TRINO_IMAGE_TAG="${TRINO_IMAGE_TAG:-trino-test}"
+  TRINO_IMAGE="${PUSH_REGISTRY}/gravitino:${TRINO_IMAGE_TAG}"
+
+  if [[ "${RESET}" == "true" ]]; then
+    echo "Reset requested: removing old Trino Gravitino image"
+    docker rmi "${TRINO_IMAGE}" 2>/dev/null || true
+  fi
+
+  if docker pull "${TRINO_IMAGE}" 2>/dev/null; then
+    echo "=== Trino Gravitino image already exists in registry, skipping build ==="
+  else
+    echo "=== Building Trino with Gravitino connector image ==="
+    pushd "${REPO_ROOT}" > /dev/null
+    ./dev/docker/build-docker.sh --platform all --type trino --image datastratosandbox/gravitino --tag "${TRINO_IMAGE_TAG}"
+    popd > /dev/null
+
+    docker tag "datastratosandbox/gravitino:${TRINO_IMAGE_TAG}" "${TRINO_IMAGE}"
+    docker push "${TRINO_IMAGE}"
+  fi
+
+  # Resolve environment variables for the deployment manifest
+  GRAVITINO_SVC_HOST="gravitino.${NAMESPACE}.svc.cluster.local"
+  export TRINO_IMAGE="${KIND_REGISTRY}/gravitino:${TRINO_IMAGE_TAG}"
+  export GRAVITINO_HOST_IP="${GRAVITINO_SVC_HOST}"
+  export GRAVITINO_HOST_PORT="9090"
+  export GRAVITINO_METALAKE="${GRAVITINO_E2E_METALAKE:-test}"
+
+  envsubst < "${K8S_DIR}/trino-gravitino-connector-deployment.yaml" | kubectl apply --validate=false -f -
+  kubectl rollout status deployment/trino-gravitino -n "${NAMESPACE}" --timeout=5m
+fi
+
+# ── Trino with Iceberg REST Connector ────────────────────────────────────────
+if component_enabled "trino"; then
+  echo "=== Deploying Trino with Iceberg REST connector ==="
+
+  GRAVITINO_SVC_HOST="gravitino.${NAMESPACE}.svc.cluster.local"
+  export TRINO_NAMESPACE="${NAMESPACE}"
+  export IRC_SERVICE_URL="http://${GRAVITINO_SVC_HOST}:9001/iceberg/"
+
+  if component_enabled "keycloak"; then
+    NODE_IP_FOR_TRINO="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
+    export KEYCLOAK_TOKEN_URI="http://${NODE_IP_FOR_TRINO}:30080/realms/myrealm/protocol/openid-connect/token"
+  else
+    export KEYCLOAK_TOKEN_URI="${KEYCLOAK_TOKEN_URI:-http://keycloak.${NAMESPACE}:8080/realms/myrealm/protocol/openid-connect/token}"
+  fi
+  export TRINO_OAUTH2_CREDENTIAL="${TRINO_OAUTH2_CREDENTIAL:-postman-client:JKaXEyxp1TiTeVf5ggDSjdTiVixCxj37}"
+  export TRINO_OAUTH2_SCOPE="${TRINO_OAUTH2_SCOPE:-openid profile email}"
+
+  envsubst < "${K8S_DIR}/trino-deployment.yaml" | kubectl apply --validate=false -f -
+  kubectl rollout status deployment/trino -n "${NAMESPACE}" --timeout=5m
+fi
+
 case "${ENV_NAME}" in
   env2-oauth2-auth)
     NODE_IP_FOR_SEED="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
@@ -465,6 +536,14 @@ if component_enabled "keycloak"; then
   # realm-management roles in the seeded image, so admin operations require master/admin-cli.
   export OAUTH2_ADMIN_USER="${OAUTH2_ADMIN_USER:-admin}"
   export OAUTH2_ADMIN_PASSWORD="${OAUTH2_ADMIN_PASSWORD:-${KEYCLOAK_ADMIN_PASSWORD:-admin}}"
+fi
+
+if component_enabled "trino"; then
+  export GRAVITINO_E2E_TRINO_URI="http://${NODE_IP}:30880"
+fi
+
+if component_enabled "gravitino-trino"; then
+  export GRAVITINO_E2E_GRAVITINO_TRINO_URI="http://${NODE_IP}:30881"
 fi
 
 echo ""
