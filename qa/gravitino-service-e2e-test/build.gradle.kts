@@ -82,6 +82,8 @@ configurations.testRuntimeClasspath {
     force("org.apache.logging.log4j:log4j-core:2.17.2")
     force("org.apache.logging.log4j:log4j-slf4j-impl:2.17.2")
     force("org.apache.logging.log4j:log4j-1.2-api:2.17.2")
+    force("org.apache.httpcomponents.core5:httpcore5:${libs.versions.httpcore5.get()}")
+    force("org.apache.httpcomponents.client5:httpclient5:${libs.versions.httpclient5.get()}")
   }
   exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
   exclude(group = "org.apache.logging.log4j", module = "log4j-layout-template-json")
@@ -93,6 +95,8 @@ configurations.testCompileClasspath {
     force("org.apache.logging.log4j:log4j-core:2.17.2")
     force("org.apache.logging.log4j:log4j-slf4j-impl:2.17.2")
     force("org.apache.logging.log4j:log4j-1.2-api:2.17.2")
+    force("org.apache.httpcomponents.core5:httpcore5:${libs.versions.httpcore5.get()}")
+    force("org.apache.httpcomponents.client5:httpclient5:${libs.versions.httpclient5.get()}")
   }
   exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
   exclude(group = "org.apache.logging.log4j", module = "log4j-layout-template-json")
@@ -152,9 +156,9 @@ tasks.test {
   systemProperty("glue.aws.region", System.getenv("GLUE_AWS_REGION") ?: "us-east-1")
   systemProperty("glue.aws.catalog.id", System.getenv("GLUE_AWS_CATALOG_ID") ?: "730335553010")
   systemProperty("glue.aws.warehouse", System.getenv("GLUE_AWS_WAREHOUSE") ?: "s3://gravitino-glue-test/warehouse")
-  System.getenv("GLUE_AWS_ACCESS_KEY_ID")?.let     { systemProperty("glue.aws.access.key.id", it) }
+  System.getenv("GLUE_AWS_ACCESS_KEY_ID")?.let { systemProperty("glue.aws.access.key.id", it) }
   System.getenv("GLUE_AWS_SECRET_ACCESS_KEY")?.let { systemProperty("glue.aws.secret.access.key", it) }
-  System.getenv("GLUE_AWS_ENDPOINT")?.let          { systemProperty("glue.aws.endpoint", it) }
+  System.getenv("GLUE_AWS_ENDPOINT")?.let { systemProperty("glue.aws.endpoint", it) }
 
   // Disable JVM system-proxy auto-detection. On macOS the JVM otherwise picks up the
   // system-level SOCKS / HTTP proxy from System Preferences and routes outbound HTTP
