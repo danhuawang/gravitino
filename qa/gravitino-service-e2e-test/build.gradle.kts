@@ -71,6 +71,8 @@ dependencies {
   testImplementation(libs.aws.s3)
   testImplementation(libs.aws.sts)
   testImplementation(libs.aws.kms)
+  testImplementation(libs.hadoop3.aws)
+  testImplementation(libs.hadoop3.client.api)
   testImplementation(libs.trino.jdbc)
 
   testImplementation(project(":clients:client-java-runtime", configuration = "shadow"))
@@ -151,6 +153,11 @@ tasks.test {
   systemProperty("gravitino.irc.catalog", System.getenv("GRAVITINO_E2E_IRC_CATALOG") ?: "catalog_1")
   systemProperty("gravitino.trino.uri", System.getenv("GRAVITINO_E2E_TRINO_URI") ?: "http://localhost:30880")
   systemProperty("hive.metastore.uri", System.getenv("GRAVITINO_E2E_HIVE_URI") ?: "thrift://localhost:30083")
+
+  // S3 properties (used by Spark Hive view tests, etc.)
+  systemProperty("s3.access.key", System.getenv("GLUE_AWS_ACCESS_KEY_ID") ?: "minioadmin")
+  systemProperty("s3.secret.key", System.getenv("GLUE_AWS_SECRET_ACCESS_KEY") ?: "minioadmin")
+  systemProperty("s3.endpoint", System.getenv("S3_ENDPOINT") ?: "http://s3.us-east-1.amazonaws.com")
 
   // AWS Glue catalog properties (optional properties are only set when the env var exists)
   systemProperty("glue.aws.region", System.getenv("GLUE_AWS_REGION") ?: "us-east-1")
