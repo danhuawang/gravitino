@@ -40,7 +40,8 @@ import {
   providerBase,
   rangerDefaultProps,
   regionOptions,
-  relationalProviders
+  relationalProviders,
+  sensitiveCatalogPropertyKeys
 } from '@/config/catalog'
 import { nameRegex } from '@/lib/utils/regex'
 import { useResetFormOnCloseModal } from '@/lib/hooks/use-reset'
@@ -364,10 +365,15 @@ export default function CreateCatalogDialog({ ...props }) {
           return <Icons.lakehouse className={small ? 'size-6' : 'size-12'}></Icons.lakehouse>
         case 'custom-icons-clickhouse':
           return <Icons.clickhouse className={small ? 'size-6' : 'size-12'}></Icons.clickhouse>
+<<<<<<< HEAD
         case 'custom-icons-bigquery':
           return <Icons.bigQuery className={small ? 'size-6' : 'size-12'}></Icons.bigQuery>
         case 'custom-icons-alicloud':
           return <Icons.alicloud className={small ? 'size-6' : 'size-12'}></Icons.alicloud>
+=======
+        case 'custom-icons-glue':
+          return <Icons.glue className={small ? 'size-6' : 'size-12'}></Icons.glue>
+>>>>>>> upstream/main
       }
     } else {
       return <Icons.iconify icon={calalogIcon} className={small ? 'size-6' : 'size-12'} />
@@ -550,7 +556,7 @@ export default function CreateCatalogDialog({ ...props }) {
                                 data-refer={`catalog-props-${prop.key}`}
                                 placeholder={prop.description ? prop.description : ''}
                                 disabled={prop.disabled}
-                                type={prop.key === 'jdbc-password' ? 'password' : 'text'}
+                                type={sensitiveCatalogPropertyKeys.includes(prop.key) ? 'password' : 'text'}
                               />
                             )}
                           </Form.Item>

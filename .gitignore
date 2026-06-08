@@ -30,6 +30,8 @@ replay_pid*
 !.idea/vcs.xml
 **/.vscode
 **/build
+# Zed editor's Java language server (Eclipse JDT) compiles classes into bin/ for code intelligence
+**/bin
 gen
 **/.DS_Store
 **/*.iml
@@ -66,5 +68,12 @@ web/.next
 .worktrees/
 .claude/settings.local.json
 
+<<<<<<< HEAD
 # Generated at build time by downloadPublicKey task
 licensing/license-client/src/main/resources/gravitino-master.pub
+=======
+# Vim swap files
+*.swp
+*.swo
+.*.sw?
+>>>>>>> upstream/main
