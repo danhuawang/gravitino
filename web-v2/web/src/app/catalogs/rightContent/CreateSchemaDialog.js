@@ -277,25 +277,6 @@ export default function CreateSchemaDialog({ ...props }) {
                     <TextArea disabled={editSchema} />
                   </Form.Item>
                 )}
-<<<<<<< HEAD
-                {(!['jdbc-postgresql', 'lakehouse-paimon', 'kafka', 'jdbc-mysql', 'jdbc-oceanbase'].includes(
-                  provider
-                ) ||
-                  paimonCatalogBackend) && (
-                  <Form.Item label='Properties'>
-                    <Form.List name='properties'>
-                      {(fields, subOpt) => (
-                        <RenderPropertiesFormItem
-                          fields={fields}
-                          subOpt={subOpt}
-                          form={form}
-                          isEdit={!!editSchema}
-                          isDisable={['jdbc-doris'].includes(provider) && !!editSchema}
-                          selectBefore={selectBefore}
-                        />
-                      )}
-                    </Form.List>
-=======
                 {isGlueProvider ? (
                   <Form.Item
                     name='glueLocation'
@@ -304,10 +285,11 @@ export default function CreateSchemaDialog({ ...props }) {
                     extra='Only location is supported for Glue schema properties.'
                   >
                     <Input placeholder='s3://my-bucket/path' />
->>>>>>> upstream/main
                   </Form.Item>
                 ) : (
-                  (!['jdbc-postgresql', 'lakehouse-paimon', 'kafka', 'jdbc-mysql'].includes(provider) ||
+                  (!['jdbc-postgresql', 'lakehouse-paimon', 'kafka', 'jdbc-mysql', 'jdbc-oceanbase'].includes(
+                    provider
+                  ) ||
                     paimonCatalogBackend) && (
                     <Form.Item label='Properties'>
                       <Form.List name='properties'>

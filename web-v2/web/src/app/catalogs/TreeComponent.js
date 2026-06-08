@@ -231,11 +231,7 @@ export const TreeComponent = forwardRef(function TreeComponent(props, ref) {
               )}
             </span>
           )
-<<<<<<< HEAD
         case 'custom-icons-bigquery':
-=======
-        case 'custom-icons-glue':
->>>>>>> upstream/main
           return (
             <span
               role='img'
@@ -245,7 +241,6 @@ export const TreeComponent = forwardRef(function TreeComponent(props, ref) {
               onClick={e => handleClickIcon(e, catalog)}
             >
               {isHover !== key ? (
-<<<<<<< HEAD
                 <Icons.bigQuery className='size-4'></Icons.bigQuery>
               ) : (
                 <Icons.RotateCw className='h-4 w-3'></Icons.RotateCw>
@@ -263,9 +258,22 @@ export const TreeComponent = forwardRef(function TreeComponent(props, ref) {
             >
               {isHover !== key ? (
                 <Icons.alicloud className='size-4'></Icons.alicloud>
-=======
+              ) : (
+                <Icons.RotateCw className='h-4 w-3'></Icons.RotateCw>
+              )}
+            </span>
+          )
+        case 'custom-icons-glue':
+          return (
+            <span
+              role='img'
+              className='anticon'
+              onMouseEnter={e => onMouseEnter(e, catalog)}
+              onMouseLeave={e => onMouseLeave(e, catalog)}
+              onClick={e => handleClickIcon(e, catalog)}
+            >
+              {isHover !== key ? (
                 <Icons.glue className='size-4'></Icons.glue>
->>>>>>> upstream/main
               ) : (
                 <Icons.RotateCw className='h-4 w-3'></Icons.RotateCw>
               )}

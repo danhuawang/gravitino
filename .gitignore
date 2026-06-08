@@ -68,12 +68,10 @@ web/.next
 .worktrees/
 .claude/settings.local.json
 
-<<<<<<< HEAD
 # Generated at build time by downloadPublicKey task
 licensing/license-client/src/main/resources/gravitino-master.pub
-=======
+
 # Vim swap files
 *.swp
 *.swo
 .*.sw?
->>>>>>> upstream/main

@@ -45,15 +45,12 @@ export const checkCatalogIcon = ({ type, provider }) => {
           return 'custom-icons-lakehouse'
         case 'jdbc-clickhouse':
           return 'custom-icons-clickhouse'
-<<<<<<< HEAD
         case 'jdbc-bigquery':
           return 'custom-icons-bigquery'
         case 'jdbc-maxcompute':
           return 'custom-icons-alicloud'
-=======
         case 'glue':
           return 'custom-icons-glue'
->>>>>>> upstream/main
         default:
           return 'bx:book'
       }
@@ -356,7 +353,6 @@ export const rangerDefaultProps = [
 ]
 
 export const providerBase = {
-<<<<<<< HEAD
   'jdbc-maxcompute': {
     label: 'Alibaba Cloud MaxCompute',
     defaultProps: [
@@ -389,7 +385,9 @@ export const providerBase = {
         value: '',
         required: true,
         description: 'Alibaba Cloud Access Key Secret'
-=======
+      }
+    ]
+  },
   glue: {
     label: 'AWS Glue',
     defaultProps: [
@@ -443,7 +441,6 @@ export const providerBase = {
         key: 'table-format-filter',
         value: 'all',
         description: 'Comma-separated formats exposed by listTables()'
->>>>>>> upstream/main
       }
     ]
   },

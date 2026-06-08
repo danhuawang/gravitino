@@ -365,15 +365,12 @@ export default function CreateCatalogDialog({ ...props }) {
           return <Icons.lakehouse className={small ? 'size-6' : 'size-12'}></Icons.lakehouse>
         case 'custom-icons-clickhouse':
           return <Icons.clickhouse className={small ? 'size-6' : 'size-12'}></Icons.clickhouse>
-<<<<<<< HEAD
         case 'custom-icons-bigquery':
           return <Icons.bigQuery className={small ? 'size-6' : 'size-12'}></Icons.bigQuery>
         case 'custom-icons-alicloud':
           return <Icons.alicloud className={small ? 'size-6' : 'size-12'}></Icons.alicloud>
-=======
         case 'custom-icons-glue':
           return <Icons.glue className={small ? 'size-6' : 'size-12'}></Icons.glue>
->>>>>>> upstream/main
       }
     } else {
       return <Icons.iconify icon={calalogIcon} className={small ? 'size-6' : 'size-12'} />

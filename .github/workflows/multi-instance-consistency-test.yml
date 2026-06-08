@@ -10,9 +10,10 @@ name: Multi-Instance Consistency Test
 
 on:
   push:
-    branches: [ "main", "branch-*" ]
+    branches: ["main", "branch-*"]
   pull_request:
-    branches: [ "main", "branch-*" ]
+    types: [labeled]
+    branches: ["main", "branch-*"]
   workflow_dispatch:
 
 concurrency:
@@ -22,6 +23,7 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci')
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
@@ -47,9 +49,12 @@ jobs:
       authz_changes: ${{ steps.filter.outputs.authz_changes }}
 
   multi-instance-consistency:
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
     needs: changes
     if: needs.changes.outputs.authz_changes == 'true'
-    runs-on: ubuntu-latest
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
     timeout-minutes: 30
     services:
       mysql:
@@ -72,8 +77,8 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
+          distribution: "temurin"
+          cache: "gradle"
 
       - name: Free disk space
         run: dev/ci/util_free_space.sh
