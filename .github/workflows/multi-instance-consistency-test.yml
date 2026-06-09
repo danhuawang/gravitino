@@ -55,6 +55,7 @@ jobs:
     env:
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
       GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
     timeout-minutes: 30
     services:
       mysql:
@@ -82,6 +83,9 @@ jobs:
 
       - name: Free disk space
         run: dev/ci/util_free_space.sh
+
+      - name: Install MySQL client
+        run: sudo apt-get update -q && sudo apt-get install -y -q default-mysql-client
 
       - name: Apply Gravitino MySQL schema
         run: |
