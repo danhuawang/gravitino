@@ -74,7 +74,7 @@ dependencies {
   testImplementation(libs.trino.jdbc)
   testImplementation(libs.hadoop3.aws)
   testImplementation(libs.hadoop3.common)
-
+  testImplementation(libs.hadoop3.client.api)
   testImplementation(project(":clients:client-java-runtime", configuration = "shadow"))
 }
 
@@ -86,8 +86,11 @@ configurations.testRuntimeClasspath {
     force("org.apache.logging.log4j:log4j-1.2-api:2.17.2")
     force("org.apache.httpcomponents.core5:httpcore5:${libs.versions.httpcore5.get()}")
     force("org.apache.httpcomponents.client5:httpclient5:${libs.versions.httpclient5.get()}")
+<<<<<<< HEAD
     force("org.apache.hadoop:hadoop-client-api:3.3.6")
     force("org.apache.hadoop:hadoop-client-runtime:3.3.6")
+=======
+>>>>>>> origin/generic-view-test
   }
   exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
   exclude(group = "org.apache.logging.log4j", module = "log4j-layout-template-json")
@@ -156,7 +159,11 @@ tasks.test {
   systemProperty("gravitino.trino.uri", System.getenv("GRAVITINO_E2E_TRINO_URI") ?: "http://localhost:30880")
   systemProperty("hive.metastore.uri", System.getenv("GRAVITINO_E2E_HIVE_URI") ?: "thrift://localhost:30083")
 
+<<<<<<< HEAD
   // S3 properties for Hive view tests
+=======
+  // S3 properties (used by Spark Hive view tests, etc.)
+>>>>>>> origin/generic-view-test
   systemProperty("s3.access.key", System.getenv("GLUE_AWS_ACCESS_KEY_ID") ?: "minioadmin")
   systemProperty("s3.secret.key", System.getenv("GLUE_AWS_SECRET_ACCESS_KEY") ?: "minioadmin")
   systemProperty("s3.endpoint", System.getenv("S3_ENDPOINT") ?: "http://s3.us-east-1.amazonaws.com")
