@@ -176,15 +176,23 @@ public class IdpMultiAdminIT {
     HttpResponse<String> resp = delete("/users/" + SERVICE_ACCOUNT, ADMIN, adminPassword);
     // Verify behavior: either 403 (forbidden) or 200 (allowed)
     int status = resp.statusCode();
-    Assertions.assertTrue(
-        status == 403 || status == 200,
-        "Expected 403 or 200 but got " + status + ": " + resp.body());
+    Assertions.assertTrue(status == 200, "Expected 200 but got " + status + ": " + resp.body());
     LOG.info("Delete another serviceAdmin returned: {}", status);
 
-    // If deletion succeeded, the SA should be re-created on next restart.
-    // For now restore if needed by verifying SA still works
+    // Re-add the service account so subsequent tests are not affected
     if (status == 200) {
-      LOG.warn("serviceAdmin deletion was allowed - SA may need re-initialization");
+      String body =
+          MAPPER
+              .createObjectNode()
+              .put("user", SERVICE_ACCOUNT)
+              .put("password", serviceAccountPassword)
+              .toString();
+      HttpResponse<String> addResp = post("/users", body, ADMIN, adminPassword);
+      Assertions.assertEquals(
+          200,
+          addResp.statusCode(),
+          "Failed to re-add service account after deletion: " + addResp.body());
+      LOG.info("Re-added service account '{}' after deletion", SERVICE_ACCOUNT);
     }
   }
 
