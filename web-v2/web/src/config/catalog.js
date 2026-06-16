@@ -529,7 +529,7 @@ export const providerBase = {
         value: '',
         required: true,
         parentField: 'catalog-backend',
-        hide: ['hive'],
+        hide: ['hive', 'rest'],
         description:
           '"com.mysql.jdbc.Driver" or "com.mysql.cj.jdbc.Driver" for MySQL, "org.postgresql.Driver" for PostgreSQL'
       },
@@ -539,7 +539,7 @@ export const providerBase = {
         value: '',
         required: true,
         parentField: 'catalog-backend',
-        hide: ['hive']
+        hide: ['hive', 'rest']
       },
       {
         label: 'JDBC Password',
@@ -547,7 +547,7 @@ export const providerBase = {
         value: '',
         required: true,
         parentField: 'catalog-backend',
-        hide: ['hive']
+        hide: ['hive', 'rest']
       },
       {
         label: 'Authentication Type',
