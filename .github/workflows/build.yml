@@ -158,7 +158,7 @@ jobs:
     strategy:
       matrix:
         java-version: [ 17 ]
-    timeout-minutes: 120
+    timeout-minutes: 150
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
     env:
