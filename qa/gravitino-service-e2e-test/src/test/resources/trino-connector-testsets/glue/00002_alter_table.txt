@@ -1,0 +1,64 @@
+CREATE SCHEMA
+
+CREATE TABLE
+
+DROP COLUMN
+
+"CREATE TABLE gt_glue.gt_db2.tb01 (
+   name varchar,
+   salary integer
+)
+COMMENT ''
+WITH (
+   %
+)"
+
+RENAME COLUMN
+
+"CREATE TABLE gt_glue.gt_db2.tb01 (
+   s varchar,
+   salary integer
+)
+COMMENT ''
+WITH (
+   %
+)"
+
+COMMENT
+
+"CREATE TABLE gt_glue.gt_db2.tb01 (
+   s varchar,
+   salary integer
+)
+COMMENT 'test table comments'
+WITH (
+   %
+)"
+
+COMMENT
+
+"CREATE TABLE gt_glue.gt_db2.tb01 (
+   s varchar COMMENT 'test column comments',
+   salary integer
+)
+COMMENT 'test table comments'
+WITH (
+   %
+)"
+
+ADD COLUMN
+
+"CREATE TABLE gt_glue.gt_db2.tb01 (
+   s varchar COMMENT 'test column comments',
+   salary integer,
+   city varchar COMMENT 'aaa'
+)
+COMMENT 'test table comments'
+WITH (
+   %
+)"
+
+DROP TABLE
+
+DROP SCHEMA
+

@@ -1,0 +1,13 @@
+CALL
+
+"gt_glue_xxx1"
+
+CALL
+
+<BLANK_LINE>
+
+CALL
+
+"gt_glue_xxx1"
+
+CALL

@@ -1,0 +1,30 @@
+CREATE SCHEMA
+
+USE
+
+CREATE TABLE
+
+CREATE TABLE
+
+INSERT: 3 rows
+
+INSERT: 2 rows
+
+"Alice"
+"Bob"
+"Charlie"
+
+"CustomerA"
+"CustomerB"
+
+"hive_employee"
+"iceberg_orders"
+
+"Alice","CustomerA"
+
+DROP TABLE
+
+DROP TABLE
+
+DROP SCHEMA
+
