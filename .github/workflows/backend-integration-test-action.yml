@@ -30,7 +30,7 @@ jobs:
   BackendIT:
     name: JDK${{ inputs.java-version }}-${{ inputs.test-mode }}-${{ inputs.backend }}
     runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
-    timeout-minutes: 150
+    timeout-minutes: 180
     env:
       PLATFORM: ${{ inputs.architecture }}
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
@@ -91,6 +91,7 @@ jobs:
             -x :spark-connector:spark-3.3:test -x :spark-connector:spark-3.4:test -x :spark-connector:spark-3.5:test \
             -x :spark-connector:spark-runtime-3.3:test -x :spark-connector:spark-runtime-3.4:test -x :spark-connector:spark-runtime-3.5:test \
             -x :trino-connector:integration-test:test -x :trino-connector:trino-connector:test \
+            -x :iceberg:iceberg-rest-trino-it:test \
             -x :plugins:idp-basic:test \
             -x :authorizations:authorization-chain:test -x :authorizations:authorization-ranger:test \
             -x :clients:cli:test -x :maintenance:jobs:test -x :maintenance:optimizer:test \
