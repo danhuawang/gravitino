@@ -10,6 +10,42 @@ concurrency:
   cancel-in-progress: ${{ contains(github.ref, 'main') }}
 
 jobs:
+  changes:
+    if: github.repository == 'apache/gravitino'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
+        id: filter
+        with:
+          filters: |
+            source_changes:
+              - .github/**
+              - api/**
+              - bin/**
+              - catalogs/**
+              - clients/**
+              - common/**
+              - conf/**
+              - core/**
+              - dev/**
+              - gradle/**
+              - iceberg/**
+              - integration-test/**
+              - meta/**
+              - server/**
+              - server-common/**
+              - spark-connector/**
+              - trino-connector/**
+              - web/**
+              - docs/open-api/**
+              - build.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+
   # Integration test for AMD64 architecture
   test-amd64-arch:
     if: github.repository == 'apache/gravitino'
@@ -47,7 +83,10 @@ jobs:
       - name: Integration Test
         id: integrationTest
         run: |
-          ./gradlew test -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false -PskipWeb=true
+          # iceberg-rest-trino-it runs in its own dedicated workflow (Java 24 / Trino, deploy
+          # only); exclude it here so it is not run redundantly.
+          ./gradlew test -PskipTests -PtestMode=${{ matrix.test-mode }} -PskipDockerTests=false -PskipWeb=true \
+            -x :iceberg:iceberg-rest-trino-it:test
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v7

@@ -21,6 +21,15 @@ Apache Gravitino provides the ability to manage Apache Iceberg metadata.
 Builds with Apache Iceberg `1.11.0`. The Apache Iceberg table format version is `2` by default.
 :::
 
+Flink and Spark clients may use a different Iceberg version than the server.
+
+- [Flink Iceberg catalog](flink-connector/flink-catalog-iceberg.md) — client JAR requirements
+- [Spark Iceberg catalog](spark-connector/spark-catalog-iceberg.md) — client JAR requirements
+
+:::caution
+Mixing Iceberg JARs from different versions on the client classpath is not compatible and may cause runtime errors.
+:::
+
 ## Catalog
 
 ### Catalog Capabilities
@@ -101,20 +110,31 @@ curl -X POST -H "Accept: application/vnd.gravitino.v1+json" \
 }' http://localhost:8090/api/metalakes/metalake/catalogs
 ```
 
-To access a non-default catalog, set `warehouse` to the catalog name. This uses a REST path like `http://127.0.0.1:9001/iceberg/v1/catalog/namespaces/db/tables/table`. See [Multi catalog](./iceberg-rest-service.md#multiple-catalog-backend-support) for details.
+To access a non-default catalog, set `warehouse` to the catalog name. This uses a REST path like `http://127.0.0.1:9001/iceberg/v1/catalog/namespaces/db/tables/table`. See [Multi-Catalog Configuration](./iceberg-rest-service.md#multi-catalog-configuration) for details.
 
 #### S3
 
+If `io-impl` is not configured, the Iceberg catalog uses
+`org.apache.iceberg.io.ResolvingFileIO`, which selects a `FileIO` implementation based
+on the URI scheme:
+
+- S3: `s3`, `s3a`, or `s3n`
+- OSS: `oss`
+- GCS: `gs` or `gcs`
+- ADLS: `abfs`, `abfss`, `wasb`, or `wasbs`
+- To override the default, explicitly configure `io-impl`.
+- Ensure that the corresponding storage bundle is available in the Iceberg catalog classpath.
+
 Supports using static access-key-id and secret-access-key to access S3 data.
 
-| Configuration item     | Description                                                                                                                                                                                                         | Default value | Required | Since Version    |
-|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------|------------------|
-| `io-impl`              | The io implementation for `FileIO` in Iceberg, use `org.apache.iceberg.aws.s3.S3FileIO` for s3.                                                                                                                     | (none)        | No       | 0.6.0-incubating |
-| `s3-access-key-id`     | The static access key ID used to access S3 data.                                                                                                                                                                    | (none)        | No       | 0.6.0-incubating |
-| `s3-secret-access-key` | The static secret access key used to access S3 data.                                                                                                                                                                | (none)        | No       | 0.6.0-incubating |
-| `s3-endpoint`          | An alternative endpoint of the S3 service, This could be used for S3FileIO with any s3-compatible object storage service that has a different endpoint, or access a private S3 endpoint in a virtual private cloud. | (none)        | No       | 0.6.0-incubating |
-| `s3-region`            | The region of the S3 service, like `us-west-2`.                                                                                                                                                                     | (none)        | No       | 0.6.0-incubating |
-| `s3-path-style-access` | Whether to use path style access for S3.                                                                                                                                                                            | false         | No       | 0.9.0-incubating |
+| Configuration item     | Description                                                                                                                                                                                                         | Default value                           | Required | Since Version    |
+|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|----------|------------------|
+| `io-impl`              | The IO implementation for `FileIO` in Iceberg. Set it to `org.apache.iceberg.aws.s3.S3FileIO` to explicitly use S3FileIO.                                                                                           | `org.apache.iceberg.io.ResolvingFileIO` | No       | 0.6.0-incubating |
+| `s3-access-key-id`     | The static access key ID used to access S3 data.                                                                                                                                                                    | (none)                                  | No       | 0.6.0-incubating |
+| `s3-secret-access-key` | The static secret access key used to access S3 data.                                                                                                                                                                | (none)                                  | No       | 0.6.0-incubating |
+| `s3-endpoint`          | An alternative endpoint of the S3 service, This could be used for S3FileIO with any s3-compatible object storage service that has a different endpoint, or access a private S3 endpoint in a virtual private cloud. | (none)                                  | No       | 0.6.0-incubating |
+| `s3-region`            | The region of the S3 service, like `us-west-2`.                                                                                                                                                                     | (none)                                  | No       | 0.6.0-incubating |
+| `s3-path-style-access` | Whether to use path style access for S3.                                                                                                                                                                            | false                                   | No       | 0.9.0-incubating |
 
 
 For other Iceberg s3 properties not managed by Gravitino like `s3.sse.type`, you could config it directly by `gravitino.bypass.s3.sse.type`.
@@ -133,12 +153,12 @@ Since Gravitino 1.1.0, the Gravitino Iceberg AWS bundle jar has already included
 
 Gravitino Iceberg REST service supports using static access-key-id and secret-access-key to access OSS data.
 
-| Configuration item      | Description                                                                                           | Default value | Required | Since Version    |
-|-------------------------|-------------------------------------------------------------------------------------------------------|---------------|----------|------------------|
-| `io-impl`               | The IO implementation for `FileIO` in Iceberg, use `org.apache.iceberg.aliyun.oss.OSSFileIO` for OSS. | (none)        | No       | 0.6.0-incubating |
-| `oss-access-key-id`     | The static access key ID used to access OSS data.                                                     | (none)        | No       | 0.7.0-incubating |
-| `oss-secret-access-key` | The static secret access key used to access OSS data.                                                 | (none)        | No       | 0.7.0-incubating |
-| `oss-endpoint`          | The endpoint of Aliyun OSS service.                                                                   | (none)        | No       | 0.7.0-incubating |
+| Configuration item      | Description                                                                                                                     | Default value                           | Required | Since Version    |
+|-------------------------|---------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|----------|------------------|
+| `io-impl`               | The IO implementation for `FileIO` in Iceberg. Set it to `org.apache.iceberg.aliyun.oss.OSSFileIO` to explicitly use OSSFileIO. | `org.apache.iceberg.io.ResolvingFileIO` | No       | 0.6.0-incubating |
+| `oss-access-key-id`     | The static access key ID used to access OSS data.                                                                               | (none)                                  | No       | 0.7.0-incubating |
+| `oss-secret-access-key` | The static secret access key used to access OSS data.                                                                           | (none)                                  | No       | 0.7.0-incubating |
+| `oss-endpoint`          | The endpoint of Aliyun OSS service.                                                                                             | (none)                                  | No       | 0.7.0-incubating |
 
 For other Iceberg OSS properties not managed by Gravitino like `client.security-token`, you could config it directly by `gravitino.bypass.client.security-token`.
 
@@ -154,9 +174,9 @@ Since Gravitino 1.1.0, the Gravitino Iceberg aliyun bundle jar has already inclu
 
 Supports using google credential file to access GCS data.
 
-| Configuration item | Description                                                                                        | Default value | Required | Since Version    |
-|--------------------|----------------------------------------------------------------------------------------------------|---------------|----------|------------------|
-| `io-impl`          | The io implementation for `FileIO` in Iceberg, use `org.apache.iceberg.gcp.gcs.GCSFileIO` for GCS. | (none)        | No       | 0.6.0-incubating |
+| Configuration item | Description                                                                                                                  | Default value                           | Required | Since Version    |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|----------|------------------|
+| `io-impl`          | The IO implementation for `FileIO` in Iceberg. Set it to `org.apache.iceberg.gcp.gcs.GCSFileIO` to explicitly use GCSFileIO. | `org.apache.iceberg.io.ResolvingFileIO` | No       | 0.6.0-incubating |
 
 For other Iceberg GCS properties not managed by Gravitino like `gcs.project-id`, you could config it directly by `gravitino.bypass.gcs.project-id`.
 
@@ -174,11 +194,11 @@ Since Gravitino 1.1.0, the Gravitino Iceberg GCP bundle jar has already included
 
 Supports using Azure account name and secret key to access ADLS data.
 
-| Configuration item           | Description                                                                                               | Default value | Required | Since Version    |
-|------------------------------|-----------------------------------------------------------------------------------------------------------|---------------|----------|------------------|
-| `io-impl`                    | The io implementation for `FileIO` in Iceberg, use `org.apache.iceberg.azure.adlsv2.ADLSFileIO` for ADLS. | (none)        | No       | 0.6.0-incubating |
-| `azure-storage-account-name` | The static storage account name used to access ADLS data.                                                 | (none)        | No       | 0.8.0-incubating |
-| `azure-storage-account-key`  | The static storage account key used to access ADLS data.                                                  | (none)        | No       | 0.8.0-incubating |
+| Configuration item           | Description                                                                                                                         | Default value                           | Required | Since Version    |
+|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|----------|------------------|
+| `io-impl`                    | The IO implementation for `FileIO` in Iceberg. Set it to `org.apache.iceberg.azure.adlsv2.ADLSFileIO` to explicitly use ADLSFileIO. | `org.apache.iceberg.io.ResolvingFileIO` | No       | 0.6.0-incubating |
+| `azure-storage-account-name` | The static storage account name used to access ADLS data.                                                                           | (none)                                  | No       | 0.8.0-incubating |
+| `azure-storage-account-key`  | The static storage account key used to access ADLS data.                                                                            | (none)                                  | No       | 0.8.0-incubating |
 
 For other Iceberg ADLS properties not managed by Gravitino like `adls.read.block-size-bytes`, you could config it directly by `gravitino.iceberg-rest.adls.read.block-size-bytes`.
 
@@ -194,9 +214,9 @@ Since Gravitino 1.1.0, the Gravitino Iceberg Azure bundle jar has already includ
 
 For other storages that are not managed by Gravitino directly, you can manage them through custom catalog properties.
 
-| Configuration item | Description                                                                             | Default value | Required | Since Version    |
-|--------------------|-----------------------------------------------------------------------------------------|---------------|----------|------------------|
-| `io-impl`          | The IO implementation for `FileIO` in Iceberg; use the fully qualified classname.       | (none)        | No       | 0.6.0-incubating |
+| Configuration item | Description                                                                                                               | Default value                           | Required | Since Version    |
+|--------------------|---------------------------------------------------------------------------------------------------------------------------|-----------------------------------------|----------|------------------|
+| `io-impl`          | The IO implementation for `FileIO` in Iceberg. Use the fully qualified class name to override the default implementation. | `org.apache.iceberg.io.ResolvingFileIO` | No       | 0.6.0-incubating |
 
 To pass custom properties such as `security-token` to your custom `FileIO`, you can directly configure it by `gravitino.bypass.security-token`. `security-token` will be included in the properties when the initialize method of `FileIO` is invoked.
 

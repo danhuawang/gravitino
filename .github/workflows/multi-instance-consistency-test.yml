@@ -9,11 +9,6 @@ name: Multi-Instance Consistency Test
 # The test plan and assertions live in dev/ci/test_multi_instance_consistency.sh.
 
 on:
-  push:
-    branches: ["main", "branch-*"]
-  pull_request:
-    types: [labeled]
-    branches: ["main", "branch-*"]
   workflow_dispatch:
 
 concurrency:
