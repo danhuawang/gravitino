@@ -50,8 +50,6 @@ import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.PartitionDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
-import org.apache.gravitino.catalog.TableNormalizeDispatcher;
-import org.apache.gravitino.catalog.TableOperationDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
@@ -83,6 +81,8 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private SchemaDispatcher internalDatastratoSchemaDispatcher;
   private TableDispatcher internalDatastratoTableDispatcher;
   private FilesetDispatcher internalDatastratoFilesetDispatcher;
+  private DatastratoViewDispatcher internalDatastratoViewDispatcher;
+  private DatastratoAccessControlDispatcher internalDatastratoAccessControlDispatcher;
 
   public static DatastratoGravitinoEnv getInstance() {
     return INSTANCE;
@@ -126,14 +126,15 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoTableEventDispatcher(eventBus(), tableNormalizeDispatcher);
     // internal: normalize only, no hooks or events — used by AuthorizationUtils for metadata
     // lookups
-    TableOperationDispatcher internalTableOpDispatcher =
-        new TableOperationDispatcher(
+    DatastratoTableDispatcher internalTableOperationDispatcher =
+        new DatastratoTableOperationDispatcher(
             catalogManager(),
             entityStore(),
             idGenerator(),
+            new TrinoJdbcDataPreviewOperator(config, tagDispatcher()),
             () -> internalDatastratoSchemaDispatcher);
     this.internalDatastratoTableDispatcher =
-        new TableNormalizeDispatcher(internalTableOpDispatcher, catalogManager());
+        new DatastratoTableNormalizeDispatcher(internalTableOperationDispatcher, catalogManager());
 
     // initialize fileset dispatcher
     DatastratoFilesetDispatcher filesetOperationDispatcher =
@@ -176,10 +177,25 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
     this.datastratoViewDispatcher =
         new DatastratoViewEventDispatcher(eventBus(), viewNormalizeDispatcher);
 
+    // initialize internal view dispatcher
+    DatastratoViewDispatcher internalViewOperationDispatcher =
+        new DatastratoViewOperationDispatcher(
+            catalogManager(),
+            entityStore(),
+            idGenerator(),
+            () -> internalDatastratoSchemaDispatcher);
+    this.internalDatastratoViewDispatcher =
+        new DatastratoViewNormalizeDispatcher(internalViewOperationDispatcher, catalogManager());
+
     // initialize access control dispatcher
     accessControlDispatcher =
         new DatastratoAccessControlDispatcher(
             GravitinoEnv.getInstance().accessControlDispatcher(), entityStore());
+
+    // initialize internal access control dispatcher
+    this.internalDatastratoAccessControlDispatcher =
+        new DatastratoAccessControlDispatcher(
+            GravitinoEnv.getInstance().internalAccessControlDispatcher(), entityStore());
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
@@ -240,6 +256,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @Override
+  public ViewDispatcher internalViewDispatcher() {
+    return internalDatastratoViewDispatcher;
+  }
+
+  @Override
   public Config config() {
     return GravitinoEnv.getInstance().config();
   }
@@ -277,6 +298,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public AccessControlDispatcher accessControlDispatcher() {
     return accessControlDispatcher;
+  }
+
+  @Override
+  public AccessControlDispatcher internalAccessControlDispatcher() {
+    return internalDatastratoAccessControlDispatcher;
   }
 
   @Override
