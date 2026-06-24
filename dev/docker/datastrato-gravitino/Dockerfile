@@ -16,22 +16,39 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-FROM eclipse-temurin:17.0.16_8-jdk-jammy
-LABEL maintainer="support@datastrato.com"
+FROM registry.access.redhat.com/ubi9/openjdk-17:1.24
+LABEL name="datastrato-enterprise-server" \
+      vendor="Datastrato Inc." \
+      version="1.4.0-SNAPSHOT" \
+      release="1.0.0" \
+      summary="Datastrato Enterprise Server container image" \
+      description="Datastrato Enterprise Server provides enterprise metadata management and data catalog capabilities powered by Apache Gravitino." \
+      maintainer="Datastrato Inc."
 
-RUN apt-get update && apt-get install -y \
-    vim \
+USER root
+
+RUN microdnf install -y \
+    vim-minimal \
     jq \
-    bsdmainutils \
+    util-linux \
     less \
-    curl \
     wget \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    hostname \
+    procps-ng \
+    && microdnf clean all
 
 WORKDIR /opt/gravitino
 
-COPY packages/gravitino /opt/gravitino
+COPY --chmod=775 packages/gravitino /opt/gravitino
+
+# Copy enterprise license files required by Red Hat certification
+COPY licenses /licenses
+
+# Copy open source licenses from Gravitino distribution into the same /licenses folder
+RUN if [ -d "/opt/gravitino/licenses" ]; then \
+      cp -a /opt/gravitino/licenses/* /licenses/ ; \
+    fi
 
 # Create soft links for JDBC drivers
 RUN if [ -d "/opt/gravitino/jdbc-drivers" ]; then \
@@ -55,8 +72,8 @@ RUN if [ -d "/opt/gravitino/gcs-connector" ]; then \
 
 # Set permissions for OpenShift compatibility:
 # OpenShift runs containers with arbitrary UIDs but always uses GID 0 (root group)
-# chmod g+rwX: Add read/write for group, execute only for directories and already-executable files
-RUN chmod -R g+rwX /opt/gravitino \
+# chmod 775 on home dir allows non-root user to create log directories
+RUN chmod 775 /opt/gravitino \
     && chgrp -R 0 /opt/gravitino \
     && useradd -u 1000 -g 0 -M -s /sbin/nologin gravitino 
 
