@@ -75,6 +75,11 @@ jobs:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
           cache: 'gradle'
+          cache-dependency-path: |
+            **/*.gradle*
+            **/gradle-wrapper.properties
+            gradle/libs.versions.toml
+            gradle.properties
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2

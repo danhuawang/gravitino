@@ -75,6 +75,11 @@ jobs:
           java-version: 17
           distribution: "temurin"
           cache: "gradle"
+          cache-dependency-path: |
+            **/*.gradle*
+            **/gradle-wrapper.properties
+            gradle/libs.versions.toml
+            gradle.properties
 
       - name: Free disk space
         run: dev/ci/util_free_space.sh

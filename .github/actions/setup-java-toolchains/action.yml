@@ -8,6 +8,18 @@ inputs:
   cache:
     description: 'Gradle cache setting'
     default: 'gradle'
+  cache-dependency-path:
+    description: 'Paths used to calculate the Gradle cache key'
+    default: |
+      **/*.gradle*
+      **/gradle-wrapper.properties
+      gradle/libs.versions.toml
+      gradle.properties
+
+outputs:
+  cache-hit:
+    description: 'Whether setup-java found an exact Gradle cache match'
+    value: ${{ steps.setup_primary_jdk.outputs.cache-hit }}
 
 runs:
   using: composite
@@ -19,10 +31,26 @@ runs:
         distribution: temurin
 
     - uses: actions/setup-java@v4
+      id: setup_primary_jdk
       with:
         java-version: ${{ inputs.java-version }}
         distribution: temurin
         cache: ${{ inputs.cache }}
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+    - name: Report Gradle cache status
+      if: ${{ inputs.cache == 'gradle' }}
+      shell: bash
+      run: |
+        echo "setup-java Gradle cache exact hit: ${{ steps.setup_primary_jdk.outputs.cache-hit }}"
+        echo "setup-java Gradle cache paths:"
+        for cache_path in "$HOME/.gradle/caches" "$HOME/.gradle/wrapper"; do
+          if [ -e "$cache_path" ]; then
+            du -sh "$cache_path"
+          else
+            echo "$cache_path not present"
+          fi
+        done
 
     - name: Register JDK 24 with Gradle toolchain
       shell: bash
