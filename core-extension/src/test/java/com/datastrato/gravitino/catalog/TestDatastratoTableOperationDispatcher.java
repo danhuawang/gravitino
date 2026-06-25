@@ -30,6 +30,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
@@ -37,6 +38,7 @@ import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.auth.AuthConstants;
+import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.lock.LockManager;
@@ -63,15 +65,17 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
     trinoJdbcDataPreviewOperator = mock(TrinoJdbcDataPreviewOperator.class);
     tableOperationDispatcher =
         new DatastratoTableOperationDispatcher(
-            catalogManager, entityStore, idGenerator, trinoJdbcDataPreviewOperator);
+            catalogManager,
+            entityStore,
+            idGenerator,
+            trinoJdbcDataPreviewOperator,
+            () -> schemaOperationDispatcher);
 
     Config config = mock(Config.class);
     doReturn(100000L).when(config).get(TREE_LOCK_MAX_NODE_IN_MEMORY);
     doReturn(1000L).when(config).get(TREE_LOCK_MIN_NODE_IN_MEMORY);
     doReturn(36000L).when(config).get(TREE_LOCK_CLEAN_INTERVAL);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
-    FieldUtils.writeField(
-        GravitinoEnv.getInstance(), "schemaDispatcher", schemaOperationDispatcher, true);
   }
 
   @Test
@@ -335,6 +339,31 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
     doThrow(new IOException()).when(entityStore).delete(any(), any(), anyBoolean());
     Assertions.assertThrows(
         RuntimeException.class, () -> tableOperationDispatcher.dropTable(tableIdent));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testSchemaSupplierUsesExplicitDispatcher() throws IllegalAccessException {
+    // Verify that the schemaDispatcherSupplier inside DatastratoTableOperationDispatcher
+    // resolves to the explicitly wired schema dispatcher, not the OSS default.
+    // In production, DatastratoGravitinoEnv.initializeFullComponents() passes
+    // () -> datastratoSchemaDispatcher via the 5-arg constructor — this mirrors that pattern.
+    Supplier<SchemaDispatcher> supplier =
+        (Supplier<SchemaDispatcher>)
+            FieldUtils.readField(tableOperationDispatcher, "schemaDispatcherSupplier", true);
+
+    // @BeforeAll wired the supplier as () -> schemaOperationDispatcher
+    Assertions.assertNotNull(supplier.get());
+    Assertions.assertSame(
+        schemaOperationDispatcher,
+        supplier.get(),
+        "Schema supplier must return the explicitly wired Datastrato schema dispatcher");
+    // GravitinoEnv.schemaDispatcher() is null in test context — confirms the supplier is
+    // not the OSS default.
+    Assertions.assertNotSame(
+        GravitinoEnv.getInstance().schemaDispatcher(),
+        supplier.get(),
+        "Schema supplier must NOT fall back to the OSS GravitinoEnv default");
   }
 
   @Test

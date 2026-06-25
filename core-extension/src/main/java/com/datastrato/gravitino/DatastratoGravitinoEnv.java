@@ -48,7 +48,10 @@ import org.apache.gravitino.catalog.FilesetDispatcher;
 import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.PartitionDispatcher;
+import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
+import org.apache.gravitino.catalog.TableNormalizeDispatcher;
+import org.apache.gravitino.catalog.TableOperationDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
@@ -77,6 +80,10 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private DatastratoViewDispatcher datastratoViewDispatcher;
   private DatastratoAccessControlDispatcher accessControlDispatcher;
 
+  private SchemaDispatcher internalDatastratoSchemaDispatcher;
+  private TableDispatcher internalDatastratoTableDispatcher;
+  private FilesetDispatcher internalDatastratoFilesetDispatcher;
+
   public static DatastratoGravitinoEnv getInstance() {
     return INSTANCE;
   }
@@ -97,6 +104,9 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoSchemaNormalizeDispatcher(schemaHookDispatcher, catalogManager());
     this.datastratoSchemaDispatcher =
         new DatastratoSchemaEventDispatcher(eventBus(), schemaNormalizeDispatcher);
+    // internal: normalize only, no hooks or events — used by other dispatchers to import schemas
+    this.internalDatastratoSchemaDispatcher =
+        new DatastratoSchemaNormalizeDispatcher(schemaOperationDispatcher, catalogManager());
 
     // initialize table dispatcher
     DatastratoTableDispatcher tableOperationDispatcher =
@@ -104,13 +114,26 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             catalogManager(),
             entityStore(),
             idGenerator(),
-            new TrinoJdbcDataPreviewOperator(config, tagDispatcher()));
+            new TrinoJdbcDataPreviewOperator(config, tagDispatcher()),
+            // Capture 'this' so the supplier always resolves through the actual initialized
+            // env instance (DatastratoGravitinoEnv or its subclass), not a static singleton.
+            () -> datastratoSchemaDispatcher);
     DatastratoTableHookDispatcher tableHookDispatcher =
         new DatastratoTableHookDispatcher(tableOperationDispatcher);
     DatastratoTableDispatcher tableNormalizeDispatcher =
         new DatastratoTableNormalizeDispatcher(tableHookDispatcher, catalogManager());
     this.datastratoTableDispatcher =
         new DatastratoTableEventDispatcher(eventBus(), tableNormalizeDispatcher);
+    // internal: normalize only, no hooks or events — used by AuthorizationUtils for metadata
+    // lookups
+    TableOperationDispatcher internalTableOpDispatcher =
+        new TableOperationDispatcher(
+            catalogManager(),
+            entityStore(),
+            idGenerator(),
+            () -> internalDatastratoSchemaDispatcher);
+    this.internalDatastratoTableDispatcher =
+        new TableNormalizeDispatcher(internalTableOpDispatcher, catalogManager());
 
     // initialize fileset dispatcher
     DatastratoFilesetDispatcher filesetOperationDispatcher =
@@ -121,6 +144,9 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoFilesetNormalizeDispatcher(filesetHookDispatcher, catalogManager());
     this.datastratoFilesetDispatcher =
         new DatastratoFilesetEventDispatcher(eventBus(), filesetNormalizeDispatcher);
+    // internal: normalize only, no hooks or events
+    this.internalDatastratoFilesetDispatcher =
+        new DatastratoFilesetNormalizeDispatcher(filesetOperationDispatcher, catalogManager());
 
     // initialize topic dispatcher
     DatastratoTopicDispatcher topicOperationDispatcher =
@@ -169,13 +195,28 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @Override
+  public SchemaDispatcher internalSchemaDispatcher() {
+    return internalDatastratoSchemaDispatcher;
+  }
+
+  @Override
   public TableDispatcher tableDispatcher() {
     return datastratoTableDispatcher;
   }
 
   @Override
+  public TableDispatcher internalTableDispatcher() {
+    return internalDatastratoTableDispatcher;
+  }
+
+  @Override
   public FilesetDispatcher filesetDispatcher() {
     return datastratoFilesetDispatcher;
+  }
+
+  @Override
+  public FilesetDispatcher internalFilesetDispatcher() {
+    return internalDatastratoFilesetDispatcher;
   }
 
   @Override

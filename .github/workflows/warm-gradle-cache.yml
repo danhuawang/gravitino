@@ -1,0 +1,98 @@
+name: Warm Gradle Cache
+
+# Warm the default-branch Gradle cache so pull request workflows can restore a shared cache.
+# Caches created by pull request workflows are scoped to refs/pull/*/merge and are only
+# reusable within the same pull request.
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub cron cannot express a true biweekly cadence. Run weekly and gate
+    # scheduled runs to alternating Unix weeks in the first step of each job.
+    - cron: "0 18 * * 0"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  warm-gradle-cache-x64:
+    name: Warm Gradle Cache (x64)
+    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    timeout-minutes: 90
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+    steps:
+      - name: Check biweekly schedule
+        id: biweekly
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          unix_week=$(( $(date -u +%s) / 604800 ))
+          if (( unix_week % 2 == 0 )); then
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "should_run=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Skip scheduled warm-up
+        if: steps.biweekly.outputs.should_run != 'true'
+        run: echo "Skipping this scheduled run to keep a two-week cadence."
+
+      - uses: actions/checkout@v4
+        if: steps.biweekly.outputs.should_run == 'true'
+
+      - uses: ./.github/actions/setup-java-toolchains
+        if: steps.biweekly.outputs.should_run == 'true'
+        with:
+          java-version: 17
+
+      - name: Warm Gradle dependencies
+        if: steps.biweekly.outputs.should_run == 'true'
+        run: |
+          ./gradlew assemble -PskipWeb=true -x test --no-daemon
+
+  warm-gradle-cache-arm64:
+    name: Warm Gradle Cache (arm64)
+    runs-on: [self-hosted, linux, arm64, amazon, xlarge]
+    timeout-minutes: 90
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+    steps:
+      - name: Check biweekly schedule
+        id: biweekly
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          unix_week=$(( $(date -u +%s) / 604800 ))
+          if (( unix_week % 2 == 0 )); then
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "should_run=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Skip scheduled warm-up
+        if: steps.biweekly.outputs.should_run != 'true'
+        run: echo "Skipping this scheduled run to keep a two-week cadence."
+
+      - uses: actions/checkout@v4
+        if: steps.biweekly.outputs.should_run == 'true'
+
+      - uses: ./.github/actions/setup-java-toolchains
+        if: steps.biweekly.outputs.should_run == 'true'
+        with:
+          java-version: 17
+
+      - name: Warm Gradle dependencies
+        if: steps.biweekly.outputs.should_run == 'true'
+        run: |
+          ./gradlew assemble -PskipWeb=true -x test --no-daemon
