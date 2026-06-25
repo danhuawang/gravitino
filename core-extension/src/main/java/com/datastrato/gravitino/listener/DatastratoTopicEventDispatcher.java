@@ -11,6 +11,7 @@ import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.TopicEventDispatcher;
 import org.apache.gravitino.listener.api.event.ListTopicEvent;
 import org.apache.gravitino.listener.api.event.ListTopicFailureEvent;
+import org.apache.gravitino.listener.api.event.ListTopicPreEvent;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.utils.PrincipalUtils;
 
@@ -35,6 +36,7 @@ public class DatastratoTopicEventDispatcher extends TopicEventDispatcher
 
   @Override
   public List<TopicEntity> listEntities(Namespace namespace) {
+    eventBus.dispatchEvent(new ListTopicPreEvent(PrincipalUtils.getCurrentUserName(), namespace));
     try {
       List<TopicEntity> topicEntities = dispatcher.listEntities(namespace);
       int count = topicEntities == null ? -1 : topicEntities.size();

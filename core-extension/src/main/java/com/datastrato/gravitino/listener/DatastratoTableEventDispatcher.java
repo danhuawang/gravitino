@@ -15,6 +15,7 @@ import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.TableEventDispatcher;
 import org.apache.gravitino.listener.api.event.ListTableEvent;
 import org.apache.gravitino.listener.api.event.ListTableFailureEvent;
+import org.apache.gravitino.listener.api.event.ListTablePreEvent;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.utils.PrincipalUtils;
@@ -38,6 +39,7 @@ public class DatastratoTableEventDispatcher extends TableEventDispatcher
 
   @Override
   public List<TableEntity> listEntities(Namespace namespace) {
+    eventBus.dispatchEvent(new ListTablePreEvent(PrincipalUtils.getCurrentUserName(), namespace));
     try {
       List<TableEntity> tableEntities = dispatcher.listEntities(namespace);
       int count = tableEntities == null ? -1 : tableEntities.size();

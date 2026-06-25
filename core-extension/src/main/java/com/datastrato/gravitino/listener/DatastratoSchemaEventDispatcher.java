@@ -11,6 +11,7 @@ import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.SchemaEventDispatcher;
 import org.apache.gravitino.listener.api.event.ListSchemaEvent;
 import org.apache.gravitino.listener.api.event.ListSchemaFailureEvent;
+import org.apache.gravitino.listener.api.event.ListSchemaPreEvent;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.utils.PrincipalUtils;
 
@@ -34,6 +35,7 @@ public class DatastratoSchemaEventDispatcher extends SchemaEventDispatcher
 
   @Override
   public List<SchemaEntity> listEntities(Namespace namespace) {
+    eventBus.dispatchEvent(new ListSchemaPreEvent(PrincipalUtils.getCurrentUserName(), namespace));
     try {
       List<SchemaEntity> schemaEntities = dispatcher.listEntities(namespace);
       int count = schemaEntities == null ? -1 : schemaEntities.size();

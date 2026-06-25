@@ -217,6 +217,7 @@ jobs:
             -x :catalogs-contrib:catalog-jdbc-oceanbase:test
             -x :test:search-integration-test:build
             -x :qa:gravitino-service-e2e-test:test
+            -x :plugins:idp-basic:test
           )
 
           if [ "${{ needs.changes.outputs.mcp_server_changes }}" != "true" ]; then

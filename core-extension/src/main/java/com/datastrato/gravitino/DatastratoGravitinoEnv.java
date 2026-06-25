@@ -25,11 +25,15 @@ import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicOperationDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoViewNormalizeDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoViewOperationDispatcher;
 import com.datastrato.gravitino.listener.DatastratoFilesetEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoModelEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
+import com.datastrato.gravitino.listener.DatastratoViewEventDispatcher;
 import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
@@ -70,6 +74,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private DatastratoFilesetDispatcher datastratoFilesetDispatcher;
   private DatastratoTopicDispatcher datastratoTopicDispatcher;
   private DatastratoModelDispatcher datastratoModelDispatcher;
+  private DatastratoViewDispatcher datastratoViewDispatcher;
   private DatastratoAccessControlDispatcher accessControlDispatcher;
 
   public static DatastratoGravitinoEnv getInstance() {
@@ -137,6 +142,14 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
     datastratoModelDispatcher =
         new DatastratoModelEventDispatcher(eventBus(), datastratoModelNormalizeDispatcher);
 
+    // initialize view dispatcher
+    DatastratoViewDispatcher viewOperationDispatcher =
+        new DatastratoViewOperationDispatcher(catalogManager(), entityStore(), idGenerator());
+    DatastratoViewDispatcher viewNormalizeDispatcher =
+        new DatastratoViewNormalizeDispatcher(viewOperationDispatcher, catalogManager());
+    this.datastratoViewDispatcher =
+        new DatastratoViewEventDispatcher(eventBus(), viewNormalizeDispatcher);
+
     // initialize access control dispatcher
     accessControlDispatcher =
         new DatastratoAccessControlDispatcher(
@@ -182,7 +195,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
 
   @Override
   public ViewDispatcher viewDispatcher() {
-    return GravitinoEnv.getInstance().viewDispatcher();
+    return datastratoViewDispatcher;
   }
 
   @Override

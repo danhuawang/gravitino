@@ -11,6 +11,7 @@ import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.FilesetEventDispatcher;
 import org.apache.gravitino.listener.api.event.ListFilesetEvent;
 import org.apache.gravitino.listener.api.event.ListFilesetFailureEvent;
+import org.apache.gravitino.listener.api.event.ListFilesetPreEvent;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.utils.PrincipalUtils;
 
@@ -28,6 +29,7 @@ public class DatastratoFilesetEventDispatcher extends FilesetEventDispatcher
 
   @Override
   public List<FilesetEntity> listEntities(Namespace namespace) {
+    eventBus.dispatchEvent(new ListFilesetPreEvent(PrincipalUtils.getCurrentUserName(), namespace));
     try {
       List<FilesetEntity> filesetEntities = dispatcher.listEntities(namespace);
       int count = filesetEntities == null ? -1 : filesetEntities.size();

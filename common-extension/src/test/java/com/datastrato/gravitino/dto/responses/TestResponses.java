@@ -13,10 +13,15 @@ import java.util.Map;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
+import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
+import org.apache.gravitino.dto.rel.RepresentationDTO;
+import org.apache.gravitino.dto.rel.SQLRepresentationDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
+import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.types.Types;
@@ -69,7 +74,9 @@ public class TestResponses {
             .withAudit(AuditDTO.builder().build())
             .build();
     TableDTO[] tables = new TableDTO[] {table1, table2};
-    TableListResponse response = new TableListResponse(tables);
+    FunctionDTO[] functions = buildFunctions();
+    ViewDTO[] views = buildViews();
+    TableListResponse response = new TableListResponse(tables, functions, views);
     Assertions.assertDoesNotThrow(response::validate);
 
     String serJson = JsonUtils.objectMapper().writeValueAsString(response);
@@ -77,6 +84,8 @@ public class TestResponses {
         JsonUtils.objectMapper().readValue(serJson, TableListResponse.class);
     Assertions.assertEquals(response, deserialized);
     Assertions.assertArrayEquals(tables, deserialized.getTables());
+    Assertions.assertArrayEquals(functions, deserialized.getFunctions());
+    Assertions.assertArrayEquals(views, deserialized.getViews());
 
     TableListResponse illegalResp = new TableListResponse();
     Exception exception =
@@ -162,5 +171,32 @@ public class TestResponses {
     Exception exception =
         Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
     Assertions.assertEquals("\"message\" can't be blank", exception.getMessage());
+  }
+
+  private FunctionDTO[] buildFunctions() {
+    return new FunctionDTO[] {
+      FunctionDTO.builder()
+          .withName("test_function")
+          .withFunctionType(FunctionType.SCALAR)
+          .withDeterministic(true)
+          .withComment("test function")
+          .withAudit(AuditDTO.builder().build())
+          .build()
+    };
+  }
+
+  private ViewDTO[] buildViews() {
+    return new ViewDTO[] {
+      ViewDTO.builder()
+          .withName("test_view")
+          .withComment("test view")
+          .withColumns(new ColumnDTO[] {DTOConverters.toDTO(Column.of("a", Types.ByteType.get()))})
+          .withRepresentations(
+              new RepresentationDTO[] {
+                SQLRepresentationDTO.builder().withDialect("spark").withSql("SELECT 1").build()
+              })
+          .withAudit(AuditDTO.builder().build())
+          .build()
+    };
   }
 }

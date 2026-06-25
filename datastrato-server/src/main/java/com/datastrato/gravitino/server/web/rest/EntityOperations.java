@@ -11,6 +11,7 @@ import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
 import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
@@ -42,6 +43,7 @@ import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
+import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
@@ -50,7 +52,10 @@ import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
+import org.apache.gravitino.dto.rel.RepresentationDTO;
+import org.apache.gravitino.dto.rel.SQLRepresentationDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
+import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
@@ -60,6 +65,7 @@ import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
+import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
@@ -81,6 +87,7 @@ public class EntityOperations {
   private final DatastratoTopicDispatcher topicDispatcher;
   private final DatastratoModelDispatcher modelDispatcher;
   private final FunctionDispatcher functionDispatcher;
+  private final DatastratoViewDispatcher viewDispatcher;
 
   @Inject
   public EntityOperations(
@@ -90,7 +97,8 @@ public class EntityOperations {
       FilesetDispatcher filesetDispatcher,
       TopicDispatcher topicDispatcher,
       ModelDispatcher modelDispatcher,
-      FunctionDispatcher functionDispatcher) {
+      FunctionDispatcher functionDispatcher,
+      ViewDispatcher viewDispatcher) {
     this.catalogDispatcher = catalogDispatcher;
     this.schemaDispatcher = (DatastratoSchemaDispatcher) schemaDispatcher;
     this.tableDispatcher = (DatastratoTableDispatcher) tableDispatcher;
@@ -98,6 +106,7 @@ public class EntityOperations {
     this.topicDispatcher = (DatastratoTopicDispatcher) topicDispatcher;
     this.modelDispatcher = (DatastratoModelDispatcher) modelDispatcher;
     this.functionDispatcher = functionDispatcher;
+    this.viewDispatcher = (DatastratoViewDispatcher) viewDispatcher;
   }
 
   @GET
@@ -262,7 +271,8 @@ public class EntityOperations {
             .toArray(TableDTO[]::new);
 
     FunctionDTO[] functionDTOs = listFunctionDTOs(namespace, resultLimit);
-    Response response = Utils.ok(new TableListResponse(tableDTOs, functionDTOs));
+    ViewDTO[] viewDTOs = listViewDTOs(namespace, resultLimit);
+    Response response = Utils.ok(new TableListResponse(tableDTOs, functionDTOs, viewDTOs));
     LOG.info("List {} table entities under namespace: {}", tableDTOs.length, namespace);
     return response;
   }
@@ -364,6 +374,47 @@ public class EntityOperations {
       LOG.warn("Failed to list functions under namespace: {}", namespace, e);
       return new FunctionDTO[0];
     }
+  }
+
+  private ViewDTO[] listViewDTOs(Namespace namespace, int resultLimit) {
+    try {
+      NameIdentifier[] viewIdents = viewDispatcher.listViews(namespace);
+      List<ViewEntity> viewEntities;
+      try {
+        viewEntities = viewDispatcher.listEntities(namespace);
+      } catch (NoSuchSchemaException e) {
+        // If the schema is not created by Gravitino, there will be no view entities.
+        viewEntities = Lists.newArrayList();
+      }
+
+      ImmutableMap<String, ViewEntity> nameToViewEntity =
+          Maps.uniqueIndex(viewEntities, ViewEntity::name);
+
+      return Arrays.stream(viewIdents)
+          .sorted(Comparator.comparing(NameIdentifier::name))
+          .limit(resultLimit)
+          .map(
+              viewIdent -> {
+                ViewDTO.Builder builder =
+                    ViewDTO.builder()
+                        .withName(viewIdent.name())
+                        .withRepresentations(mockRepresentations())
+                        .withAudit(AuditDTO.builder().build());
+                return Optional.ofNullable(nameToViewEntity.get(viewIdent.name()))
+                    .map(viewEntity -> builder.withAudit(toDTO(viewEntity.auditInfo())).build())
+                    .orElse(builder.build());
+              })
+          .toArray(ViewDTO[]::new);
+    } catch (Exception e) {
+      LOG.warn("Failed to list views under namespace: {}", namespace, e);
+      return new ViewDTO[0];
+    }
+  }
+
+  private RepresentationDTO[] mockRepresentations() {
+    return new RepresentationDTO[] {
+      SQLRepresentationDTO.builder().withDialect("unavailable").withSql("UNAVAILABLE").build()
+    };
   }
 
   private ColumnDTO[] mockColumns() {

@@ -19,6 +19,7 @@ import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
 import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
@@ -50,6 +51,7 @@ import org.apache.gravitino.catalog.ModelDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
+import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
@@ -57,6 +59,7 @@ import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
+import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
@@ -72,6 +75,10 @@ import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
+import org.apache.gravitino.meta.ViewEntity;
+import org.apache.gravitino.rel.Column;
+import org.apache.gravitino.rel.Representation;
+import org.apache.gravitino.rel.SQLRepresentation;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.rest.RESTUtils;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
@@ -102,6 +109,7 @@ public class TestEntityOperations extends JerseyTest {
   private final DatastratoTopicDispatcher topicDispatcher = mock(DatastratoTopicDispatcher.class);
   private final DatastratoModelDispatcher modelDispatcher = mock(DatastratoModelDispatcher.class);
   private final FunctionDispatcher functionDispatcher = mock(FunctionDispatcher.class);
+  private final DatastratoViewDispatcher viewDispatcher = mock(DatastratoViewDispatcher.class);
 
   @BeforeAll
   public static void setup() throws IllegalAccessException {
@@ -134,6 +142,7 @@ public class TestEntityOperations extends JerseyTest {
             bind(filesetDispatcher).to(FilesetDispatcher.class).ranked(2);
             bind(modelDispatcher).to(ModelDispatcher.class).ranked(2);
             bind(functionDispatcher).to(FunctionDispatcher.class).ranked(2);
+            bind(viewDispatcher).to(ViewDispatcher.class).ranked(2);
             bindFactory(TestEntityOperations.MockServletRequestFactory.class)
                 .to(HttpServletRequest.class);
           }
@@ -287,6 +296,7 @@ public class TestEntityOperations extends JerseyTest {
     when(tableDispatcher.listTables(namespace)).thenReturn(tableIdents);
     when(tableDispatcher.listEntities(namespace)).thenReturn(buildTableEntity(tableIdents));
     when(functionDispatcher.listFunctionInfos(namespace)).thenReturn(buildFunctionInfos(namespace));
+    mockViews(namespace);
 
     resp =
         target("/web/entities")
@@ -304,6 +314,8 @@ public class TestEntityOperations extends JerseyTest {
     assertTables(tableResp.getTables());
     Assertions.assertEquals(1, tableResp.getFunctions().length);
     assertFunctions(tableResp.getFunctions());
+    Assertions.assertEquals(1, tableResp.getViews().length);
+    assertViews(tableResp.getViews());
 
     // test list tables with schema not found in store
     doThrow(new NoSuchSchemaException("Schema testMetalake.relCatalog.relSchema does not exist"))
@@ -327,6 +339,34 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertNull(tableDTO.comment());
     Assertions.assertNull(tableDTO.properties());
     Assertions.assertNull(tableDTO.auditInfo().creator());
+    Assertions.assertEquals(1, tableResp.getViews().length);
+    assertViews(tableResp.getViews());
+
+    // test list tables with schema not found in store for views.
+    doThrow(new NoSuchSchemaException("Schema testMetalake.relCatalog.relSchema does not exist"))
+        .when(viewDispatcher)
+        .listEntities(namespace);
+
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake.relCatalog.relSchema")
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+
+    tableResp = resp.readEntity(TableListResponse.class);
+    Assertions.assertEquals(1, tableResp.getViews().length);
+    ViewDTO fallbackView = tableResp.getViews()[0];
+    Assertions.assertEquals("testView", fallbackView.name());
+    Assertions.assertNull(fallbackView.comment());
+    Assertions.assertNull(fallbackView.auditInfo().creator());
+    Assertions.assertEquals(1, fallbackView.representations().length);
+    Assertions.assertInstanceOf(SQLRepresentation.class, fallbackView.representations()[0]);
+    SQLRepresentation representation = (SQLRepresentation) fallbackView.representations()[0];
+    Assertions.assertEquals("unavailable", representation.dialect());
+    Assertions.assertEquals("UNAVAILABLE", representation.sql());
 
     // test list topics
     namespace = Namespace.of("testMetalake", "messagingCatalog", "messagingSchema");
@@ -428,6 +468,19 @@ public class TestEntityOperations extends JerseyTest {
     assertFunctions(modelResp.getFunctions());
   }
 
+  private void assertViews(ViewDTO[] views) {
+    ViewDTO viewDTO = views[0];
+    Assertions.assertEquals("testView", viewDTO.name());
+    Assertions.assertNull(viewDTO.comment());
+    Assertions.assertTrue(viewDTO.properties().isEmpty());
+    Assertions.assertEquals("creator", viewDTO.auditInfo().creator());
+    Assertions.assertEquals(1, viewDTO.representations().length);
+    Assertions.assertInstanceOf(SQLRepresentation.class, viewDTO.representations()[0]);
+    SQLRepresentation representation = (SQLRepresentation) viewDTO.representations()[0];
+    Assertions.assertEquals("unavailable", representation.dialect());
+    Assertions.assertEquals("UNAVAILABLE", representation.sql());
+  }
+
   private void assertModels(ModelDTO[] models) {
     ModelDTO modelDTO = models[0];
     Assertions.assertEquals("model", modelDTO.name());
@@ -512,6 +565,39 @@ public class TestEntityOperations extends JerseyTest {
               AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
           .build()
     };
+  }
+
+  private void mockViews(Namespace namespace) {
+    NameIdentifier[] viewIdents = {NameIdentifier.of(namespace, "testView")};
+    when(viewDispatcher.listViews(namespace)).thenReturn(viewIdents);
+    when(viewDispatcher.listEntities(namespace)).thenReturn(buildViewEntity(viewIdents));
+  }
+
+  private List<ViewEntity> buildViewEntity(NameIdentifier[] viewIdents) {
+    return Arrays.stream(viewIdents)
+        .map(
+            ident ->
+                ViewEntity.builder()
+                    .withId(1L)
+                    .withName(ident.name())
+                    .withNamespace(ident.namespace())
+                    .withComment("test view comment")
+                    .withColumns(new Column[] {Column.of("view_col", Types.IntegerType.get())})
+                    .withRepresentations(
+                        new Representation[] {
+                          SQLRepresentation.builder()
+                              .withDialect("spark")
+                              .withSql("SELECT 1")
+                              .build()
+                        })
+                    .withProperties(ImmutableMap.of("key", "value"))
+                    .withAuditInfo(
+                        AuditInfo.builder()
+                            .withCreator("creator")
+                            .withCreateTime(Instant.now())
+                            .build())
+                    .build())
+        .collect(Collectors.toList());
   }
 
   private List<ModelEntity> buildModelEntity(NameIdentifier[] modelIdents) {

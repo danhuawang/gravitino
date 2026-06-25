@@ -12,6 +12,7 @@ import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.ModelEventDispatcher;
 import org.apache.gravitino.listener.api.event.ListModelEvent;
 import org.apache.gravitino.listener.api.event.ListModelFailureEvent;
+import org.apache.gravitino.listener.api.event.ListModelPreEvent;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.utils.PrincipalUtils;
 
@@ -29,6 +30,7 @@ public class DatastratoModelEventDispatcher extends ModelEventDispatcher
 
   @Override
   public List<ModelEntity> listEntities(Namespace namespace) {
+    eventBus.dispatchEvent(new ListModelPreEvent(PrincipalUtils.getCurrentUserName(), namespace));
     try {
       List<ModelEntity> modelEntities = dispatcher.listEntities(namespace);
       int count = modelEntities == null ? -1 : modelEntities.size();

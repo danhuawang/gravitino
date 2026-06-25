@@ -12,6 +12,7 @@ import lombok.Getter;
 import lombok.ToString;
 import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
+import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
 /** Represents a response for a list of tables with their information. */
@@ -26,6 +27,23 @@ public class TableListResponse extends BaseResponse {
   @JsonProperty("functions")
   private final FunctionDTO[] functions;
 
+  @JsonProperty("views")
+  private final ViewDTO[] views;
+
+  /**
+   * Create a new TableListResponse.
+   *
+   * @param tables The list of tables.
+   * @param functions The list of functions.
+   * @param views The list of views.
+   */
+  public TableListResponse(TableDTO[] tables, FunctionDTO[] functions, ViewDTO[] views) {
+    super(0);
+    this.tables = tables;
+    this.functions = functions;
+    this.views = views;
+  }
+
   /**
    * Create a new TableListResponse.
    *
@@ -33,9 +51,7 @@ public class TableListResponse extends BaseResponse {
    * @param functions The list of functions.
    */
   public TableListResponse(TableDTO[] tables, FunctionDTO[] functions) {
-    super(0);
-    this.tables = tables;
-    this.functions = functions;
+    this(tables, functions, new ViewDTO[0]);
   }
 
   /**
@@ -44,7 +60,7 @@ public class TableListResponse extends BaseResponse {
    * @param tables The list of tables.
    */
   public TableListResponse(TableDTO[] tables) {
-    this(tables, new FunctionDTO[0]);
+    this(tables, new FunctionDTO[0], new ViewDTO[0]);
   }
 
   /**
@@ -55,6 +71,7 @@ public class TableListResponse extends BaseResponse {
     super();
     this.tables = null;
     this.functions = null;
+    this.views = null;
   }
 
   @Override
@@ -68,5 +85,8 @@ public class TableListResponse extends BaseResponse {
     Arrays.stream(functions)
         .forEach(
             function -> Preconditions.checkArgument(function != null, "function cannot be null"));
+    Preconditions.checkArgument(views != null, "\"views\" cannot be null");
+    Arrays.stream(views)
+        .forEach(view -> Preconditions.checkArgument(view != null, "view cannot be null"));
   }
 }
