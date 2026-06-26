@@ -11,12 +11,19 @@ import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
 import org.apache.gravitino.exceptions.TableAlreadyExistsException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** Exception converter for Oracle JDBC errors. Maps ORA- error codes to Gravitino exceptions. */
 public class OracleExceptionConverter extends JdbcExceptionConverter {
 
+  private static final Logger LOG = LoggerFactory.getLogger(OracleExceptionConverter.class);
+
   // ORA-01918: user 'xxx' does not exist
   static final int ERROR_CODE_USER_NOT_EXIST = 1918;
+
+  // ORA-01435: user does not exist
+  static final int ERROR_CODE_CURRENT_SCHEMA_USER_NOT_EXIST = 1435;
 
   // ORA-01920: user name 'xxx' conflicts with another user or role name
   static final int ERROR_CODE_USER_ALREADY_EXISTS = 1920;
@@ -36,6 +43,7 @@ public class OracleExceptionConverter extends JdbcExceptionConverter {
     int errorCode = sqlException.getErrorCode();
     switch (errorCode) {
       case ERROR_CODE_USER_NOT_EXIST:
+      case ERROR_CODE_CURRENT_SCHEMA_USER_NOT_EXIST:
         return new NoSuchSchemaException(sqlException, sqlException.getMessage());
       case ERROR_CODE_USER_ALREADY_EXISTS:
         return new SchemaAlreadyExistsException(sqlException, sqlException.getMessage());
@@ -47,6 +55,11 @@ public class OracleExceptionConverter extends JdbcExceptionConverter {
         return new GravitinoRuntimeException(
             sqlException, "Insufficient privileges: %s", sqlException.getMessage());
       default:
+        LOG.warn(
+            "Unrecognized Oracle error code {} (SQL state: {}): {}",
+            errorCode,
+            sqlException.getSQLState(),
+            sqlException.getMessage());
         return new GravitinoRuntimeException(sqlException, sqlException.getMessage());
     }
   }

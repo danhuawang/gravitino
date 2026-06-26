@@ -16,15 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.gravitino.spark.connector.jdbc.postgresql;
+package org.apache.gravitino.spark.connector.jdbc.oracle;
 
-import org.apache.gravitino.spark.connector.PropertiesConverter;
-import org.apache.gravitino.spark.connector.jdbc.GravitinoJdbcCatalog;
-import org.apache.gravitino.spark.connector.jdbc.JdbcPropertiesConverter;
+import org.apache.gravitino.spark.connector.SparkTableChangeConverter;
+import org.apache.gravitino.spark.connector.SparkTableChangeConverter34;
+import org.apache.gravitino.spark.connector.SparkTypeConverter;
+import org.apache.gravitino.spark.connector.jdbc.SparkJdbcTypeConverter34;
 
-public class GravitinoPostgreSqlCatalogSpark34 extends GravitinoJdbcCatalog {
+public class GravitinoOracleCatalogSpark34 extends GravitinoOracleJdbcCatalog {
+
   @Override
-  protected PropertiesConverter getPropertiesConverter() {
-    return JdbcPropertiesConverter.getNoTablePropertiesInstance();
+  protected SparkTypeConverter getSparkTypeConverter() {
+    return new SparkJdbcTypeConverter34();
+  }
+
+  @Override
+  protected SparkTableChangeConverter getSparkTableChangeConverter(
+      SparkTypeConverter sparkTypeConverter) {
+    return new SparkTableChangeConverter34(sparkTypeConverter);
   }
 }

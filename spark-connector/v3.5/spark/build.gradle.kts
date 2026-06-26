@@ -149,6 +149,7 @@ dependencies {
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.mysql.driver)
+  testImplementation(libs.oracle.driver)
   testImplementation(libs.postgresql.driver)
   testImplementation(libs.testcontainers)
 
@@ -201,6 +202,7 @@ tasks.test {
     dependsOn(":lance:lance-rest-server:jar")
     dependsOn(":catalogs:catalog-lakehouse-paimon:jar")
     dependsOn(":catalogs:catalog-jdbc-mysql:jar")
+    dependsOn(":catalogs:catalog-jdbc-oracle:jar")
     dependsOn(":catalogs:catalog-jdbc-postgresql:jar")
   }
 }

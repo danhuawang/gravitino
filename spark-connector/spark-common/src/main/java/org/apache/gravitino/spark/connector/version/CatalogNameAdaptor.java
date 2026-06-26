@@ -82,6 +82,15 @@ public class CatalogNameAdaptor {
           "3.5",
           "org.apache.gravitino.spark.connector.jdbc.postgresql.GravitinoPostgreSqlCatalogSpark35");
 
+  private static final Map<String, String> oracleCatalogNames =
+      ImmutableMap.of(
+          "3.3",
+          "org.apache.gravitino.spark.connector.jdbc.oracle.GravitinoOracleCatalogSpark33",
+          "3.4",
+          "org.apache.gravitino.spark.connector.jdbc.oracle.GravitinoOracleCatalogSpark34",
+          "3.5",
+          "org.apache.gravitino.spark.connector.jdbc.oracle.GravitinoOracleCatalogSpark35");
+
   private static String sparkVersion() {
     return package$.MODULE$.SPARK_VERSION();
   }
@@ -90,6 +99,9 @@ public class CatalogNameAdaptor {
     if (provider.startsWith("jdbc")) {
       if (provider.startsWith("jdbc-postgresql")) {
         return pgCatalogNames.get(String.format("%d.%d", majorVersion, minorVersion));
+      }
+      if (provider.startsWith("jdbc-oracle")) {
+        return oracleCatalogNames.get(String.format("%d.%d", majorVersion, minorVersion));
       }
       return jdbcCatalogNames.get(String.format("%d.%d", majorVersion, minorVersion));
     }

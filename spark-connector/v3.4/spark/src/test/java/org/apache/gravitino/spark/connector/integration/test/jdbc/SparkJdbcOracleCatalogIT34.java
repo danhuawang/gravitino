@@ -16,15 +16,22 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.gravitino.spark.connector.jdbc.postgresql;
+package org.apache.gravitino.spark.connector.integration.test.jdbc;
 
-import org.apache.gravitino.spark.connector.PropertiesConverter;
-import org.apache.gravitino.spark.connector.jdbc.GravitinoJdbcCatalog;
-import org.apache.gravitino.spark.connector.jdbc.JdbcPropertiesConverter;
+import org.apache.gravitino.spark.connector.integration.test.SparkJdbcOracleCatalogIT;
+import org.apache.gravitino.spark.connector.jdbc.oracle.GravitinoOracleCatalogSpark34;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
-public class GravitinoPostgreSqlCatalogSpark34 extends GravitinoJdbcCatalog {
-  @Override
-  protected PropertiesConverter getPropertiesConverter() {
-    return JdbcPropertiesConverter.getNoTablePropertiesInstance();
+public class SparkJdbcOracleCatalogIT34 extends SparkJdbcOracleCatalogIT {
+
+  @Test
+  void testCatalogClassName() {
+    String catalogClass =
+        getSparkSession()
+            .sessionState()
+            .conf()
+            .getConfString("spark.sql.catalog." + getCatalogName());
+    Assertions.assertEquals(GravitinoOracleCatalogSpark34.class.getName(), catalogClass);
   }
 }

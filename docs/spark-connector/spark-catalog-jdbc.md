@@ -15,7 +15,7 @@ The Apache Gravitino Spark connector offers the capability to read JDBC tables, 
 
 ## Capabilities
 
-Supports MySQL and PostgreSQL. OceanBase, which is MySQL-compatible, can use the MySQL driver as a workaround. Doris, which does not support MySQL dialects, is not supported.
+Supports MySQL, PostgreSQL, and Oracle. OceanBase, which is MySQL-compatible, can use the MySQL driver as a workaround. Doris, which does not support MySQL dialects, is not supported.
 
 ### DML and DDL Operations
 
@@ -63,6 +63,29 @@ SELECT * FROM employee WHERE date(hire_date) = '2021-01-01';
 
 ```
 
+## Oracle catalog usage
+
+Use the `jdbc-oracle` provider for Oracle catalogs. Oracle schemas are database users, so the Spark connector does not support creating, altering, or dropping Oracle schemas through Spark SQL `CREATE DATABASE`, `ALTER DATABASE`, or `DROP DATABASE`. Create the Oracle user/schema outside Gravitino first, then access it from Spark.
+
+The Spark connector uppercases Oracle namespaces before sending requests to Gravitino because Oracle stores unquoted user/schema names in uppercase. For example, `app_user` and `APP_USER` both resolve to the Oracle schema `APP_USER`.
+
+```sql
+-- Suppose jdbc_oracle is the Oracle catalog name managed by Gravitino,
+-- and APP_USER is an existing Oracle user/schema.
+USE jdbc_oracle.app_user;
+
+CREATE TABLE IF NOT EXISTS employee (
+  id INT,
+  name STRING,
+  age INT
+);
+
+SHOW TABLES;
+SELECT * FROM employee;
+```
+
+Avoid quoted mixed-case identifiers such as `"MyTable"`. Oracle treats quoted identifiers as case-sensitive, which can make table resolution inconsistent across Spark SQL, Gravitino metadata, and Oracle JDBC operations. Use regular unquoted identifiers for schema and table names.
+
 ## Catalog Properties
 
 Gravitino spark connector will transform below property names which are defined in catalog properties to Spark JDBC connector configuration.
@@ -75,4 +98,3 @@ Gravitino spark connector will transform below property names which are defined 
 | `jdbc-driver`                   | `driver`                           | The driver of the JDBC connection. For example, com.mysql.jdbc.Driver or com.mysql.cj.jdbc.Driver                                                                                                                   | 0.3.0         |
 
 Gravitino catalog property names with the prefix `spark.bypass.` are passed to Spark JDBC connector.
-
