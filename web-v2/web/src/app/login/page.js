@@ -39,10 +39,7 @@ const { Title } = Typography
 const LoginContent = () => {
   const searchParams = useSearchParams()
   const inactiveReason = searchParams.get('reason') === 'inactive'
-<<<<<<< HEAD
-=======
   const maxDurationReason = searchParams.get('reason') === 'max_duration'
->>>>>>> upstream/main
   const [providerType, setProviderType] = useState(null)
   const dispatch = useAppDispatch()
 
@@ -87,8 +84,6 @@ const LoginContent = () => {
           />
         )}
 
-<<<<<<< HEAD
-=======
         {maxDurationReason && (
           <Alert
             message='Your session has reached its maximum duration. Please sign in again.'
@@ -99,7 +94,6 @@ const LoginContent = () => {
           />
         )}
 
->>>>>>> upstream/main
         {useOidcLogin ? <OidcLogin /> : <DefaultLogin />}
       </Card>
     </Flex>

@@ -19,14 +19,7 @@
 name: mcp-integration-test
 
 on:
-<<<<<<< HEAD
   workflow_dispatch:
-=======
-  push:
-    branches: [ "main", "branch-*" ]
-  pull_request:
-    branches: [ "main", "branch-*" ]
->>>>>>> upstream/main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -36,7 +29,6 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-<<<<<<< HEAD
       mcp_server_changes: ${{ steps.filter.outputs.mcp_server_changes }}
     steps:
       - uses: actions/checkout@v4
@@ -59,27 +51,6 @@ jobs:
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
       GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
       GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
-=======
-      mcp_or_authz_changes: ${{ steps.filter.outputs.mcp_or_authz_changes }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        id: filter
-        with:
-          filters: |
-            mcp_or_authz_changes:
-              - 'mcp-server/**'
-              - 'server/**'
-              - 'core/src/main/java/org/apache/gravitino/authorization/**'
-              - 'server-common/src/main/java/org/apache/gravitino/server/authentication/**'
-              - '.github/workflows/mcp-integration-test.yml'
-
-  mcp-authz-integration-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    needs: changes
-    if: needs.changes.outputs.mcp_or_authz_changes == 'true'
->>>>>>> upstream/main
     steps:
       - uses: actions/checkout@v4
 
