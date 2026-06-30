@@ -10,6 +10,7 @@ import java.util.Arrays;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
+import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.rel.ViewDTO;
@@ -30,6 +31,26 @@ public class TableListResponse extends BaseResponse {
   @JsonProperty("views")
   private final ViewDTO[] views;
 
+  @JsonProperty("schemas")
+  private final SchemaDTO[] schemas;
+
+  /**
+   * Create a new TableListResponse.
+   *
+   * @param tables The list of tables.
+   * @param functions The list of functions.
+   * @param views The list of views.
+   * @param schemas The list of child schemas for hierarchical schema support.
+   */
+  public TableListResponse(
+      TableDTO[] tables, FunctionDTO[] functions, ViewDTO[] views, SchemaDTO[] schemas) {
+    super(0);
+    this.tables = tables;
+    this.functions = functions;
+    this.views = views;
+    this.schemas = schemas;
+  }
+
   /**
    * Create a new TableListResponse.
    *
@@ -38,10 +59,7 @@ public class TableListResponse extends BaseResponse {
    * @param views The list of views.
    */
   public TableListResponse(TableDTO[] tables, FunctionDTO[] functions, ViewDTO[] views) {
-    super(0);
-    this.tables = tables;
-    this.functions = functions;
-    this.views = views;
+    this(tables, functions, views, new SchemaDTO[0]);
   }
 
   /**
@@ -72,6 +90,7 @@ public class TableListResponse extends BaseResponse {
     this.tables = null;
     this.functions = null;
     this.views = null;
+    this.schemas = null;
   }
 
   @Override
@@ -88,5 +107,8 @@ public class TableListResponse extends BaseResponse {
     Preconditions.checkArgument(views != null, "\"views\" cannot be null");
     Arrays.stream(views)
         .forEach(view -> Preconditions.checkArgument(view != null, "view cannot be null"));
+    Preconditions.checkArgument(schemas != null, "\"schemas\" cannot be null");
+    Arrays.stream(schemas)
+        .forEach(schema -> Preconditions.checkArgument(schema != null, "schema cannot be null"));
   }
 }

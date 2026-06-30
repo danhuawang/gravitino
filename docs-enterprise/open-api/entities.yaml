@@ -38,6 +38,17 @@ paths:
           required: false
           schema:
             type: string
+        - name: parentSchema
+          in: query
+          description: |
+            Optional hierarchical parent schema used when listing entities.
+            When namespace is the catalog namespace (metalake.catalog), returns
+            child schemas under the provided parent schema.
+            When namespace is the schema namespace (metalake.catalog.schema),
+            returns tables along with child schemas under the parent schema.
+          required: false
+          schema:
+            type: string
         - name: resultLimit
           in: query
           description: The maximum number of entities to return
@@ -110,6 +121,11 @@ components:
           description: A list of table objects
           items:
             $ref: "../../docs/open-api/tables.yaml#/components/schemas/Table"
+        schemas:
+          type: array
+          description: A list of child schema objects for hierarchical schema support
+          items:
+            $ref: "../../docs/open-api/schemas.yaml#/components/schemas/Schema"
 
     FilesetListResponse:
       type: object

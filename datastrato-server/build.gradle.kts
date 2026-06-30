@@ -26,6 +26,7 @@ dependencies {
   }
 
   implementation(libs.guava)
+  implementation(libs.commons.lang3)
   implementation(libs.bundles.jersey)
   implementation(libs.bundles.log4j)
 
@@ -34,7 +35,6 @@ dependencies {
   compileOnly(libs.lombok)
 
   testImplementation(project(":server-common"))
-  testImplementation(libs.commons.lang3)
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")
   }

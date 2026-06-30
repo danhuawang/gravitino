@@ -220,6 +220,40 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, errorResp.getCode());
     Assertions.assertEquals(IllegalArgumentException.class.getSimpleName(), errorResp.getType());
     Assertions.assertEquals("Result limit should be greater than 0", errorResp.getMessage());
+
+    // test parentSchema with invalid namespace levels (only 2 or 3 levels are allowed)
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake")
+            .queryParam("catalogType", "relational")
+            .queryParam("parentSchema", "a:b")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), resp.getStatus());
+    errorResp = resp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, errorResp.getCode());
+    Assertions.assertEquals(IllegalArgumentException.class.getSimpleName(), errorResp.getType());
+    Assertions.assertEquals(
+        "Query param namespace should have 2 or 3 levels when parentSchema is set",
+        errorResp.getMessage());
+
+    // test malformed parentSchema
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake.relCatalog")
+            .queryParam("catalogType", "relational")
+            .queryParam("parentSchema", "A::B")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), resp.getStatus());
+    errorResp = resp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, errorResp.getCode());
+    Assertions.assertEquals(IllegalArgumentException.class.getSimpleName(), errorResp.getType());
+    Assertions.assertTrue(
+        errorResp.getMessage().contains("contains an empty segment after splitting"),
+        errorResp.getMessage());
   }
 
   @Test
@@ -268,7 +302,8 @@ public class TestEntityOperations extends JerseyTest {
     assertCatalogs(catalogDTOs);
 
     // test list schemas
-    Namespace namespace = Namespace.of("testMetalake", "relCatalog");
+    Namespace catalogNs = Namespace.of("testMetalake", "relCatalog");
+    Namespace namespace = catalogNs;
     NameIdentifier schemaIdent = NameIdentifier.of(namespace, "relSchema");
     NameIdentifier[] schemaIdents = {schemaIdent};
     when(schemaDispatcher.listSchemas(namespace)).thenReturn(schemaIdents);
@@ -316,6 +351,63 @@ public class TestEntityOperations extends JerseyTest {
     assertFunctions(tableResp.getFunctions());
     Assertions.assertEquals(1, tableResp.getViews().length);
     assertViews(tableResp.getViews());
+
+    // test list schemas with parentSchema query parameter for hierarchical schema
+    Namespace parentSchemaNs = Namespace.of("testMetalake", "relCatalog", "level1:level2");
+    NameIdentifier childSchemaIdent = NameIdentifier.of(catalogNs, "level1:level2:child");
+    NameIdentifier[] childSchemaIdents = {childSchemaIdent};
+    when(schemaDispatcher.listSchemas(parentSchemaNs)).thenReturn(childSchemaIdents);
+    when(schemaDispatcher.listEntities(catalogNs))
+        .thenReturn(buildSchemaEntity(new NameIdentifier[] {schemaIdent, childSchemaIdent}));
+
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake.relCatalog")
+            .queryParam("catalogType", "relational")
+            .queryParam("parentSchema", "level1:level2")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    schemaResp = resp.readEntity(SchemaListResponse.class);
+    Assertions.assertEquals(0, schemaResp.getCode());
+    Assertions.assertEquals(1, schemaResp.getSchemas().length);
+    Assertions.assertEquals("level1:level2:child", schemaResp.getSchemas()[0].name());
+    Assertions.assertEquals("creator", schemaResp.getSchemas()[0].auditInfo().creator());
+
+    // test list tables with parentSchema: returns tables + sub-schemas
+    Namespace tableNs = Namespace.of("testMetalake", "relCatalog", "level1:level2");
+    NameIdentifier hTableIdent = NameIdentifier.of(tableNs, "hTable");
+    NameIdentifier[] hTableIdents = {hTableIdent};
+    when(tableDispatcher.listTables(tableNs)).thenReturn(hTableIdents);
+    when(tableDispatcher.listEntities(tableNs)).thenReturn(buildTableEntity(hTableIdents));
+    when(functionDispatcher.listFunctionInfos(tableNs)).thenReturn(buildFunctionInfos(tableNs));
+    mockViews(tableNs);
+    // child schemas are already mocked above for parentSchemaNs
+
+    resp =
+        target("/web/entities")
+            .queryParam("namespace", "testMetalake.relCatalog.level1:level2")
+            .queryParam("catalogType", "relational")
+            .queryParam("parentSchema", "level1:level2")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    tableResp = resp.readEntity(TableListResponse.class);
+    Assertions.assertEquals(0, tableResp.getCode());
+    Assertions.assertEquals(1, tableResp.getTables().length);
+    Assertions.assertEquals("hTable", tableResp.getTables()[0].name());
+    Assertions.assertEquals(1, tableResp.getFunctions().length);
+    Assertions.assertEquals(1, tableResp.getViews().length);
+    Assertions.assertEquals(1, tableResp.getSchemas().length);
+    Assertions.assertEquals("level1:level2:child", tableResp.getSchemas()[0].name());
+    Assertions.assertEquals("creator", tableResp.getSchemas()[0].auditInfo().creator());
+    Mockito.verify(schemaDispatcher, Mockito.never()).listEntities(parentSchemaNs);
 
     // test list tables with schema not found in store
     doThrow(new NoSuchSchemaException("Schema testMetalake.relCatalog.relSchema does not exist"))

@@ -33,6 +33,7 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
@@ -70,6 +71,7 @@ import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
+import org.apache.gravitino.utils.HierarchicalSchemaUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -114,8 +116,12 @@ public class EntityOperations {
   public Response listEntities(
       @QueryParam("namespace") Namespace namespace,
       @QueryParam("catalogType") Catalog.Type catalogType,
+      @DefaultValue("") @QueryParam("parentSchema") String parentSchema,
       @QueryParam("resultLimit") @DefaultValue("1000") int resultLimit) {
-    LOG.info("Received request to list entities for namespace: {}", namespace);
+    LOG.info(
+        "Received request to list entities for namespace: {}, parentSchema: {}",
+        namespace,
+        parentSchema);
     if (namespace == null || namespace.isEmpty()) {
       return Utils.illegalArguments(
           "Query param namespace cannot be empty", new IllegalArgumentException());
@@ -133,7 +139,8 @@ public class EntityOperations {
     }
 
     try {
-      return Utils.doAs(httpRequest, () -> doList(namespace, catalogType, resultLimit));
+      return Utils.doAs(
+          httpRequest, () -> doList(namespace, catalogType, parentSchema, resultLimit));
     } catch (Exception e) {
       return Utils.internalError("Error while listing entities", e);
     } catch (Throwable throwable) {
@@ -141,7 +148,39 @@ public class EntityOperations {
     }
   }
 
-  private Response doList(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
+  private Response doList(
+      Namespace namespace, Catalog.Type catalogType, String parentSchema, int resultLimit) {
+    if (StringUtils.isNotBlank(parentSchema)) {
+      try {
+        validateParentSchema(parentSchema);
+      } catch (IllegalArgumentException e) {
+        return Utils.illegalArguments(e.getMessage(), e);
+      }
+
+      if (namespace.length() == 2) {
+        // list sub-schemas only under the given parentSchema
+        try {
+          return listSchemas(
+              Namespace.of(namespace.level(0), namespace.level(1), parentSchema), resultLimit);
+        } catch (Exception e) {
+          return ExceptionHandlers.handleSchemaException(
+              OperationType.LIST, "", namespace.toString(), e);
+        }
+      } else if (namespace.length() == 3) {
+        // list tables/functions/views + sub-schemas for hierarchical schema
+        try {
+          return listTables(namespace, parentSchema, resultLimit);
+        } catch (Exception e) {
+          return ExceptionHandlers.handleTableException(
+              OperationType.LIST, "", namespace.toString(), e);
+        }
+      } else {
+        return Utils.illegalArguments(
+            "Query param namespace should have 2 or 3 levels when parentSchema is set",
+            new IllegalArgumentException());
+      }
+    }
+
     switch (namespace.length()) {
       case 1:
         // list catalogs
@@ -160,11 +199,11 @@ public class EntityOperations {
               OperationType.LIST, "", namespace.toString(), e);
         }
       case 3:
-        // list tables/topics/filesets
+        // list tables/topics/filesets/models
         switch (catalogType) {
           case RELATIONAL:
             try {
-              return listTables(namespace, resultLimit);
+              return listTables(namespace, null, resultLimit);
             } catch (Exception e) {
               return ExceptionHandlers.handleTableException(
                   OperationType.LIST, "", namespace.toString(), e);
@@ -200,6 +239,18 @@ public class EntityOperations {
     }
   }
 
+  private void validateParentSchema(String parentSchema) {
+    String separator = HierarchicalSchemaUtil.schemaSeparator();
+    for (String segment : HierarchicalSchemaUtil.splitSchemaName(parentSchema, separator)) {
+      if (StringUtils.isBlank(segment)) {
+        throw new IllegalArgumentException(
+            String.format(
+                "The parentSchema '%s' contains an empty segment after splitting by '%s'.",
+                parentSchema, separator));
+      }
+    }
+  }
+
   private Response listCatalogs(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
     Catalog[] catalogs = catalogDispatcher.listCatalogsInfo(namespace);
     CatalogDTO[] catalogDTOs =
@@ -216,30 +267,34 @@ public class EntityOperations {
   }
 
   private Response listSchemas(Namespace namespace, int resultLimit) {
-    NameIdentifier[] schemaIdents = schemaDispatcher.listSchemas(namespace);
-    List<SchemaEntity> schemaEntities = schemaDispatcher.listEntities(namespace);
-    ImmutableMap<String, SchemaEntity> nameToEntity =
-        Maps.uniqueIndex(schemaEntities, SchemaEntity::name);
-
-    SchemaDTO[] schemaDTOs =
-        Arrays.stream(schemaIdents)
-            .sorted(Comparator.comparing(NameIdentifier::name))
-            .limit(resultLimit)
-            .map(
-                schemaIdent -> {
-                  SchemaDTO.Builder builder = SchemaDTO.builder().withName(schemaIdent.name());
-                  return Optional.ofNullable(nameToEntity.get(schemaIdent.name()))
-                      .map(s -> builder.withAudit(toDTO(s.auditInfo())).build())
-                      .orElse(builder.withAudit(AuditDTO.builder().build()).build());
-                })
-            .toArray(SchemaDTO[]::new);
-
+    SchemaDTO[] schemaDTOs = listSchemaDTOs(namespace, resultLimit);
     Response response = Utils.ok(new SchemaListResponse(schemaDTOs));
     LOG.info("List {} schema entities under namespace: {}", schemaDTOs.length, namespace);
     return response;
   }
 
-  private Response listTables(Namespace namespace, int resultLimit) {
+  private SchemaDTO[] listSchemaDTOs(Namespace namespace, int resultLimit) {
+    NameIdentifier[] schemaIdents = schemaDispatcher.listSchemas(namespace);
+    // Schema entities are stored flat under the catalog namespace, even for parentSchema listings.
+    Namespace schemaEntityNs = Namespace.of(namespace.level(0), namespace.level(1));
+    List<SchemaEntity> schemaEntities = schemaDispatcher.listEntities(schemaEntityNs);
+    ImmutableMap<String, SchemaEntity> nameToEntity =
+        Maps.uniqueIndex(schemaEntities, SchemaEntity::name);
+
+    return Arrays.stream(schemaIdents)
+        .sorted(Comparator.comparing(NameIdentifier::name))
+        .limit(resultLimit)
+        .map(
+            schemaIdent -> {
+              SchemaDTO.Builder builder = SchemaDTO.builder().withName(schemaIdent.name());
+              return Optional.ofNullable(nameToEntity.get(schemaIdent.name()))
+                  .map(s -> builder.withAudit(toDTO(s.auditInfo())).build())
+                  .orElse(builder.withAudit(AuditDTO.builder().build()).build());
+            })
+        .toArray(SchemaDTO[]::new);
+  }
+
+  private Response listTables(Namespace namespace, String parentSchema, int resultLimit) {
     NameIdentifier[] tableIdents = tableDispatcher.listTables(namespace);
     List<TableEntity> tableEntities;
     try {
@@ -272,8 +327,24 @@ public class EntityOperations {
 
     FunctionDTO[] functionDTOs = listFunctionDTOs(namespace, resultLimit);
     ViewDTO[] viewDTOs = listViewDTOs(namespace, resultLimit);
-    Response response = Utils.ok(new TableListResponse(tableDTOs, functionDTOs, viewDTOs));
-    LOG.info("List {} table entities under namespace: {}", tableDTOs.length, namespace);
+
+    SchemaDTO[] schemaDTOs = new SchemaDTO[0];
+    if (StringUtils.isNotBlank(parentSchema)) {
+      Namespace childSchemaNs = Namespace.of(namespace.level(0), namespace.level(1), parentSchema);
+      try {
+        schemaDTOs = listSchemaDTOs(childSchemaNs, resultLimit);
+      } catch (Exception e) {
+        LOG.warn("Failed to list child schemas under parentSchema: {}", parentSchema, e);
+      }
+    }
+
+    Response response =
+        Utils.ok(new TableListResponse(tableDTOs, functionDTOs, viewDTOs, schemaDTOs));
+    LOG.info(
+        "List {} table entities and {} child schemas under namespace: {}",
+        tableDTOs.length,
+        schemaDTOs.length,
+        namespace);
     return response;
   }
 
