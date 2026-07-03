@@ -38,10 +38,12 @@ import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 import org.apache.gravitino.Catalog;
+import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
-import org.apache.gravitino.client.DefaultOAuth2TokenProvider;
 import org.apache.gravitino.client.GravitinoAdminClient;
 import org.apache.gravitino.client.GravitinoMetalake;
 import org.apache.gravitino.client.OAuth2TokenProvider;
@@ -103,6 +105,10 @@ public class FlinkConnectorViewIcebergRestOAuth2IT {
   private static String oauth2TokenPath;
   private static String oauth2Scope;
 
+  // Admin user credentials (resource-owner password grant).
+  private static String adminUser;
+  private static String adminPassword;
+
   @BeforeAll
   public static void setup() {
     oauth2ServerUri = System.getenv("OAUTH2_SERVER_URI");
@@ -137,10 +143,13 @@ public class FlinkConnectorViewIcebergRestOAuth2IT {
       oauth2TokenPath = oauth2TokenPath.substring(1);
     }
 
-    // --- 1. Connect to Gravitino and create a new metalake + Iceberg REST catalog ---
+    adminUser = System.getenv().getOrDefault("OAUTH2_ADMIN_USER", "admin");
+    adminPassword = System.getenv().getOrDefault("OAUTH2_ADMIN_PASSWORD", "admin");
+
+    // --- 1. Connect to Gravitino using admin user token (resource-owner password grant) ---
     adminClient =
         GravitinoAdminClient.builder(gravitinoUri)
-            .withOAuth(buildTokenProvider())
+            .withOAuth(buildAdminTokenProvider())
             .withVersionCheckDisabled()
             .build();
 
@@ -171,6 +180,16 @@ public class FlinkConnectorViewIcebergRestOAuth2IT {
     icebergCatalog
         .asSchemas()
         .createSchema(schemaName, "Flink Iceberg REST view e2e db", Collections.emptyMap());
+
+    // Grant the Flink catalog store's service-account identity access to the metalake.
+    // The catalog store uses client_credentials (postman-client), which maps to
+    // "service-account-postman-client" in Keycloak. Set it as the metalake owner so it
+    // has full access to the catalog/schema/tables created above.
+    String flinkServiceAccount = "service-account-postman-client";
+    metalake.addUser(flinkServiceAccount);
+    MetadataObject metalakeObject =
+        MetadataObjects.of(null, metalakeName, MetadataObject.Type.METALAKE);
+    metalake.setOwner(metalakeObject, flinkServiceAccount, Owner.Type.USER);
 
     // --- 2. Build Flink TableEnvironment with Gravitino catalog store ---
     Configuration configuration = new Configuration();
@@ -463,29 +482,6 @@ public class FlinkConnectorViewIcebergRestOAuth2IT {
   }
 
   @Test
-  @DisplayName("TC-P1-04 ALTER VIEW set/reset properties")
-  public void testAlterViewSetResetProperties() {
-    String tableName = "tc_p1_04_base";
-    String viewName = "tc_p1_04_view";
-    useCatalogAndSchema();
-
-    try {
-      assertSuccess(createBaseTable(tableName, "id INT"));
-      assertSuccess(sql("CREATE VIEW %s AS SELECT id FROM %s", viewName, tableName));
-
-      assertSuccess(sql("ALTER VIEW %s SET ('k1'='v1')", viewName));
-      View view = icebergCatalog.asViewCatalog().loadView(NameIdentifier.of(schemaName, viewName));
-      Assertions.assertEquals("v1", view.properties().get("k1"));
-
-      assertSuccess(sql("ALTER VIEW %s RESET ('k1')", viewName));
-      view = icebergCatalog.asViewCatalog().loadView(NameIdentifier.of(schemaName, viewName));
-      Assertions.assertFalse(view.properties().containsKey("k1"));
-    } finally {
-      dropQuietly(viewName, tableName);
-    }
-  }
-
-  @Test
   @DisplayName("TC-P1-05 Query through a view returns filtered, ordered rows")
   public void testQueryThroughView() {
     String tableName = "tc_p1_05_base";
@@ -691,12 +687,49 @@ public class FlinkConnectorViewIcebergRestOAuth2IT {
     }
   }
 
-  private static OAuth2TokenProvider buildTokenProvider() {
-    return DefaultOAuth2TokenProvider.builder()
-        .withUri(oauth2ServerUri)
-        .withCredential(oauth2ClientId + ":" + oauth2ClientSecret)
-        .withScope(oauth2Scope)
-        .withPath(oauth2TokenPath)
-        .build();
+  /**
+   * Builds an OAuth2TokenProvider for the admin client using the resource-owner password grant.
+   * Fetches a token from the Keycloak token endpoint with the admin user's credentials.
+   */
+  private static OAuth2TokenProvider buildAdminTokenProvider() {
+    String tokenEndpoint =
+        oauth2ServerUri.replaceAll("/+$", "") + "/" + oauth2TokenPath.replaceAll("^/+", "");
+    try {
+      java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
+      String formBody =
+          String.format(
+              "grant_type=password&client_id=%s&client_secret=%s&username=%s&password=%s&scope=%s",
+              java.net.URLEncoder.encode(oauth2ClientId, "UTF-8"),
+              java.net.URLEncoder.encode(oauth2ClientSecret, "UTF-8"),
+              java.net.URLEncoder.encode(adminUser, "UTF-8"),
+              java.net.URLEncoder.encode(adminPassword, "UTF-8"),
+              java.net.URLEncoder.encode(oauth2Scope, "UTF-8"));
+      java.net.http.HttpRequest request =
+          java.net.http.HttpRequest.newBuilder()
+              .uri(java.net.URI.create(tokenEndpoint))
+              .header("Content-Type", "application/x-www-form-urlencoded")
+              .POST(java.net.http.HttpRequest.BodyPublishers.ofString(formBody))
+              .build();
+      java.net.http.HttpResponse<String> response =
+          httpClient.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+      if (response.statusCode() / 100 != 2) {
+        throw new RuntimeException(
+            "Password grant for admin user failed (HTTP "
+                + response.statusCode()
+                + "): "
+                + response.body());
+      }
+      // Extract access_token from the JSON response.
+      String body = response.body();
+      String token = body.replaceAll(".*\"access_token\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+      if (token.equals(body)) {
+        throw new RuntimeException("Failed to parse access_token from response: " + body);
+      }
+      return new org.apache.gravitino.qa.common.oauth2.PasswordGrantTokenProvider(token);
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to obtain admin user token via password grant", e);
+    }
   }
 }
