@@ -135,3 +135,5 @@ include(
   ":maintenance:optimizer",
   ":maintenance:jobs"
 )
+include(":qa:e2e-common")
+include(":qa:gravitino-service-e2e-test")

@@ -1,0 +1,52 @@
+CREATE SCHEMA
+
+USE
+
+CREATE TABLE
+
+"CREATE TABLE gt_glue.gt_iceberg_db1.tb01 (
+   name varchar,
+   salary integer
+)
+COMMENT ''
+WITH (
+   location = '%',
+   type = 'iceberg'
+)"
+
+CREATE TABLE
+
+"CREATE TABLE gt_glue.gt_iceberg_db1.tb02 (
+   name varchar,
+   salary integer
+)
+COMMENT ''
+WITH (
+   format = 'ORC',
+   location = '%',
+   type = 'iceberg'
+)"
+
+CREATE TABLE
+
+"CREATE TABLE gt_glue.gt_iceberg_db1.tb03 (
+   name varchar,
+   salary integer,
+   region varchar
+)
+COMMENT ''
+WITH (
+   location = '%',
+   partitioned_by = ARRAY['region'],
+   type = 'iceberg'
+)"
+
+CREATE TABLE
+
+DROP TABLE
+
+DROP TABLE
+
+DROP TABLE
+
+DROP SCHEMA

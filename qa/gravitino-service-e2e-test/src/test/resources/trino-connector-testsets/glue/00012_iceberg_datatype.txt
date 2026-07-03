@@ -1,0 +1,37 @@
+CREATE SCHEMA
+
+USE
+
+CREATE TABLE
+
+"CREATE TABLE gt_glue.gt_iceberg_db3.tb01 (
+   f1 varchar,
+   f3 varbinary,
+   f4 decimal(10, 3),
+   f5 real,
+   f6 double,
+   f7 boolean,
+   f10 integer,
+   f11 integer,
+   f12 bigint,
+   f13 date,
+   f14 time(6),
+   f15 timestamp(6),
+   f16 timestamp(6) with time zone
+)
+COMMENT ''
+WITH (
+   location = '%',
+   type = 'iceberg'
+)"
+
+INSERT: 1 row
+
+INSERT: 1 row
+
+"Sample text 1","65","123.456","7.89","12.34","true","1000","1000","100000","2024-01-01","08:00:00.000","2024-01-01 08:00:00.000","2024-01-01 08:00:00.000 UTC"
+"","","","","","","","","","","","",""
+
+DROP TABLE
+
+DROP SCHEMA
