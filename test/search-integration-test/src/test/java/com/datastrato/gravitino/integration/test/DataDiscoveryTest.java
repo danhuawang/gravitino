@@ -265,25 +265,29 @@ public class DataDiscoveryTest extends BaseIT {
           .pollInterval(5, TimeUnit.SECONDS)
           .until(
               () -> {
-                List<SearchEntitiesDTO> dtos =
+                List<SearchEntitiesDTO> newCatalogDtos =
                     searchClient.search("catalog_name:c3", metalake.name());
+                List<SearchEntitiesDTO> oldCatalogDtos =
+                    searchClient.search("catalog_name:c2", metalake.name());
 
-                if (dtos.size() != 3) {
+                if (!oldCatalogDtos.isEmpty() || newCatalogDtos.size() != 3) {
                   return false;
                 }
 
                 SearchEntitiesDTO catalogDtos =
-                    getSearchEntitiesDTOByType(dtos, EntityType.CATALOG);
+                    getSearchEntitiesDTOByType(newCatalogDtos, EntityType.CATALOG);
                 if (catalogDtos.getEntities().size() != 1) {
                   return false;
                 }
 
-                SearchEntitiesDTO schemaDtos = getSearchEntitiesDTOByType(dtos, EntityType.SCHEMA);
+                SearchEntitiesDTO schemaDtos =
+                    getSearchEntitiesDTOByType(newCatalogDtos, EntityType.SCHEMA);
                 if (schemaDtos.getEntities().size() != numberOfSchemas) {
                   return false;
                 }
 
-                SearchEntitiesDTO tableDtos = getSearchEntitiesDTOByType(dtos, EntityType.TABLE);
+                SearchEntitiesDTO tableDtos =
+                    getSearchEntitiesDTOByType(newCatalogDtos, EntityType.TABLE);
                 if (tableDtos.getEntities().size() != totalTables) {
                   return false;
                 }
@@ -302,10 +306,30 @@ public class DataDiscoveryTest extends BaseIT {
           .pollInterval(5, TimeUnit.SECONDS)
           .until(
               () -> {
-                // After renaming tag2 → tag3, searching for tag2 should return no results.
-                List<SearchEntitiesDTO> dtos =
+                List<SearchEntitiesDTO> oldTagDtos =
                     searchClient.search("tag_name:tag2", metalake.name());
-                return dtos.isEmpty();
+                List<SearchEntitiesDTO> newTagDtos =
+                    searchClient.search("tag_name:tag3", metalake.name());
+                if (!oldTagDtos.isEmpty()) {
+                  return false;
+                }
+                if (finalTotalTagSchemaEntities > 0) {
+                  SearchEntitiesDTO schemaDtos =
+                      getSearchEntitiesDTOByType(newTagDtos, EntityType.SCHEMA);
+                  if (schemaDtos == null
+                      || schemaDtos.getEntities().size() != finalTotalTagSchemaEntities) {
+                    return false;
+                  }
+                }
+                if (finalTotalTagTableEntities > 0) {
+                  SearchEntitiesDTO tableDtos =
+                      getSearchEntitiesDTOByType(newTagDtos, EntityType.TABLE);
+                  if (tableDtos == null
+                      || tableDtos.getEntities().size() != finalTotalTagTableEntities) {
+                    return false;
+                  }
+                }
+                return true;
               });
       LOG.info(
           "Search tag tag2 renamed to tag3 of {} tables successfully indexed after {} seconds",

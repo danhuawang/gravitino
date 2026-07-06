@@ -379,17 +379,6 @@ public class BaseIT {
 
     serverConfig = new ServerConfig();
     customConfigs.put(ENTITY_RELATIONAL_JDBC_BACKEND_PATH.getKey(), file.getAbsolutePath());
-    // TODO(https://github.com/datastrato/gravitino-enterprise/issues/503): In deploy mode,
-    // gravitino.conf enables the search event listener by default. This causes the background
-    // cascade sync (cascade=true on CreateCatalogEvent) to call loadSchema() on pre-existing
-    // catalog schemas, triggering importSchema() side-effects, keytab file conflicts in Kerberos
-    // catalogs, and catalog cache races in alterCatalog. Disable it unless a test has explicitly
-    // opted in by setting "gravitino.eventListener.names".
-    if (ITUtils.DEPLOY_TEST_MODE.equals(testMode)
-        && !customConfigs.containsKey("gravitino.eventListener.names")) {
-      customConfigs.put("gravitino.eventListener.names", "");
-      customConfigs.put("gravitino.eventListener.search.class", "");
-    }
 
     List<String> auxServicesList = new ArrayList<>();
     if (!ignoreIcebergAuxRestService) {

@@ -151,7 +151,7 @@ public class CatalogMysqlIT extends BaseIT {
   public void stop() {
     clearTableAndSchema();
     metalake.disableCatalog(catalogName);
-    metalake.dropCatalog(catalogName);
+    metalake.dropCatalog(catalogName, true);
     client.disableMetalake(metalakeName);
     client.dropMetalake(metalakeName);
     mysqlService.close();
