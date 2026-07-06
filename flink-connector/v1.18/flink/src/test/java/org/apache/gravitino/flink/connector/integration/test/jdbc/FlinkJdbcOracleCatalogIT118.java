@@ -17,24 +17,6 @@
  * under the License.
  */
 
-package org.apache.gravitino.flink.connector.jdbc;
+package org.apache.gravitino.flink.connector.integration.test.jdbc;
 
-import org.apache.flink.configuration.ConfigOption;
-import org.apache.flink.configuration.ConfigOptions;
-
-public class GravitinoJdbcCatalogFactoryOptions {
-
-  /** Identifier for the {@link GravitinoJdbcCatalog}. */
-  public static final String MYSQL_IDENTIFIER = "gravitino-jdbc-mysql";
-
-  /** Identifier for the {@link GravitinoJdbcCatalog}. */
-  public static final String POSTGRESQL_IDENTIFIER = "gravitino-jdbc-postgresql";
-
-  /** Identifier for the {@link GravitinoJdbcCatalog}. */
-  public static final String ORACLE_IDENTIFIER = "gravitino-jdbc-oracle";
-
-  public static final ConfigOption<String> DEFAULT_DATABASE =
-      ConfigOptions.key(JdbcPropertiesConstants.FLINK_JDBC_DEFAULT_DATABASE)
-          .stringType()
-          .noDefaultValue();
-}
+public class FlinkJdbcOracleCatalogIT118 extends FlinkJdbcOracleCatalogIT {}
