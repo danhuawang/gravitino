@@ -6,6 +6,7 @@ package com.datastrato.gravitino.license;
 
 import com.datastrato.gravitino.license.mapper.LicenseNodeMapper;
 import com.google.common.annotations.VisibleForTesting;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -273,14 +275,52 @@ public class LicenseManager {
 
   @VisibleForTesting
   void heartbeatCheck() {
-    try {
-      doHeartbeatCheck();
-    } catch (Exception e) {
-      LOG.warn("License heartbeat check failed — will retry next interval", e);
+    int attempts = 0;
+    while (true) {
+      try {
+        doHeartbeatCheck();
+        return;
+      } catch (Exception e) {
+        if (isDeadlock(e) && attempts++ < 2) {
+          long jitterMs = ThreadLocalRandom.current().nextLong(50, 201);
+          LOG.debug(
+              "License heartbeat hit a database deadlock; retrying in {} ms (attempt {})",
+              jitterMs,
+              attempts);
+          try {
+            Thread.sleep(jitterMs);
+          } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            LOG.warn("License heartbeat interrupted during deadlock backoff", ie);
+            return;
+          }
+          continue;
+        }
+        LOG.warn("License heartbeat check failed — will retry next interval", e);
+        return;
+      }
     }
   }
 
-  private void doHeartbeatCheck() {
+  /**
+   * Returns true if the exception chain contains a deadlock signal. Checks ANSI SQLState 40001
+   * (MySQL, H2) and PostgreSQL-specific 40P01.
+   */
+  @VisibleForTesting
+  static boolean isDeadlock(Throwable t) {
+    for (Throwable cause = t; cause != null; cause = cause.getCause()) {
+      if (cause instanceof SQLException) {
+        String state = ((SQLException) cause).getSQLState();
+        if ("40001".equals(state) || "40P01".equals(state)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  @VisibleForTesting
+  void doHeartbeatCheck() {
     long staleIntervalMs = TimeUnit.MINUTES.toMillis(licenseConfig.getNodeStaleMinutes());
 
     boolean unlimited = payload.getMaxNodes() == -1;

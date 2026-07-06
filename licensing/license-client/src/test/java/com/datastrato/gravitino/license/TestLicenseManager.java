@@ -10,6 +10,7 @@ import com.datastrato.gravitino.license.mapper.LicenseNodeMapper;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Clock;
 import java.time.Instant;
@@ -18,6 +19,7 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
@@ -467,6 +469,101 @@ class TestLicenseManager {
       SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode(peer));
     }
     SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode(testNodeId));
+  }
+
+  /** isDeadlock recognises MySQL (40001), PostgreSQL (40P01), and H2 (40001) SQLState codes. */
+  @Test
+  void testIsDeadlockDetection() {
+    // MySQL / H2 — SQLState 40001
+    SQLException mysqlDeadlock = new SQLException("Deadlock", "40001");
+    Assertions.assertTrue(LicenseManager.isDeadlock(mysqlDeadlock));
+
+    // PostgreSQL — SQLState 40P01
+    SQLException pgDeadlock = new SQLException("Deadlock detected", "40P01");
+    Assertions.assertTrue(LicenseManager.isDeadlock(pgDeadlock));
+
+    // Wrapped inside a RuntimeException, mirroring MyBatis's PersistenceException pattern
+    RuntimeException wrapped = new RuntimeException("persistence", mysqlDeadlock);
+    Assertions.assertTrue(LicenseManager.isDeadlock(wrapped));
+
+    // Unrelated SQL error (e.g. constraint violation 23000) must not match
+    SQLException other = new SQLException("Unique constraint", "23000");
+    Assertions.assertFalse(LicenseManager.isDeadlock(other));
+
+    // Plain non-SQL exception must not match
+    Assertions.assertFalse(LicenseManager.isDeadlock(new RuntimeException("boom")));
+  }
+
+  /**
+   * heartbeatCheck must retry up to 2 times on deadlock; if the third attempt succeeds the exit
+   * handler must not be called. Uses a spy on doHeartbeatCheck to simulate two deadlock failures
+   * followed by a successful no-op.
+   */
+  @Test
+  void testHeartbeatDeadlockRetried() throws Exception {
+    long future = LocalDate.of(2030, 1, 1).toEpochDay();
+    LicenseManager mgr = new LicenseManager();
+    mgr.setVerifierForTest(TestKeyPairUtil.newVerifier());
+    mgr.initForTest(buildKey(future, 30, -1), Map.of());
+
+    AtomicBoolean exitCalled = new AtomicBoolean(false);
+    mgr.exitHandler = () -> exitCalled.set(true);
+
+    SQLException deadlockSql = new SQLException("Deadlock", "40001");
+    RuntimeException deadlock = new RuntimeException("persistence", deadlockSql);
+
+    AtomicInteger callCount = new AtomicInteger(0);
+    LicenseManager spy = Mockito.spy(mgr);
+    Mockito.doCallRealMethod().when(spy).heartbeatCheck();
+    Mockito.doAnswer(
+            inv -> {
+              if (callCount.incrementAndGet() <= 2) {
+                throw deadlock;
+              }
+              return null; // third attempt succeeds
+            })
+        .when(spy)
+        .doHeartbeatCheck();
+
+    spy.heartbeatCheck();
+
+    Assertions.assertEquals(3, callCount.get(), "doHeartbeatCheck should be called 3 times");
+    Assertions.assertFalse(exitCalled.get());
+  }
+
+  /**
+   * After 3 consecutive deadlocks heartbeatCheck must give up and log a warning rather than
+   * retrying indefinitely. The exit handler must not be called for a deadlock failure.
+   */
+  @Test
+  void testHeartbeatDeadlockGivesUpAfterMaxRetries() throws Exception {
+    long future = LocalDate.of(2030, 1, 1).toEpochDay();
+    LicenseManager mgr = new LicenseManager();
+    mgr.setVerifierForTest(TestKeyPairUtil.newVerifier());
+    mgr.initForTest(buildKey(future, 30, -1), Map.of());
+
+    AtomicBoolean exitCalled = new AtomicBoolean(false);
+    mgr.exitHandler = () -> exitCalled.set(true);
+
+    SQLException deadlockSql = new SQLException("Deadlock", "40001");
+    RuntimeException deadlock = new RuntimeException("persistence", deadlockSql);
+
+    AtomicInteger callCount = new AtomicInteger(0);
+    LicenseManager spy = Mockito.spy(mgr);
+    Mockito.doCallRealMethod().when(spy).heartbeatCheck();
+    Mockito.doAnswer(
+            inv -> {
+              callCount.incrementAndGet();
+              throw deadlock; // always deadlock
+            })
+        .when(spy)
+        .doHeartbeatCheck();
+
+    spy.heartbeatCheck(); // must return without throwing
+
+    // 1 initial attempt + 2 retries = 3 total, then give up
+    Assertions.assertEquals(3, callCount.get(), "should attempt exactly 3 times before giving up");
+    Assertions.assertFalse(exitCalled.get());
   }
 
   /** nodeStaleMinutes must be greater than nodeHeartbeatIntervalMinutes. */
