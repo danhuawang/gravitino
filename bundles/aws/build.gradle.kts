@@ -38,6 +38,8 @@ dependencies {
 
   implementation(libs.commons.lang3)
   implementation(libs.guava)
+  implementation(libs.httpclient5)
+  implementation(libs.jackson.databind)
 
   compileOnly(libs.aws.iam)
   compileOnly(libs.aws.policy)
@@ -47,9 +49,12 @@ dependencies {
 
   testImplementation(libs.aws.iam)
   testImplementation(libs.aws.policy)
+  testImplementation(libs.aws.s3)
   testImplementation(libs.aws.sts)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
+  testImplementation(libs.testcontainers)
+  testImplementation(libs.testcontainers.localstack)
   testRuntimeOnly(libs.junit.jupiter.engine)
 }
 

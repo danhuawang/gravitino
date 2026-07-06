@@ -110,6 +110,22 @@ class TestAwsIrsaCredentialGenerator {
       assertEquals("secret-key", credential.secretAccessKey());
       assertEquals("session-token", credential.sessionToken());
     }
+
+    String body = URLDecoder.decode(requestBody.get(), StandardCharsets.UTF_8.name());
+    assertTrue(body.contains("RoleArn=arn:minio:iam:::role/test-role"));
+  }
+
+  @Test
+  void configuredStsEndpointRejectsUnsupportedRoleArn(@TempDir Path dir) throws IOException {
+    try (AwsIrsaCredentialGenerator generator = new AwsIrsaCredentialGenerator()) {
+      generator.initialize(
+          createProperties(dir, "arn:example:iam:::role/test-role", stsEndpoint()));
+
+      IllegalArgumentException error =
+          assertThrows(IllegalArgumentException.class, () -> generator.generate(() -> "test-user"));
+
+      assertTrue(error.getMessage().contains("Invalid role ARN format"));
+    }
   }
 
   @Test
@@ -131,17 +147,24 @@ class TestAwsIrsaCredentialGenerator {
   }
 
   private Map<String, String> createProperties(Path dir) throws IOException {
+    return createProperties(dir, "arn:aws:iam::123456789012:role/test-role", stsEndpoint());
+  }
+
+  private Map<String, String> createProperties(Path dir, String roleArn, String stsEndpoint)
+      throws IOException {
     Path tokenFile = dir.resolve("token");
     Files.write(tokenFile, "configured-token".getBytes(StandardCharsets.UTF_8));
 
     Map<String, String> properties = new HashMap<>();
     properties.put(WebIdentityTokenSourceConfig.FILE_PATH, tokenFile.toString());
-    properties.put("s3-role-arn", "arn:aws:iam::123456789012:role/test-role");
+    properties.put("s3-role-arn", roleArn);
     properties.put("s3-region", "us-east-1");
-    properties.put(
-        "s3-token-service-endpoint",
-        String.format("http://127.0.0.1:%s", server.getAddress().getPort()));
+    properties.put("s3-token-service-endpoint", stsEndpoint);
     return properties;
+  }
+
+  private String stsEndpoint() {
+    return String.format("http://127.0.0.1:%s", server.getAddress().getPort());
   }
 
   private void handleAssumeRoleWithWebIdentity(HttpExchange exchange) throws IOException {
