@@ -134,13 +134,14 @@ public class TrinoJdbcDataPreviewOperator {
     }
   }
 
-  private String generatePreviewSQL(NameIdentifier identifier, int limit) {
+  @VisibleForTesting
+  String generatePreviewSQL(NameIdentifier identifier, int limit) {
     NameIdentifier catalogIdent = NameIdentifierUtil.getCatalogIdentifier(identifier);
     String tableName = identifier.name();
     String schemaName = NameIdentifier.of(identifier.namespace().levels()).name();
 
     return String.format(
-        "SELECT * FROM \"\"\"%s\"\"\".%s.%s LIMIT %d", catalogIdent, schemaName, tableName, limit);
+        "SELECT * FROM \"%s\".\"%s\".\"%s\" LIMIT %d", catalogIdent, schemaName, tableName, limit);
   }
 
   private Connection getConnection() throws SQLException {

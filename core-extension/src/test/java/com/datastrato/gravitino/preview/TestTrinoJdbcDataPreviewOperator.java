@@ -98,6 +98,25 @@ public class TestTrinoJdbcDataPreviewOperator {
   }
 
   @Test
+  public void testGeneratePreviewSQLForMultiMetalakeCatalog() {
+    Config config = mock(Config.class);
+    TagDispatcher dispatcher = mock(TagDispatcher.class);
+    when(config.get(DataPreviewConfig.JDBC_URL_CONFIG)).thenReturn("jdbc://xxx");
+    when(config.get(DataPreviewConfig.JDBC_DRIVER_CONFIG)).thenReturn("xxx");
+    when(config.get(DataPreviewConfig.JDBC_USERNAME_CONFIG)).thenReturn("user");
+    when(config.get(DataPreviewConfig.JDBC_PASSWORD_CONFIG)).thenReturn("password");
+    when(config.get(DataPreviewConfig.TIMEOUT_CONFIG)).thenReturn(10);
+    when(config.get(DataPreviewConfig.MAX_ROW_COUNT_CONFIG)).thenReturn(10);
+    when(config.get(DataPreviewConfig.SENSITIVE_TAGS_CONFIG))
+        .thenReturn(Lists.newArrayList("test1", "test2"));
+    TrinoJdbcDataPreviewOperator operator = new TrinoJdbcDataPreviewOperator(config, dispatcher);
+    Assertions.assertEquals(
+        "SELECT * FROM \"test.catalog_postgres\".\"public\".\"my_table\" LIMIT 10",
+        operator.generatePreviewSQL(
+            NameIdentifier.of("test", "catalog_postgres", "public", "my_table"), 10));
+  }
+
+  @Test
   public void testConvertToValue() {
     Config config = mock(Config.class);
     TagDispatcher dispatcher = mock(TagDispatcher.class);
