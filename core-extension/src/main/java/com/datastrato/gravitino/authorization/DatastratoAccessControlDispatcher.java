@@ -118,14 +118,32 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   @Override
+  public Group addGroup(String metalake, String group, String externalId)
+      throws GroupAlreadyExistsException, NoSuchMetalakeException {
+    return accessControlDispatcher.addGroup(metalake, group, externalId);
+  }
+
+  @Override
   public boolean removeGroup(String metalake, String group) throws NoSuchMetalakeException {
     return accessControlDispatcher.removeGroup(metalake, group);
+  }
+
+  @Override
+  public boolean removeGroupByExternalId(String metalake, String externalId)
+      throws NoSuchMetalakeException {
+    return accessControlDispatcher.removeGroupByExternalId(metalake, externalId);
   }
 
   @Override
   public Group getGroup(String metalake, String group)
       throws NoSuchGroupException, NoSuchMetalakeException {
     return accessControlDispatcher.getGroup(metalake, group);
+  }
+
+  @Override
+  public Group getGroupByExternalId(String metalake, String externalId)
+      throws NoSuchGroupException, NoSuchMetalakeException {
+    return accessControlDispatcher.getGroupByExternalId(metalake, externalId);
   }
 
   @Override
