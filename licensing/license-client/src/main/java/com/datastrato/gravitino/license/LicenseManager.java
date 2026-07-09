@@ -30,6 +30,11 @@ public class LicenseManager {
 
   private static final Logger LOG = LoggerFactory.getLogger(LicenseManager.class);
 
+  // Distinct from the generic exit code 1 so k8s/chart tooling (e.g. a readiness probe or
+  // entrypoint wrapper) can recognize a license failure specifically and avoid blindly
+  // restarting the pod for a condition that a restart cannot fix.
+  @VisibleForTesting static final int LICENSE_VIOLATION_EXIT_CODE = 78;
+
   private static final class InstanceHolder {
     private static final LicenseManager INSTANCE = new LicenseManager();
   }
@@ -71,7 +76,7 @@ public class LicenseManager {
   private LicenseVerifier verifier;
 
   @VisibleForTesting Clock clock = Clock.systemUTC();
-  @VisibleForTesting Runnable exitHandler = () -> System.exit(1);
+  @VisibleForTesting Runnable exitHandler = () -> System.exit(LICENSE_VIOLATION_EXIT_CODE);
 
   // Timestamp of the first heartbeat cycle that detected rank > maxNodes. Null when the node is
   // within the limit. Used to implement a grace period equal to nodeStaleMinutes: a transient
@@ -374,8 +379,10 @@ public class LicenseManager {
           if (elapsedMs > staleIntervalMs) {
             LOG.error("Node limit exceeded and unresolved for {} ms — shutting down.", elapsedMs);
             SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.deleteNode(nodeId));
-            // In production exitHandler calls System.exit(1) and never returns. Reset the field
-            // here only to avoid repeated deleteNode calls in test environments where the exit
+            // In production exitHandler calls System.exit(LICENSE_VIOLATION_EXIT_CODE) and never
+            // returns.
+            // Reset the field here only to avoid repeated deleteNode calls in test environments
+            // where the exit
             // handler is mocked and returns normally.
             this.overLimitSince = null;
             exitHandler.run();
@@ -384,6 +391,12 @@ public class LicenseManager {
       } else {
         // Violation resolved (ghost expired or old node stopped): reset so the next violation
         // starts a fresh grace period rather than accumulating toward the previous deadline.
+        if (overLimitSince != null) {
+          LOG.info(
+              "Node limit violation resolved: rank={} max={}. Grace period cleared.",
+              rankHolder[0],
+              payload.getMaxNodes());
+        }
         this.overLimitSince = null;
       }
     }
