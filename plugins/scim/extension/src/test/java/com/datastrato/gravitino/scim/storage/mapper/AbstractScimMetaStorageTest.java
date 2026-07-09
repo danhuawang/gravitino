@@ -5,6 +5,7 @@
 
 package com.datastrato.gravitino.scim.storage.mapper;
 
+import com.datastrato.gravitino.scim.storage.relational.converters.ScimSQLExceptionConverterFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,6 +61,7 @@ public abstract class AbstractScimMetaStorageTest {
     }
 
     SqlSessionFactoryHelper.getInstance().close();
+    ScimSQLExceptionConverterFactory.close();
     ContainerSuite.getInstance().close();
 
     if (h2Path != null && Files.exists(h2Path)) {
@@ -75,8 +77,21 @@ public abstract class AbstractScimMetaStorageTest {
     if (H2_BACKEND.equals(type)) {
       executeEnterpriseSchemaOnH2();
     }
+    ScimSQLExceptionConverterFactory.initConverter(config);
     sharedSession = SqlSessionFactoryHelper.getInstance().getSqlSessionFactory().openSession(true);
     initializeMappers();
+  }
+
+  /**
+   * Re-initializes the JDBC backend after another component closed the shared SqlSession factory.
+   */
+  protected void reinitializeBackend() throws IOException {
+    if (backend != null) {
+      backend.close();
+    }
+    backend = new JDBCBackend();
+    backend.initialize(config);
+    ScimSQLExceptionConverterFactory.initConverter(config);
   }
 
   protected void closeSession() {

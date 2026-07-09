@@ -19,6 +19,8 @@ dependencies {
 
   implementation(libs.commons.lang3)
   implementation(libs.guava)
+  implementation(libs.jackson.annotations)
+  implementation(libs.jackson.databind)
   implementation(libs.mybatis)
 
   compileOnly(libs.lombok)
