@@ -739,7 +739,8 @@ val datastratoLicenseCheckIncludes = listOf(
   "catalogs/catalog-jdbc-bigquery/**/*",
   "catalogs/catalog-jdbc-maxcompute/**/*",
   "catalogs/catalog-jdbc-sqlserver/**/*",
-  "licensing/**"
+  "licensing/**",
+  "scripts/enterprise/**"
 )
 
 val printRatFailures by tasks.registering {
