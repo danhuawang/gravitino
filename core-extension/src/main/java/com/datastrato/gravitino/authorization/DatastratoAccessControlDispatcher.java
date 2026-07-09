@@ -61,14 +61,44 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   @Override
+  public User addUser(String metalake, String user, String externalId, boolean enabled)
+      throws UserAlreadyExistsException, NoSuchMetalakeException {
+    return accessControlDispatcher.addUser(metalake, user, externalId, enabled);
+  }
+
+  @Override
   public boolean removeUser(String metalake, String user) throws NoSuchMetalakeException {
     return accessControlDispatcher.removeUser(metalake, user);
+  }
+
+  @Override
+  public boolean removeUserByExternalId(String metalake, String externalId)
+      throws NoSuchMetalakeException {
+    return accessControlDispatcher.removeUserByExternalId(metalake, externalId);
   }
 
   @Override
   public User getUser(String metalake, String user)
       throws NoSuchUserException, NoSuchMetalakeException {
     return accessControlDispatcher.getUser(metalake, user);
+  }
+
+  @Override
+  public User getUserByExternalId(String metalake, String externalId)
+      throws NoSuchUserException, NoSuchMetalakeException {
+    return accessControlDispatcher.getUserByExternalId(metalake, externalId);
+  }
+
+  @Override
+  public User enableUser(String metalake, String externalId)
+      throws NoSuchUserException, NoSuchMetalakeException {
+    return accessControlDispatcher.enableUser(metalake, externalId);
+  }
+
+  @Override
+  public User disableUser(String metalake, String externalId)
+      throws NoSuchUserException, NoSuchMetalakeException {
+    return accessControlDispatcher.disableUser(metalake, externalId);
   }
 
   @Override
