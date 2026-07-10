@@ -76,9 +76,14 @@ public final class ScimGarbageCollector implements Closeable {
     long threadId = Thread.currentThread().getId();
     LOG.debug("Thread {} start to soft-delete expired SCIM tokens...", threadId);
     try {
-      int deleted = TOKEN_META_SERVICE.softDeleteExpiredScimTokens();
-      if (deleted > 0) {
-        LOG.info("Soft-deleted {} expired SCIM token rows", deleted);
+      int expiredDeleted = TOKEN_META_SERVICE.softDeleteExpiredScimTokens();
+      int unavailableMetalakeDeleted =
+          TOKEN_META_SERVICE.softDeleteScimTokensByUnavailableMetalake();
+      if (expiredDeleted > 0 || unavailableMetalakeDeleted > 0) {
+        LOG.info(
+            "Soft-deleted {} expired and {} unavailable-metalake SCIM token rows",
+            expiredDeleted,
+            unavailableMetalakeDeleted);
       }
     } catch (Exception e) {
       LOG.error("Thread {} failed to soft-delete expired SCIM tokens.", threadId, e);

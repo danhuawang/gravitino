@@ -168,6 +168,21 @@ public class ScimTokenMetaService {
   }
 
   /**
+   * Soft-deletes active token rows whose metalake is missing or already soft-deleted.
+   *
+   * @return number of rows soft-deleted
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "softDeleteScimTokensByUnavailableMetalake")
+  public int softDeleteScimTokensByUnavailableMetalake() {
+    Integer deleted =
+        SessionUtils.doWithCommitAndFetchResult(
+            ScimTokenMetaMapper.class, mapper -> mapper.softDeleteByUnavailableMetalake());
+    return deleted == null ? 0 : deleted;
+  }
+
+  /**
    * Physically deletes soft-deleted token rows older than the legacy timeline.
    *
    * @param legacyTimeline delete rows with {@code deleted_at} before this timestamp

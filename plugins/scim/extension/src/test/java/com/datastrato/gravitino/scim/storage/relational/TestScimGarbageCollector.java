@@ -70,7 +70,7 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testSoftDeleteExpiredTokens(String type) throws Exception {
+  void testSoftDeleteExpired(String type) throws Exception {
     init(type);
     insertMetalake();
     scimTokenMetaMapper()
@@ -80,7 +80,7 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
                 .withMetalakeId(METALAKE_ID)
                 .withTokenName("expired")
                 .withTokenHash("hash-expired")
-                .withExpiresAt(System.currentTimeMillis() - 1L)
+                .withExpiresAt(System.currentTimeMillis() - 60_000L)
                 .withAuditInfo("{}")
                 .withDeletedAt(0L)
                 .withUpdatedAt(0L)
@@ -99,21 +99,95 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
     assertNull(scimTokenMetaMapper().selectByTokenHash("hash-expired"));
   }
 
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testSoftDeleteUnavailableMetalake(String type) throws Exception {
+    init(type);
+    long deletedMetalakeId = 20L;
+    long missingMetalakeId = 99L;
+
+    insertMetalake();
+    scimTokenMetaMapper()
+        .insert(
+            ScimTokenMetaPO.builder()
+                .withTokenId(1L)
+                .withMetalakeId(METALAKE_ID)
+                .withTokenName("active-token")
+                .withTokenHash("hash-active")
+                .withExpiresAt(0L)
+                .withAuditInfo("{}")
+                .withDeletedAt(0L)
+                .withUpdatedAt(0L)
+                .build());
+
+    insertMetalake(deletedMetalakeId, "deleted_metalake");
+    scimTokenMetaMapper()
+        .insert(
+            ScimTokenMetaPO.builder()
+                .withTokenId(2L)
+                .withMetalakeId(deletedMetalakeId)
+                .withTokenName("deleted-metalake-token")
+                .withTokenHash("hash-deleted")
+                .withExpiresAt(0L)
+                .withAuditInfo("{}")
+                .withDeletedAt(0L)
+                .withUpdatedAt(0L)
+                .build());
+    softDeleteMetalake(deletedMetalakeId);
+
+    scimTokenMetaMapper()
+        .insert(
+            ScimTokenMetaPO.builder()
+                .withTokenId(3L)
+                .withMetalakeId(missingMetalakeId)
+                .withTokenName("missing-metalake-token")
+                .withTokenHash("hash-missing")
+                .withExpiresAt(0L)
+                .withAuditInfo("{}")
+                .withDeletedAt(0L)
+                .withUpdatedAt(0L)
+                .build());
+
+    closeSession();
+
+    ScimGarbageCollector garbageCollector = new ScimGarbageCollector(getConfig());
+    try {
+      garbageCollector.softDeleteExpiredTokens();
+    } finally {
+      garbageCollector.close();
+    }
+
+    reopenSession();
+    assertEquals(
+        "active-token", scimTokenMetaMapper().selectByTokenHash("hash-active").getTokenName());
+    assertNull(scimTokenMetaMapper().selectByTokenHash("hash-deleted"));
+    assertNull(scimTokenMetaMapper().selectByTokenHash("hash-missing"));
+  }
+
   private ScimTokenMetaMapper scimTokenMetaMapper() {
     return sharedSession.getMapper(ScimTokenMetaMapper.class);
   }
 
   private void insertMetalake() {
+    insertMetalake(METALAKE_ID, METALAKE_NAME);
+  }
+
+  private void insertMetalake(long metalakeId, String metalakeName) {
     MetalakeMetaMapper metalakeMetaMapper = sharedSession.getMapper(MetalakeMetaMapper.class);
     metalakeMetaMapper.insertMetalakeMeta(
         MetalakePO.builder()
-            .withMetalakeId(METALAKE_ID)
-            .withMetalakeName(METALAKE_NAME)
+            .withMetalakeId(metalakeId)
+            .withMetalakeName(metalakeName)
             .withAuditInfo("{}")
             .withSchemaVersion("1.0")
             .withCurrentVersion(1L)
             .withLastVersion(0L)
             .withDeletedAt(0L)
             .build());
+  }
+
+  private void softDeleteMetalake(long metalakeId) {
+    MetalakeMetaMapper metalakeMetaMapper = sharedSession.getMapper(MetalakeMetaMapper.class);
+    metalakeMetaMapper.softDeleteMetalakeMetaByMetalakeId(metalakeId);
   }
 }

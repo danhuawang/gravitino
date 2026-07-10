@@ -40,6 +40,11 @@ public interface ScimTokenMetaMapper {
   @UpdateProvider(type = ScimTokenMetaSQLProviderFactory.class, method = "softDeleteByExpiration")
   Integer softDeleteByExpiration();
 
+  @UpdateProvider(
+      type = ScimTokenMetaSQLProviderFactory.class,
+      method = "softDeleteByUnavailableMetalake")
+  Integer softDeleteByUnavailableMetalake();
+
   @UpdateProvider(type = ScimTokenMetaSQLProviderFactory.class, method = "updateTokenOnRotate")
   Integer updateTokenOnRotate(
       @Param("newTokenMeta") ScimTokenMetaPO newTokenMeta,

@@ -45,7 +45,7 @@ class TestScimPOConverters {
   }
 
   @Test
-  void testFromPOWithNullExpiresAt() {
+  void testFromPONullExpiresAt() {
     ScimTokenMetaPO tokenMeta =
         ScimTokenMetaPO.builder()
             .withTokenId(1L)

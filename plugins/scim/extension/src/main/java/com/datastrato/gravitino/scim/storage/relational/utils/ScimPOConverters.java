@@ -9,11 +9,10 @@ import com.datastrato.gravitino.scim.model.ScimToken;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import com.google.common.base.Preconditions;
 import java.io.IOException;
-import java.time.Instant;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
 
-/** Converts SCIM token POs and audit metadata for the service layer. */
+/** Converts SCIM token POs to domain objects. */
 public final class ScimPOConverters {
   private ScimPOConverters() {}
 
@@ -33,48 +32,6 @@ public final class ScimPOConverters {
         .withExpiresAt(expiresAt)
         .withAuditInfo(deserializeAuditInfo(tokenMeta.getAuditInfo()))
         .build();
-  }
-
-  /**
-   * Serializes audit metadata for a newly created token.
-   *
-   * @param creator creator username
-   * @param createTime creation timestamp
-   * @return serialized audit JSON
-   */
-  public static String newAuditInfo(String creator, Instant createTime) {
-    AuditInfo auditInfo =
-        AuditInfo.builder().withCreator(creator).withCreateTime(createTime).build();
-    return serializeAuditInfo(auditInfo);
-  }
-
-  /**
-   * Serializes audit metadata after an update while preserving the original creator.
-   *
-   * @param existingAuditInfo existing serialized audit JSON
-   * @param modifier modifier username
-   * @param lastModifiedTime last modified timestamp
-   * @return serialized audit JSON
-   */
-  public static String updatedAuditInfo(
-      String existingAuditInfo, String modifier, Instant lastModifiedTime) {
-    AuditInfo existing = deserializeAuditInfo(existingAuditInfo);
-    AuditInfo updated =
-        AuditInfo.builder()
-            .withCreator(existing.creator())
-            .withCreateTime(existing.createTime())
-            .withLastModifier(modifier)
-            .withLastModifiedTime(lastModifiedTime)
-            .build();
-    return serializeAuditInfo(updated);
-  }
-
-  private static String serializeAuditInfo(AuditInfo auditInfo) {
-    try {
-      return JsonUtils.anyFieldMapper().writeValueAsString(auditInfo);
-    } catch (IOException e) {
-      throw new IllegalStateException("Failed to serialize audit info", e);
-    }
   }
 
   private static AuditInfo deserializeAuditInfo(String auditInfo) {

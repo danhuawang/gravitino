@@ -12,11 +12,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
-import com.datastrato.gravitino.scim.storage.relational.utils.ScimPOConverters;
 import java.io.IOException;
 import java.time.Instant;
 import org.apache.gravitino.exceptions.AlreadyExistsException;
 import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.json.JsonUtils;
+import org.apache.gravitino.meta.AuditInfo;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -26,7 +27,7 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testGetScimTokenByHash(String type) throws IOException {
+  void testGetByHash(String type) throws IOException {
     init(type);
     insertMetalake();
     insertToken(1L, METALAKE_ID, "scim-token", "hash-a", 0L);
@@ -40,7 +41,7 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testGetScimToken(String type) throws IOException {
+  void testGet(String type) throws IOException {
     init(type);
     insertMetalake();
     insertToken(1L, METALAKE_ID, "scim-token", "hash-a", 0L);
@@ -59,7 +60,7 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testInsertScimToken(String type) throws IOException {
+  void testInsert(String type) throws IOException {
     init(type);
     insertMetalake();
     ScimTokenMetaService tokenMetaService = ScimTokenMetaService.getInstance();
@@ -77,13 +78,20 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testUpdateScimTokenOnRotate(String type) throws IOException {
+  void testUpdateOnRotate(String type) throws IOException {
     init(type);
     insertMetalake();
     ScimTokenMetaPO oldTokenMeta = createTokenMeta(1L, METALAKE_ID, "scim-token", "hash-a", 1000L);
     insertToken(1L, METALAKE_ID, "scim-token", "hash-a", 1000L);
     ScimTokenMetaService tokenMetaService = ScimTokenMetaService.getInstance();
 
+    AuditInfo updatedAuditInfo =
+        AuditInfo.builder()
+            .withCreator("creator")
+            .withCreateTime(Instant.parse("2026-01-01T00:00:00Z"))
+            .withLastModifier("rotator")
+            .withLastModifiedTime(Instant.parse("2026-01-02T00:00:00Z"))
+            .build();
     ScimTokenMetaPO newTokenMeta =
         ScimTokenMetaPO.builder()
             .withTokenId(1L)
@@ -91,9 +99,7 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
             .withTokenName("scim-token")
             .withTokenHash("hash-b")
             .withExpiresAt(2000L)
-            .withAuditInfo(
-                ScimPOConverters.updatedAuditInfo(
-                    oldTokenMeta.getAuditInfo(), "rotator", Instant.parse("2026-01-02T00:00:00Z")))
+            .withAuditInfo(JsonUtils.anyFieldMapper().writeValueAsString(updatedAuditInfo))
             .withDeletedAt(0L)
             .withUpdatedAt(0L)
             .build();
@@ -111,7 +117,7 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testSoftDeleteScimToken(String type) throws IOException {
+  void testSoftDelete(String type) throws IOException {
     init(type);
     insertMetalake();
     insertToken(1L, METALAKE_ID, "scim-token", "hash-a", 0L);
@@ -128,7 +134,7 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testSoftDeleteExpiredScimTokens(String type) throws IOException {
+  void testSoftDeleteExpired(String type) throws IOException {
     init(type);
     insertMetalake();
     scimTokenMetaMapper.insert(
@@ -137,7 +143,7 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
             .withMetalakeId(METALAKE_ID)
             .withTokenName("expired-token")
             .withTokenHash("hash-expired")
-            .withExpiresAt(System.currentTimeMillis() - 1L)
+            .withExpiresAt(System.currentTimeMillis() - 60_000L)
             .withAuditInfo("{}")
             .withDeletedAt(0L)
             .withUpdatedAt(0L)
@@ -155,7 +161,33 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testDeleteTokenMetasByLegacyTimeline(String type) throws IOException {
+  void testSoftDeleteUnavailableMetalake(String type) throws IOException {
+    init(type);
+    long deletedMetalakeId = 20L;
+    long missingMetalakeId = 99L;
+
+    insertMetalake();
+    insertToken(1L, METALAKE_ID, "active-token", "hash-active", 0L);
+
+    insertMetalake(deletedMetalakeId, "deleted_metalake");
+    insertToken(2L, deletedMetalakeId, "deleted-metalake-token", "hash-deleted", 0L);
+    softDeleteMetalake(deletedMetalakeId);
+
+    insertToken(3L, missingMetalakeId, "missing-metalake-token", "hash-missing", 0L);
+    ScimTokenMetaService tokenMetaService = ScimTokenMetaService.getInstance();
+
+    closeSession();
+    assertEquals(2, tokenMetaService.softDeleteScimTokensByUnavailableMetalake());
+    refreshSession();
+    assertEquals(
+        "active-token", scimTokenMetaMapper.selectByTokenHash("hash-active").getTokenName());
+    assertNull(scimTokenMetaMapper.selectByTokenHash("hash-deleted"));
+    assertNull(scimTokenMetaMapper.selectByTokenHash("hash-missing"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testDeleteLegacyTimeline(String type) throws IOException {
     init(type);
     insertMetalake();
     scimTokenMetaMapper.insert(

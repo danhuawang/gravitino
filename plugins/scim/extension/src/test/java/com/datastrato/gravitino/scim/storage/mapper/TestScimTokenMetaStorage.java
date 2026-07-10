@@ -31,7 +31,7 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testInsertAndSelectByTokenHash(String type) throws IOException {
+  void testInsertAndSelectByHash(String type) throws IOException {
     init(type);
     insertMetalake();
     ScimTokenMetaPO tokenMeta = createTokenMeta(1L, METALAKE_ID, "scim-token", "hash-a", 0L);
@@ -43,7 +43,7 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testSelectByMetalakeAndName(String type) throws IOException {
+  void testSelectByName(String type) throws IOException {
     init(type);
     insertMetalake();
     ScimTokenMetaPO tokenMeta = createTokenMeta(1L, METALAKE_ID, "scim-token", "hash-a", 0L);
@@ -57,7 +57,7 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testSoftDeleteByMetalakeAndName(String type) throws IOException {
+  void testSoftDeleteByMetalake(String type) throws IOException {
     init(type);
     insertMetalake();
     scimTokenMetaMapper.insert(createTokenMeta(1L, METALAKE_ID, "scim-token", "hash-a", 0L));
@@ -65,6 +65,44 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
     assertEquals(1, scimTokenMetaMapper.softDeleteByMetalakeAndName(METALAKE_NAME, "scim-token"));
     assertNull(scimTokenMetaMapper.selectByTokenHash("hash-a"));
     assertEquals(0, scimTokenMetaMapper.softDeleteByMetalakeAndName(METALAKE_NAME, "scim-token"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testSoftDeleteTwice(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    scimTokenMetaMapper.insert(createTokenMeta(1L, METALAKE_ID, "scim-token", "hash-a", 0L));
+    assertEquals(1, scimTokenMetaMapper.softDeleteByMetalakeAndName(METALAKE_NAME, "scim-token"));
+
+    scimTokenMetaMapper.insert(createTokenMeta(2L, METALAKE_ID, "scim-token", "hash-b", 0L));
+    assertEquals(1, scimTokenMetaMapper.softDeleteByMetalakeAndName(METALAKE_NAME, "scim-token"));
+    assertNull(scimTokenMetaMapper.selectByTokenHash("hash-b"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testSoftDeleteUnavailableMetalake(String type) throws IOException {
+    init(type);
+    long deletedMetalakeId = 20L;
+    long missingMetalakeId = 99L;
+
+    insertMetalake();
+    scimTokenMetaMapper.insert(createTokenMeta(1L, METALAKE_ID, "active-token", "hash-active", 0L));
+
+    insertMetalake(deletedMetalakeId, "deleted_metalake");
+    scimTokenMetaMapper.insert(
+        createTokenMeta(2L, deletedMetalakeId, "deleted-metalake-token", "hash-deleted", 0L));
+    softDeleteMetalake(deletedMetalakeId);
+
+    scimTokenMetaMapper.insert(
+        createTokenMeta(3L, missingMetalakeId, "missing-metalake-token", "hash-missing", 0L));
+
+    assertEquals(2, scimTokenMetaMapper.softDeleteByUnavailableMetalake());
+    assertEquals(
+        "active-token", scimTokenMetaMapper.selectByTokenHash("hash-active").getTokenName());
+    assertNull(scimTokenMetaMapper.selectByTokenHash("hash-deleted"));
+    assertNull(scimTokenMetaMapper.selectByTokenHash("hash-missing"));
   }
 
   @ParameterizedTest
@@ -99,7 +137,7 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testDeleteByLegacyTimeline(String type) throws IOException {
+  void testDeleteLegacy(String type) throws IOException {
     init(type);
     insertMetalake();
     scimTokenMetaMapper.insert(
@@ -136,17 +174,26 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
   }
 
   private void insertMetalake() {
+    insertMetalake(METALAKE_ID, METALAKE_NAME);
+  }
+
+  private void insertMetalake(long metalakeId, String metalakeName) {
     MetalakeMetaMapper metalakeMetaMapper = sharedSession.getMapper(MetalakeMetaMapper.class);
     metalakeMetaMapper.insertMetalakeMeta(
         MetalakePO.builder()
-            .withMetalakeId(METALAKE_ID)
-            .withMetalakeName(METALAKE_NAME)
+            .withMetalakeId(metalakeId)
+            .withMetalakeName(metalakeName)
             .withAuditInfo("{}")
             .withSchemaVersion("1.0")
             .withCurrentVersion(1L)
             .withLastVersion(0L)
             .withDeletedAt(0L)
             .build());
+  }
+
+  private void softDeleteMetalake(long metalakeId) {
+    MetalakeMetaMapper metalakeMetaMapper = sharedSession.getMapper(MetalakeMetaMapper.class);
+    metalakeMetaMapper.softDeleteMetalakeMetaByMetalakeId(metalakeId);
   }
 
   private ScimTokenMetaPO createTokenMeta(

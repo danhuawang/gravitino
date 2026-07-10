@@ -54,6 +54,10 @@ public class ScimTokenMetaSQLProviderFactory {
     return currentProvider().softDeleteByExpiration();
   }
 
+  public static String softDeleteByUnavailableMetalake() {
+    return currentProvider().softDeleteByUnavailableMetalake();
+  }
+
   public static String updateTokenOnRotate(
       @Param("newTokenMeta") ScimTokenMetaPO newTokenMeta,
       @Param("oldTokenMeta") ScimTokenMetaPO oldTokenMeta) {

@@ -79,6 +79,24 @@ public class ScimTokenMetaBaseSQLProvider {
         + " AND deleted_at = 0";
   }
 
+  /**
+   * Soft-deletes active token rows whose metalake is missing or already soft-deleted.
+   *
+   * @return SQL statement
+   */
+  public String softDeleteByUnavailableMetalake() {
+    return "UPDATE "
+        + ScimTokenMetaMapper.TABLE_NAME
+        + " stm SET stm.deleted_at = "
+        + currentTimeMillisExpression()
+        + " WHERE stm.deleted_at = 0"
+        + " AND NOT EXISTS ("
+        + " SELECT 1 FROM "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " m WHERE m.metalake_id = stm.metalake_id AND m.deleted_at = 0"
+        + " )";
+  }
+
   public String updateTokenOnRotate(
       @Param("newTokenMeta") ScimTokenMetaPO newTokenMeta,
       @Param("oldTokenMeta") ScimTokenMetaPO oldTokenMeta) {

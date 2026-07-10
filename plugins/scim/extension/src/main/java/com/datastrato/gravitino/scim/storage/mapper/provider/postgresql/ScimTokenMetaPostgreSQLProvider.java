@@ -28,6 +28,20 @@ public class ScimTokenMetaPostgreSQLProvider extends ScimTokenMetaBaseSQLProvide
   }
 
   @Override
+  public String softDeleteByUnavailableMetalake() {
+    return "UPDATE "
+        + ScimTokenMetaMapper.TABLE_NAME
+        + " stm SET deleted_at = "
+        + currentTimeMillisExpression()
+        + " WHERE stm.deleted_at = 0"
+        + " AND NOT EXISTS ("
+        + " SELECT 1 FROM "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " m WHERE m.metalake_id = stm.metalake_id AND m.deleted_at = 0"
+        + " )";
+  }
+
+  @Override
   public String deleteByLegacyTimeline(
       @Param("legacyTimeline") Long legacyTimeline, @Param("limit") int limit) {
     return "DELETE FROM "
@@ -39,6 +53,6 @@ public class ScimTokenMetaPostgreSQLProvider extends ScimTokenMetaBaseSQLProvide
 
   @Override
   protected String currentTimeMillisExpression() {
-    return "CAST(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000 AS BIGINT)";
+    return "CAST(FLOOR(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP(3)) * 1000) AS BIGINT)";
   }
 }

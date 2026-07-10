@@ -55,17 +55,26 @@ public abstract class AbstractScimMetaServiceTest extends AbstractScimMetaStorag
   }
 
   protected void insertMetalake() {
+    insertMetalake(METALAKE_ID, METALAKE_NAME);
+  }
+
+  protected void insertMetalake(long metalakeId, String metalakeName) {
     MetalakeMetaMapper metalakeMetaMapper = sharedSession.getMapper(MetalakeMetaMapper.class);
     metalakeMetaMapper.insertMetalakeMeta(
         MetalakePO.builder()
-            .withMetalakeId(METALAKE_ID)
-            .withMetalakeName(METALAKE_NAME)
+            .withMetalakeId(metalakeId)
+            .withMetalakeName(metalakeName)
             .withAuditInfo("{}")
             .withSchemaVersion("1.0")
             .withCurrentVersion(1L)
             .withLastVersion(0L)
             .withDeletedAt(0L)
             .build());
+  }
+
+  protected void softDeleteMetalake(long metalakeId) {
+    MetalakeMetaMapper metalakeMetaMapper = sharedSession.getMapper(MetalakeMetaMapper.class);
+    metalakeMetaMapper.softDeleteMetalakeMetaByMetalakeId(metalakeId);
   }
 
   protected ScimTokenMetaPO createTokenMeta(
