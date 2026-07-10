@@ -132,6 +132,8 @@ include(":catalogs:hadoop-common")
 include(":lineage")
 include(":mcp-server")
 include(":plugins:idp-basic")
+include(":plugins:scim")
+project(":plugins:scim").projectDir = file("plugins/scim/extension")
 include(
   ":maintenance:optimizer-api",
   ":maintenance:updaters",

@@ -749,7 +749,8 @@ val datastratoLicenseCheckIncludes = listOf(
   "catalogs/catalog-jdbc-maxcompute/**/*",
   "catalogs/catalog-jdbc-sqlserver/**/*",
   "licensing/**",
-  "scripts/enterprise/**"
+  "scripts/enterprise/**",
+  "plugins/scim/**"
 )
 
 val printRatFailures by tasks.registering {
@@ -1033,7 +1034,8 @@ tasks {
         ":iceberg:iceberg-rest-server:copyLibAndConfigs",
         ":lance:lance-rest-server:copyLibAndConfigs",
         ":maintenance:optimizer:copyLibAndConfigs",
-        ":plugins:idp-basic:copyLibAndConfigs"
+        ":plugins:idp-basic:copyLibAndConfigs",
+        ":plugins:scim:copyLibAndConfigs"
       )
     if (!skipWeb) {
       dependencies.add(":web:web:build")
