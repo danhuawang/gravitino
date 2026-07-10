@@ -17,19 +17,29 @@ dependencies {
   implementation(project(":common"))
   implementation(project(":core"))
 
+  implementation(libs.bundles.jersey)
   implementation(libs.commons.lang3)
   implementation(libs.guava)
   implementation(libs.jackson.annotations)
   implementation(libs.jackson.databind)
+  implementation(libs.metrics.jersey2)
   implementation(libs.mybatis)
+  implementation(libs.servlet)
 
   compileOnly(libs.lombok)
   compileOnly(libs.slf4j.api)
 
   testImplementation(project(":integration-test-common", "testArtifacts"))
 
+  testImplementation(libs.jersey.test.framework.core) {
+    exclude(group = "org.junit.jupiter")
+  }
+  testImplementation(libs.jersey.test.framework.provider.jetty) {
+    exclude(group = "org.junit.jupiter")
+  }
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
+  testImplementation(libs.mockito.inline)
   testImplementation(libs.mysql.driver)
   testImplementation(libs.postgresql.driver)
   testImplementation(libs.testcontainers)
