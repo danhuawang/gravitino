@@ -44,7 +44,7 @@ jobs:
       authz_changes: ${{ steps.filter.outputs.authz_changes }}
 
   multi-instance-consistency:
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    runs-on: gcp-arc-runners
     needs: changes
     if: needs.changes.outputs.authz_changes == 'true'
     env:

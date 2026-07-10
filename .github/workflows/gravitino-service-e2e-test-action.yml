@@ -26,7 +26,7 @@ on:
 jobs:
   GravitinoE2E:
     name: ${{ inputs.env-name }}
-    runs-on: [ self-hosted, linux, x64, ubuntu-latest, 2xlarge ]
+    runs-on: gcp-arc-runners-large
     timeout-minutes: 90
     env:
       ENV_NAME: ${{ inputs.env-name }}
@@ -86,10 +86,24 @@ jobs:
           sudo rm -rf /opt/hostedtoolcache/CodeQL
           docker buildx use default
 
+      - name: Build and push Gravitino image
+        id: build-image
+        run: |
+          CONTEXT_DIR="dev/docker/datastrato-gravitino"
+          # shellcheck source=dev/docker/datastrato-gravitino/datastrato-gravitino-dependency.sh
+          . "${CONTEXT_DIR}/datastrato-gravitino-dependency.sh"
+          IMAGE_TAG="e2e-$(date +%s)-${RANDOM}"
+          echo "KIND_IMAGE_TAG=${IMAGE_TAG}" >> "${GITHUB_ENV}"
+          docker build \
+            --build-arg MYSQL_JDBC_DRIVER_NAME="${MYSQL_JDBC_DRIVER_NAME}" \
+            --build-arg POSTGRESQL_JDBC_DRIVER_NAME="${POSTGRESQL_JDBC_DRIVER_NAME}" \
+            -t "localhost:5001/gravitino:${IMAGE_TAG}" "${CONTEXT_DIR}"
+          docker push "localhost:5001/gravitino:${IMAGE_TAG}"
+
       - name: Set up kind cluster with local registry
         run: |
           chmod +x qa/scripts/setup-kind-env.sh
-          qa/scripts/setup-kind-env.sh --reset
+          qa/scripts/setup-kind-env.sh
         env:
           CLUSTER_NAME: gravitino-e2e-${{ inputs.env-name }}
           NAMESPACE: gravitino-e2e-${{ inputs.env-name }}
@@ -117,6 +131,12 @@ jobs:
         run: |
           NAMESPACE="gravitino-e2e-${{ inputs.env-name }}"
           mkdir -p /tmp/gravitino-e2e-logs
+
+          # Pod and event diagnostics
+          kubectl get pods -n "${NAMESPACE}" -o wide > /tmp/gravitino-e2e-logs/pods.txt 2>&1 || true
+          kubectl get events -n "${NAMESPACE}" --sort-by='.lastTimestamp' > /tmp/gravitino-e2e-logs/events.txt 2>&1 || true
+          kubectl describe pods -n "${NAMESPACE}" > /tmp/gravitino-e2e-logs/pods-describe.txt 2>&1 || true
+
           kubectl logs -n "${NAMESPACE}" -l app=gravitino-helm --tail=500 > /tmp/gravitino-e2e-logs/gravitino.log 2>&1 || true
           kubectl logs -n "${NAMESPACE}" -l app=hive-metastore --tail=200 > /tmp/gravitino-e2e-logs/hive.log 2>&1 || true
           # Copy log files from Gravitino container

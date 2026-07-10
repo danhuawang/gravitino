@@ -50,7 +50,7 @@ jobs:
   idp-basic-test:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true' && needs.changes.outputs.module_exists == 'true'
-    runs-on: [self-hosted, linux, arm64, amazon, xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 60
     env:
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}

@@ -16,7 +16,7 @@ on:
 jobs:
   test:
     if: contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
+    runs-on: gcp-arc-runners
     
     steps:
     - name: Checkout code

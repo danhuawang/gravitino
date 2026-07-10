@@ -17,7 +17,7 @@ jobs:
   # Integration test for AMD64 architecture
   test-amd64-arch:
     if: contains(github.event.pull_request.labels.*.name, 'run-ci')
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
+    runs-on: gcp-arc-runners
     env:
       GRAVITINO_TEST_CLOUD_IT: true
       S3_STS_ACCESS_KEY_ID: ${{ secrets.S3_STS_ACCESS_KEY_ID }}

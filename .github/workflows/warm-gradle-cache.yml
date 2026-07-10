@@ -17,7 +17,7 @@ concurrency:
 jobs:
   warm-gradle-cache-x64:
     name: Warm Gradle Cache (x64)
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 90
     env:
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
@@ -58,7 +58,7 @@ jobs:
 
   warm-gradle-cache-arm64:
     name: Warm Gradle Cache (arm64)
-    runs-on: [self-hosted, linux, arm64, amazon, xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 90
     env:
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}

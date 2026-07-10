@@ -5,7 +5,7 @@ on:
 
 jobs:
   TrinoMultiVersionIT:
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 240
     env:
       CONNECTOR_DIR: ${{ github.workspace }}/trino-connector

@@ -91,7 +91,7 @@ jobs:
       maintenance_module_only_changes: ${{ steps.maintenance_module_only.outputs.maintenance_module_only_changes }}
 
   compile-check:
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    runs-on: gcp-arc-runners-large
     needs: changes
     if: needs.changes.outputs.source_changes != 'true'
     env:
@@ -117,7 +117,7 @@ jobs:
 
   # To check the spark-connector is compatible with scala2.13
   spark-connector-build:
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    runs-on: gcp-arc-runners-large
     timeout-minutes: 45
     needs: changes
     if: needs.changes.outputs.spark_connector_changes == 'true'
@@ -159,7 +159,7 @@ jobs:
 
   build:
     # The type of runner that the job will run on
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    runs-on: gcp-arc-runners-large
     strategy:
       matrix:
         java-version: [ 17 ]

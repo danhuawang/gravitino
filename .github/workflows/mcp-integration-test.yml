@@ -43,7 +43,7 @@ jobs:
               - 'mcp-server/**'
 
   mcp-authz-integration-test:
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 60
     needs: changes
     if: needs.changes.outputs.mcp_server_changes == 'true'

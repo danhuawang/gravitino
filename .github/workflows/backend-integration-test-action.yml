@@ -29,7 +29,7 @@ on:
 jobs:
   BackendIT:
     name: JDK${{ inputs.java-version }}-${{ inputs.test-mode }}-${{ inputs.backend }}
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
+    runs-on: gcp-arc-runners-large
     timeout-minutes: 180
     env:
       PLATFORM: ${{ inputs.architecture }}

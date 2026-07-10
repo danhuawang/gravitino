@@ -38,7 +38,7 @@ on:
 
 jobs:
   publish-docker-image:
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 120
     env:
       input_token: ${{ github.event.inputs.token }}

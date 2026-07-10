@@ -55,7 +55,7 @@ jobs:
   test-amd64-arch:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, 2xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 120
     strategy:
       matrix:

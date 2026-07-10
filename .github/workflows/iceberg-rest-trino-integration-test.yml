@@ -47,7 +47,7 @@ jobs:
   IcebergRestTrinoIT:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
-    runs-on: [self-hosted, linux, x64, ubuntu-latest, xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 90
     strategy:
       matrix:

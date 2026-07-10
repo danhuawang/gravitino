@@ -14,8 +14,16 @@ image:
   pullPolicy: IfNotPresent
 
 service:
-  type: ClusterIP
+  # NodePort is required so that the kind cluster's host can reach Gravitino via
+  # the fixed port 30090 (mapped to the host in the kind cluster config).
+  # Using NodePort here instead of patching the Service post-deploy with
+  # `kubectl patch` avoids a Helm Server-Side Apply (SSA) conflict: when the
+  # patch sets .spec.type with field manager "kubectl-patch", subsequent
+  # `helm upgrade` runs conflict with "kubectl-patch" owning that field.
+  # Declaring the type in values keeps Helm as the sole field manager.
+  type: NodePort
   port: 9090
+  nodePort: 30090
 
 resources:
   limits:
@@ -63,4 +71,4 @@ additionalConfigItems:
 initScript: |
   cp /tmp/conf/* ${GRAVITINO_HOME}/conf
   echo "Start the Gravitino Server"
-  /bin/bash ${GRAVITINO_HOME}/bin/gravitino.sh start      
+  exec /bin/bash ${GRAVITINO_HOME}/bin/gravitino.sh run     

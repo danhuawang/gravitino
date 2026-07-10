@@ -24,7 +24,7 @@ on:
 jobs:
   SparkIT:
     name: JDK${{ inputs.java-version }}-${{ inputs.test-mode }}-Scala${{ inputs.scala-version }}
-    runs-on: [self-hosted, linux, arm64, amazon, xlarge]
+    runs-on: gcp-arc-runners
     timeout-minutes: 90
     env:
       PLATFORM: ${{ inputs.architecture }}
