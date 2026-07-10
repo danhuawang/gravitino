@@ -1,0 +1,74 @@
+# Copyright 2026 Datastrato Pvt Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+openapi: 3.0.3
+info:
+  title: Datastrato SCIM Token Admin REST API
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  version: 1.4.0-SNAPSHOT
+  description: |
+    **Gravitino Enterprise only.** These APIs require a valid Gravitino Enterprise
+    license and the `scim` plugin.
+
+    OpenAPI specification for SCIM integration token administration APIs exposed
+    by the `scim` plugin on the main Gravitino REST server (port 8090).
+
+    Enable the token admin API by registering
+    `com.datastrato.gravitino.scim.web.rest.feature` in
+    `gravitino.server.rest.extensionPackages`.
+
+    All endpoints require main-server authentication and **`METALAKE::OWNER`**
+    authorization on the `{metalake}` path parameter. Plaintext token values are
+    returned only in create and rotate responses.
+
+servers:
+  - url: "{scheme}://{host}:{port}/{basePath}"
+    description: Generic base server URL, with all parts configurable.
+    variables:
+      scheme:
+        description: The scheme of the URI, either http or https.
+        default: http
+      host:
+        description: The host address for the specified server
+        default: localhost
+      port:
+        description: The port used when addressing the host
+        default: "8090"
+      basePath:
+        description: Optional prefix to be appended to all routes
+        default: "api"
+
+security:
+  - OAuth2WithJWT: [serviceAudience]
+  - BasicAuth: []
+
+paths:
+  /metalakes/{metalake}/scim/tokens:
+    $ref: "./scim-tokens.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1scim~1tokens"
+
+  /metalakes/{metalake}/scim/tokens/{tokenName}/rotate:
+    $ref: "./scim-tokens.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1scim~1tokens~1%7BtokenName%7D~1rotate"
+
+  /metalakes/{metalake}/scim/tokens/{tokenName}:
+    $ref: "./scim-tokens.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1scim~1tokens~1%7BtokenName%7D"
+
+components:
+  securitySchemes:
+    OAuth2WithJWT:
+      $ref: "../../../docs/open-api/openapi.yaml#/components/securitySchemes/OAuth2WithJWT"
+    BasicAuth:
+      $ref: "../../../docs/open-api/openapi.yaml#/components/securitySchemes/BasicAuth"

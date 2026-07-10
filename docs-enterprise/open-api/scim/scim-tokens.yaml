@@ -1,0 +1,345 @@
+# Copyright 2026 Datastrato Pvt Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+paths:
+
+  /metalakes/{metalake}/scim/tokens:
+    parameters:
+      - $ref: "../../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+
+    post:
+      tags:
+        - SCIM Token
+      summary: Create SCIM integration token
+      description: >
+        Creates a new opaque SCIM bearer token for the specified metalake.
+        Requires `METALAKE::OWNER` on `{metalake}`. The plaintext `tokenValue`
+        is returned only in this response.
+      operationId: createScimToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScimTokenRequest"
+            examples:
+              CreateScimTokenRequest:
+                $ref: "#/components/examples/CreateScimTokenRequest"
+      responses:
+        "200":
+          description: Returns the created SCIM token
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenResponse"
+              examples:
+                ScimTokenCreateResponse:
+                  $ref: "#/components/examples/ScimTokenCreateResponse"
+        "400":
+          description: Bad Request - The request body is invalid
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                IllegalArgumentException:
+                  $ref: "#/components/examples/ScimTokenIllegalArgumentException"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "404":
+          description: Not Found - The specified metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "409":
+          description: Conflict - A token with the same name already exists
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                AlreadyExistsException:
+                  $ref: "#/components/examples/ScimTokenAlreadyExistsException"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /metalakes/{metalake}/scim/tokens/{tokenName}/rotate:
+    parameters:
+      - $ref: "../../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "#/components/parameters/tokenName"
+
+    post:
+      tags:
+        - SCIM Token
+      summary: Rotate SCIM integration token
+      description: >
+        Rotates the bearer secret for an existing named token. Requires
+        `METALAKE::OWNER` on `{metalake}`. The new plaintext `tokenValue` is
+        returned only in this response.
+      operationId: rotateScimToken
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateScimTokenRequest"
+            examples:
+              RotateScimTokenRequest:
+                $ref: "#/components/examples/RotateScimTokenRequest"
+      responses:
+        "200":
+          description: Returns the rotated SCIM token
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenResponse"
+              examples:
+                ScimTokenRotateResponse:
+                  $ref: "#/components/examples/ScimTokenRotateResponse"
+        "400":
+          description: Bad Request - The request body is invalid
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                IllegalArgumentException:
+                  $ref: "#/components/examples/ScimRotateIllegalArgumentException"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "404":
+          description: Not Found - The token or metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NotFoundException:
+                  $ref: "#/components/examples/ScimTokenNotFoundException"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /metalakes/{metalake}/scim/tokens/{tokenName}:
+    parameters:
+      - $ref: "../../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "#/components/parameters/tokenName"
+
+    delete:
+      tags:
+        - SCIM Token
+      summary: Delete SCIM integration token
+      description: >
+        Soft-deletes the named SCIM token for the specified metalake. Requires
+        `METALAKE::OWNER` on `{metalake}`.
+      operationId: deleteScimToken
+      responses:
+        "200":
+          description: Returns whether the token was deleted
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenDeleteResponse"
+              examples:
+                ScimTokenDeleteResponse:
+                  $ref: "#/components/examples/ScimTokenDeleteResponse"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "404":
+          description: Not Found - The token does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NotFoundException:
+                  $ref: "#/components/examples/ScimTokenNotFoundException"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  parameters:
+    tokenName:
+      name: tokenName
+      in: path
+      required: true
+      description: Operator-readable SCIM token name
+      schema:
+        type: string
+        minLength: 1
+
+  schemas:
+    CreateScimTokenRequest:
+      type: object
+      required:
+        - tokenName
+      properties:
+        tokenName:
+          type: string
+          minLength: 1
+          description: Operator-readable token name
+        expiresInDays:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Optional fixed lifetime in days; omit for no expiry
+
+    RotateScimTokenRequest:
+      type: object
+      properties:
+        expiresInDays:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Optional new fixed lifetime in days; omit to keep current expiry
+
+    ScimToken:
+      type: object
+      required:
+        - metalake
+        - tokenName
+        - tokenValue
+        - expiresAt
+      properties:
+        metalake:
+          type: string
+          description: Target metalake name
+        tokenName:
+          type: string
+          description: Operator-readable token name
+        tokenValue:
+          type: string
+          description: One-time plaintext bearer token (`gravitino_scim_*` prefix)
+        expiresAt:
+          type: integer
+          format: int64
+          description: Expiry epoch millis; `0` means no expiry
+
+    ScimTokenResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        token:
+          $ref: "#/components/schemas/ScimToken"
+
+    ScimTokenDeleteResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        deleted:
+          type: boolean
+          description: Whether the token was soft-deleted
+
+  responses:
+    ScimTokenForbiddenErrorResponse:
+      description: >
+        Forbidden - Caller lacks `METALAKE::OWNER` on `{metalake}` or is not a
+        metalake member.
+      content:
+        application/vnd.gravitino.v1+json:
+          schema:
+            $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+          examples:
+            ForbiddenException:
+              $ref: "#/components/examples/ScimTokenForbiddenException"
+
+  examples:
+    CreateScimTokenRequest:
+      value: {
+        "tokenName": "prod",
+        "expiresInDays": 30
+      }
+
+    RotateScimTokenRequest:
+      value: {
+        "expiresInDays": 90
+      }
+
+    ScimTokenCreateResponse:
+      value: {
+        "code": 0,
+        "token": {
+          "metalake": "my_metalake",
+          "tokenName": "prod",
+          "tokenValue": "gravitino_scim_abc123",
+          "expiresAt": 0
+        }
+      }
+
+    ScimTokenRotateResponse:
+      value: {
+        "code": 0,
+        "token": {
+          "metalake": "my_metalake",
+          "tokenName": "prod",
+          "tokenValue": "gravitino_scim_xyz789",
+          "expiresAt": 0
+        }
+      }
+
+    ScimTokenDeleteResponse:
+      value: {
+        "code": 0,
+        "deleted": true
+      }
+
+    ScimTokenIllegalArgumentException:
+      value: {
+        "code": 1001,
+        "type": "IllegalArgumentException",
+        "message": "tokenName must not be null or empty"
+      }
+
+    ScimRotateIllegalArgumentException:
+      value: {
+        "code": 1001,
+        "type": "IllegalArgumentException",
+        "message": "expiresInDays must be positive"
+      }
+
+    ScimTokenAlreadyExistsException:
+      value: {
+        "code": 1004,
+        "type": "AlreadyExistsException",
+        "message": "SCIM token prod already exists"
+      }
+
+    ScimTokenNotFoundException:
+      value: {
+        "code": 1003,
+        "type": "NotFoundException",
+        "message": "SCIM token not found: prod"
+      }
+
+    ScimTokenForbiddenException:
+      value: {
+        "code": 1008,
+        "type": "ForbiddenException",
+        "message": "Current user is not authorized to perform the operation"
+      }

@@ -29,6 +29,8 @@ dependencies {
   compileOnly(libs.lombok)
   compileOnly(libs.slf4j.api)
 
+  testImplementation(project(":clients:client-java"))
+  testImplementation(project(":server"))
   testImplementation(project(":integration-test-common", "testArtifacts"))
 
   testImplementation(libs.jersey.test.framework.core) {
@@ -37,6 +39,7 @@ dependencies {
   testImplementation(libs.jersey.test.framework.provider.jetty) {
     exclude(group = "org.junit.jupiter")
   }
+  testImplementation(libs.h2db)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.mockito.inline)

@@ -24,7 +24,20 @@ tasks {
     environment.set(mapOf("npm_config_cache" to "${project.projectDir}/.npm-cache"))
   }
 
+  val lintScimOpenAPI by registering(NpxTask::class) {
+    command.set("@redocly/cli@1.23.1")
+    args.set(
+      listOf(
+        "lint",
+        "--extends=recommended-strict",
+        "${project.projectDir}/open-api/scim/openapi.yaml"
+      )
+    )
+    environment.set(mapOf("npm_config_cache" to "${project.projectDir}/.npm-cache"))
+  }
+
   build {
     dependsOn(lintOpenAPI)
+    dependsOn(lintScimOpenAPI)
   }
 }
