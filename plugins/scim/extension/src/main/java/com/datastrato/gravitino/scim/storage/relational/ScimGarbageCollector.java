@@ -9,6 +9,7 @@ import static org.apache.gravitino.Configs.GARBAGE_COLLECTOR_SINGLE_DELETION_LIM
 import static org.apache.gravitino.Configs.STORE_DELETE_AFTER_TIME;
 
 import com.datastrato.gravitino.scim.storage.service.ScimTokenMetaService;
+import com.datastrato.gravitino.scim.storage.service.ScimUserGroupRelMetaService;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -19,11 +20,13 @@ import org.apache.gravitino.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Garbage collector for SCIM token metadata expiry and legacy purge. */
+/** Garbage collector for SCIM token and membership metadata expiry and legacy purge. */
 public final class ScimGarbageCollector implements Closeable {
 
   private static final Logger LOG = LoggerFactory.getLogger(ScimGarbageCollector.class);
   private static final ScimTokenMetaService TOKEN_META_SERVICE = ScimTokenMetaService.getInstance();
+  private static final ScimUserGroupRelMetaService USER_GROUP_REL_META_SERVICE =
+      ScimUserGroupRelMetaService.getInstance();
   private static final long EXPIRY_TASK_FREQUENCY_MINUTES = 10;
 
   private final long storeDeleteAfterTimeMillis;
@@ -55,20 +58,29 @@ public final class ScimGarbageCollector implements Closeable {
         this::collectAndClean, 5, legacyFrequencyMinutes, TimeUnit.MINUTES);
     garbageCollectorPool.scheduleAtFixedRate(
         this::softDeleteExpiredTokens, 5, EXPIRY_TASK_FREQUENCY_MINUTES, TimeUnit.MINUTES);
+    garbageCollectorPool.scheduleAtFixedRate(
+        this::softDeleteMembersByUnavailableMetalake,
+        5,
+        EXPIRY_TASK_FREQUENCY_MINUTES,
+        TimeUnit.MINUTES);
   }
 
   void collectAndClean() {
     long threadId = Thread.currentThread().getId();
-    LOG.debug("Thread {} start to collect SCIM token legacy garbage...", threadId);
+    LOG.debug("Thread {} start to collect SCIM legacy garbage...", threadId);
     try {
       long legacyTimeline = System.currentTimeMillis() - storeDeleteAfterTimeMillis;
       purgeLegacyData(
           () ->
               TOKEN_META_SERVICE.deleteTokenMetasByLegacyTimeline(legacyTimeline, deletionLimit()));
+      purgeLegacyData(
+          () ->
+              USER_GROUP_REL_META_SERVICE.deleteScimUserGroupRelMetasByLegacyTimeline(
+                  legacyTimeline, deletionLimit()));
     } catch (Exception e) {
-      LOG.error("Thread {} failed to collect and clean SCIM token legacy garbage.", threadId, e);
+      LOG.error("Thread {} failed to collect and clean SCIM legacy garbage.", threadId, e);
     } finally {
-      LOG.debug("Thread {} finish to collect SCIM token legacy garbage.", threadId);
+      LOG.debug("Thread {} finish to collect SCIM legacy garbage.", threadId);
     }
   }
 
@@ -89,6 +101,27 @@ public final class ScimGarbageCollector implements Closeable {
       LOG.error("Thread {} failed to soft-delete expired SCIM tokens.", threadId, e);
     } finally {
       LOG.debug("Thread {} finish soft-deleting expired SCIM tokens.", threadId);
+    }
+  }
+
+  /** Soft-deletes membership rows whose metalake is missing or already soft-deleted. */
+  void softDeleteMembersByUnavailableMetalake() {
+    long threadId = Thread.currentThread().getId();
+    LOG.debug(
+        "Thread {} start to soft-delete SCIM memberships for unavailable metalakes...", threadId);
+    try {
+      int deleted = USER_GROUP_REL_META_SERVICE.softDeleteMembersByUnavailableMetalake();
+      if (deleted > 0) {
+        LOG.info("Soft-deleted {} unavailable-metalake SCIM membership rows", deleted);
+      }
+    } catch (Exception e) {
+      LOG.error(
+          "Thread {} failed to soft-delete SCIM memberships for unavailable metalakes.",
+          threadId,
+          e);
+    } finally {
+      LOG.debug(
+          "Thread {} finish soft-deleting SCIM memberships for unavailable metalakes.", threadId);
     }
   }
 
@@ -116,7 +149,7 @@ public final class ScimGarbageCollector implements Closeable {
         deletedCount = deleter.delete();
       }
     } catch (RuntimeException e) {
-      LOG.error("Failed to physically delete SCIM token legacy data", e);
+      LOG.error("Failed to physically delete SCIM legacy data", e);
     }
   }
 
