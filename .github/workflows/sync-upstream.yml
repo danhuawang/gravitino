@@ -1,4 +1,9 @@
-# Periodically syncs apache/gravitino main into this repository's main branch.
+# Periodically syncs apache/gravitino maintenance branches into the matching
+# branch of this repository (e.g. OSS main → enterprise main, OSS branch-1.3 →
+# enterprise branch-1.3). Edit the default branch list in the `prepare` job
+# below to change which branches are kept in sync on schedule, or run this
+# workflow manually with the `branch` input (comma-separated, e.g.
+# "branch-1.3,branch-1.4") to sync one or more specific branches on demand.
 # - Clean merge  → opens a PR that can be merged directly.
 # - Merge conflicts → commits files with conflict markers and opens a PR
 #   labelled "upstream-conflict" so a human can resolve and merge.
@@ -10,19 +15,53 @@ on:
     # Every Monday at 08:00 UTC
     - cron: '0 8 * * 1'
   workflow_dispatch:
+    inputs:
+      branch:
+        description: >
+          Comma-separated branch(es) to sync (e.g. "branch-1.3,branch-1.4").
+          Each must exist with the same name in both apache/gravitino and
+          this repository. Leave empty to sync the default scheduled branches.
+        required: false
+        type: string
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      branches: ${{ steps.set.outputs.branches }}
+    steps:
+      - name: Determine branches to sync
+        id: set
+        env:
+          INPUT_BRANCH: ${{ inputs.branch }}
+        run: |
+          if [ -n "$INPUT_BRANCH" ]; then
+            branches=$(printf '%s' "$INPUT_BRANCH" \
+              | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' \
+              | jq -R . | jq -sc .)
+          else
+            # Default branches kept in sync on the weekly schedule.
+            branches='["main", "branch-1.3"]'
+          fi
+          echo "branches=$branches" >> "$GITHUB_OUTPUT"
+
   sync:
+    needs: prepare
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # OSS and enterprise branch names must match exactly.
+        branch: ${{ fromJson(needs.prepare.outputs.branches) }}
 
     steps:
-      - name: Checkout enterprise main
+      - name: Checkout enterprise ${{ matrix.branch }}
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ matrix.branch }}
           fetch-depth: 0
           # A PAT is used instead of GITHUB_TOKEN to allow PR creation when
           # organization or ruleset restrictions block the Actions bot.
@@ -36,12 +75,13 @@ jobs:
       - name: Add apache/gravitino as upstream remote
         run: |
           git remote add upstream https://github.com/apache/gravitino.git
-          git fetch upstream main --no-tags
+          git fetch upstream "${{ matrix.branch }}" --no-tags
 
       - name: Determine sync branch name
         run: |
-          echo "BRANCH=sync/upstream-$(date -u +%Y%m%d)" >> "$GITHUB_ENV"
-          echo "DATE=$(date -u +%Y-%m-%d)"               >> "$GITHUB_ENV"
+          echo "BASE=${{ matrix.branch }}"                                     >> "$GITHUB_ENV"
+          echo "BRANCH=sync/upstream-${{ matrix.branch }}-$(date -u +%Y%m%d)"   >> "$GITHUB_ENV"
+          echo "DATE=$(date -u +%Y-%m-%d)"                                     >> "$GITHUB_ENV"
 
       - name: Create and push sync branch
         run: |
@@ -49,10 +89,10 @@ jobs:
 
       # ── Attempt the merge ─────────────────────────────────────────────────
 
-      - name: Merge upstream/main (no-commit so we can inspect the result)
+      - name: Merge upstream/${{ matrix.branch }} (no-commit so we can inspect the result)
         id: merge
         run: |
-          if git merge upstream/main --no-edit; then
+          if git merge "upstream/$BASE" --no-edit; then
             echo "status=clean" >> "$GITHUB_OUTPUT"
           else
             # Check for real content conflicts BEFORE staging, because
@@ -63,14 +103,14 @@ jobs:
               git add --all
               echo "status=conflict" >> "$GITHUB_OUTPUT"
               git commit --no-verify \
-                -m "chore: sync apache/gravitino upstream $DATE (conflicts present)"
+                -m "chore: sync apache/gravitino upstream $BASE $DATE (conflicts present)"
             else
               # All conflicts were file-location only (e.g. directory renames);
               # stage and commit as a clean merge.
               git add --all
               echo "status=clean" >> "$GITHUB_OUTPUT"
               git commit --no-verify \
-                -m "chore: sync apache/gravitino upstream $DATE"
+                -m "chore: sync apache/gravitino upstream $BASE $DATE"
             fi
           fi
 
@@ -92,15 +132,15 @@ jobs:
         run: |
           gh api repos/${{ github.repository }}/pulls \
             --method POST \
-            --field base="main" \
+            --field base="$BASE" \
             --field head="$BRANCH" \
-            --field title="chore: sync apache/gravitino upstream ($DATE)" \
+            --field title="chore: sync apache/gravitino upstream $BASE ($DATE)" \
             --field body="$(cat <<EOF
-          ## Upstream sync – $DATE
+          ## Upstream sync – \`$BASE\` – $DATE
 
           This PR was opened automatically by the **Sync Apache Gravitino Upstream**
-          workflow. It merges the latest \`apache/gravitino\` \`main\` branch into this
-          repository with **no conflicts**.
+          workflow. It merges the latest \`apache/gravitino\` \`$BASE\` branch into this
+          repository's \`$BASE\` branch with **no conflicts**.
 
           ### Checklist before merging
           - [ ] CI passes
@@ -120,15 +160,15 @@ jobs:
 
           PR_NUMBER=$(gh api repos/${{ github.repository }}/pulls \
             --method POST \
-            --field base="main" \
+            --field base="$BASE" \
             --field head="$BRANCH" \
-            --field title="chore: sync apache/gravitino upstream ($DATE) – CONFLICTS" \
+            --field title="chore: sync apache/gravitino upstream $BASE ($DATE) – CONFLICTS" \
             --field body="$(cat <<EOF
-          ## Upstream sync – $DATE ⚠️ Conflicts need resolution
+          ## Upstream sync – \`$BASE\` – $DATE ⚠️ Conflicts need resolution
 
           This PR was opened automatically by the **Sync Apache Gravitino Upstream**
-          workflow. The merge of \`apache/gravitino\` \`main\` encountered conflicts that
-          **must be resolved by a human** before this branch can be merged.
+          workflow. The merge of \`apache/gravitino\` \`$BASE\` encountered conflicts that
+          **must be resolved by a human** before this branch can be merged into \`$BASE\`.
 
           ### Files with conflict markers
           \`\`\`
@@ -155,7 +195,7 @@ jobs:
       - name: Print summary
         if: always()
         run: |
-          echo "### Upstream sync result" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Upstream sync result – \`$BASE\`" >> "$GITHUB_STEP_SUMMARY"
           echo ""                          >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.merge.outputs.status }}" = "clean" ]; then
             echo "✅ Clean merge – PR opened, ready to review and merge." >> "$GITHUB_STEP_SUMMARY"
