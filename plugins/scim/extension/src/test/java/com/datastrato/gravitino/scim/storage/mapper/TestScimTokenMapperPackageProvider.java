@@ -95,8 +95,7 @@ public class TestScimTokenMapperPackageProvider {
   void testH2SoftDeleteExpiredMs() {
     String sql = new ScimTokenMetaH2Provider().softDeleteByExpiration();
 
-    assertTrue(sql.contains("DATEDIFF('MILLISECOND'"), sql);
-    assertTrue(sql.contains("CURRENT_TIMESTAMP()"), sql);
+    assertUsesMillisecondTimestamp(sql);
   }
 
   @Test

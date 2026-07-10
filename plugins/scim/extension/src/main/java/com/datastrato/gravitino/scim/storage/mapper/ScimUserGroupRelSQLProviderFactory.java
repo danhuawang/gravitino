@@ -1,0 +1,96 @@
+/*
+ * Copyright 2026 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+
+package com.datastrato.gravitino.scim.storage.mapper;
+
+import com.datastrato.gravitino.scim.storage.mapper.provider.base.ScimUserGroupRelBaseSQLProvider;
+import com.datastrato.gravitino.scim.storage.mapper.provider.h2.ScimUserGroupRelH2Provider;
+import com.datastrato.gravitino.scim.storage.mapper.provider.postgresql.ScimUserGroupRelPostgreSQLProvider;
+import com.google.common.collect.ImmutableMap;
+import java.util.List;
+import java.util.Map;
+import org.apache.gravitino.storage.relational.JDBCBackend.JDBCBackendType;
+import org.apache.ibatis.annotations.Param;
+
+/** Factory that selects the SCIM user-group membership SQL provider for the active JDBC backend. */
+public class ScimUserGroupRelSQLProviderFactory {
+  private static final ScimUserGroupRelBaseSQLProvider MYSQL_PROVIDER =
+      new ScimUserGroupRelBaseSQLProvider();
+  private static final ScimUserGroupRelBaseSQLProvider H2_PROVIDER =
+      new ScimUserGroupRelH2Provider();
+  private static final ScimUserGroupRelBaseSQLProvider POSTGRESQL_PROVIDER =
+      new ScimUserGroupRelPostgreSQLProvider();
+  private static final Map<JDBCBackendType, ScimUserGroupRelBaseSQLProvider> PROVIDER_MAP =
+      ImmutableMap.of(
+          JDBCBackendType.MYSQL,
+          MYSQL_PROVIDER,
+          JDBCBackendType.H2,
+          H2_PROVIDER,
+          JDBCBackendType.POSTGRESQL,
+          POSTGRESQL_PROVIDER);
+
+  private ScimUserGroupRelSQLProviderFactory() {}
+
+  public static String selectMembersByGroupExternalId(
+      @Param("metalakeName") String metalakeName,
+      @Param("groupExternalId") String groupExternalId) {
+    return currentProvider().selectMembersByGroupExternalId(metalakeName, groupExternalId);
+  }
+
+  public static String selectGroupNamesByUsername(
+      @Param("username") String username, @Param("metalakeName") String metalakeName) {
+    return currentProvider().selectGroupNamesByUsername(username, metalakeName);
+  }
+
+  public static String insertMemberships(
+      @Param("metalakeName") String metalakeName,
+      @Param("groupExternalId") String groupExternalId,
+      @Param("userExternalIds") List<String> userExternalIds,
+      @Param("auditInfo") String auditInfo,
+      @Param("currentVersion") Long currentVersion,
+      @Param("lastVersion") Long lastVersion) {
+    return currentProvider()
+        .insertMemberships(
+            metalakeName, groupExternalId, userExternalIds, auditInfo, currentVersion, lastVersion);
+  }
+
+  public static String softDeleteMembersByUserExternalId(
+      @Param("metalakeName") String metalakeName, @Param("userExternalId") String userExternalId) {
+    return currentProvider().softDeleteMembersByUserExternalId(metalakeName, userExternalId);
+  }
+
+  public static String softDeleteMembersByGroupAndUserExternalIds(
+      @Param("metalakeName") String metalakeName,
+      @Param("groupExternalId") String groupExternalId,
+      @Param("userExternalIds") List<String> userExternalIds) {
+    return currentProvider()
+        .softDeleteMembersByGroupAndUserExternalIds(metalakeName, groupExternalId, userExternalIds);
+  }
+
+  public static String softDeleteMembersByUnavailableMetalake() {
+    return currentProvider().softDeleteMembersByUnavailableMetalake();
+  }
+
+  public static String softDeleteMembersByGroupExternalId(
+      @Param("metalakeName") String metalakeName,
+      @Param("groupExternalId") String groupExternalId) {
+    return currentProvider().softDeleteMembersByGroupExternalId(metalakeName, groupExternalId);
+  }
+
+  public static String deleteByLegacyTimeline(
+      @Param("legacyTimeline") Long legacyTimeline, @Param("limit") int limit) {
+    return currentProvider().deleteByLegacyTimeline(legacyTimeline, limit);
+  }
+
+  static ScimUserGroupRelBaseSQLProvider getProvider(String databaseId) {
+    return SQLProviderFactoryHelper.getProvider(
+        databaseId, PROVIDER_MAP, ScimUserGroupRelSQLProviderFactory.class);
+  }
+
+  private static ScimUserGroupRelBaseSQLProvider currentProvider() {
+    return SQLProviderFactoryHelper.currentProvider(
+        PROVIDER_MAP, ScimUserGroupRelSQLProviderFactory.class);
+  }
+}

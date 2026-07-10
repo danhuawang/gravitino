@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS `scim_token_meta` (
 
 CREATE TABLE IF NOT EXISTS `scim_user_group_rel` (
     `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'auto increment id',
+    `metalake_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'metalake id',
     `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'user id',
     `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'group id',
     `audit_info` CLOB NOT NULL COMMENT 'relation audit info',
@@ -28,7 +29,8 @@ CREATE TABLE IF NOT EXISTS `scim_user_group_rel` (
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'relation last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'relation deleted at',
     PRIMARY KEY (`id`),
-    CONSTRAINT `uk_sugr_ui_gi_del` UNIQUE (`user_id`, `group_id`, `deleted_at`),
+    CONSTRAINT `uk_sugr_mid_ui_gi_del` UNIQUE (`metalake_id`, `user_id`, `group_id`, `deleted_at`),
+    KEY `idx_sugr_mid` (`metalake_id`),
     KEY `idx_sugr_uid` (`user_id`),
     KEY `idx_sugr_gid` (`group_id`)
 ) ENGINE=InnoDB;
