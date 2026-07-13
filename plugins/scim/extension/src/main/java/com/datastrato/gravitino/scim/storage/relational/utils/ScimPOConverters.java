@@ -7,8 +7,9 @@ package com.datastrato.gravitino.scim.storage.relational.utils;
 
 import com.datastrato.gravitino.scim.model.ScimToken;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.base.Preconditions;
-import java.io.IOException;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
 
@@ -34,14 +35,34 @@ public final class ScimPOConverters {
         .build();
   }
 
-  private static AuditInfo deserializeAuditInfo(String auditInfo) {
-    if (auditInfo == null || auditInfo.isBlank()) {
+  /**
+   * Serializes audit metadata for relational storage.
+   *
+   * @param auditInfo audit metadata
+   * @return serialized audit metadata JSON
+   */
+  public static String serializeAuditInfo(AuditInfo auditInfo) {
+    try {
+      return JsonUtils.anyFieldMapper().writeValueAsString(auditInfo);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Failed to serialize audit info:", e);
+    }
+  }
+
+  /**
+   * Deserializes audit metadata from relational storage.
+   *
+   * @param auditInfo serialized audit metadata JSON
+   * @return audit metadata
+   */
+  public static AuditInfo deserializeAuditInfo(String auditInfo) {
+    if (StringUtils.isBlank(auditInfo)) {
       return AuditInfo.EMPTY;
     }
     try {
       return JsonUtils.anyFieldMapper().readValue(auditInfo, AuditInfo.class);
-    } catch (IOException e) {
-      throw new IllegalStateException("Failed to deserialize audit info", e);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("Failed to deserialize audit info:", e);
     }
   }
 }

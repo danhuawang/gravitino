@@ -18,6 +18,19 @@ import org.junit.jupiter.api.Test;
 class TestScimPOConverters {
 
   @Test
+  void testAuditInfo() {
+    Instant createTime = Instant.parse("2026-01-01T00:00:00Z");
+    AuditInfo auditInfo =
+        AuditInfo.builder().withCreator("alice").withCreateTime(createTime).build();
+
+    String serialized = ScimPOConverters.serializeAuditInfo(auditInfo);
+    AuditInfo deserialized = ScimPOConverters.deserializeAuditInfo(serialized);
+
+    assertEquals(auditInfo.creator(), deserialized.creator());
+    assertEquals(auditInfo.createTime(), deserialized.createTime());
+  }
+
+  @Test
   void testFromPO() {
     Instant createTime = Instant.parse("2026-01-01T00:00:00Z");
     AuditInfo auditInfo =
@@ -45,7 +58,7 @@ class TestScimPOConverters {
   }
 
   @Test
-  void testFromPONullExpiresAt() {
+  void testNullExpiresAt() {
     ScimTokenMetaPO tokenMeta =
         ScimTokenMetaPO.builder()
             .withTokenId(1L)

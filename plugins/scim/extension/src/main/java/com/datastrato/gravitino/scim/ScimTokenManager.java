@@ -13,6 +13,7 @@ import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import com.datastrato.gravitino.scim.storage.relational.ScimGarbageCollector;
 import com.datastrato.gravitino.scim.storage.relational.ScimRelationalStorage;
 import com.datastrato.gravitino.scim.storage.relational.utils.ScimExceptionUtils;
+import com.datastrato.gravitino.scim.storage.relational.utils.ScimPOConverters;
 import com.datastrato.gravitino.scim.storage.service.ScimTokenMetaService;
 import com.google.common.base.Preconditions;
 import java.io.Closeable;
@@ -31,7 +32,6 @@ import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.exceptions.TokenExpiredException;
 import org.apache.gravitino.exceptions.UnauthorizedException;
-import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.metalake.MetalakeManager;
@@ -123,7 +123,7 @@ public class ScimTokenManager implements Closeable {
               .withTokenName(tokenName)
               .withTokenHash(generated.getTokenHash())
               .withExpiresAt(expiresAt)
-              .withAuditInfo(toAuditInfoJson(auditInfo))
+              .withAuditInfo(ScimPOConverters.serializeAuditInfo(auditInfo))
               .withDeletedAt(0L)
               .withUpdatedAt(0L)
               .build();
@@ -162,7 +162,8 @@ public class ScimTokenManager implements Closeable {
         expiresInDays == null
             ? oldTokenMeta.getExpiresAt()
             : computeExpiresAt(now.toEpochMilli(), expiresInDays);
-    AuditInfo existingAuditInfo = fromAuditInfoJson(oldTokenMeta.getAuditInfo());
+    AuditInfo existingAuditInfo =
+        ScimPOConverters.deserializeAuditInfo(oldTokenMeta.getAuditInfo());
     AuditInfo auditInfo =
         AuditInfo.builder()
             .withCreator(existingAuditInfo.creator())
@@ -180,7 +181,7 @@ public class ScimTokenManager implements Closeable {
               .withTokenName(oldTokenMeta.getTokenName())
               .withTokenHash(generated.getTokenHash())
               .withExpiresAt(expiresAt)
-              .withAuditInfo(toAuditInfoJson(auditInfo))
+              .withAuditInfo(ScimPOConverters.serializeAuditInfo(auditInfo))
               .withDeletedAt(0L)
               .withUpdatedAt(0L)
               .build();
@@ -297,24 +298,5 @@ public class ScimTokenManager implements Closeable {
       return 0L;
     }
     return nowMillis + expiresInDays.longValue() * MILLIS_PER_DAY;
-  }
-
-  private static String toAuditInfoJson(AuditInfo auditInfo) {
-    try {
-      return JsonUtils.anyFieldMapper().writeValueAsString(auditInfo);
-    } catch (IOException e) {
-      throw new IllegalStateException("Failed to serialize audit info", e);
-    }
-  }
-
-  private static AuditInfo fromAuditInfoJson(String auditInfo) {
-    if (auditInfo == null || auditInfo.isBlank()) {
-      return AuditInfo.EMPTY;
-    }
-    try {
-      return JsonUtils.anyFieldMapper().readValue(auditInfo, AuditInfo.class);
-    } catch (IOException e) {
-      throw new IllegalStateException("Failed to deserialize audit info", e);
-    }
   }
 }
