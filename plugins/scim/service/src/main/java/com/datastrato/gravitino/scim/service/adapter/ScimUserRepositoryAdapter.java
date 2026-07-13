@@ -8,7 +8,7 @@ package com.datastrato.gravitino.scim.service.adapter;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.basic.mapper.ScimNameMappers;
 import com.datastrato.gravitino.scim.service.converter.ScimResourceConverter;
-import com.datastrato.gravitino.scim.service.filter.ScimFilter;
+import com.datastrato.gravitino.scim.service.filter.ScimUserFilter;
 import com.datastrato.gravitino.scim.service.model.ScimPagedResult;
 import com.datastrato.gravitino.scim.service.web.ScimMetalakeContext;
 import com.google.common.base.Preconditions;
@@ -129,7 +129,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   @Override
   public FilterResponse<ScimUser> find(
       Filter filter, PageRequest pageRequest, SortRequest sortRequest) throws ResourceException {
-    ScimFilter criteria = ScimFilter.convert(filter, scimConfig);
+    ScimUserFilter criteria = ScimUserFilter.convert(filter, scimConfig);
     ScimRepositoryPagination.PageBounds page =
         ScimRepositoryPagination.normalizePage(pageRequest.getStartIndex(), pageRequest.getCount());
     ScimPagedResult<User> result = findUsers(ScimMetalakeContext.getMetalake(), criteria);
@@ -190,7 +190,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
    * there is no paginated user-list API yet. Supported {@code eq} / {@code and} filters therefore
    * map to at most one user via a primary-key lookup plus optional cross-field validation.
    */
-  private ScimPagedResult<User> findUsers(String metalake, ScimFilter criteria) {
+  private ScimPagedResult<User> findUsers(String metalake, ScimUserFilter criteria) {
     if (!criteria.hasPredicates()) {
       return new ScimPagedResult<>(0, List.of());
     }
@@ -200,7 +200,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
         .orElseGet(() -> new ScimPagedResult<>(0, List.of()));
   }
 
-  private Optional<User> lookupUser(String metalake, ScimFilter criteria) {
+  private Optional<User> lookupUser(String metalake, ScimUserFilter criteria) {
     try {
       if (criteria.externalId().isPresent()) {
         return Optional.of(getUserByExternalId(metalake, criteria.externalId().get()));
@@ -211,7 +211,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     }
   }
 
-  private static boolean matchesFilter(User user, ScimFilter criteria) {
+  private static boolean matchesFilter(User user, ScimUserFilter criteria) {
     if (criteria.userName().isPresent() && !criteria.userName().get().equals(user.name())) {
       return false;
     }

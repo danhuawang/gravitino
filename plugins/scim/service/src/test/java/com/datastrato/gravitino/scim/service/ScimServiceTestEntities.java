@@ -24,6 +24,16 @@ public final class ScimServiceTestEntities {
         .build();
   }
 
+  public static org.apache.gravitino.meta.GroupEntity group(
+      long id, String name, String externalId) {
+    return org.apache.gravitino.meta.GroupEntity.builder()
+        .withId(id)
+        .withName(name)
+        .withExternalId(externalId)
+        .withAuditInfo(testAuditInfo())
+        .build();
+  }
+
   private static AuditInfo testAuditInfo() {
     return AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build();
   }

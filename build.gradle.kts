@@ -1358,6 +1358,7 @@ tasks {
         it.parent?.name != "test" &&
         it.name != "license-tools" &&
         it.parent?.name != "plugins" &&
+        it.parent?.name != "scim" &&
         it.name != "mcp-server"
       ) {
         from(it.configurations.runtimeClasspath) {
@@ -1410,6 +1411,7 @@ tasks {
         it.name != "web-v2" &&
         it.parent?.name != "bundles" &&
         it.parent?.name != "plugins" &&
+        it.parent?.name != "scim" &&
         it.parent?.name != "maintenance" &&
         it.parent?.name != "test" &&
         it.parent?.name != "licensing" &&

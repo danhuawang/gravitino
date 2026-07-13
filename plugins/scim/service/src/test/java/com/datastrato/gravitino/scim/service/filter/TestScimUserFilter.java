@@ -17,7 +17,7 @@ import org.apache.gravitino.Config;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class TestScimFilter {
+class TestScimUserFilter {
 
   private ScimConfig scimConfig;
 
@@ -28,21 +28,23 @@ class TestScimFilter {
 
   @Test
   void testExternalIdEq() throws Exception {
-    ScimFilter criteria = ScimFilter.convert(Filter.decode("externalId eq \"abc\""), scimConfig);
+    ScimUserFilter criteria =
+        ScimUserFilter.convert(Filter.decode("externalId eq \"abc\""), scimConfig);
     assertEquals("abc", criteria.externalId().orElseThrow());
     assertFalse(criteria.userName().isPresent());
   }
 
   @Test
   void testUserNameEq() throws Exception {
-    ScimFilter criteria = ScimFilter.convert(Filter.decode("userName eq \"alice\""), scimConfig);
+    ScimUserFilter criteria =
+        ScimUserFilter.convert(Filter.decode("userName eq \"alice\""), scimConfig);
     assertEquals("alice", criteria.userName().orElseThrow());
   }
 
   @Test
   void testAndFilter() throws Exception {
-    ScimFilter criteria =
-        ScimFilter.convert(
+    ScimUserFilter criteria =
+        ScimUserFilter.convert(
             Filter.decode("externalId eq \"u1\" and userName eq \"alice\""), scimConfig);
     assertEquals("u1", criteria.externalId().orElseThrow());
     assertEquals("alice", criteria.userName().orElseThrow());
@@ -52,6 +54,13 @@ class TestScimFilter {
   void testUnsupportedOp() {
     assertThrows(
         UnsupportedFilterException.class,
-        () -> ScimFilter.convert(Filter.decode("externalId co \"abc\""), scimConfig));
+        () -> ScimUserFilter.convert(Filter.decode("externalId co \"abc\""), scimConfig));
+  }
+
+  @Test
+  void testDisplayNameUnsupported() {
+    assertThrows(
+        UnsupportedFilterException.class,
+        () -> ScimUserFilter.convert(Filter.decode("displayName eq \"engineers\""), scimConfig));
   }
 }

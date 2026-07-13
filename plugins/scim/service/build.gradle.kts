@@ -23,6 +23,7 @@ dependencies {
   implementation(project(":api"))
   implementation(project(":common"))
   implementation(project(":core"))
+  implementation(project(":plugins:scim"))
 
   implementation(libs.commons.lang3)
   implementation(libs.guava)

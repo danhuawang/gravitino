@@ -18,28 +18,28 @@ import org.apache.directory.scim.spec.filter.FilterExpression;
 import org.apache.directory.scim.spec.filter.LogicalExpression;
 import org.apache.directory.scim.spec.filter.LogicalOperator;
 
-/** Converts SCIMple user filter expressions into adapter lookup criteria. */
-public final class ScimFilter {
+/** Converts User SCIMple filter expressions into adapter lookup criteria. */
+public final class ScimUserFilter {
 
   private final Optional<String> externalId;
   private final Optional<String> userName;
 
-  private ScimFilter(Optional<String> externalId, Optional<String> userName) {
+  private ScimUserFilter(Optional<String> externalId, Optional<String> userName) {
     this.externalId = externalId;
     this.userName = userName;
   }
 
   /**
-   * Converts a SCIM filter for supported {@code eq} / {@code and} predicates.
+   * Converts a User SCIM filter for supported {@code eq} / {@code and} predicates.
    *
    * @param filter SCIM filter or {@code null} for unfiltered list
-   * @param config SCIM configuration for mapper application on userName
+   * @param config SCIM configuration for mapper application on name attributes
    * @return parsed criteria
    */
-  public static ScimFilter convert(@Nullable Filter filter, ScimConfig config)
+  public static ScimUserFilter convert(@Nullable Filter filter, ScimConfig config)
       throws ResourceException {
     if (filter == null || filter.getExpression() == null) {
-      return new ScimFilter(Optional.empty(), Optional.empty());
+      return empty();
     }
     return parseExpression(filter.getExpression(), config);
   }
@@ -59,7 +59,11 @@ public final class ScimFilter {
     return externalId.isPresent() || userName.isPresent();
   }
 
-  private static ScimFilter parseExpression(FilterExpression expression, ScimConfig config)
+  private static ScimUserFilter empty() {
+    return new ScimUserFilter(Optional.empty(), Optional.empty());
+  }
+
+  private static ScimUserFilter parseExpression(FilterExpression expression, ScimConfig config)
       throws ResourceException {
     if (expression instanceof AttributeComparisonExpression comparison) {
       return parseComparison(comparison, config);
@@ -68,19 +72,30 @@ public final class ScimFilter {
       if (logical.getOperator() != LogicalOperator.AND) {
         throw new UnsupportedFilterException("Only logical AND is supported");
       }
-      ScimFilter left = parseExpression(logical.getLeft(), config);
-      ScimFilter right = parseExpression(logical.getRight(), config);
+      ScimUserFilter left = parseExpression(logical.getLeft(), config);
+      ScimUserFilter right = parseExpression(logical.getRight(), config);
       return merge(left, right);
     }
     throw new UnsupportedFilterException("Unsupported filter expression: " + expression);
   }
 
-  private static ScimFilter parseComparison(
+  private static ScimUserFilter parseComparison(
       AttributeComparisonExpression comparison, ScimConfig config) throws ResourceException {
+    String value = parseEqStringValue(comparison);
+    return switch (comparison.getAttributePath().getAttributeName()) {
+      case "externalId" -> new ScimUserFilter(Optional.of(value), Optional.empty());
+      case "userName" -> new ScimUserFilter(
+          Optional.empty(), Optional.of(ScimNameMappers.mapUserName(config.userMapper(), value)));
+      default -> throw new UnsupportedFilterException(
+          "Unsupported filter attribute: " + comparison.getAttributePath().getAttributeName());
+    };
+  }
+
+  private static String parseEqStringValue(AttributeComparisonExpression comparison)
+      throws ResourceException {
     if (comparison.getOperation() != CompareOperator.EQ) {
       throw new UnsupportedFilterException("Only eq operator is supported");
     }
-    String attribute = comparison.getAttributePath().getAttributeName();
     Object rawValue = comparison.getCompareValue();
     if (!(rawValue instanceof String)) {
       throw new ResourceException(400, "Filter compare value must be a non-blank string");
@@ -89,17 +104,11 @@ public final class ScimFilter {
     if (value.isBlank()) {
       throw new ResourceException(400, "Filter compare value must be a non-blank string");
     }
-
-    return switch (attribute) {
-      case "externalId" -> new ScimFilter(Optional.of(value), Optional.empty());
-      case "userName" -> new ScimFilter(
-          Optional.empty(), Optional.of(ScimNameMappers.mapUserName(config.userMapper(), value)));
-      default -> throw new UnsupportedFilterException("Unsupported filter attribute: " + attribute);
-    };
+    return value;
   }
 
-  private static ScimFilter merge(ScimFilter left, ScimFilter right) {
-    return new ScimFilter(
+  private static ScimUserFilter merge(ScimUserFilter left, ScimUserFilter right) {
+    return new ScimUserFilter(
         firstPresent(left.externalId(), right.externalId()),
         firstPresent(left.userName(), right.userName()));
   }
