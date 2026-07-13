@@ -9,6 +9,14 @@ plugins {
   id("idea")
 }
 
+// HTTP-layer deps are declared here so this PR stays scoped to the SCIM module only.
+val scimpleVersion = libs.versions.scimple.get()
+val jetty11Version = "11.0.24"
+val jersey3Version = "3.1.5"
+val jakartaServletVersion = "6.0.0"
+val jakartaWsRsVersion = "3.1.0"
+val jacksonJakartaRsVersion = "2.16.1"
+
 val scimServerLib by configurations.creating {
   description =
     "SCIMple stack for scim-server/libs; transitives exclude jars already on the main server classpath"
@@ -24,16 +32,44 @@ dependencies {
   implementation(project(":common"))
   implementation(project(":core"))
   implementation(project(":plugins:scim"))
+  implementation(project(":server-common")) {
+    exclude(group = "org.glassfish.jersey")
+  }
 
   implementation(libs.commons.lang3)
   implementation(libs.guava)
   implementation(libs.jackson.databind)
   implementation(libs.scim.core)
+  implementation("org.apache.directory.scimple:scim-server:$scimpleVersion")
   implementation(libs.scim.spec.schema)
+  implementation("org.apache.directory.scimple:scim-spec-protocol:$scimpleVersion")
+  implementation("org.eclipse.jetty:jetty-server:$jetty11Version")
+  implementation("org.eclipse.jetty:jetty-servlet:$jetty11Version")
+  implementation("jakarta.servlet:jakarta.servlet-api:$jakartaServletVersion")
+  implementation("org.glassfish.jersey.core:jersey-server:$jersey3Version")
+  implementation("org.glassfish.jersey.containers:jersey-container-servlet:$jersey3Version")
+  implementation("org.glassfish.jersey.inject:jersey-hk2:$jersey3Version")
+  implementation("jakarta.ws.rs:jakarta.ws.rs-api:$jakartaWsRsVersion")
+  implementation(libs.bundles.metrics)
+  implementation(libs.metrics.jersey2)
 
-  // SCIMple + its non-server transitives. Gravitino server jars remain in distribution/package/libs
-  // and resolve through IsolatedClassLoader parent delegation (IsolatedClassLoader#isSharedClass).
+  scimServerLib("org.apache.directory.scimple:scim-server:$scimpleVersion")
   scimServerLib(libs.scim.core)
+  scimServerLib(libs.scim.spec.schema)
+  scimServerLib("org.apache.directory.scimple:scim-spec-protocol:$scimpleVersion")
+  scimServerLib("org.glassfish.jersey.core:jersey-server:$jersey3Version")
+  scimServerLib("org.glassfish.jersey.core:jersey-common:$jersey3Version")
+  scimServerLib("org.glassfish.jersey.core:jersey-client:$jersey3Version")
+  scimServerLib("org.glassfish.jersey.containers:jersey-container-servlet:$jersey3Version")
+  scimServerLib("org.glassfish.jersey.inject:jersey-hk2:$jersey3Version")
+  scimServerLib("jakarta.ws.rs:jakarta.ws.rs-api:$jakartaWsRsVersion")
+  scimServerLib("jakarta.inject:jakarta.inject-api:2.0.1")
+  scimServerLib("jakarta.servlet:jakarta.servlet-api:$jakartaServletVersion")
+  scimServerLib("org.eclipse.jetty:jetty-server:$jetty11Version")
+  scimServerLib("org.eclipse.jetty:jetty-servlet:$jetty11Version")
+  scimServerLib(
+    "com.fasterxml.jackson.jakarta.rs:jackson-jakarta-rs-json-provider:$jacksonJakartaRsVersion"
+  )
 
   compileOnly(libs.lombok)
   compileOnly(libs.slf4j.api)
@@ -67,6 +103,7 @@ tasks {
       exclude("jackson-core-*.jar")
       exclude("jackson-databind-*.jar")
       exclude("jackson-annotations-*.jar")
+      exclude("javax.servlet-api-*.jar")
     }
     into("$rootDir/distribution/package/scim-server/libs")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE

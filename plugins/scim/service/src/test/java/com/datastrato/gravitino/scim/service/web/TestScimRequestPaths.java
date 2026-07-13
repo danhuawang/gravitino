@@ -1,0 +1,34 @@
+/*
+ * Copyright 2026 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+
+package com.datastrato.gravitino.scim.service.web;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+
+class TestScimRequestPaths {
+
+  @Test
+  void testMetalakeFromPath() {
+    assertEquals(
+        Optional.of("metalake_a"),
+        ScimRequestPaths.metalakeFromPath("/scim/v2/metalakes/metalake_a/Users"));
+    assertEquals(
+        Optional.of("metalake_a"),
+        ScimRequestPaths.metalakeFromPath("/scim/v2/metalakes/metalake_a/ServiceProviderConfig"));
+    assertEquals(Optional.empty(), ScimRequestPaths.metalakeFromPath("/scim/v2/Users"));
+    assertEquals(Optional.empty(), ScimRequestPaths.metalakeFromPath("/health"));
+  }
+
+  @Test
+  void testIsMetalakeScopedPath() {
+    assertTrue(ScimRequestPaths.isMetalakeScopedPath("/scim/v2/metalakes/ml1/Users"));
+    assertFalse(ScimRequestPaths.isMetalakeScopedPath("/scim/ServiceProviderConfig"));
+  }
+}

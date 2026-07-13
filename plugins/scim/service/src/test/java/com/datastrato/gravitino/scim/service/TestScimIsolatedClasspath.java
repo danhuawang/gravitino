@@ -6,7 +6,6 @@
 package com.datastrato.gravitino.scim.service;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -18,8 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.jar.JarFile;
-import java.util.stream.Stream;
 import org.apache.gravitino.utils.IsolatedClassLoader;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -107,29 +104,6 @@ class TestScimIsolatedClasspath {
                   assertNotNull(decode.invoke(null, "externalId eq \"abc\""));
                   return null;
                 }));
-  }
-
-  @Test
-  void testNoSpiYet() throws Exception {
-    assumeTrue(Files.isDirectory(SCIM_SERVER_LIBS), "Run copyLibAndConfigs before this test");
-
-    try (Stream<Path> jars = Files.list(SCIM_SERVER_LIBS)) {
-      boolean hasAuxServiceRegistration =
-          jars.filter(path -> path.getFileName().toString().endsWith(".jar"))
-              .anyMatch(
-                  jar -> {
-                    try (JarFile jarFile = new JarFile(jar.toFile())) {
-                      return jarFile.getEntry(
-                              "META-INF/services/org.apache.gravitino.auxiliary.GravitinoAuxiliaryService")
-                          != null;
-                    } catch (Exception e) {
-                      throw new RuntimeException(e);
-                    }
-                  });
-      assertFalse(
-          hasAuxServiceRegistration,
-          "ScimRESTService SPI is expected in a follow-up HTTP layer change, not #743");
-    }
   }
 
   /**

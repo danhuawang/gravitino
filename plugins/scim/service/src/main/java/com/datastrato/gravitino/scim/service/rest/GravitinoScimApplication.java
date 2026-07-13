@@ -1,0 +1,104 @@
+/*
+ * Copyright 2026 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+
+package com.datastrato.gravitino.scim.service.rest;
+
+import com.datastrato.gravitino.scim.service.ScimConfig;
+import com.datastrato.gravitino.scim.service.adapter.ScimGroupRepositoryAdapter;
+import com.datastrato.gravitino.scim.service.adapter.ScimUserRepositoryAdapter;
+import java.util.Collections;
+import org.apache.directory.scim.core.repository.InvalidRepositoryException;
+import org.apache.directory.scim.core.repository.RepositoryRegistry;
+import org.apache.directory.scim.core.schema.SchemaRegistry;
+import org.apache.directory.scim.server.configuration.ServerConfiguration;
+import org.apache.directory.scim.server.exception.FilterParseExceptionMapper;
+import org.apache.directory.scim.server.exception.GenericExceptionMapper;
+import org.apache.directory.scim.server.exception.MutabilityExceptionMapper;
+import org.apache.directory.scim.server.exception.ResourceExceptionMapper;
+import org.apache.directory.scim.server.exception.ScimExceptionMapper;
+import org.apache.directory.scim.server.exception.UnsupportedFilterExceptionMapper;
+import org.apache.directory.scim.server.exception.UnsupportedOperationExceptionMapper;
+import org.apache.directory.scim.server.exception.WebApplicationExceptionMapper;
+import org.apache.directory.scim.server.rest.ScimJacksonXmlBindJsonProvider;
+import org.apache.directory.scim.server.rest.ScimpleFeature;
+import org.apache.directory.scim.spec.resources.ScimGroup;
+import org.apache.directory.scim.spec.resources.ScimUser;
+import org.apache.directory.scim.spec.schema.ServiceProviderConfiguration;
+import org.apache.gravitino.Config;
+import org.glassfish.hk2.utilities.binding.AbstractBinder;
+import org.glassfish.jersey.server.ResourceConfig;
+
+/** Jersey 3 application wiring SCIMple resources under {@link ScimMetalakeResource}. */
+public final class GravitinoScimApplication {
+
+  private GravitinoScimApplication() {}
+
+  /**
+   * Builds the SCIMple Jersey application for the auxiliary listener.
+   *
+   * @param gravitinoConfig server configuration
+   * @param scimConfig SCIM mapper configuration
+   * @return configured Jersey {@link ResourceConfig}
+   */
+  public static ResourceConfig create(Config gravitinoConfig, ScimConfig scimConfig) {
+    SchemaRegistry schemaRegistry = new SchemaRegistry();
+    schemaRegistry.addSchema(ScimUser.class, Collections.emptyList());
+    schemaRegistry.addSchema(ScimGroup.class, Collections.emptyList());
+
+    RepositoryRegistry repositoryRegistry = new RepositoryRegistry(schemaRegistry);
+    try {
+      repositoryRegistry.registerRepository(
+          ScimUser.class, new ScimUserRepositoryAdapter(gravitinoConfig, scimConfig));
+      repositoryRegistry.registerRepository(
+          ScimGroup.class, new ScimGroupRepositoryAdapter(gravitinoConfig, scimConfig));
+    } catch (InvalidRepositoryException e) {
+      throw new IllegalStateException("Failed to register SCIM repository adapters", e);
+    }
+
+    ServerConfiguration serverConfiguration = createServerConfiguration();
+    ScimMetalakeResource scimMetalakeResource =
+        new ScimMetalakeResource(schemaRegistry, repositoryRegistry, serverConfiguration);
+
+    ResourceConfig resourceConfig = new ResourceConfig();
+    resourceConfig.register(ScimpleFeature.class);
+    resourceConfig.register(ResourceExceptionMapper.class);
+    resourceConfig.register(ScimExceptionMapper.class);
+    resourceConfig.register(FilterParseExceptionMapper.class);
+    resourceConfig.register(WebApplicationExceptionMapper.class);
+    resourceConfig.register(UnsupportedOperationExceptionMapper.class);
+    resourceConfig.register(UnsupportedFilterExceptionMapper.class);
+    resourceConfig.register(MutabilityExceptionMapper.class);
+    resourceConfig.register(GenericExceptionMapper.class);
+    resourceConfig.register(ScimJacksonXmlBindJsonProvider.class);
+    resourceConfig.register(ScimHealthOperations.class);
+    resourceConfig.register(scimMetalakeResource);
+
+    resourceConfig.register(
+        new AbstractBinder() {
+          @Override
+          protected void configure() {
+            bind(schemaRegistry).to(SchemaRegistry.class);
+            bind(repositoryRegistry).to(RepositoryRegistry.class);
+            bind(serverConfiguration).to(ServerConfiguration.class);
+          }
+        });
+
+    return resourceConfig;
+  }
+
+  private static ServerConfiguration createServerConfiguration() {
+    ServerConfiguration configuration =
+        new ServerConfiguration()
+            .setId("gravitino-scim")
+            .setDocumentationUri("https://github.com/datastrato/gravitino-enterprise")
+            .addAuthenticationSchema(
+                ServiceProviderConfiguration.AuthenticationSchema.oauthBearer())
+            .setSupportsFilter(true)
+            .setSupportsSort(false);
+    configuration.setBulkMaxOperations(0);
+    configuration.setBulkMaxPayloadSize(0);
+    return configuration;
+  }
+}
