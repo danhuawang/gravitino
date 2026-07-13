@@ -174,6 +174,7 @@ ql-expression = "4.0.3"
 simba-bigquery-jdbc = "1.6.5.1001"
 commons-compress = "1.27.1"
 google-cloud-kms = "2.61.0"
+scimple = "1.0.0-M1"
 
 [libraries]
 aspectj-aspectjrt = { group = "org.aspectj", name = "aspectjrt", version.ref = "aspectj" }
@@ -358,6 +359,8 @@ mybatis = { group = "org.mybatis", name = "mybatis", version.ref = "mybatis"}
 h2db = { group = "com.h2database", name = "h2", version.ref = "h2db"}
 awaitility = { group = "org.awaitility", name = "awaitility", version.ref = "awaitility" }
 servlet = { group = "javax.servlet", name = "javax.servlet-api", version.ref = "servlet" }
+scim-core = { group = "org.apache.directory.scimple", name = "scim-core", version.ref = "scimple" }
+scim-spec-schema = { group = "org.apache.directory.scimple", name = "scim-spec-schema", version.ref = "scimple" }
 mail = { group = "javax.mail", name = "mail", version.ref = "mail" }
 rome = { group = "rome", name = "rome", version.ref = "rome" }
 jettison = { group = "org.codehaus.jettison", name = "jettison", version.ref = "jettison" }
