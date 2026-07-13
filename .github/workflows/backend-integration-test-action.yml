@@ -86,6 +86,11 @@ jobs:
             EXCLUDE_CONTRIB_TESTS="$EXCLUDE_CONTRIB_TESTS -x :catalogs-contrib:$module:test"
           done
 
+          EXCLUDE_SCIM_SERVICE_TESTS=""
+          if [ -f plugins/scim/service/build.gradle.kts ]; then
+            EXCLUDE_SCIM_SERVICE_TESTS="-x :plugins:scim:service:test"
+          fi
+
           ./gradlew test -PskipTests -PtestMode=${{ inputs.test-mode }} -PjdbcBackend=${{ inputs.backend }} -PskipDockerTests=false -PskipWeb=true \
             -x :web:web:test -x :web:integration-test:test -x :web-v2:web:test -x :web-v2:integration-test:test -x :clients:client-python:test \
             -x :flink-connector:flink-common:test \
@@ -98,6 +103,8 @@ jobs:
             -x :trino-connector:integration-test:test -x :trino-connector:trino-connector:test \
             -x :iceberg:iceberg-rest-trino-it:test \
             -x :plugins:idp-basic:test \
+            -x :plugins:scim:test \
+            $EXCLUDE_SCIM_SERVICE_TESTS \
             -x :authorizations:authorization-chain:test -x :authorizations:authorization-ranger:test \
             -x :clients:cli:test -x :maintenance:jobs:test -x :maintenance:optimizer:test \
             -x :test:search-integration-test:test \

@@ -48,7 +48,7 @@ Gravitino should act as the **SCIM interface service** in this model. That requi
    port (**8090**) through `gravitino.server.rest.extensionPackages`. Enabling SCIM requires both
    the auxiliary service and this extension package (see **Configuration**).
 
-4. **Ensure data consistency**: keep Gravitino `user_meta`, `group_meta`, and **`user_group_rel`**
+4. **Ensure data consistency**: keep Gravitino `user_meta`, `group_meta`, and **`scim_user_group_rel`**
    aligned with the IdP over repeated provisioning cycles.
 
 5. **Support multi-metalake deployments**: expose metalake scope in the SCIM URL path
@@ -58,7 +58,7 @@ Gravitino should act as the **SCIM interface service** in this model. That requi
    owner** of the target metalake while exposing only the SCIM protocol endpoints to the IdP.
 
 7. **Use database group membership for OAuth authorization when SCIM is enabled**: for user login
-   (OAuth/JWT on **8090**), resolve group names from **`user_group_rel`** per metalake — not from JWT
+   (OAuth/JWT on **8090**), resolve group names from **`scim_user_group_rel`** per metalake — not from JWT
    `groups` claims (see **OAuth login group membership**).
 
 ---
@@ -74,7 +74,7 @@ Gravitino should act as the **SCIM interface service** in this model. That requi
 
 3. **Replacing login authentication**: SCIM provisioning complements Gravitino's existing OAuth and
    local authentication flows; it does not replace them. When SCIM is enabled, **OAuth still proves
-   identity** (username), but **group membership for authorization** comes from **`user_group_rel`**
+   identity** (username), but **group membership for authorization** comes from **`scim_user_group_rel`**
    (see **OAuth login group membership**), not from JWT `groups` claims.
 
 4. **SCIM HTTP on the main Gravitino port (8090)**: SCIMple **1.0.0-M1** depends on **Jersey 3 /
@@ -542,7 +542,7 @@ SCIMple **1.0.0-M1** is built for **Jersey 3** and **`jakarta.ws.rs`** (parent P
 `jersey-bom` **3.1.5**). The main Gravitino server uses **Jersey 2.41** and **`javax.ws.rs`**. SCIM
 therefore runs in a dedicated **`scim-server`**
 module with its own Jetty listener and **Jersey 3** classpath (packaged under `scim-server/libs`),
-loaded via `gravitino.datastrato.scim.classpath` as a **`GravitinoAuxiliaryService`** with an isolated
+loaded via `gravitino.scim.classpath` as a **`GravitinoAuxiliaryService`** with an isolated
 classpath via `AuxiliaryServiceManager`.
 
 SCIMple **does not generate or persist** IdP integration tokens. It only exposes SCIM resources and
@@ -567,7 +567,7 @@ configured together when SCIM is enabled (fail fast if one is missing).
 
 | Area                   | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                               |
 |------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ScimConfig`           | Parse `gravitino.datastrato.scim.*` from the `AuxiliaryServiceManager` `serviceInit` map                                                                                                                                                                                                                                                                                                                                                |
+| `ScimConfig`           | Parse `gravitino.scim.*` from the `AuxiliaryServiceManager` `serviceInit` map                                                                                                                                                                                                                                                                                                                                                           |
 | `ScimBearerAuthFilter` | On port **9201**: **authentication** (opaque `gravitino_scim_*` validation; **401** invalid/revoked, **419** expired) + **authorization** (`scim_token.metalake_id` must match URL `{metalake}`); delegates to `ScimTokenService`                                                                                                                                                                                                       |
 | `ScimURLScopeResolver` | On port **9201** only: after bearer auth, parse `{metalake}` from `/scim/v2/metalakes/{metalake}/`, resolve to `metalake_id`, attach request-scoped metalake context for repository adapters; **404** if the metalake does not exist; does **not** validate tokens or perform authorization. Implemented as a Servlet `Filter`, but named by role (URL scope resolution), not `*Filter`, to distinguish it from `ScimBearerAuthFilter`. |
 | `ServerConfiguration`  | Advertise `patch.supported=true`, `bulk.supported=false`, `sort.supported=false`, `filter.supported=true`, etc. (`ServiceProviderConfig` capabilities)                                                                                                                                                                                                                                                                                  |
@@ -576,10 +576,12 @@ configured together when SCIM is enabled (fail fast if one is missing).
 
 #### What the token admin plugin implements
 
-| Area                   | Rationale                                                                                                                                                                                                                                                                 |
-|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ScimTokenRESTFeature` | Jersey 2 `Feature` on **8090** via `gravitino.server.rest.extensionPackages`; wires `/api/metalakes/{metalake}/scim/tokens`, `AuthenticationFilter`, and **`METALAKE::OWNER`** authorization                                                                              |
-| `ScimTokenOperations`  | JAX-RS resource at `@Path("/metalakes/{metalake}/scim/tokens")`; `@AuthorizationExpression(expression = "METALAKE::OWNER")` on create/list/rotate/delete; resolves `{metalake}` in the REST layer (same pattern as `MetalakeOperations`); delegates to `ScimTokenService` |
+| Area                         | Rationale                                                                                                                                                                                                                                                                           |
+|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ScimTokenRESTFeature`       | Jersey 2 `Feature` on **8090** via `gravitino.server.rest.extensionPackages`; wires `/api/metalakes/{metalake}/scim/tokens`, `AuthenticationFilter`, **`METALAKE::OWNER`** authorization, and **startup validation** for SCIM OAuth settings; initializes `ScimUserGroupRelManager` |
+| `ScimTokenOperations`        | JAX-RS resource at `@Path("/metalakes/{metalake}/scim/tokens")`; `@AuthorizationExpression(expression = "METALAKE::OWNER")` on create/rotate/delete; resolves `{metalake}` in the REST layer (same pattern as `MetalakeOperations`); delegates to `ScimTokenManager`                |
+| `ScimOAuthRequestPathFilter` | Servlet filter registered through `gravitino.server.webserver.customFilters`; captures request path before OAuth runs so metalake scope is available to `ScimOAuthPrincipalMapper`                                                                                                  |
+| `ScimOAuthPrincipalMapper`   | `PrincipalMapper` registered as `gravitino.authenticator.oauth.principalMapper`; maps JWT identity to username and loads metalake-scoped groups from `scim_user_group_rel` via `ScimUserGroupRelManager.listGroupNamesForUser`                                                      |
 
 #### Request path (not HTTP forwarding)
 
@@ -597,7 +599,7 @@ IdP ──HTTPS──► SCIM Jetty (Jersey 3 + SCIMple)
 
 **Phases 3–4** deliver opaque token generation, persistence, bearer validation, and admin **service**
 logic (unit-testable without HTTP). **Phase 5** wires the Jersey 3 SCIM auxiliary listener,
-`ScimConfig` (read `gravitino.datastrato.scim.*` from `AuxiliaryServiceManager`), and token admin REST
+`ScimConfig` (read `gravitino.scim.*` from `AuxiliaryServiceManager`), and token admin REST
 (`ScimTokenRESTFeature` via `extensionPackages`). **Phase 6** implements SCIM repository adapters
 and end-to-end User/Group provisioning.
 
@@ -614,7 +616,7 @@ SCIM runs on a dedicated auxiliary listener, not the main Gravitino JAX-RS app o
 |-------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Jersey / Jakarta mismatch** | SCIMple **1.0.0-M1** requires **Jersey 3** and `jakarta.ws.rs`; the main server uses **Jersey 2** and `javax.ws.rs`. Mixing both on one JAX-RS application is not viable. |
 | **Isolated classpath**        | `AuxiliaryServiceManager` loads `scim-server/libs` in an `IsolatedClassLoader`, so SCIMple dependencies do not conflict with the main server.                             |
-| **Dedicated listener**        | IdP traffic uses `gravitino.datastrato.scim.httpPort` (default **9201**), enabling network policies that expose SCIM without opening management APIs on **8090**.         |
+| **Dedicated listener**        | IdP traffic uses `gravitino.scim.httpPort` (default **9201**), enabling network policies that expose SCIM without opening management APIs on **8090**.                    |
 
 Repository adapters initialize **`GravitinoEnv`** in-process and call `AccessControlDispatcher`
 directly — there is no HTTP proxy to `/api/metalakes/...`.
@@ -623,8 +625,8 @@ directly — there is no HTTP proxy to `/api/metalakes/...`.
 
 Add `scim` to `gravitino.auxService.names` and register the token admin plugin via
 `gravitino.server.rest.extensionPackages` in `gravitino.conf`. `AuxiliaryServiceManager` loads
-`ScimRESTService` from `gravitino.datastrato.scim.classpath` with an **isolated classloader** (SCIMple +
-Jersey 3). The SCIM HTTP listener uses **`gravitino.datastrato.scim.httpPort`** (default **9201**). The main
+`ScimRESTService` from `gravitino.scim.classpath` with an **isolated classloader** (SCIMple +
+Jersey 3). The SCIM HTTP listener uses **`gravitino.scim.httpPort`** (default **9201**). The main
 Gravitino REST API on port **8090** serves `/api/metalakes/{metalake}/scim/tokens` via the required
 token admin plugin (`gravitino.server.rest.extensionPackages`). Token admin APIs do **not** run on
 port **9201** and do **not** use `ScimURLScopeResolver`.
@@ -632,15 +634,14 @@ port **9201** and do **not** use `ScimURLScopeResolver`.
 The auxiliary service shares the Gravitino JVM **`GravitinoEnv`** (entity store, JDBC) so repository
 adapters can write `user_meta` / `group_meta` in-process.
 
-All **`gravitino.datastrato.scim.*`** settings (including `userMapper` / `groupMapper`) are in **`conf/gravitino.conf`**.
-Enterprise internal configuration uses the **`gravitino.datastrato.*`** prefix (same convention as license and search).
-`AuxiliaryServiceManager` collects `gravitino.datastrato.scim.*` keys for the `scim` auxiliary service, strips the
-`gravitino.datastrato.` prefix, and passes the result to `ScimRESTService.serviceInit()` → `ScimConfig` (short keys
-such as `classpath`, `httpPort`, `userMapper`). `gravitino.datastrato.scim.classpath` is
+All **`gravitino.scim.*`** settings (including `userMapper` / `groupMapper`) are in **`conf/gravitino.conf`**.
+`AuxiliaryServiceManager` collects `gravitino.scim.*` keys for the `scim` auxiliary service, strips the
+`gravitino.` prefix, and passes the result to `ScimRESTService.serviceInit()` → `ScimConfig` (short keys
+such as `classpath`, `httpPort`, `userMapper`). `gravitino.scim.classpath` is
 **`scim-server/libs` only** (isolated jars; no application `.conf` under `scim-server/conf`).
 
 ```text
-conf/gravitino.conf  (gravitino.datastrato.scim.*)
+conf/gravitino.conf  (gravitino.scim.*)
   │
   ▼
 AuxiliaryServiceManager
@@ -723,7 +724,7 @@ for all SCIM resources, including discovery. **Metalake scope is enforced by the
 IdP operators configure **one SCIM connector per metalake**, each with:
 
 - **SCIM base URL**: `https://{gravitino-host}:9201/scim/v2/metalakes/{metalake}` (port from
-  `gravitino.datastrato.scim.httpPort`)
+  `gravitino.scim.httpPort`)
 - **Bearer token**: a SCIM token created for **that same metalake** via
   `POST /api/metalakes/{metalake}/scim/tokens`
 
@@ -742,7 +743,7 @@ Gravitino does not poll the IdP.
 3. Configure the IdP connector with SCIM base URL (`.../metalakes/{metalake}`) and bearer token —
    URL rules in **Metalake Scope and SCIM Base URL** above.
 4. The IdP starts interval-based provisioning (for example Entra ID every 20–40 minutes).
-5. Gravitino creates, updates, or deletes rows in `user_meta`, `group_meta`, and **`user_group_rel`**
+5. Gravitino creates, updates, or deletes rows in `user_meta`, `group_meta`, and **`scim_user_group_rel`**
    per incoming SCIM requests (see **User `enabled`**, **`external_id`**, and **Group Membership (Users in Groups)**).
 
 Steps 4–5 repeat on the IdP schedule.
@@ -770,20 +771,20 @@ path prefix `/scim/v2/metalakes/*` to IdPs.
 SCIM repository adapters call **`AccessControlDispatcher` in-process** (not HTTP **8090**). Before Phase 6
 adapters can implement SCIM list pagination, **User `PATCH active`**, and **Group `PATCH members`**, Gravitino core must add **paginated list**
 and **`enabled`** on **`user_meta`**. This chapter is the single reference for those
-prerequisites; see **`external_id` on `user_meta` and `group_meta`** for stable IdP identity and schema DDL; see **User `enabled`** for user disable semantics; see **OAuth login group membership** for how **`user_group_rel`** feeds OAuth authorization; see **SCIM Protocol HTTP Interface** for HTTP mapping.
+prerequisites; see **`external_id` on `user_meta` and `group_meta`** for stable IdP identity and schema DDL; see **User `enabled`** for user disable semantics; see **OAuth login group membership** for how **`scim_user_group_rel`** feeds OAuth authorization; see **SCIM Protocol HTTP Interface** for HTTP mapping.
 
 ### 6.1 Current State
 
-| Area                     | Today                                                      | SCIM gap                                                                                                                 |
-|--------------------------|------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| List users / groups      | `listUsers` / `listGroups` return **full** metalake arrays | IdPs paginate `GET /Users` / `GET /Groups` with `startIndex` / `count`; full-table load is too slow                      |
-| List sort                | No `ORDER BY` contract on list SQL                         | Okta requires **stable ordering** across pages (RFC 7644 §3.4.2.4)                                                       |
-| User lifecycle           | `add*` / `get*` / `remove*` only; no disabled state        | IdP **`PATCH active: false`** must not call `removeUser` (that drops role bindings)                                      |
-| Group lifecycle          | `add*` / `get*` / `remove*` only                           | IdPs deprovision via **`DELETE /Groups/{id}`** (RFC 7643 Group has no `active`)                                          |
-| `user_meta`              | Soft delete via `deleted_at` only                          | Need persisted **`enabled`** column (see **User `enabled`**)                                                             |
-| `group_meta`             | Soft delete via `deleted_at` only                          | No `enabled` column — SCIM Group has no `active` attribute                                                               |
-| Group membership         | Not stored                                                 | Need **`user_group_rel`** (see **Group Membership (Users in Groups)**)                                                   |
-| OAuth login group source | JWT `groups` claim → `UserPrincipal` → JCasbin             | SCIM enabled → **`listGroupNamesForUser`** from **`user_group_rel`** per metalake (see **OAuth login group membership**) |
+| Area                     | Today                                                      | SCIM gap                                                                                                                      |
+|--------------------------|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| List users / groups      | `listUsers` / `listGroups` return **full** metalake arrays | IdPs paginate `GET /Users` / `GET /Groups` with `startIndex` / `count`; full-table load is too slow                           |
+| List sort                | No `ORDER BY` contract on list SQL                         | Okta requires **stable ordering** across pages (RFC 7644 §3.4.2.4)                                                            |
+| User lifecycle           | `add*` / `get*` / `remove*` only; no disabled state        | IdP **`PATCH active: false`** must not call `removeUser` (that drops role bindings)                                           |
+| Group lifecycle          | `add*` / `get*` / `remove*` only                           | IdPs deprovision via **`DELETE /Groups/{id}`** (RFC 7643 Group has no `active`)                                               |
+| `user_meta`              | Soft delete via `deleted_at` only                          | Need persisted **`enabled`** column (see **User `enabled`**)                                                                  |
+| `group_meta`             | Soft delete via `deleted_at` only                          | No `enabled` column — SCIM Group has no `active` attribute                                                                    |
+| Group membership         | Not stored                                                 | Need **`scim_user_group_rel`** (see **Group Membership (Users in Groups)**)                                                   |
+| OAuth login group source | JWT `groups` claim → `UserPrincipal` → JCasbin             | SCIM enabled → **`listGroupNamesForUser`** from **`scim_user_group_rel`** per metalake (see **OAuth login group membership**) |
 
 **Non-goals for this section:** paginating `listUserNames` / `listGroupNames`, exposing sort parameters
 on **8090** REST, or adding **8090** `PATCH` for `enabled` (SCIM uses core APIs only).
@@ -862,7 +863,7 @@ Add matching methods on **`AccessControlDispatcher`**, implemented in **`UserGro
 
 #### Schema
 
-Table **`user_group_rel`** (DDL in **user_group_rel**): one row = one user belongs to one group within a metalake
+Table **`scim_user_group_rel`** (DDL in **scim_user_group_rel**): one row = one user belongs to one group within a metalake
 (scope is implicit via `user_id` / `group_id` referencing `user_meta` / `group_meta` in that
 metalake).
 
@@ -891,25 +892,57 @@ SCIM and OAuth serve different purposes on different ports:
 
 When SCIM is **fully configured** — `gravitino.auxService.names` includes **`scim`** and
 `gravitino.server.rest.extensionPackages` includes the SCIM token admin plugin — **group membership for
-OAuth authorization is read only from the database** (`listGroupNamesForUser` → **`user_group_rel`**),
+OAuth authorization is read only from the database** (`listGroupNamesForUser` → **`scim_user_group_rel`**),
 not from JWT claims. When SCIM is **not** configured, behavior is unchanged (JWT `groupsFields` /
 **`groupMapper`**).
 
+#### Runtime wiring (extension module on **8090**)
+
+`ScimTokenRESTFeature` validates configuration at startup and **exits** if the extension package is
+enabled without the required companion settings:
+
+| Key                                             | Requirement                                                                         |
+|-------------------------------------------------|-------------------------------------------------------------------------------------|
+| `gravitino.auxService.names`                    | Must include `scim`                                                                 |
+| `gravitino.authenticator.oauth.principalMapper` | Must be `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper`        |
+| `gravitino.authenticator.oauth.groupsFields`    | Must be empty (JWT group claims must not override SCIM membership)                  |
+| `gravitino.server.webserver.customFilters`      | Must include `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter` |
+
+Request flow for metalake-scoped main REST APIs:
+
+```text
+HTTP /api/metalakes/{metalake}/...
+  → ScimOAuthRequestPathFilter (capture path, parse {metalake})
+  → OAuth authentication (JWT proves identity)
+  → ScimOAuthPrincipalMapper.map(principal)
+       → regex/normalize username from JWT
+       → listGroupNamesForUser(metalake, username) from scim_user_group_rel
+       → UserPrincipal(username, groups)
+  → JCasbin authorization (unchanged; reads groups from UserPrincipal)
+```
+
+Non-metalake paths (for example `/api/metalakes` or `/api/version`) do not trigger SCIM group lookup;
+`ScimOAuthPrincipalMapper` returns a username-only `UserPrincipal`.
+
+**OAuth independence:** `gravitino.authenticator.oauth.principalFields` / `principalMapper.regex.pattern`
+still apply to JWT **identity** mapping. `groupsFields` / `groupMapper` are **not** used for **8090**
+authorization when SCIM is enabled.
+
 ## 7. Data Model
 
-This section defines **SCIM-related schema changes**: new tables `scim_token` and **`user_group_rel`**,
+This section defines **SCIM-related schema changes**: new tables `scim_token` and **`scim_user_group_rel`**,
 plus **`external_id`** on `user_meta` and `group_meta` and **`enabled`** on **`user_meta`** only. Core APIs
 are in **Gravitino Core Changes**; HTTP mapping is in **SCIM Protocol HTTP Interface**.
 
 ### 7.1 Schema Change Policy
 
-| Table            | Change type    | Notes                                                    |
-|------------------|----------------|----------------------------------------------------------|
-| `scim_token`     | **New table**  | Stores SCIM bearer token metadata                        |
-| `user_group_rel` | **New table**  | Which users belong to which group                        |
-| `user_meta`      | **Add column** | `external_id` — stable SCIM `externalId` correlation key |
-| `group_meta`     | **Add column** | `external_id` — stable SCIM `externalId` correlation key |
-| `user_meta`      | **Add column** | `enabled` — maps User SCIM `active`; `false` disables    |
+| Table                 | Change type    | Notes                                                    |
+|-----------------------|----------------|----------------------------------------------------------|
+| `scim_token`          | **New table**  | Stores SCIM bearer token metadata                        |
+| `scim_user_group_rel` | **New table**  | Which users belong to which group                        |
+| `user_meta`           | **Add column** | `external_id` — stable SCIM `externalId` correlation key |
+| `group_meta`          | **Add column** | `external_id` — stable SCIM `externalId` correlation key |
+| `user_meta`           | **Add column** | `enabled` — maps User SCIM `active`; `false` disables    |
 
 ### 7.2 New Table: `scim_token`
 
@@ -988,11 +1021,12 @@ ALTER TABLE `user_meta`
 
 (PostgreSQL and H2 upgrade scripts use the equivalent `BOOLEAN` / `TINYINT` type for the release.)
 
-### 7.5 `user_group_rel`
+### 7.5 `scim_user_group_rel`
 
 ```sql
-CREATE TABLE IF NOT EXISTS `user_group_rel` (
+CREATE TABLE IF NOT EXISTS `scim_user_group_rel` (
     `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'auto increment id',
+    `metalake_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'metalake id',
     `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'user id',
     `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'group id',
     `audit_info` MEDIUMTEXT NOT NULL COMMENT 'relation audit info',
@@ -1000,21 +1034,22 @@ CREATE TABLE IF NOT EXISTS `user_group_rel` (
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'relation last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'relation deleted at',
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_ui_gi_del` (`user_id`, `group_id`, `deleted_at`),
-    KEY `idx_ugi_gid` (`group_id`),
-    KEY `idx_ugi_uid` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'user group relation';
+    UNIQUE KEY `uk_sugr_mid_ui_gi_del` (`metalake_id`, `user_id`, `group_id`, `deleted_at`),
+    KEY `idx_sugr_mid` (`metalake_id`),
+    KEY `idx_sugr_uid` (`user_id`),
+    KEY `idx_sugr_gid` (`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'scim user group relation';
 ```
 
-(PostgreSQL and H2 upgrade scripts use equivalent types and unique indexes for the release.)
+(PostgreSQL and H2 enterprise schema scripts use equivalent types and unique indexes for the release.)
 
 Design notes:
 
-- **Uniqueness**: at most one active row per `(user_id, group_id)`; re-adding a member after soft
-  delete inserts a new row with a new `deleted_at` tombstone on the old row (same pattern as
+- **Uniqueness**: at most one active row per `(metalake_id, user_id, group_id)`; re-adding a member
+  after soft delete inserts a new row with a new `deleted_at` tombstone on the old row (same pattern as
   `user_role_rel`).
-- **No `metalake_id` column**: same as `user_role_rel` — metalake scope comes from joined
-  `user_meta.metalake_id` / `group_meta.metalake_id`.
+- **`metalake_id` column**: scopes membership lookups per metalake without joining `user_meta` /
+  `group_meta` on every OAuth group-resolution query.
 
 ### 7.6 Token Deletion and Garbage Collection
 
@@ -1108,25 +1143,25 @@ Paths below are relative to that prefix. For example, `POST /Users` means
 
 #### 8.2.1 Supported Endpoints
 
-| RFC 7644 § | Method | Endpoint                 | Behavior (SCIMple + repository adapter)                                                                    |
-|------------|--------|--------------------------|------------------------------------------------------------------------------------------------------------|
-| §3.3       | POST   | `/Users`                 | `ScimUserRepositoryAdapter.create` → `createScimUser` by `externalId` → `user_meta` (idempotent)           |
-| §3.4.1     | GET    | `/Users`                 | SCIMple filter/pagination → `ScimUserRepositoryAdapter.find` → `user_meta`                                 |
-| §3.4.3     | POST   | `/Users/.search`         | Same as GET `/Users` (SCIMple)                                                                             |
-| §3.4.1     | GET    | `/Users/{id}`            | `ScimUserRepositoryAdapter.get` by `external_id` → `user_meta`                                             |
-| §3.5.2     | PATCH  | `/Users/{id}`            | **`active` only** → `enableUser` / `disableUser` (see **PATCH support**)                                   |
-| §3.6       | DELETE | `/Users/{id}`            | `ScimUserRepositoryAdapter.delete` → `removeUser` (soft delete)                                            |
-| §3.3       | POST   | `/Groups`                | `ScimGroupRepositoryAdapter.create` → `createScimGroup` by `externalId`; sync `members` → `user_group_rel` |
-| §3.4.1     | GET    | `/Groups`                | SCIMple filter/pagination → `ScimGroupRepositoryAdapter.find` → `group_meta`                               |
-| §3.4.3     | POST   | `/Groups/.search`        | Same as GET `/Groups` (SCIMple)                                                                            |
-| §3.4.1     | GET    | `/Groups/{id}`           | `ScimGroupRepositoryAdapter.get` by `external_id`; `members` from `user_group_rel`                         |
-| §3.5.2     | PATCH  | `/Groups/{id}`           | **`members` only** → add/remove/replace in **`user_group_rel`** (see **PATCH support**)                    |
-| §3.6       | DELETE | `/Groups/{id}`           | `ScimGroupRepositoryAdapter.delete` → `removeGroup` (soft delete)                                          |
-| §4         | GET    | `/ServiceProviderConfig` | `ServerConfiguration` — metalake-agnostic capabilities                                                     |
-| §4         | GET    | `/ResourceTypes`         | built-in `ResourceTypesResourceImpl` — User and Group types                                                |
-| §4         | GET    | `/ResourceTypes/{type}`  | Single resource type                                                                                       |
-| §4         | GET    | `/Schemas`               | built-in `SchemaResourceImpl` — minimal attributes per **Attribute Support** below                         |
-| §4         | GET    | `/Schemas/{schema}`      | Single schema document by URN                                                                              |
+| RFC 7644 § | Method | Endpoint                 | Behavior (SCIMple + repository adapter)                                                                         |
+|------------|--------|--------------------------|-----------------------------------------------------------------------------------------------------------------|
+| §3.3       | POST   | `/Users`                 | `ScimUserRepositoryAdapter.create` → `createScimUser` by `externalId` → `user_meta` (idempotent)                |
+| §3.4.1     | GET    | `/Users`                 | SCIMple filter/pagination → `ScimUserRepositoryAdapter.find` → `user_meta`                                      |
+| §3.4.3     | POST   | `/Users/.search`         | Same as GET `/Users` (SCIMple)                                                                                  |
+| §3.4.1     | GET    | `/Users/{id}`            | `ScimUserRepositoryAdapter.get` by `external_id` → `user_meta`                                                  |
+| §3.5.2     | PATCH  | `/Users/{id}`            | **`active` only** → `enableUser` / `disableUser` (see **PATCH support**)                                        |
+| §3.6       | DELETE | `/Users/{id}`            | `ScimUserRepositoryAdapter.delete` → `removeUser` (soft delete)                                                 |
+| §3.3       | POST   | `/Groups`                | `ScimGroupRepositoryAdapter.create` → `createScimGroup` by `externalId`; sync `members` → `scim_user_group_rel` |
+| §3.4.1     | GET    | `/Groups`                | SCIMple filter/pagination → `ScimGroupRepositoryAdapter.find` → `group_meta`                                    |
+| §3.4.3     | POST   | `/Groups/.search`        | Same as GET `/Groups` (SCIMple)                                                                                 |
+| §3.4.1     | GET    | `/Groups/{id}`           | `ScimGroupRepositoryAdapter.get` by `external_id`; `members` from `scim_user_group_rel`                         |
+| §3.5.2     | PATCH  | `/Groups/{id}`           | **`members` only** → add/remove/replace in **`scim_user_group_rel`** (see **PATCH support**)                    |
+| §3.6       | DELETE | `/Groups/{id}`           | `ScimGroupRepositoryAdapter.delete` → `removeGroup` (soft delete)                                               |
+| §4         | GET    | `/ServiceProviderConfig` | `ServerConfiguration` — metalake-agnostic capabilities                                                          |
+| §4         | GET    | `/ResourceTypes`         | built-in `ResourceTypesResourceImpl` — User and Group types                                                     |
+| §4         | GET    | `/ResourceTypes/{type}`  | Single resource type                                                                                            |
+| §4         | GET    | `/Schemas`               | built-in `SchemaResourceImpl` — minimal attributes per **Attribute Support** below                              |
+| §4         | GET    | `/Schemas/{schema}`      | Single schema document by URN                                                                                   |
 
 Discovery rows use the same URL prefix and validation as provisioning rows; discovery responses are metalake-agnostic.
 
@@ -1205,28 +1240,28 @@ Schema references:
 
 #### 8.3.1 User Attributes
 
-| Attribute                 | Gravitino                                                                                                                                                                         |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `externalId`              | **Required on POST** — persisted to `user_meta.external_id`; stable correlation key; returned as SCIM `id` and `externalId` on read                                               |
-| `userName`                | **Synchronized on POST create only** — optional **`gravitino.datastrato.scim.userMapper`** (see **Name mapping** below) maps to `user_meta.user_name`; **immutable** after create |
-| `active`                  | **PATCH only** — maps to `user_meta.enabled`; `false` → `enabled = 0`; `true` → `enabled = 1`                                                                                     |
-| All other User attributes | **Ignored** on create (including profile fields and client-supplied `id` / `meta`)                                                                                                |
+| Attribute                 | Gravitino                                                                                                                                                              |
+|---------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `externalId`              | **Required on POST** — persisted to `user_meta.external_id`; stable correlation key; returned as SCIM `id` and `externalId` on read                                    |
+| `userName`                | **Synchronized on POST create only** — optional **`gravitino.scim.userMapper`** (see **Name mapping** below) maps to `user_meta.user_name`; **immutable** after create |
+| `active`                  | **PATCH only** — maps to `user_meta.enabled`; `false` → `enabled = 0`; `true` → `enabled = 1`                                                                          |
+| All other User attributes | **Ignored** on create (including profile fields and client-supplied `id` / `meta`)                                                                                     |
 
 #### 8.3.2 Group Attributes
 
-| Attribute                  | Gravitino                                                                                                                                               |
-|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `externalId`               | **Required on POST** — persisted to `group_meta.external_id`; stable correlation key; returned as SCIM `id` and `externalId` on read                    |
-| `displayName`              | **Synchronized on POST create only** — optional **`gravitino.datastrato.scim.groupMapper`** maps to `group_meta.group_name`; **immutable** after create |
-| `members`                  | **Synchronized on POST/PATCH** — `value` = member user's `user_meta.external_id`; stored in **`user_group_rel`**; unknown user → skip (WARN log)        |
-| All other Group attributes | **Ignored** on create (including `active` — not in RFC 7643 Group schema; client-supplied `id` / `meta`)                                                |
+| Attribute                  | Gravitino                                                                                                                                             |
+|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `externalId`               | **Required on POST** — persisted to `group_meta.external_id`; stable correlation key; returned as SCIM `id` and `externalId` on read                  |
+| `displayName`              | **Synchronized on POST create only** — optional **`gravitino.scim.groupMapper`** maps to `group_meta.group_name`; **immutable** after create          |
+| `members`                  | **Synchronized on POST/PATCH** — `value` = member user's `user_meta.external_id`; stored in **`scim_user_group_rel`**; unknown user → skip (WARN log) |
+| All other Group attributes | **Ignored** on create (including `active` — not in RFC 7643 Group schema; client-supplied `id` / `meta`)                                              |
 
 #### 8.3.3 Name mapping (`userMapper` / `groupMapper`)
 
 SCIM push uses SCIM attributes (`userName`, `displayName`). User login uses OAuth/JWT claims via
 `gravitino.authenticator.oauth.principalFields` and **`principalMapper`** for **identity** only when
-SCIM is enabled; **group names for authorization** come from **`user_group_rel`** (see **OAuth login group membership**), not from `groupsFields` / **`groupMapper`**. Gravitino
-therefore exposes **SCIM-specific** optional mappers under `gravitino.datastrato.scim.*` in **`conf/gravitino.conf`**
+SCIM is enabled; **group names for authorization** come from **`scim_user_group_rel`** (see **OAuth login group membership**), not from `groupsFields` / **`groupMapper`**. Gravitino
+therefore exposes **SCIM-specific** optional mappers under `gravitino.scim.*` in **`conf/gravitino.conf`**
 (not OAuth `authenticator.oauth.*` keys, and not under `scim-server/conf`). `ScimConfig` loads them from
 the `AuxiliaryServiceManager` `serviceInit` map at auxiliary startup (Phase 5); repository adapters
 build **`PrincipalMapper`** / **`GroupMapper`** via existing **`PrincipalMapperFactory`** /
@@ -1236,19 +1271,19 @@ Repository adapters apply mappers **before** create and **before** name-based fi
 IdP `GET ...?filter=externalId eq "..."` correlates by `external_id`; `filter=userName eq "..."` uses
 the mapped name.
 
-| Config key                                            | SCIM input     | Stored field            | Mapper default | Pattern default |
-|-------------------------------------------------------|----------------|-------------------------|----------------|-----------------|
-| `gravitino.datastrato.scim.userMapper`                | `userName`     | `user_meta.user_name`   | `regex`        | `^(.*)$`        |
-| `gravitino.datastrato.scim.userMapper.regex.pattern`  | (with `regex`) | (first capture group)   | —              | `^(.*)$`        |
-| `gravitino.datastrato.scim.groupMapper`               | `displayName`  | `group_meta.group_name` | `regex`        | `^(.*)$`        |
-| `gravitino.datastrato.scim.groupMapper.regex.pattern` | (with `regex`) | (first capture group)   | —              | `^(.*)$`        |
+| Config key                                 | SCIM input     | Stored field            | Mapper default | Pattern default |
+|--------------------------------------------|----------------|-------------------------|----------------|-----------------|
+| `gravitino.scim.userMapper`                | `userName`     | `user_meta.user_name`   | `regex`        | `^(.*)$`        |
+| `gravitino.scim.userMapper.regex.pattern`  | (with `regex`) | (first capture group)   | —              | `^(.*)$`        |
+| `gravitino.scim.groupMapper`               | `displayName`  | `group_meta.group_name` | `regex`        | `^(.*)$`        |
+| `gravitino.scim.groupMapper.regex.pattern` | (with `regex`) | (first capture group)   | —              | `^(.*)$`        |
 
 **Mapper types** (same pattern as OAuth `principalMapper` / `groupMapper`):
 
-| Value                      | Behavior                                                                                                                                                                                       |
-|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `regex`                    | Built-in regex mapper; first capturing group becomes the stored name. Configure `gravitino.datastrato.scim.userMapper.regex.pattern` or `gravitino.datastrato.scim.groupMapper.regex.pattern`. |
-| Fully qualified class name | Custom **`PrincipalMapper`** / **`GroupMapper`** implementation (same SPI as OAuth).                                                                                                           |
+| Value                      | Behavior                                                                                                                                                                 |
+|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `regex`                    | Built-in regex mapper; first capturing group becomes the stored name. Configure `gravitino.scim.userMapper.regex.pattern` or `gravitino.scim.groupMapper.regex.pattern`. |
+| Fully qualified class name | Custom **`PrincipalMapper`** / **`GroupMapper`** implementation (same SPI as OAuth).                                                                                     |
 
 **When to configure:** only when the IdP sends names that must be normalized before persistence
 (for example `alice@corp.com` → `alice`). If the IdP attribute mapping already produces the desired
@@ -1257,15 +1292,18 @@ login time for authorization (see **Group Membership (Users in Groups)** and **O
 
 **OAuth independence:** `gravitino.authenticator.oauth.principalFields` / `groupsFields` are not
 used on the SCIM protocol path (**9201**). When SCIM is enabled, **`groupsFields`** / **`groupMapper`**
-are also **not** used for **8090** authorization — only **`principalFields`** / **`principalMapper`**
-apply at login; groups come from **`user_group_rel`**. Operators may set SCIM and OAuth regex patterns to the same value when both
-inputs need the same normalization for **usernames** (and SCIM group **displayName** at provision time), but the configuration keys are separate.
+are also **not** used for **8090** authorization — `gravitino.authenticator.oauth.principalMapper`
+must be **`ScimOAuthPrincipalMapper`**, `groupsFields` must be empty, and
+`gravitino.server.webserver.customFilters` must include **`ScimOAuthRequestPathFilter`** (see §6.6 and
+§10.3). Operators may set SCIM `userMapper` and OAuth `principalMapper.regex.pattern` to the same value
+when both inputs need the same normalization for **usernames** (and SCIM group **displayName** at provision
+time), but the configuration keys are separate.
 
 ### 8.4 Filter Support
 
 SCIMple parses SCIM filter expressions in `Repository.find()`; repository adapters apply
 the parsed filter when listing users or groups. **`externalId`** filters map to **`external_id`**.
-**`userName` / `displayName`** filter values are passed through **`gravitino.datastrato.scim.userMapper` /
+**`userName` / `displayName`** filter values are passed through **`gravitino.scim.userMapper` /
 `groupMapper`** before name-based lookup. Gravitino advertises only operators that IdPs actually use
 and that map cleanly to exact-match lookups — not full range semantics on string attributes.
 
@@ -1338,7 +1376,7 @@ curl -X POST "https://gravitino.example.com:9201/scim/v2/metalakes/my_metalake/G
   }'
 ```
 
-Group POST/PATCH can include a **`members`** array; Gravitino syncs it to **`user_group_rel`**. Group
+Group POST/PATCH can include a **`members`** array; Gravitino syncs it to **`scim_user_group_rel`**. Group
 GET returns the stored user list as SCIM `members`.
 
 ---
@@ -1617,82 +1655,107 @@ Use the same `Authorization` header style as **Create SCIM Token** (main-server 
 
 SCIM runs as a **`GravitinoAuxiliaryService`** in the same JVM as the Gravitino server. Token
 administration is a **required** plugin on the main REST stack (`ScimTokenRESTFeature` via
-`gravitino.server.rest.extensionPackages`). Operators must configure **both** the auxiliary service
-and the token admin extension in **`conf/gravitino.conf`**; startup fails if SCIM is enabled without
-either. Start the server with `./bin/gravitino.sh start`.
+`gravitino.server.rest.extensionPackages`). Operators must configure the **full SCIM bundle** in
+**`conf/gravitino.conf`** — extension package, auxiliary service, OAuth SCIM mapper/filter settings
+(§10.1 and §10.3); startup fails if the extension package is enabled without them. Start the server
+with `./bin/gravitino.sh start`.
 
 ### 10.1 Shared settings (`gravitino.conf`)
 
-| Key                                       | Description                                                                                                                               | Default | Required |
-|-------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|---------|----------|
-| `gravitino.server.rest.extensionPackages` | Include `com.datastrato.gravitino.scim.rest` to register `/api/metalakes/{metalake}/scim/tokens` on **8090** (required with SCIM)         | (none)  | Yes      |
+| Key                                       | Description                                                                                                                                    | Default | Required |
+|-------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|---------|----------|
+| `gravitino.server.rest.extensionPackages` | Include `com.datastrato.gravitino.scim.web.rest.feature` to register `/api/metalakes/{metalake}/scim/tokens` and SCIM OAuth wiring on **8090** | (none)  | Yes      |
+| `gravitino.auxService.names`              | Must include `scim` when the SCIM extension package is enabled (validated at startup)                                                          | (none)  | Yes      |
+
+Registering the SCIM token admin extension **requires** `scim` in `gravitino.auxService.names` and the
+OAuth keys in §10.3, even if you are only using token admin on **8090** today. IdP SCIM provisioning on
+**9201** additionally requires §10.2 (`gravitino.scim.classpath` and listener keys).
 
 Token management authorization uses the existing **`METALAKE::OWNER`** check on the `{metalake}` path
 parameter (no SCIM-specific admin list). The metalake must have an owner assigned; callers who are
 not the owner (direct user or member of an owner group) receive **403**.
 
 `gravitino.authenticators` is typically already set in `gravitino.conf` for the main server; token
-management APIs reuse it (no SCIM-specific authenticator setting).
+management APIs reuse it. When SCIM is enabled, OAuth must use the SCIM principal mapper and filter
+settings in §10.3.
 
 ### 10.2 SCIM auxiliary service keys (`gravitino.conf`)
 
-Enterprise SCIM settings use the **`gravitino.datastrato.scim.*`** prefix (internal Datastrato configuration,
-consistent with `gravitino.datastrato.license.*` and `gravitino.datastrato.search.*`). Upstream Gravitino keys
+SCIM auxiliary service settings use the **`gravitino.scim.*`** prefix (same auxiliary-service convention as
+`gravitino.iceberg-rest.*` and other `gravitino.{shortName}.*` keys). Upstream Gravitino keys
 such as `gravitino.auxService.names` and `gravitino.server.rest.extensionPackages` are unchanged.
 
 Edit `conf/gravitino.conf` and keep existing Gravitino server, entity-store, web-server, and
 **authenticator** settings unchanged. Add SCIM auxiliary keys below.
 
 `ScimRESTService` implements `GravitinoAuxiliaryService` (`shortName`: `scim`). `AuxiliaryServiceManager`
-loads **`scim-server/libs`** (SCIMple + Jersey 3) via `gravitino.datastrato.scim.classpath` and passes all
-`gravitino.datastrato.scim.*` entries from **`conf/gravitino.conf`** into `ScimRESTService.serviceInit()` (stripped
-to `scim.*` short keys such as `httpPort` and `userMapper`). Do **not** place application properties under `scim-server/conf`.
+loads **`scim-server/libs`** (SCIMple + Jersey 3) via `gravitino.scim.classpath` and passes all
+`gravitino.scim.*` entries from **`conf/gravitino.conf`** into `ScimRESTService.serviceInit()` (stripped
+to short keys such as `httpPort` and `userMapper`). Do **not** place application properties under `scim-server/conf`.
 
-| Key                                                   | Description                                                                                                                       | Default   | Required |
-|-------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|-----------|----------|
-| `gravitino.auxService.names`                          | Include `scim` (comma-separated with other auxiliary services if needed)                                                          | (none)    | Yes      |
-| `gravitino.datastrato.scim.classpath`                 | Directory with SCIM jars, e.g. `scim-server/libs` (libs only; not a `.conf` directory)                                            | (none)    | Yes      |
-| `gravitino.datastrato.scim.host`                      | SCIM HTTP listener host                                                                                                           | `0.0.0.0` | No       |
-| `gravitino.datastrato.scim.httpPort`                  | SCIM HTTP listener port                                                                                                           | `9201`    | No       |
-| `gravitino.datastrato.scim.userMapper`                | Map SCIM `userName` → `user_meta.user_name` before create/filter. Built-in: `regex`; or FQCN implementing **`PrincipalMapper`**.  | `regex`   | No       |
-| `gravitino.datastrato.scim.userMapper.regex.pattern`  | Regex pattern when `userMapper=regex`; first capture group is stored.                                                             | `^(.*)$`  | No       |
-| `gravitino.datastrato.scim.groupMapper`               | Map SCIM `displayName` → `group_meta.group_name` before create/filter. Built-in: `regex`; or FQCN implementing **`GroupMapper`**. | `regex`   | No       |
-| `gravitino.datastrato.scim.groupMapper.regex.pattern` | Regex pattern when `groupMapper=regex`; first capture group is stored.                                                            | `^(.*)$`  | No       |
+| Key                                        | Description                                                                                                                       | Default   | Required |
+|--------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|-----------|----------|
+| `gravitino.auxService.names`               | Include `scim` (comma-separated with other auxiliary services if needed)                                                          | (none)    | Yes      |
+| `gravitino.scim.classpath`                 | Directory with SCIM jars, e.g. `scim-server/libs` (libs only; not a `.conf` directory)                                            | (none)    | Yes      |
+| `gravitino.scim.host`                      | SCIM HTTP listener host                                                                                                           | `0.0.0.0` | No       |
+| `gravitino.scim.httpPort`                  | SCIM HTTP listener port                                                                                                           | `9201`    | No       |
+| `gravitino.scim.userMapper`                | Map SCIM `userName` → `user_meta.user_name` before create/filter. Built-in: `regex`; or FQCN implementing **`PrincipalMapper`**.  | `regex`   | No       |
+| `gravitino.scim.userMapper.regex.pattern`  | Regex pattern when `userMapper=regex`; first capture group is stored.                                                             | `^(.*)$`  | No       |
+| `gravitino.scim.groupMapper`               | Map SCIM `displayName` → `group_meta.group_name` before create/filter. Built-in: `regex`; or FQCN implementing **`GroupMapper`**. | `regex`   | No       |
+| `gravitino.scim.groupMapper.regex.pattern` | Regex pattern when `groupMapper=regex`; first capture group is stored.                                                            | `^(.*)$`  | No       |
 
 Example:
 
 ```properties
 # Existing Gravitino server + entity store + authenticator settings omitted
 
-gravitino.server.rest.extensionPackages=com.datastrato.gravitino.scim.rest
+gravitino.server.rest.extensionPackages=com.datastrato.gravitino.scim.web.rest.feature
 gravitino.auxService.names=scim
-gravitino.datastrato.scim.classpath=scim-server/libs
+gravitino.scim.classpath=scim-server/libs
+
+gravitino.authenticator.oauth.principalMapper=com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper
+gravitino.authenticator.oauth.groupsFields=
+gravitino.server.webserver.customFilters=com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter
 
 # Optional: normalize IdP SCIM names before persistence (Name mapping)
 # Omit both blocks for passthrough (default ^(.*)$).
-gravitino.datastrato.scim.userMapper=regex
-gravitino.datastrato.scim.userMapper.regex.pattern=([^@]+)@.*
+gravitino.scim.userMapper=regex
+gravitino.scim.userMapper.regex.pattern=([^@]+)@.*
 
-gravitino.datastrato.scim.groupMapper=regex
-gravitino.datastrato.scim.groupMapper.regex.pattern=^/(.*)
+gravitino.scim.groupMapper=regex
+gravitino.scim.groupMapper.regex.pattern=^/(.*)
 ```
 
 IdP base URL example: `https://{host}:9201/scim/v2/metalakes/{metalake}`.
 
-### 10.3 Configuration key namespaces
+### 10.3 OAuth SCIM settings (`gravitino.conf`)
 
-| Namespace                                               | Examples                                                                                                                                                                           | Role                                                                                                                             |
-|---------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
-| **Enterprise internal** (`gravitino.datastrato.scim.*`) | `classpath`, `httpPort`, `userMapper`, `groupMapper`                                                                                                                               | SCIM auxiliary listener and name mapping — same convention as `gravitino.datastrato.license.*` / `gravitino.datastrato.search.*` |
-| **Upstream Gravitino**                                  | `gravitino.auxService.names`, `gravitino.server.rest.extensionPackages`, `gravitino.authenticators`, `gravitino.authenticator.oauth.*`, `gravitino.entity.store.deleteAfterTimeMs` | Shared server mechanisms; **not** renamed under `gravitino.datastrato.*`                                                         |
-| **Extension package value**                             | `com.datastrato.gravitino.scim.rest`                                                                                                                                               | Java package scanned on **8090** (same pattern as `com.datastrato.gravitino.search.rest` in `gravitino.conf.template`)           |
+When the SCIM token admin extension package is enabled, `ScimTokenRESTFeature` validates these keys at
+startup (see **OAuth login group membership**):
 
-`gravitino.datastrato.scim.*` is **not** picked up by today's `AuxiliaryServiceManager` (which only maps
-`gravitino.{shortName}.*` for `shortName=scim`). Implementation must extend config extraction so
-`gravitino.datastrato.scim.*` is forwarded to `ScimRESTService.serviceInit()` → `ScimConfig`.
+| Key                                                           | Description                                                                                                                                    | Default  | Required |
+|---------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------|----------|----------|
+| `gravitino.authenticator.oauth.principalMapper`               | Must be `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper` — loads groups from `scim_user_group_rel` per metalake            | (none)   | Yes      |
+| `gravitino.authenticator.oauth.groupsFields`                  | Must be **empty** — JWT group claims must not override SCIM membership                                                                         | `groups` | Yes¹     |
+| `gravitino.server.webserver.customFilters`                    | Must include `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter` — parses `{metalake}` from `/api/metalakes/{metalake}/...` | (none)   | Yes      |
+| `gravitino.authenticator.oauth.principalMapper.regex.pattern` | Regex applied to JWT identity before username lookup (optional; align with `userMapper` when needed)                                           | `^(.*)$` | No       |
+
+¹ Set to an empty value in `gravitino.conf` (for example `gravitino.authenticator.oauth.groupsFields=`).
+
+### 10.4 Configuration key namespaces
+
+| Namespace                               | Examples                                                                                                                                                                                                                       | Role                                                                                                             |
+|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
+| **SCIM auxiliary** (`gravitino.scim.*`) | `classpath`, `httpPort`, `userMapper`, `groupMapper`                                                                                                                                                                           | SCIM auxiliary listener and name mapping — same convention as other `gravitino.{shortName}.*` auxiliary services |
+| **Upstream Gravitino**                  | `gravitino.auxService.names`, `gravitino.server.rest.extensionPackages`, `gravitino.authenticators`, `gravitino.authenticator.oauth.*`, `gravitino.server.webserver.customFilters`, `gravitino.entity.store.deleteAfterTimeMs` | Shared server mechanisms; OAuth and entity-store keys are not under `gravitino.scim.*`                           |
+| **OAuth SCIM (8090)**                   | `principalMapper`, `groupsFields`, `customFilters`                                                                                                                                                                             | Required when SCIM extension package is enabled — see §10.3                                                      |
+| **Extension package value**             | `com.datastrato.gravitino.scim.web.rest.feature`                                                                                                                                                                               | Jersey `Feature` package scanned on **8090** (same pattern as `org.apache.gravitino.idp.web.rest.feature`)       |
+
+`gravitino.scim.*` keys are collected by `AuxiliaryServiceManager` for `shortName=scim` and forwarded to
+`ScimRESTService.serviceInit()` → `ScimConfig`.
 
 Token GC retention intentionally reuses **`gravitino.entity.store.deleteAfterTimeMs`** (no separate
-`gravitino.datastrato.scim.*` GC key in v1). Token expiry enforcement is per-row `expires_at` in
+`gravitino.scim.*` GC key in v1). Token expiry enforcement is per-row `expires_at` in
 `scim_token`, not a global config default.
 
 ---
@@ -1701,35 +1764,35 @@ Token GC retention intentionally reuses **`gravitino.entity.store.deleteAfterTim
 
 ### 11.1 Suggested Work Plan
 
-| Phase | Work Item              | Module / Files                                            | Notes                                                                         |
-|-------|------------------------|-----------------------------------------------------------|-------------------------------------------------------------------------------|
-| 0     | New schema             | JDBC upgrades                                             | `scim_token`, `user_group_rel`; `external_id`; `enabled` on `user_meta` only. |
-| 1     | Core prerequisites     | Dispatcher, meta services, `UserGroupRelService`          | Paginated list; `external_id`; user `enabled`; membership APIs (§6).          |
-| 2     | OAuth group resolution | `JcasbinAuthorizer`                                       | SCIM on → groups from DB only (§6.6); after Phase 1.                          |
-| 3     | Token storage + auth   | `ScimTokenService`, `scim_token` store                    | Opaque token, SHA-256, metalake bearer auth (§4.6); unit tests, no HTTP.      |
-| 4     | Token admin service    | `ScimTokenService`, GC task                               | create/list/rotate/delete; `METALAKE::OWNER`; expiry + GC; no HTTP.           |
-| 5     | HTTP + SCIMple         | `ScimRESTService`, `ScimConfig`, `ScimTokenRESTFeature`   | Aux **9201** + SCIMple; token API **8090**; filters, app mount; smoke tests.  |
-| 6     | Repository adapters    | `ScimUserRepositoryAdapter`, `ScimGroupRepositoryAdapter` | User: `externalId`, PATCH `active`; Group: `members`; DELETE; pagination.     |
-| 7     | User documentation     | docs, OpenAPI                                             | IdP setup and SCIM endpoint reference.                                        |
+| Phase | Work Item              | Module / Files                                                                      | Notes                                                                              |
+|-------|------------------------|-------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
+| 0     | New schema             | JDBC upgrades                                                                       | `scim_token`, `scim_user_group_rel`; `external_id`; `enabled` on `user_meta` only. |
+| 1     | Core prerequisites     | Dispatcher, meta services, `UserGroupRelService`                                    | Paginated list; `external_id`; user `enabled`; membership APIs (§6).               |
+| 2     | OAuth group resolution | `ScimOAuthPrincipalMapper`, `ScimOAuthRequestPathFilter`, `ScimUserGroupRelManager` | SCIM on → groups from DB only (§6.6); extension startup validation.                |
+| 3     | Token storage + auth   | `ScimTokenService`, `scim_token` store                                              | Opaque token, SHA-256, metalake bearer auth (§4.6); unit tests, no HTTP.           |
+| 4     | Token admin service    | `ScimTokenService`, GC task                                                         | create/list/rotate/delete; `METALAKE::OWNER`; expiry + GC; no HTTP.                |
+| 5     | HTTP + SCIMple         | `ScimRESTService`, `ScimConfig`, `ScimTokenRESTFeature`                             | Aux **9201** + SCIMple; token API **8090**; filters, app mount; smoke tests.       |
+| 6     | Repository adapters    | `ScimUserRepositoryAdapter`, `ScimGroupRepositoryAdapter`                           | User: `externalId`, PATCH `active`; Group: `members`; DELETE; pagination.          |
+| 7     | User documentation     | docs, OpenAPI                                                                       | IdP setup and SCIM endpoint reference.                                             |
 
 ### 11.2 Review Checklist
 
-| Area                 | Checklist                                                                                      |
-|----------------------|------------------------------------------------------------------------------------------------|
-| Schema policy        | `scim_token`, `user_group_rel`; `external_id`; `enabled` on `user_meta` only.                  |
-| Group membership     | `members` ↔ `user_group_rel`; `disableUser` keeps rows; `remove*` clears bindings.             |
-| OAuth login groups   | SCIM on: DB groups via `listGroupNamesForUser`; off: JWT `groupsFields`.                       |
-| External ID          | DDL + attribute mapping (§8.3).                                                                |
-| Core list pagination | JDBC `LIMIT`/`OFFSET`; fixed sort; adapter `startIndex`/`count`.                               |
-| Deactivate / roles   | User PATCH `active` → `enabled`; DELETE → soft delete + clear bindings.                        |
-| Deployment           | `auxService.names` + `extensionPackages`; SCIM not on main 8090 JAX-RS.                        |
-| Auxiliary config     | `gravitino.datastrato.scim.*` in `gravitino.conf`; classpath = `scim-server/libs` only.        |
-| Metalake isolation   | URL `{metalake}` + `scim_token.metalake_id` on **9201**; admin APIs on **8090**.               |
-| Request pipeline     | **9201**: bearer filter → scope resolver; **8090**: token plugin + metalake owner.             |
-| Token admin auth     | Phase 4 service checks; Phase 5 HTTP; SCIM tokens do not authorize admin APIs.                 |
-| Token security       | No plaintext; SHA-256; **419**/**401**; rotate; soft delete + GC.                              |
-| SCIM compliance      | §8 endpoints/attrs; filter `eq`/`and`; User PATCH `active`; Group PATCH `members`.             |
-| Name mapping         | Optional `gravitino.datastrato.scim.*Mapper`; align OAuth `principalMapper` with `userMapper`. |
+| Area                 | Checklist                                                                                                   |
+|----------------------|-------------------------------------------------------------------------------------------------------------|
+| Schema policy        | `scim_token`, `scim_user_group_rel`; `external_id`; `enabled` on `user_meta` only.                          |
+| Group membership     | `members` ↔ `scim_user_group_rel`; `disableUser` keeps rows; `remove*` clears bindings.                     |
+| OAuth login groups   | SCIM on: `ScimOAuthPrincipalMapper` + `scim_user_group_rel`; `groupsFields` empty; off: JWT `groupsFields`. |
+| External ID          | DDL + attribute mapping (§8.3).                                                                             |
+| Core list pagination | JDBC `LIMIT`/`OFFSET`; fixed sort; adapter `startIndex`/`count`.                                            |
+| Deactivate / roles   | User PATCH `active` → `enabled`; DELETE → soft delete + clear bindings.                                     |
+| Deployment           | `auxService.names` + `extensionPackages`; SCIM not on main 8090 JAX-RS.                                     |
+| Auxiliary config     | `gravitino.scim.*` in `gravitino.conf`; classpath = `scim-server/libs` only.                                |
+| Metalake isolation   | URL `{metalake}` + `scim_token.metalake_id` on **9201**; admin APIs on **8090**.                            |
+| Request pipeline     | **9201**: bearer filter → scope resolver; **8090**: token plugin + metalake owner.                          |
+| Token admin auth     | Phase 4 service checks; Phase 5 HTTP; SCIM tokens do not authorize admin APIs.                              |
+| Token security       | No plaintext; SHA-256; **419**/**401**; rotate; soft delete + GC.                                           |
+| SCIM compliance      | §8 endpoints/attrs; filter `eq`/`and`; User PATCH `active`; Group PATCH `members`.                          |
+| Name mapping         | Optional `gravitino.scim.*Mapper`; align OAuth `principalMapper` with `userMapper`.                         |
 
 ---
 

@@ -1,0 +1,118 @@
+name: SCIM Extension Test
+
+on:
+  push:
+    branches: ["main", "branch-*"]
+  pull_request:
+    types: [labeled]
+    branches: ["main", "branch-*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-22.04
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
+        id: filter
+        with:
+          filters: |
+            source_changes:
+              - plugins/scim/extension/**
+              - clients/client-java/**
+              - clients/client-java-runtime/**
+              - integration-test-common/**
+              - core/**
+              - gradle/**
+              - gradlew
+              - dev/**
+              - build.gradle.kts
+              - gradle.properties
+              - settings.gradle.kts
+              - .github/workflows/scim-extension-test.yml
+      - name: Detect scim extension module
+        id: module
+        run: |
+          if [ -f plugins/scim/extension/build.gradle.kts ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+      module_exists: ${{ steps.module.outputs.exists }}
+
+  scim-extension-test:
+    needs: changes
+    if: needs.changes.outputs.source_changes == 'true' && needs.changes.outputs.module_exists == 'true'
+    runs-on: [self-hosted, linux, arm64, amazon, xlarge]
+    timeout-minutes: 60
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: "temurin"
+          cache: "gradle"
+          cache-dependency-path: |
+            **/*.gradle*
+            **/gradle-wrapper.properties
+            gradle/libs.versions.toml
+            gradle.properties
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Check required command
+        run: |
+          dev/ci/check_commands.sh
+
+      - name: Package Gravitino
+        run: |
+          ./gradlew compileDistribution -PskipWeb=true -x test
+
+      - name: Free up disk space
+        run: |
+          dev/ci/util_free_space.sh
+
+      - name: Run scim extension tests
+        id: scimExtensionTest
+        env:
+          dockerTest: true
+        run: |
+          set -euo pipefail
+
+          # Unit and in-process tests (no Docker, no REST IT).
+          ./gradlew :plugins:scim:test -PskipITs -PskipDockerTests=true
+
+          # REST IT: embedded only (ScimTokenRESTApiIT disables deploy mode).
+          for backend in h2 mysql postgresql; do
+            ./gradlew :plugins:scim:test \
+              -PtestMode=embedded \
+              -PjdbcBackend="${backend}" \
+              -PskipDockerTests=false \
+              --tests "com.datastrato.gravitino.scim.integration.test.**"
+          done
+
+      - name: Upload scim extension test reports
+        uses: actions/upload-artifact@v7
+        if: ${{ (failure() && steps.scimExtensionTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
+        with:
+          name: scim-extension-test-reports
+          path: |
+            plugins/scim/extension/build/reports
+            plugins/scim/extension/build/test-results
+            distribution/package-all/logs/gravitino-server.out
+            distribution/package-all/logs/gravitino-server.log
+            distribution/package/logs/gravitino-server.out
+            distribution/package/logs/gravitino-server.log
