@@ -175,6 +175,12 @@ simba-bigquery-jdbc = "1.6.5.1001"
 commons-compress = "1.27.1"
 google-cloud-kms = "2.61.0"
 scimple = "1.0.0-M1"
+# Jetty 11 / Jersey 3 / Jakarta EE used by SCIM auxiliary HTTP stack (scim-server/libs).
+jetty11 = "11.0.24"
+jersey3 = "3.1.5"
+jakarta-servlet6 = "6.0.0"
+jakarta-ws-rs3 = "3.1.0"
+jakarta-inject = "2.0.1"
 
 [libraries]
 aspectj-aspectjrt = { group = "org.aspectj", name = "aspectjrt", version.ref = "aspectj" }
@@ -361,6 +367,19 @@ awaitility = { group = "org.awaitility", name = "awaitility", version.ref = "awa
 servlet = { group = "javax.servlet", name = "javax.servlet-api", version.ref = "servlet" }
 scim-core = { group = "org.apache.directory.scimple", name = "scim-core", version.ref = "scimple" }
 scim-spec-schema = { group = "org.apache.directory.scimple", name = "scim-spec-schema", version.ref = "scimple" }
+scim-server = { group = "org.apache.directory.scimple", name = "scim-server", version.ref = "scimple" }
+scim-spec-protocol = { group = "org.apache.directory.scimple", name = "scim-spec-protocol", version.ref = "scimple" }
+jetty11-server = { group = "org.eclipse.jetty", name = "jetty-server", version.ref = "jetty11" }
+jetty11-servlet = { group = "org.eclipse.jetty", name = "jetty-servlet", version.ref = "jetty11" }
+jersey3-server = { group = "org.glassfish.jersey.core", name = "jersey-server", version.ref = "jersey3" }
+jersey3-common = { group = "org.glassfish.jersey.core", name = "jersey-common", version.ref = "jersey3" }
+jersey3-client = { group = "org.glassfish.jersey.core", name = "jersey-client", version.ref = "jersey3" }
+jersey3-container-servlet = { group = "org.glassfish.jersey.containers", name = "jersey-container-servlet", version.ref = "jersey3" }
+jersey3-hk2 = { group = "org.glassfish.jersey.inject", name = "jersey-hk2", version.ref = "jersey3" }
+jakarta-servlet6-api = { group = "jakarta.servlet", name = "jakarta.servlet-api", version.ref = "jakarta-servlet6" }
+jakarta-ws-rs3-api = { group = "jakarta.ws.rs", name = "jakarta.ws.rs-api", version.ref = "jakarta-ws-rs3" }
+jakarta-inject-api = { group = "jakarta.inject", name = "jakarta.inject-api", version.ref = "jakarta-inject" }
+jackson-jakarta-rs-json-provider = { group = "com.fasterxml.jackson.jakarta.rs", name = "jackson-jakarta-rs-json-provider", version.ref = "jackson" }
 mail = { group = "javax.mail", name = "mail", version.ref = "mail" }
 rome = { group = "rome", name = "rome", version.ref = "rome" }
 jettison = { group = "org.codehaus.jettison", name = "jettison", version.ref = "jettison" }

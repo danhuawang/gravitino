@@ -84,11 +84,20 @@ jobs:
 
       - name: Run scim service tests
         id: scimServiceTest
+        env:
+          dockerTest: true
         run: |
           set -euo pipefail
 
-          # Unit tests and isolated scim-server/libs packaging checks.
-          ./gradlew :plugins:scim:service:test -PskipITs -PskipDockerTests=false
+          # Unit tests and isolated scim-server/libs packaging checks (no Docker).
+          ./gradlew :plugins:scim:service:test -PskipITs -PskipDockerTests=true
+
+          # Jersey 3 SCIM auxiliary listener integration tests (h2 / MySQL / PostgreSQL).
+          for backend in h2 mysql postgresql; do
+            ./gradlew :plugins:scim:service:integrationTest \
+              -PjdbcBackend="${backend}" \
+              -PskipDockerTests=false
+          done
 
       - name: Upload scim service test reports
         uses: actions/upload-artifact@v7
@@ -98,4 +107,5 @@ jobs:
           path: |
             plugins/scim/service/build/reports
             plugins/scim/service/build/test-results
+            plugins/scim/service/build/test-results/integrationTest
             distribution/package/scim-server/libs

@@ -8,6 +8,7 @@ package com.datastrato.gravitino.scim.service.rest;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.adapter.ScimGroupRepositoryAdapter;
 import com.datastrato.gravitino.scim.service.adapter.ScimUserRepositoryAdapter;
+import com.fasterxml.jackson.jakarta.rs.json.JacksonJsonProvider;
 import java.util.Collections;
 import org.apache.directory.scim.core.repository.InvalidRepositoryException;
 import org.apache.directory.scim.core.repository.RepositoryRegistry;
@@ -58,8 +59,6 @@ public final class GravitinoScimApplication {
     }
 
     ServerConfiguration serverConfiguration = createServerConfiguration();
-    ScimMetalakeResource scimMetalakeResource =
-        new ScimMetalakeResource(schemaRegistry, repositoryRegistry, serverConfiguration);
 
     ResourceConfig resourceConfig = new ResourceConfig();
     resourceConfig.register(ScimpleFeature.class);
@@ -71,9 +70,10 @@ public final class GravitinoScimApplication {
     resourceConfig.register(UnsupportedFilterExceptionMapper.class);
     resourceConfig.register(MutabilityExceptionMapper.class);
     resourceConfig.register(GenericExceptionMapper.class);
+    resourceConfig.register(JacksonJsonProvider.class);
     resourceConfig.register(ScimJacksonXmlBindJsonProvider.class);
     resourceConfig.register(ScimHealthOperations.class);
-    resourceConfig.register(scimMetalakeResource);
+    resourceConfig.register(ScimMetalakeResource.class);
 
     resourceConfig.register(
         new AbstractBinder() {

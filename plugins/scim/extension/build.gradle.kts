@@ -52,6 +52,19 @@ dependencies {
   testRuntimeOnly(libs.junit.jupiter.engine)
 }
 
+val testJar by tasks.registering(Jar::class) {
+  archiveClassifier.set("tests")
+  from(sourceSets["test"].output)
+}
+
+configurations {
+  create("testArtifacts")
+}
+
+artifacts {
+  add("testArtifacts", testJar)
+}
+
 tasks {
   jar {
     archiveBaseName.set("gravitino-scim-plugin")
@@ -74,6 +87,7 @@ tasks {
   }
 
   test {
+    dependsOn("copyLibAndConfigs", "testClasses")
     environment("GRAVITINO_HOME", rootDir.path)
 
     val skipITs = project.hasProperty("skipITs")

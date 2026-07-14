@@ -31,7 +31,7 @@ final class ScimEnterpriseSchemaInitializer {
    *
    * @param config active server configuration
    */
-  static void initialize(Config config) throws IOException {
+  public static void initialize(Config config) throws IOException {
     JDBCBackendType backendType =
         JDBCBackendType.fromURI(config.get(Configs.ENTITY_RELATIONAL_JDBC_BACKEND_URL));
     String databaseType = toDatabaseDirectory(backendType);

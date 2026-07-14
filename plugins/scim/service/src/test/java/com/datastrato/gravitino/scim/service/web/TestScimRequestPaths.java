@@ -8,7 +8,10 @@ package com.datastrato.gravitino.scim.service.web;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -30,5 +33,29 @@ class TestScimRequestPaths {
   void testIsMetalakeScopedPath() {
     assertTrue(ScimRequestPaths.isMetalakeScopedPath("/scim/v2/metalakes/ml1/Users"));
     assertFalse(ScimRequestPaths.isMetalakeScopedPath("/scim/ServiceProviderConfig"));
+  }
+
+  @Test
+  void testResolveRequestPathCombinesServletPathAndPathInfo() {
+    HttpServletRequest request = mock(HttpServletRequest.class);
+    when(request.getServletPath()).thenReturn("/scim");
+    when(request.getPathInfo()).thenReturn("/v2/metalakes/ml1/Users");
+    assertEquals("/scim/v2/metalakes/ml1/Users", ScimRequestPaths.resolveRequestPath(request));
+  }
+
+  @Test
+  void testResolveRequestPathWithEmptyPathInfo() {
+    HttpServletRequest request = mock(HttpServletRequest.class);
+    when(request.getServletPath()).thenReturn("/scim");
+    when(request.getPathInfo()).thenReturn(null);
+    assertEquals("/scim", ScimRequestPaths.resolveRequestPath(request));
+  }
+
+  @Test
+  void testResolveRequestPathStripsTrailingSlashFromServletPath() {
+    HttpServletRequest request = mock(HttpServletRequest.class);
+    when(request.getServletPath()).thenReturn("/scim/");
+    when(request.getPathInfo()).thenReturn("/v2/metalakes/ml1/Users");
+    assertEquals("/scim/v2/metalakes/ml1/Users", ScimRequestPaths.resolveRequestPath(request));
   }
 }

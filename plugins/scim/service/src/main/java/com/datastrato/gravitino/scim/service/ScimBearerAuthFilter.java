@@ -53,7 +53,7 @@ public class ScimBearerAuthFilter implements Filter {
       throws IOException, ServletException {
     HttpServletRequest httpRequest = (HttpServletRequest) request;
     HttpServletResponse httpResponse = (HttpServletResponse) response;
-    String path = httpRequest.getServletPath();
+    String path = ScimRequestPaths.resolveRequestPath(httpRequest);
 
     if (!ScimRequestPaths.isMetalakeScopedPath(path)) {
       chain.doFilter(request, response);

@@ -40,7 +40,7 @@ import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
  * API surface against each relational backend.
  */
 @DisabledIfSystemProperty(named = ITUtils.TEST_MODE, matches = ITUtils.DEPLOY_TEST_MODE)
-public class ScimTokenRESTApiIT extends BaseIT {
+class ScimTokenRESTApiIT extends BaseIT {
 
   private static final String ACCEPT = "application/vnd.gravitino.v1+json";
   private static final String METALAKE = "scimTokenMetalake";
@@ -55,6 +55,10 @@ public class ScimTokenRESTApiIT extends BaseIT {
 
   @BeforeAll
   public void startIntegrationTest() throws Exception {
+    ignoreIcebergAuxRestService = true;
+    ignoreLanceAuxRestService = true;
+    customConfigs = ScimTokenITServerSupport.preserveScimAuxServiceNames(customConfigs);
+
     Map<String, String> configs = Maps.newHashMap();
     configs.put("SimpleAuthUserName", OWNER);
     configs.put(Configs.ENABLE_AUTHORIZATION.getKey(), String.valueOf(true));
@@ -65,6 +69,7 @@ public class ScimTokenRESTApiIT extends BaseIT {
     configs.put(
         Configs.REST_API_EXTENSION_PACKAGES.getKey(),
         ScimTokenRESTFeature.SCIM_TOKEN_REST_EXTENSION_PACKAGE);
+    configs.putAll(ScimTokenITServerSupport.tokenAdminServerConfigs());
     registerCustomConfigs(configs);
     super.startIntegrationTest();
     ScimEnterpriseSchemaInitializer.initialize(serverConfig);
@@ -175,7 +180,7 @@ public class ScimTokenRESTApiIT extends BaseIT {
     return HTTP.send(
         authorized(username)
             .uri(URI.create(apiBase + path))
-            .header("Content-Type", MediaType.JSON)
+            .header("Content-Type", "application/json")
             .POST(jsonBody(body))
             .build(),
         HttpResponse.BodyHandlers.ofString());
@@ -211,11 +216,5 @@ public class ScimTokenRESTApiIT extends BaseIT {
 
   private static int errorCode(HttpResponse<String> response) throws Exception {
     return JsonUtils.objectMapper().readTree(response.body()).get("code").asInt();
-  }
-
-  private static final class MediaType {
-    private static final String JSON = "application/json";
-
-    private MediaType() {}
   }
 }

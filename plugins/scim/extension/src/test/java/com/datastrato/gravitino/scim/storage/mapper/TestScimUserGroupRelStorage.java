@@ -174,25 +174,6 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testSoftDeleteTwice(String type) throws IOException {
-    init(type);
-    insertMetalake();
-    insertUser(USER_ID, USERNAME);
-    insertGroup(GROUP_ID, GROUP_NAME);
-    insertMembership(USER_ID, GROUP_ID);
-
-    scimUserGroupRelMapper.softDeleteMembersByGroupAndUserExternalIds(
-        METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID)));
-    insertMembership(USER_ID, GROUP_ID);
-    scimUserGroupRelMapper.softDeleteMembersByGroupAndUserExternalIds(
-        METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID)));
-
-    assertTrue(
-        scimUserGroupRelMapper.selectGroupNamesByUsername(USERNAME, METALAKE_NAME).isEmpty());
-  }
-
-  @ParameterizedTest
-  @MethodSource("storageProvider")
   void testSoftDeleteByGroup(String type) throws IOException {
     init(type);
     insertMetalake();

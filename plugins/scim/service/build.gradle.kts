@@ -9,24 +9,38 @@ plugins {
   id("idea")
 }
 
-// HTTP-layer deps are declared here so this PR stays scoped to the SCIM module only.
-val scimpleVersion = libs.versions.scimple.get()
-val jetty11Version = "11.0.24"
-val jersey3Version = "3.1.5"
-val jakartaServletVersion = "6.0.0"
-val jakartaWsRsVersion = "3.1.0"
-val jacksonJakartaRsVersion = "2.16.1"
-
+// HTTP-layer deps compile against Jetty 11 / Jersey 3 / SCIMple, but must not land on the main
+// Gravitino (Jetty 9 / Jersey 2) runtime classpath. Production and ITs load them only through
+// ScimAuxClassLoaders from distribution/package/scim-server/libs.
 val scimServerLib by configurations.creating {
-  description =
-    "SCIMple stack for scim-server/libs; transitives exclude jars already on the main server classpath"
+  description = "SCIMple stack for scim-server/libs; loaded at runtime by ScimAuxClassLoaders"
   isCanBeConsumed = false
   isCanBeResolved = true
   isTransitive = true
 }
 
+sourceSets {
+  create("integrationTest") {
+    java.srcDir("src/integrationTest/java")
+    // Do not inherit unit-test SCIMple/Jakarta: MiniGravitino stays on Jersey 2 / Jetty 9.
+    compileClasspath += sourceSets["main"].output
+    runtimeClasspath += output + compileClasspath
+  }
+}
+
+configurations {
+  named("integrationTestImplementation") {
+    extendsFrom(configurations["implementation"])
+  }
+  named("integrationTestRuntimeOnly") {
+    extendsFrom(configurations["runtimeOnly"])
+  }
+}
+
 dependencies {
   annotationProcessor(libs.lombok)
+  compileOnly(libs.lombok)
+  compileOnly(libs.slf4j.api)
 
   implementation(project(":api"))
   implementation(project(":common"))
@@ -39,43 +53,49 @@ dependencies {
   implementation(libs.commons.lang3)
   implementation(libs.guava)
   implementation(libs.jackson.databind)
-  implementation(libs.scim.core)
-  implementation("org.apache.directory.scimple:scim-server:$scimpleVersion")
-  implementation(libs.scim.spec.schema)
-  implementation("org.apache.directory.scimple:scim-spec-protocol:$scimpleVersion")
-  implementation("org.eclipse.jetty:jetty-server:$jetty11Version")
-  implementation("org.eclipse.jetty:jetty-servlet:$jetty11Version")
-  implementation("jakarta.servlet:jakarta.servlet-api:$jakartaServletVersion")
-  implementation("org.glassfish.jersey.core:jersey-server:$jersey3Version")
-  implementation("org.glassfish.jersey.containers:jersey-container-servlet:$jersey3Version")
-  implementation("org.glassfish.jersey.inject:jersey-hk2:$jersey3Version")
-  implementation("jakarta.ws.rs:jakarta.ws.rs-api:$jakartaWsRsVersion")
   implementation(libs.bundles.metrics)
-  implementation(libs.metrics.jersey2)
 
-  scimServerLib("org.apache.directory.scimple:scim-server:$scimpleVersion")
-  scimServerLib(libs.scim.core)
-  scimServerLib(libs.scim.spec.schema)
-  scimServerLib("org.apache.directory.scimple:scim-spec-protocol:$scimpleVersion")
-  scimServerLib("org.glassfish.jersey.core:jersey-server:$jersey3Version")
-  scimServerLib("org.glassfish.jersey.core:jersey-common:$jersey3Version")
-  scimServerLib("org.glassfish.jersey.core:jersey-client:$jersey3Version")
-  scimServerLib("org.glassfish.jersey.containers:jersey-container-servlet:$jersey3Version")
-  scimServerLib("org.glassfish.jersey.inject:jersey-hk2:$jersey3Version")
-  scimServerLib("jakarta.ws.rs:jakarta.ws.rs-api:$jakartaWsRsVersion")
-  scimServerLib("jakarta.inject:jakarta.inject-api:2.0.1")
-  scimServerLib("jakarta.servlet:jakarta.servlet-api:$jakartaServletVersion")
-  scimServerLib("org.eclipse.jetty:jetty-server:$jetty11Version")
-  scimServerLib("org.eclipse.jetty:jetty-servlet:$jetty11Version")
-  scimServerLib(
-    "com.fasterxml.jackson.jakarta.rs:jackson-jakarta-rs-json-provider:$jacksonJakartaRsVersion"
-  )
+  // Compile + package the SCIM HTTP stack once; runtime only via scim-server/libs.
+  val scimHttpCompileDeps =
+    listOf(
+      libs.scim.core,
+      libs.scim.server,
+      libs.scim.spec.schema,
+      libs.scim.spec.protocol,
+      libs.jetty11.server,
+      libs.jetty11.servlet,
+      libs.jakarta.servlet6.api,
+      libs.jersey3.server,
+      libs.jersey3.container.servlet,
+      libs.jersey3.hk2,
+      libs.jakarta.ws.rs3.api,
+      libs.jackson.jakarta.rs.json.provider,
+      libs.metrics.jersey2
+    )
+  scimHttpCompileDeps.forEach { compileOnly(it) }
 
-  compileOnly(libs.lombok)
-  compileOnly(libs.slf4j.api)
+  val scimHttpRuntimeLibs =
+    listOf(
+      libs.scim.core,
+      libs.scim.server,
+      libs.scim.spec.schema,
+      libs.scim.spec.protocol,
+      libs.jersey3.server,
+      libs.jersey3.common,
+      libs.jersey3.client,
+      libs.jersey3.container.servlet,
+      libs.jersey3.hk2,
+      libs.jakarta.ws.rs3.api,
+      libs.jakarta.inject.api,
+      libs.jakarta.servlet6.api,
+      libs.jetty11.server,
+      libs.jetty11.servlet,
+      libs.jackson.jakarta.rs.json.provider
+    )
+  scimHttpRuntimeLibs.forEach { scimServerLib(it) }
 
   testImplementation(project(":integration-test-common", "testArtifacts"))
-
+  testImplementation(libs.h2db)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.mockito.inline)
@@ -84,8 +104,60 @@ dependencies {
   testImplementation(libs.testcontainers)
   testImplementation(libs.testcontainers.mysql)
   testImplementation(libs.testcontainers.postgresql)
+  // Adapter / filter / servlet unit tests need SCIMple + Jakarta at compile+runtime.
+  listOf(
+    libs.scim.core,
+    libs.scim.server,
+    libs.scim.spec.schema,
+    libs.scim.spec.protocol,
+    libs.jakarta.servlet6.api,
+    libs.jakarta.ws.rs3.api
+  )
+    .forEach { testImplementation(it) }
 
   testRuntimeOnly(libs.junit.jupiter.engine)
+
+  // MiniGravitino (Jersey 2 / Jetty 9) + client; SCIM HTTP stack comes from scim-server/libs.
+  "integrationTestImplementation"(project(":clients:client-java"))
+  "integrationTestImplementation"(project(":server"))
+  "integrationTestImplementation"(project(":plugins:scim", "testArtifacts"))
+  "integrationTestImplementation"(project(":integration-test-common", "testArtifacts"))
+  "integrationTestImplementation"(libs.javax.ws.rs.api)
+  "integrationTestImplementation"(libs.bundles.jersey)
+  "integrationTestImplementation"(libs.servlet)
+  "integrationTestImplementation"(libs.awaitility)
+  "integrationTestImplementation"(libs.commons.io)
+  "integrationTestImplementation"(libs.javax.jaxb.api)
+  "integrationTestImplementation"(libs.mybatis)
+  "integrationTestImplementation"(libs.h2db)
+  "integrationTestImplementation"(libs.junit.jupiter.api)
+  "integrationTestImplementation"(libs.mysql.driver)
+  "integrationTestImplementation"(libs.postgresql.driver)
+  "integrationTestImplementation"(libs.testcontainers)
+  "integrationTestImplementation"(libs.testcontainers.mysql)
+  "integrationTestImplementation"(libs.testcontainers.postgresql)
+  "integrationTestRuntimeOnly"(libs.junit.jupiter.engine)
+}
+
+configurations.configureEach {
+  if (name == "integrationTestRuntimeClasspath" || name == "integrationTestCompileClasspath") {
+    val jerseyVersion = libs.versions.jersey.get()
+    val jettyVersion = libs.versions.jetty.get()
+    resolutionStrategy {
+      force(libs.javax.ws.rs.api)
+      force("org.glassfish.jersey.core:jersey-server:$jerseyVersion")
+      force("org.glassfish.jersey.core:jersey-common:$jerseyVersion")
+      force("org.glassfish.jersey.core:jersey-client:$jerseyVersion")
+      force("org.glassfish.jersey.containers:jersey-container-servlet-core:$jerseyVersion")
+      force("org.glassfish.jersey.containers:jersey-container-jetty-http:$jerseyVersion")
+      force("org.glassfish.jersey.media:jersey-media-json-jackson:$jerseyVersion")
+      force("org.glassfish.jersey.inject:jersey-hk2:$jerseyVersion")
+      force("org.eclipse.jetty:jetty-server:$jettyVersion")
+      force("org.eclipse.jetty:jetty-servlet:$jettyVersion")
+      force("org.eclipse.jetty:jetty-servlets:$jettyVersion")
+      force("org.eclipse.jetty:jetty-webapp:$jettyVersion")
+    }
+  }
 }
 
 tasks {
@@ -93,11 +165,11 @@ tasks {
     archiveBaseName.set("gravitino-scim-service")
   }
 
-  register("copyLibs", Copy::class) {
+  val copyLibs by registering(Copy::class) {
     dependsOn(jar)
     from(jar)
     from(scimServerLib) {
-      // Already on the main Gravitino server classpath; IsolatedClassLoader delegates shared classes.
+      // Shared with the main server; ScimAuxClassLoaders delegates these to the Gravitino bridge.
       exclude("slf4j-api-*.jar")
       exclude("commons-lang3-*.jar")
       exclude("jackson-core-*.jar")
@@ -112,14 +184,27 @@ tasks {
   register("copyLibAndConfigs", Copy::class) {
     group = "gravitino distribution"
     description = "Copy scim-server isolated libs into distribution package"
-    dependsOn("copyLibs")
+    dependsOn(copyLibs)
+  }
+
+  val skipITs = project.hasProperty("skipITs")
+
+  register<Test>("integrationTest") {
+    description =
+      "Run SCIM service REST integration tests against the Jersey 3 auxiliary listener"
+    group = "verification"
+    dependsOn("copyLibAndConfigs")
+    dependsOn(":plugins:scim:copyLibAndConfigs")
+    enabled = !skipITs
+
+    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
+    classpath = sourceSets["integrationTest"].runtimeClasspath
+    useJUnitPlatform()
   }
 
   test {
     dependsOn("copyLibAndConfigs")
-    environment("GRAVITINO_HOME", rootDir.path)
 
-    val skipITs = project.hasProperty("skipITs")
     if (skipITs) {
       exclude("**/integration/test/**")
     }

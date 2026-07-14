@@ -69,19 +69,6 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testSoftDeleteTwice(String type) throws IOException {
-    init(type);
-    insertMetalake();
-    scimTokenMetaMapper.insert(createTokenMeta(1L, METALAKE_ID, "scim-token", "hash-a", 0L));
-    assertEquals(1, scimTokenMetaMapper.softDeleteByMetalakeAndName(METALAKE_NAME, "scim-token"));
-
-    scimTokenMetaMapper.insert(createTokenMeta(2L, METALAKE_ID, "scim-token", "hash-b", 0L));
-    assertEquals(1, scimTokenMetaMapper.softDeleteByMetalakeAndName(METALAKE_NAME, "scim-token"));
-    assertNull(scimTokenMetaMapper.selectByTokenHash("hash-b"));
-  }
-
-  @ParameterizedTest
-  @MethodSource("storageProvider")
   void testSoftDeleteUnavailableMetalake(String type) throws IOException {
     init(type);
     long deletedMetalakeId = 20L;

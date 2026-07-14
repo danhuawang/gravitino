@@ -1,0 +1,386 @@
+/*
+ * Copyright 2026 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+
+package com.datastrato.gravitino.scim.integration.test;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.apache.gravitino.auth.AuthConstants;
+import org.apache.gravitino.integration.test.util.CloseContainerExtension;
+import org.apache.gravitino.integration.test.util.ITUtils;
+import org.apache.gravitino.integration.test.util.PrintFuncNameExtension;
+import org.apache.gravitino.json.JsonUtils;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+/**
+ * End-to-end SCIM 2.0 provisioning against the Jersey 3 auxiliary listener.
+ *
+ * <p>MiniGravitino stays on Jersey 2. The SCIM stack is started by production {@code
+ * ScimRESTService}, which loads Jetty 11 / Jersey 3 / SCIMple through child-first {@code
+ * scim-server/libs} (no Gradle IT classpath filtering).
+ *
+ * <p>Run with {@code -PjdbcBackend=h2}, {@code mysql}, or {@code postgresql}.
+ */
+@ExtendWith({PrintFuncNameExtension.class, CloseContainerExtension.class})
+@DisabledIfSystemProperty(named = ITUtils.TEST_MODE, matches = ITUtils.DEPLOY_TEST_MODE)
+class ScimProvisioningRESTApiIT {
+
+  private static final String METALAKE = "scimProvisioningMetalake";
+  private static final String TOKEN_NAME = "provisioning-it";
+  private static final String TOKEN_CREATOR = "scimItOwner";
+  private static final String SCIM_ACCEPT = "application/scim+json, application/json";
+  private static final String SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
+  private static final String SCIM_GROUP_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Group";
+  private static final String SCIM_PATCH_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:PatchOp";
+  private static final HttpClient HTTP = HttpClient.newHttpClient();
+
+  private static ScimServiceITEnvironment environment;
+  private static String bearerToken;
+
+  @BeforeAll
+  static void startEnvironment() throws Exception {
+    environment = ScimServiceITEnvironment.start();
+    environment.adminClient().createMetalake(METALAKE, "", new HashMap<>());
+    bearerToken = environment.mintScimBearerToken(METALAKE, TOKEN_NAME, TOKEN_CREATOR);
+  }
+
+  @AfterAll
+  static void stopEnvironment() throws Exception {
+    if (environment != null) {
+      try {
+        environment.adminClient().dropMetalake(METALAKE, true);
+      } finally {
+        environment.close();
+        environment = null;
+      }
+    }
+  }
+
+  @Test
+  void testAuxiliaryStackUsesChildFirstClassLoader() throws Exception {
+    environment.assertChildFirstHttpStack();
+  }
+
+  @Test
+  void testHealthEndpoints() throws Exception {
+    assertStatus(200, get("/scim/health/live", null));
+    assertStatus(200, get("/scim/health/ready", null));
+    assertStatus(200, get("/scim/health", null));
+  }
+
+  @Test
+  void testServiceProviderConfig() throws Exception {
+    HttpResponse<String> response = get(scimPath("/ServiceProviderConfig"), bearerToken);
+    assertStatus(200, response);
+    JsonNode body = JsonUtils.objectMapper().readTree(response.body());
+    Assertions.assertTrue(body.has("patch"));
+    Assertions.assertTrue(body.has("filter"));
+  }
+
+  @Test
+  void testUnauthorizedWithoutBearer() throws Exception {
+    assertStatus(401, get(scimPath("/Users"), null));
+    assertStatus(401, get(scimPath("/Groups"), null));
+  }
+
+  @Test
+  void testMetadataEndpoints() throws Exception {
+    HttpResponse<String> resourceTypes = get(scimPath("/ResourceTypes"), bearerToken);
+    assertStatus(200, resourceTypes);
+    JsonNode resourceTypeList =
+        JsonUtils.objectMapper().readTree(resourceTypes.body()).get("Resources");
+    Assertions.assertTrue(resourceTypeList.isArray());
+    Assertions.assertTrue(resourceTypeList.size() >= 2);
+
+    HttpResponse<String> schemas = get(scimPath("/Schemas"), bearerToken);
+    assertStatus(200, schemas);
+    JsonNode schemaList = JsonUtils.objectMapper().readTree(schemas.body()).get("Resources");
+    Assertions.assertTrue(schemaList.isArray());
+    Assertions.assertTrue(schemaList.size() >= 2);
+  }
+
+  @Test
+  void testUserLifecycle() throws Exception {
+    String externalId = "scim-it-user-ext";
+    String userName = "scim-it-user";
+
+    HttpResponse<String> created =
+        post(scimPath("/Users"), userBody(externalId, userName, true), bearerToken);
+    assertStatus(201, created);
+    JsonNode createdUser = JsonUtils.objectMapper().readTree(created.body());
+    String userId = createdUser.get("id").asText();
+    Assertions.assertEquals(userName, createdUser.get("userName").asText());
+    Assertions.assertEquals(externalId, createdUser.get("externalId").asText());
+
+    HttpResponse<String> fetched = get(scimPath("/Users/" + userId), bearerToken);
+    assertStatus(200, fetched);
+    JsonNode fetchedUser = JsonUtils.objectMapper().readTree(fetched.body());
+    Assertions.assertEquals(userId, fetchedUser.get("id").asText());
+
+    HttpResponse<String> deleted = delete(scimPath("/Users/" + userId), bearerToken);
+    assertStatus(204, deleted);
+
+    HttpResponse<String> missing = get(scimPath("/Users/" + userId), bearerToken);
+    assertStatus(404, missing);
+  }
+
+  @Test
+  void testUserProvisioningImport() throws Exception {
+    String externalId = "scim-it-user-import-ext";
+    String userName = "scim-it-user-import";
+
+    assertStatus(201, post(scimPath("/Users"), userBody(externalId, userName, true), bearerToken));
+
+    HttpResponse<String> reimported =
+        post(scimPath("/Users"), userBody(externalId, userName, true), bearerToken);
+    assertStatus(201, reimported);
+    JsonNode reimportedUser = JsonUtils.objectMapper().readTree(reimported.body());
+    Assertions.assertEquals(externalId, reimportedUser.get("id").asText());
+
+    HttpResponse<String> filtered =
+        get(
+            scimPath("/Users") + "?filter=" + encodeQuery("externalId eq \"" + externalId + "\""),
+            bearerToken);
+    assertStatus(200, filtered);
+    JsonNode list = JsonUtils.objectMapper().readTree(filtered.body());
+    Assertions.assertEquals(1, list.get("totalResults").asInt());
+    Assertions.assertEquals(externalId, list.get("Resources").get(0).get("id").asText());
+
+    HttpResponse<String> disabled =
+        patch(scimPath("/Users/" + externalId), patchBody("replace", "active", false), bearerToken);
+    assertStatus(200, disabled);
+    Assertions.assertFalse(
+        JsonUtils.objectMapper().readTree(disabled.body()).get("active").asBoolean());
+
+    HttpResponse<String> enabled =
+        patch(scimPath("/Users/" + externalId), patchBody("replace", "active", true), bearerToken);
+    assertStatus(200, enabled);
+    Assertions.assertTrue(
+        JsonUtils.objectMapper().readTree(enabled.body()).get("active").asBoolean());
+
+    assertStatus(204, delete(scimPath("/Users/" + externalId), bearerToken));
+  }
+
+  @Test
+  void testUserCreateRequiresExternalId() throws Exception {
+    Map<String, Object> body = new HashMap<>();
+    body.put("schemas", new String[] {SCIM_USER_SCHEMA});
+    body.put("userName", "missing-external-id");
+    assertStatus(400, post(scimPath("/Users"), body, bearerToken));
+  }
+
+  @Test
+  void testGroupLifecycle() throws Exception {
+    String externalId = "scim-it-group-ext";
+    String displayName = "scim-it-group";
+
+    HttpResponse<String> created =
+        post(scimPath("/Groups"), groupBody(externalId, displayName, List.of()), bearerToken);
+    assertStatus(201, created);
+    JsonNode createdGroup = JsonUtils.objectMapper().readTree(created.body());
+    String groupId = createdGroup.get("id").asText();
+    Assertions.assertEquals(displayName, createdGroup.get("displayName").asText());
+    Assertions.assertEquals(externalId, createdGroup.get("externalId").asText());
+
+    HttpResponse<String> fetched = get(scimPath("/Groups/" + groupId), bearerToken);
+    assertStatus(200, fetched);
+    Assertions.assertEquals(
+        groupId, JsonUtils.objectMapper().readTree(fetched.body()).get("id").asText());
+
+    HttpResponse<String> deleted = delete(scimPath("/Groups/" + groupId), bearerToken);
+    assertStatus(204, deleted);
+
+    HttpResponse<String> missing = get(scimPath("/Groups/" + groupId), bearerToken);
+    assertStatus(404, missing);
+  }
+
+  @Test
+  void testGroupProvisioningImportWithMembers() throws Exception {
+    String userExternalId = "scim-it-group-member-user-ext";
+    String userName = "scim-it-group-member-user";
+    String groupExternalId = "scim-it-group-with-members-ext";
+    String groupDisplayName = "scim-it-group-with-members";
+    String extraUserExternalId = "scim-it-group-member-user2-ext";
+    String extraUserName = "scim-it-group-member-user2";
+
+    assertStatus(
+        201, post(scimPath("/Users"), userBody(userExternalId, userName, true), bearerToken));
+    assertStatus(
+        201,
+        post(scimPath("/Users"), userBody(extraUserExternalId, extraUserName, true), bearerToken));
+
+    Map<String, Object> member = Map.of("value", userExternalId);
+    HttpResponse<String> created =
+        post(
+            scimPath("/Groups"),
+            groupBody(groupExternalId, groupDisplayName, List.of(member)),
+            bearerToken);
+    assertStatus(201, created);
+    JsonNode createdGroup = JsonUtils.objectMapper().readTree(created.body());
+    Assertions.assertEquals(1, createdGroup.get("members").size());
+    Assertions.assertEquals(
+        userExternalId, createdGroup.get("members").get(0).get("value").asText());
+
+    HttpResponse<String> filtered =
+        get(
+            scimPath("/Groups")
+                + "?filter="
+                + encodeQuery("externalId eq \"" + groupExternalId + "\""),
+            bearerToken);
+    assertStatus(200, filtered);
+    JsonNode list = JsonUtils.objectMapper().readTree(filtered.body());
+    Assertions.assertEquals(1, list.get("totalResults").asInt());
+
+    HttpResponse<String> withExtraMember =
+        patch(
+            scimPath("/Groups/" + groupExternalId),
+            patchBody("add", "members", List.of(Map.of("value", extraUserExternalId))),
+            bearerToken);
+    assertStatus(200, withExtraMember);
+    JsonNode membersAfterAdd =
+        JsonUtils.objectMapper().readTree(withExtraMember.body()).get("members");
+    Assertions.assertEquals(2, membersAfterAdd.size());
+
+    HttpResponse<String> withoutFirstMember =
+        patch(
+            scimPath("/Groups/" + groupExternalId),
+            patchBody("remove", "members", List.of(Map.of("value", userExternalId))),
+            bearerToken);
+    assertStatus(200, withoutFirstMember);
+    JsonNode membersAfterRemove =
+        JsonUtils.objectMapper().readTree(withoutFirstMember.body()).get("members");
+    Assertions.assertEquals(1, membersAfterRemove.size());
+    Assertions.assertEquals(extraUserExternalId, membersAfterRemove.get(0).get("value").asText());
+
+    assertStatus(204, delete(scimPath("/Groups/" + groupExternalId), bearerToken));
+    assertStatus(204, delete(scimPath("/Users/" + userExternalId), bearerToken));
+    assertStatus(204, delete(scimPath("/Users/" + extraUserExternalId), bearerToken));
+  }
+
+  @Test
+  void testGroupCreateRequiresExternalId() throws Exception {
+    Map<String, Object> body = new HashMap<>();
+    body.put("schemas", new String[] {SCIM_GROUP_SCHEMA});
+    body.put("displayName", "missing-external-id");
+    assertStatus(400, post(scimPath("/Groups"), body, bearerToken));
+  }
+
+  private static String scimPath(String suffix) {
+    return "/scim/v2/metalakes/" + METALAKE + suffix;
+  }
+
+  private static Map<String, Object> userBody(String externalId, String userName, boolean active) {
+    Map<String, Object> body = new HashMap<>();
+    body.put("schemas", new String[] {SCIM_USER_SCHEMA});
+    body.put("externalId", externalId);
+    body.put("userName", userName);
+    body.put("active", active);
+    return body;
+  }
+
+  private static Map<String, Object> groupBody(
+      String externalId, String displayName, List<Map<String, Object>> members) {
+    Map<String, Object> body = new HashMap<>();
+    body.put("schemas", new String[] {SCIM_GROUP_SCHEMA});
+    body.put("externalId", externalId);
+    body.put("displayName", displayName);
+    if (!members.isEmpty()) {
+      body.put("members", members);
+    }
+    return body;
+  }
+
+  private static Map<String, Object> patchBody(String op, String path, Object value) {
+    Map<String, Object> operation = new HashMap<>();
+    operation.put("op", op);
+    operation.put("path", path);
+    operation.put("value", value);
+
+    List<Map<String, Object>> operations = new ArrayList<>();
+    operations.add(operation);
+
+    Map<String, Object> body = new HashMap<>();
+    body.put("schemas", new String[] {SCIM_PATCH_SCHEMA});
+    body.put("Operations", operations);
+    return body;
+  }
+
+  private static String encodeQuery(String value) {
+    return URLEncoder.encode(value, StandardCharsets.UTF_8);
+  }
+
+  private static HttpResponse<String> get(String path, String bearerToken) throws Exception {
+    HttpRequest.Builder builder =
+        HttpRequest.newBuilder()
+            .uri(URI.create(environment.scimBaseUri() + path))
+            .GET()
+            .header("Accept", path.startsWith("/scim/health") ? "application/json" : SCIM_ACCEPT);
+    if (bearerToken != null) {
+      builder.header(AuthConstants.HTTP_HEADER_AUTHORIZATION, "Bearer " + bearerToken);
+    }
+    return HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static HttpResponse<String> post(String path, Object body, String bearerToken)
+      throws Exception {
+    return HTTP.send(
+        HttpRequest.newBuilder()
+            .uri(URI.create(environment.scimBaseUri() + path))
+            .POST(
+                HttpRequest.BodyPublishers.ofString(
+                    JsonUtils.objectMapper().writeValueAsString(body)))
+            .header("Accept", SCIM_ACCEPT)
+            .header("Content-Type", "application/scim+json")
+            .header(AuthConstants.HTTP_HEADER_AUTHORIZATION, "Bearer " + bearerToken)
+            .build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static HttpResponse<String> patch(String path, Object body, String bearerToken)
+      throws Exception {
+    return HTTP.send(
+        HttpRequest.newBuilder()
+            .uri(URI.create(environment.scimBaseUri() + path))
+            .method(
+                "PATCH",
+                HttpRequest.BodyPublishers.ofString(
+                    JsonUtils.objectMapper().writeValueAsString(body)))
+            .header("Accept", SCIM_ACCEPT)
+            .header("Content-Type", "application/scim+json")
+            .header(AuthConstants.HTTP_HEADER_AUTHORIZATION, "Bearer " + bearerToken)
+            .build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static HttpResponse<String> delete(String path, String bearerToken) throws Exception {
+    return HTTP.send(
+        HttpRequest.newBuilder()
+            .uri(URI.create(environment.scimBaseUri() + path))
+            .DELETE()
+            .header("Accept", SCIM_ACCEPT)
+            .header(AuthConstants.HTTP_HEADER_AUTHORIZATION, "Bearer " + bearerToken)
+            .build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static void assertStatus(int expected, HttpResponse<String> response) {
+    Assertions.assertEquals(
+        expected, response.statusCode(), () -> "Unexpected body: " + response.body());
+  }
+}

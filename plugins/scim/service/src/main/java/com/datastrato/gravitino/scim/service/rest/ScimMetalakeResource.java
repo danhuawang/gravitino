@@ -5,7 +5,10 @@
 
 package com.datastrato.gravitino.scim.service.rest;
 
+import jakarta.inject.Inject;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.container.ResourceContext;
+import jakarta.ws.rs.core.Context;
 import org.apache.directory.scim.core.repository.RepositoryRegistry;
 import org.apache.directory.scim.core.schema.SchemaRegistry;
 import org.apache.directory.scim.server.configuration.ServerConfiguration;
@@ -31,6 +34,8 @@ public class ScimMetalakeResource {
   private final ServerConfiguration serverConfiguration;
   private final EtagGenerator etagGenerator;
 
+  @Context private ResourceContext resourceContext;
+
   /**
    * Creates a metalake-scoped SCIM resource locator.
    *
@@ -38,6 +43,7 @@ public class ScimMetalakeResource {
    * @param repositoryRegistry SCIMple repository registry
    * @param serverConfiguration advertised SCIM capabilities
    */
+  @Inject
   public ScimMetalakeResource(
       SchemaRegistry schemaRegistry,
       RepositoryRegistry repositoryRegistry,
@@ -51,30 +57,31 @@ public class ScimMetalakeResource {
   /** Returns the Users sub-resource. */
   @Path("Users")
   public UserResourceImpl users() {
-    return new UserResourceImpl(schemaRegistry, repositoryRegistry);
+    return resourceContext.initResource(new UserResourceImpl(schemaRegistry, repositoryRegistry));
   }
 
   /** Returns the Groups sub-resource. */
   @Path("Groups")
   public GroupResourceImpl groups() {
-    return new GroupResourceImpl(schemaRegistry, repositoryRegistry);
+    return resourceContext.initResource(new GroupResourceImpl(schemaRegistry, repositoryRegistry));
   }
 
   /** Returns the ServiceProviderConfig sub-resource. */
   @Path("ServiceProviderConfig")
   public ServiceProviderConfigResourceImpl serviceProviderConfig() {
-    return new ServiceProviderConfigResourceImpl(serverConfiguration, etagGenerator);
+    return resourceContext.initResource(
+        new ServiceProviderConfigResourceImpl(serverConfiguration, etagGenerator));
   }
 
   /** Returns the ResourceTypes sub-resource. */
   @Path("ResourceTypes")
   public ResourceTypesResourceImpl resourceTypes() {
-    return new ResourceTypesResourceImpl(schemaRegistry);
+    return resourceContext.initResource(new ResourceTypesResourceImpl(schemaRegistry));
   }
 
   /** Returns the Schemas sub-resource. */
   @Path("Schemas")
   public SchemaResourceImpl schemas() {
-    return new SchemaResourceImpl(schemaRegistry);
+    return resourceContext.initResource(new SchemaResourceImpl(schemaRegistry));
   }
 }
