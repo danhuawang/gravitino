@@ -12,8 +12,8 @@ import org.apache.gravitino.server.web.HealthCheckPathMatcher;
  * /scim/health} and {@code /scim/health/*} as health check endpoints.
  *
  * <p>Pass an instance of this class to both {@link ScimBearerAuthFilter} and {@link
- * ScimHttpAuditFilter} when constructing the SCIM REST server so that both filters agree on which
- * paths are probe traffic.
+ * com.datastrato.gravitino.scim.service.web.ScimHttpAuditFilter} when constructing the SCIM REST
+ * server so that both filters agree on which paths are probe traffic.
  */
 public class ScimHealthCheckPathMatcher extends HealthCheckPathMatcher {
 
