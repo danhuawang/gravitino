@@ -47,6 +47,10 @@ CLICKHOUSE_JDBC_VERSION=${CLICKHOUSE_JDBC_VERSION:-"0.7.1"}
 CLICKHOUSE_JDBC_DRIVER_NAME="clickhouse-jdbc-${CLICKHOUSE_JDBC_VERSION}-all.jar"
 CLICKHOUSE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/clickhouse/clickhouse-jdbc/${CLICKHOUSE_JDBC_VERSION}/${CLICKHOUSE_JDBC_DRIVER_NAME}"
 
+ORACLE_JDBC_VERSION=${ORACLE_JDBC_VERSION:-"23.26.2.0.0"}
+ORACLE_JDBC_DRIVER_NAME="ojdbc8-${ORACLE_JDBC_VERSION}.jar"
+ORACLE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc8/${ORACLE_JDBC_VERSION}/${ORACLE_JDBC_DRIVER_NAME}"
+
 # Prepare compile Gravitino packages
 "${gravitino_home}"/gradlew clean
 "${gravitino_home}"/gradlew compileDistribution -x test -x :docs:build -x :docs-enterprise:build -x :clients:client-python:build
@@ -122,6 +126,13 @@ if [ ! -f "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" ]; then
   curl -L -s -o "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${CLICKHOUSE_JDBC_DOWNLOAD_URL}"
 fi
 cp "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${gravitino_clickhouse_catalog_dir}"
+
+# Download and install Oracle JDBC driver
+gravitino_oracle_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-oracle/libs"
+if [ ! -f "${gravitino_dir}/packages/${ORACLE_JDBC_DRIVER_NAME}" ]; then
+  curl -L -s -o "${gravitino_dir}/packages/${ORACLE_JDBC_DRIVER_NAME}" "${ORACLE_JDBC_DOWNLOAD_URL}"
+fi
+cp "${gravitino_dir}/packages/${ORACLE_JDBC_DRIVER_NAME}" "${gravitino_oracle_catalog_dir}"
 
 # Keeping the container running at all times
 cat <<EOF >> "${gravitino_dir}/packages/gravitino/bin/gravitino.sh"
