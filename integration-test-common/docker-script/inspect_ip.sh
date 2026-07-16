@@ -37,5 +37,8 @@ while IFS=: read -r container_name address; do
     postgresql)
       echo "postgresql_uri=jdbc:postgresql://$address"
       ;;
+    mssql)
+      echo "sqlserver_uri=jdbc:sqlserver://$address:1433;databaseName=gt_db;encrypt=true;trustServerCertificate=true"
+      ;;
   esac
 done <<< "$container_urls"

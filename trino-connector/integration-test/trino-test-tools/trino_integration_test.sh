@@ -91,6 +91,7 @@ args="${args# }"
 # --test_containers was already given explicitly on the command line.
 declare -A TESTSET_CONTAINERS_MAP=(
     ["jdbc-mysql"]="mysql"
+    ["jdbc-sqlserver"]="sqlserver"
 )
 if [ "$has_test_containers" = false ] && [ -n "${TESTSET_CONTAINERS_MAP[$test_set]:-}" ]; then
     args="$args --test_containers=${TESTSET_CONTAINERS_MAP[$test_set]}"

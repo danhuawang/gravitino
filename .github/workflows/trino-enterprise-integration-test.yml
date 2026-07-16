@@ -1,0 +1,135 @@
+name: Trino Enterprise Catalog Integration Test
+
+# Controls when the workflow will run
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
+  pull_request:
+    types: [labeled]
+    branches: [ "main", "branch-*", "internal-*", "oss-main" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
+        id: filter
+        with:
+          filters: |
+            source_changes:
+              - .github/**
+              - api/**
+              - authorization-jdbc-enterprise/**
+              - bin/**
+              - catalogs/**
+              - clients/client-java/**
+              - clients/client-java-runtime/**
+              - common/**
+              - common-extension/**
+              - conf/**
+              - core/**
+              - core-extension/**
+              - datastrato-server/**
+              - dev/**
+              - gradle/**
+              - iceberg/**
+              - integration-test-common/**
+              - scripts/**
+              - server/**
+              - server-common/**
+              - trino-connector/**
+              - build.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+    outputs:
+      source_changes: ${{ steps.filter.outputs.source_changes }}
+
+  # Integration test for enterprise-only Trino catalogs (e.g. SQL Server), run in their own
+  # pipeline since they need dedicated docker compose container subsets not started by the
+  # default Trino integration test pipeline.
+  TrinoEnterpriseCatalogIT:
+    needs: changes
+    if: needs.changes.outputs.source_changes == 'true'
+    runs-on: gcp-arc-runners
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        architecture: [linux/amd64]
+        java-version: [ 17 ]
+    env:
+      PLATFORM: ${{ matrix.architecture }}
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-java-toolchains
+        with:
+          java-version: ${{ matrix.java-version }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Check required command
+        run: |
+          dev/ci/check_commands.sh
+
+      - name: Build Gravitino
+        run: |
+          ./gradlew build -PskipWeb=true -x test \
+            -x :web:web:build -x :web:integration-test:build \
+            -x :web-v2:web:build -x :web-v2:integration-test:build \
+            -x :clients:client-python:build \
+            -x :flink-connector:flink-common:build \
+            -x :flink-connector:flink-1.18:build \
+            -x :flink-connector:flink-runtime-1.18:build \
+            -x :flink-connector:flink-1.19:build \
+            -x :flink-connector:flink-runtime-1.19:build \
+            -x :flink-connector:flink-1.20:build \
+            -x :flink-connector:flink-runtime-1.20:build \
+            -x :spark-connector:spark-common:build \
+            -x :spark-connector:spark-3.3:build -x :spark-connector:spark-3.4:build -x :spark-connector:spark-3.5:build \
+            -x :spark-connector:spark-runtime-3.3:build -x :spark-connector:spark-runtime-3.4:build -x :spark-connector:spark-runtime-3.5:build \
+            -x :mcp-server:build -x :lineage:build \
+            -x :maintenance:optimizer:build -x :maintenance:jobs:build \
+            -x :lance:lance-common:build -x :lance:lance-rest-server:build
+
+      - name: Free up disk space
+        run: |
+          dev/ci/util_free_space.sh
+
+      - name: Trino Enterprise Catalog Integration Test
+        id: integrationTest
+        run: |
+          trino-connector/integration-test/trino-test-tools/trino_integration_test.sh --test_set=jdbc-sqlserver
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v7
+        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
+        with:
+          name: trino-connector-enterprise-integrate-test-reports-${{ matrix.java-version }}
+          path: |
+            build/reports
+            trino-connector/integration-test/build/*.log
+            trino-connector/integration-test/build/*.tar
+            trino-connector/integration-test/build/trino-cascading-env
+            integration-test-common/build/trino-ci-container-log
+            distribution/package/logs/gravitino-server.out
+            distribution/package/logs/gravitino-server.log
+            catalogs/**/*.log
+            catalogs/**/*.tar

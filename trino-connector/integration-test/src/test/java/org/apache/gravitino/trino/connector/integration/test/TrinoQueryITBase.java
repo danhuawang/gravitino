@@ -61,6 +61,10 @@ public class TrinoQueryITBase {
   public static String hdfsUri = String.format("hdfs://%s:9000", testHost);
   public static String mysqlUri = String.format("jdbc:mysql://%s", testHost);
   public static String postgresqlUri = String.format("jdbc:postgresql://%s", testHost);
+  public static String sqlserverUri =
+      String.format(
+          "jdbc:sqlserver://%s:1433;databaseName=gt_db;encrypt=true;trustServerCertificate=true",
+          testHost);
 
   protected static GravitinoAdminClient gravitinoClient;
   protected static TrinoITContainers trinoITContainers;
@@ -131,6 +135,7 @@ public class TrinoQueryITBase {
       hdfsUri = serviceUrls.getOrDefault("hdfs_uri", hdfsUri);
       mysqlUri = serviceUrls.getOrDefault("mysql_uri", mysqlUri);
       postgresqlUri = serviceUrls.getOrDefault("postgresql_uri", postgresqlUri);
+      sqlserverUri = serviceUrls.getOrDefault("sqlserver_uri", sqlserverUri);
 
     } else if (autoStartGravitino) {
       baseIT.startIntegrationTest();

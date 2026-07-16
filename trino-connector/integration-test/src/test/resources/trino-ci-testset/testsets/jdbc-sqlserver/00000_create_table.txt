@@ -1,0 +1,30 @@
+CREATE SCHEMA
+
+CREATE SCHEMA
+
+"gt_db1"
+
+"CREATE SCHEMA gt_sqlserver.gt_db1"
+
+CREATE SCHEMA
+
+CREATE TABLE
+
+"CREATE TABLE gt_sqlserver.gt_db1.tb01 (
+   name varchar(200),
+   salary integer
+)
+COMMENT 'OKK'"
+
+CREATE TABLE
+
+"tb01"
+
+DROP TABLE
+
+DROP SCHEMA
+
+DROP SCHEMA
+
+DROP SCHEMA
+

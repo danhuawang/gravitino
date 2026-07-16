@@ -68,6 +68,7 @@ dependencies {
   testImplementation(libs.jodd.core)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.mockito.core)
+  testImplementation(libs.mssql.jdbc)
   testImplementation(libs.mysql.driver)
   testImplementation(libs.okhttp3.loginterceptor)
   testImplementation(libs.opencsv)
@@ -91,6 +92,7 @@ tasks.register("setupDependencies") {
   dependsOn(":catalogs:catalog-lakehouse-iceberg:jar", ":catalogs:catalog-lakehouse-iceberg:runtimeJars")
   dependsOn(":catalogs:catalog-jdbc-mysql:jar", ":catalogs:catalog-jdbc-mysql:runtimeJars")
   dependsOn(":catalogs:catalog-jdbc-postgresql:jar", ":catalogs:catalog-jdbc-postgresql:runtimeJars")
+  dependsOn(":catalogs:catalog-jdbc-sqlserver:jar", ":catalogs:catalog-jdbc-sqlserver:runtimeJars")
   dependsOn(":catalogs:catalog-hive:jar", ":catalogs:catalog-hive:runtimeJars")
 }
 

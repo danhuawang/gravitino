@@ -19,7 +19,7 @@ dependencies {
     exclude(group = "*")
   }
   // MIT-licensed, ASF Category A — bundled with module
-  implementation("com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11")
+  implementation(libs.mssql.jdbc)
 
   implementation(libs.bundles.log4j)
   implementation(libs.commons.collections4)
