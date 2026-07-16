@@ -101,6 +101,7 @@ snappy-java = "1.1.10.8"
 mysql = "8.0.33"
 postgresql = "42.7.11"
 oracle = "23.4.0.24.05"
+mssql-jdbc = "12.8.1.jre11"
 immutables-value = "2.11.7"
 selenium = "4.33.0"
 rauschig = "1.2.0"
@@ -337,6 +338,7 @@ snappy-java = { group = "org.xerial.snappy", name = "snappy-java", version.ref =
 mysql-driver = { group = "mysql", name = "mysql-connector-java", version.ref = "mysql" }
 postgresql-driver = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
 oracle-driver = { group = "com.oracle.database.jdbc", name = "ojdbc8", version.ref = "oracle" }
+mssql-jdbc = { group = "com.microsoft.sqlserver", name = "mssql-jdbc", version.ref = "mssql-jdbc" }
 minikdc = { group = "org.apache.hadoop", name = "hadoop-minikdc", version.ref = "hadoop-minikdc"}
 immutables-value = { module = "org.immutables:value", version.ref = "immutables-value" }
 commons-cli = { group = "commons-cli", name = "commons-cli", version.ref = "commons-cli" }
