@@ -4,6 +4,9 @@
  */
 package com.datastrato.gravitino.catalog.oracle.integration.test;
 
+import static com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetadata.COMPRESSION;
+import static com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetadata.PARTITIONED;
+import static com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetadata.ROW_MOVEMENT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -784,12 +787,25 @@ public class CatalogOracleIT extends BaseIT {
                     new String[] {"name"}, TableChange.ColumnPosition.first())));
 
     // Table properties are derived from Oracle system views, not settable through Gravitino.
-    assertThrows(
-        UnsupportedOperationException.class,
-        () -> tableCatalog.alterTable(tableIdent, TableChange.setProperty("tablespace", "USERS")));
-    assertThrows(
-        UnsupportedOperationException.class,
-        () -> tableCatalog.alterTable(tableIdent, TableChange.removeProperty("tablespace")));
+    IllegalArgumentException setPropertyException =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                tableCatalog.alterTable(
+                    tableIdent, TableChange.setProperty("tablespace", "USERS")));
+    assertTrue(
+        setPropertyException
+            .getMessage()
+            .contains("Property tablespace is immutable or reserved, cannot be set"));
+
+    IllegalArgumentException removePropertyException =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> tableCatalog.alterTable(tableIdent, TableChange.removeProperty("tablespace")));
+    assertTrue(
+        removePropertyException
+            .getMessage()
+            .contains("Property tablespace is immutable or reserved, cannot be deleted"));
   }
 
   // ----------------------------------------------------------------------
@@ -826,8 +842,9 @@ public class CatalogOracleIT extends BaseIT {
     Table loaded = tableCatalog.loadTable(tableIdent);
     assertTrue(loaded.partitioning().length > 0, "Expected partitioning to be reported");
     assertInstanceOf(Transforms.RangeTransform.class, loaded.partitioning()[0]);
-    // The "partitioned" property is derived from ALL_TABLES.PARTITIONED and is filtered from the
-    // returned property map when it's null/empty — don't assert on it here.
+    // The "partitioned" property is derived from ALL_TABLES.PARTITIONED and is now visible on load
+    // (see issue #854); a partitioned table reports "YES".
+    assertEquals("YES", loaded.properties().get(PARTITIONED));
   }
 
   @Test
@@ -878,5 +895,43 @@ public class CatalogOracleIT extends BaseIT {
     Table loaded = tableCatalog.loadTable(tableIdent);
     assertTrue(loaded.partitioning().length > 0);
     assertInstanceOf(Transforms.BucketTransform.class, loaded.partitioning()[0]);
+    // Issue #854: the "partitioned" property must be returned by loadTable — "YES" for a
+    // HASH-partitioned table.
+    assertEquals("YES", loaded.properties().get(PARTITIONED));
+  }
+
+  @Test
+  void testOracleTablePropertiesVisibleOnLoad() {
+    // Issue #854: partitioned, row_movement and compression are read-only ALL_TABLES metadata and
+    // must be returned by loadTable. They were previously registered hidden=true and stripped from
+    // the response, so loaded.properties().get(...) always returned null.
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+
+    // Non-partitioned table: partitioned = NO, and row_movement/compression are present.
+    String plain = "IT_PROPS_PLAIN";
+    createTable(plain, simpleColumns());
+    Map<String, String> plainProps =
+        tableCatalog.loadTable(NameIdentifier.of(schemaName, plain)).properties();
+    assertEquals("NO", plainProps.get(PARTITIONED), "partitioned should be visible: " + plainProps);
+    assertTrue(
+        plainProps.containsKey(ROW_MOVEMENT), "row_movement should be visible: " + plainProps);
+    assertTrue(plainProps.containsKey(COMPRESSION), "compression should be visible: " + plainProps);
+
+    // HASH-partitioned table: partitioned = YES (the exact scenario reported in issue #854).
+    String parted = "IT_PROPS_PART";
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("bucket", Types.IntegerType.get(), null, false, false, null)
+        };
+    createTable(
+        parted,
+        columns,
+        null,
+        ImmutableMap.of(),
+        new Transform[] {Transforms.bucket(4, new String[] {"bucket"})});
+    Map<String, String> partedProps =
+        tableCatalog.loadTable(NameIdentifier.of(schemaName, parted)).properties();
+    assertEquals("YES", partedProps.get(PARTITIONED));
   }
 }

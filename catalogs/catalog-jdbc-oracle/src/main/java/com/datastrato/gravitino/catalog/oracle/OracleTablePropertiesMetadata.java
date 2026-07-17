@@ -5,6 +5,7 @@
 package com.datastrato.gravitino.catalog.oracle;
 
 import static org.apache.gravitino.connector.PropertyEntry.stringOptionalPropertyEntry;
+import static org.apache.gravitino.connector.PropertyEntry.stringReservedPropertyEntry;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -24,30 +25,26 @@ public class OracleTablePropertiesMetadata extends JdbcTablePropertiesMetadata {
 
   private static Map<String, PropertyEntry<?>> createPropertiesMetadata() {
     Map<String, PropertyEntry<?>> map = new HashMap<>();
+    // These properties are metadata read from Oracle's ALL_TABLES view. They are not sensitive, so
+    // they must stay visible (hidden=false) to be returned by loadTable. TABLESPACE can be selected
+    // when a table is created but cannot be altered, while the other three values are derived by
+    // Oracle and must not be supplied by users.
     map.put(
         TABLESPACE,
         stringOptionalPropertyEntry(
-            TABLESPACE, "Oracle tablespace from ALL_TABLES.TABLESPACE_NAME", false, null, true));
+            TABLESPACE, "Oracle tablespace from ALL_TABLES.TABLESPACE_NAME", true, null, false));
     map.put(
         PARTITIONED,
-        stringOptionalPropertyEntry(
-            PARTITIONED, "Oracle partition flag from ALL_TABLES.PARTITIONED", false, null, true));
+        stringReservedPropertyEntry(
+            PARTITIONED, "Oracle partition flag from ALL_TABLES.PARTITIONED", false));
     map.put(
         ROW_MOVEMENT,
-        stringOptionalPropertyEntry(
-            ROW_MOVEMENT,
-            "Oracle row movement status from ALL_TABLES.ROW_MOVEMENT",
-            false,
-            null,
-            true));
+        stringReservedPropertyEntry(
+            ROW_MOVEMENT, "Oracle row movement status from ALL_TABLES.ROW_MOVEMENT", false));
     map.put(
         COMPRESSION,
-        stringOptionalPropertyEntry(
-            COMPRESSION,
-            "Oracle compression status from ALL_TABLES.COMPRESSION",
-            false,
-            null,
-            true));
+        stringReservedPropertyEntry(
+            COMPRESSION, "Oracle compression status from ALL_TABLES.COMPRESSION", false));
     return Collections.unmodifiableMap(map);
   }
 
