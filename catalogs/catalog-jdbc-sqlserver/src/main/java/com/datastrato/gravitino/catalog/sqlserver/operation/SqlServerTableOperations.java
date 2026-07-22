@@ -88,10 +88,12 @@ public class SqlServerTableOperations extends JdbcTableOperations
       if (!schemaOperations.schemaExists(connection, schemaName)) {
         throw new NoSuchSchemaException("No such schema: %s", schemaName);
       }
+      // Filter out system-shipped tables (is_ms_shipped = 1) such as msreplication_options,
+      // spt_fallback_db, etc. These are internal SQL Server tables that users should not manage.
       String sql =
           "SELECT t.name FROM sys.tables t "
               + "JOIN sys.schemas s ON t.schema_id = s.schema_id "
-              + "WHERE s.name = ? ORDER BY t.name";
+              + "WHERE s.name = ? AND t.is_ms_shipped = 0 ORDER BY t.name";
       try (PreparedStatement stmt = connection.prepareStatement(sql)) {
         stmt.setString(1, schemaName);
         try (ResultSet rs = stmt.executeQuery()) {

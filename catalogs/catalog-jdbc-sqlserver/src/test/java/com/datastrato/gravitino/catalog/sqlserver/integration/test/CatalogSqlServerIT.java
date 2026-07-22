@@ -976,6 +976,31 @@ public class CatalogSqlServerIT extends BaseIT {
   }
 
   @Test
+  void testListTablesExcludesSystemShippedTables() {
+    // Verify that listTables() in the dbo schema does not include system-shipped tables
+    // such as msreplication_options, spt_fallback_db, spt_fallback_dev, spt_fallback_usg,
+    // spt_monitor. These tables have is_ms_shipped = 1 in sys.tables.
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    NameIdentifier[] tables = tableCatalog.listTables(Namespace.of("dbo"));
+    Set<String> tableNames =
+        Arrays.stream(tables).map(NameIdentifier::name).collect(Collectors.toSet());
+
+    // These are well-known system-shipped tables that exist in dbo on most SQL Server instances
+    Set<String> systemShippedTables =
+        Sets.newHashSet(
+            "msreplication_options",
+            "spt_fallback_db",
+            "spt_fallback_dev",
+            "spt_fallback_usg",
+            "spt_monitor");
+    for (String systemTable : systemShippedTables) {
+      Assertions.assertFalse(
+          tableNames.contains(systemTable),
+          "System-shipped table '" + systemTable + "' should not appear in listTables()");
+    }
+  }
+
+  @Test
   void testCreateTableInDboSchema() {
     // Verify that tables can be created in the default dbo schema
     Column[] columns = createColumns();
