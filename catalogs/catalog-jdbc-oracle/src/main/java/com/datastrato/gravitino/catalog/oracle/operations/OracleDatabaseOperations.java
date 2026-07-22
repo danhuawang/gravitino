@@ -6,6 +6,7 @@ package com.datastrato.gravitino.catalog.oracle.operations;
 
 import com.google.common.collect.ImmutableSet;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -22,8 +23,11 @@ import org.apache.gravitino.meta.AuditInfo;
 /** Database (schema/user) operations for Oracle. */
 public class OracleDatabaseOperations extends JdbcDatabaseOperations {
 
+  private static final int ORACLE_MAINTAINED_COLUMN_MIN_VERSION = 12;
   private static final String LIST_ALL_USERS_SQL =
       "SELECT USERNAME FROM ALL_USERS ORDER BY USERNAME";
+  private static final String LIST_ALL_USERS_WITH_ORACLE_MAINTAINED_SQL =
+      "SELECT USERNAME, ORACLE_MAINTAINED FROM ALL_USERS ORDER BY USERNAME";
   private static final String LOAD_USER_SQL =
       "SELECT USERNAME FROM ALL_USERS WHERE USERNAME = UPPER(?)";
 
@@ -53,7 +57,29 @@ public class OracleDatabaseOperations extends JdbcDatabaseOperations {
           "owbsys_audit",
           "wmsys",
           "xdb",
-          "xs$null");
+          "xs$null",
+          // Oracle 12c/18c/19c/21c/23ai built-in accounts.
+          "audsys",
+          "baassys",
+          "dbsfwuser",
+          "dgpdb_int",
+          "dip",
+          "dvf",
+          "dvsys",
+          "ggsharedcap",
+          "ggsys",
+          "gsmadmin_internal",
+          "gsmcatuser",
+          "gsmuser",
+          "lbacsys",
+          "pdbadmin",
+          "remote_scheduler_agent",
+          "sys$umf",
+          "sysbackup",
+          "sysdg",
+          "syskm",
+          "sysrac",
+          "vecsys");
 
   @Override
   protected String generateCreateDatabaseSql(
@@ -71,13 +97,25 @@ public class OracleDatabaseOperations extends JdbcDatabaseOperations {
   @Override
   public List<String> listDatabases() {
     List<String> databaseNames = new ArrayList<>();
-    try (Connection connection = getConnection();
-        Statement statement = connection.createStatement();
-        ResultSet resultSet = statement.executeQuery(LIST_ALL_USERS_SQL)) {
-      while (resultSet.next()) {
-        String databaseName = resultSet.getString("USERNAME");
-        if (!isSystemDatabase(databaseName)) {
-          databaseNames.add(databaseName);
+    try (Connection connection = getConnection()) {
+      DatabaseMetaData metadata = connection.getMetaData();
+      boolean supportsOracleMaintained =
+          metadata.getDatabaseMajorVersion() >= ORACLE_MAINTAINED_COLUMN_MIN_VERSION;
+      String listUsersSql =
+          supportsOracleMaintained ? LIST_ALL_USERS_WITH_ORACLE_MAINTAINED_SQL : LIST_ALL_USERS_SQL;
+      try (Statement statement = connection.createStatement();
+          ResultSet resultSet = statement.executeQuery(listUsersSql)) {
+        while (resultSet.next()) {
+          String databaseName = resultSet.getString("USERNAME");
+          boolean oracleMaintained =
+              supportsOracleMaintained
+                  && "Y".equalsIgnoreCase(resultSet.getString("ORACLE_MAINTAINED"));
+          // ORACLE_MAINTAINED covers accounts installed by optional Oracle components. Keep the
+          // known-name check for Oracle 11g, which does not provide that column, and as a fallback
+          // when an account is not marked consistently.
+          if (!oracleMaintained && !isSystemDatabase(databaseName)) {
+            databaseNames.add(databaseName);
+          }
         }
       }
       return databaseNames;

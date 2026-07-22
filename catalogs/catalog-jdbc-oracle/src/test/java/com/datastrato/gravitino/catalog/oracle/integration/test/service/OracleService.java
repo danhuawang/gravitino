@@ -10,7 +10,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 import org.apache.gravitino.integration.test.container.OracleContainer;
 import org.apache.gravitino.integration.test.util.TestDatabaseName;
 
@@ -50,6 +52,38 @@ public class OracleService {
       stmt.setString(2, tableName.toUpperCase(Locale.ROOT));
       try (ResultSet rs = stmt.executeQuery()) {
         return rs.next();
+      }
+    } catch (SQLException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  /** Returns Oracle-maintained usernames visible in {@code ALL_USERS}, upper-cased. */
+  public Set<String> listOracleMaintainedUsers() {
+    Set<String> users = new HashSet<>();
+    String sql = "SELECT USERNAME FROM ALL_USERS WHERE ORACLE_MAINTAINED = 'Y'";
+    try (Statement statement = connection.createStatement();
+        ResultSet rs = statement.executeQuery(sql)) {
+      while (rs.next()) {
+        users.add(rs.getString("USERNAME").toUpperCase(Locale.ROOT));
+      }
+    } catch (SQLException e) {
+      throw new RuntimeException(e);
+    }
+    return users;
+  }
+
+  /** Returns the comment stored for a column in {@code ALL_COL_COMMENTS}, or {@code null}. */
+  public String getColumnComment(String tableName, String columnName) {
+    String sql =
+        "SELECT COMMENTS FROM ALL_COL_COMMENTS "
+            + "WHERE OWNER = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?";
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setString(1, schemaOwner);
+      stmt.setString(2, tableName);
+      stmt.setString(3, columnName);
+      try (ResultSet rs = stmt.executeQuery()) {
+        return rs.next() ? rs.getString("COMMENTS") : null;
       }
     } catch (SQLException e) {
       throw new RuntimeException(e);

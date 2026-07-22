@@ -22,6 +22,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -35,6 +36,7 @@ import org.apache.gravitino.catalog.jdbc.operation.JdbcTableOperations;
 import org.apache.gravitino.catalog.jdbc.utils.JdbcConnectorUtils;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
+import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.Expression;
 import org.apache.gravitino.rel.expressions.distributions.Distribution;
@@ -59,6 +61,10 @@ public class OracleTableOperations extends JdbcTableOperations {
           + "FROM ALL_TABLES t LEFT JOIN ALL_TAB_COMMENTS c "
           + "ON c.OWNER = t.OWNER AND c.TABLE_NAME = t.TABLE_NAME "
           + "WHERE t.OWNER = ? AND t.TABLE_NAME = ?";
+  // Oracle's JDBC driver does not populate REMARKS in DatabaseMetaData.getColumns(); column
+  // comments live in ALL_COL_COMMENTS and must be fetched explicitly (see issue #855).
+  private static final String GET_COLUMN_COMMENTS_SQL =
+      "SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS WHERE OWNER = ? AND TABLE_NAME = ?";
   private static final String GET_INDEXES_SQL =
       "SELECT ac.CONSTRAINT_NAME, ac.CONSTRAINT_TYPE, acc.COLUMN_NAME, acc.POSITION "
           + "FROM ALL_CONSTRAINTS ac JOIN ALL_CONS_COLUMNS acc "
@@ -268,6 +274,69 @@ public class OracleTableOperations extends JdbcTableOperations {
     if (StringUtils.isNotBlank(comment)) {
       jdbcTableBuilder.withComment(comment);
     }
+
+    correctColumnComments(connection, tableName, jdbcTableBuilder);
+  }
+
+  /**
+   * Populates column comments from Oracle's {@code ALL_COL_COMMENTS} view. The base JDBC metadata
+   * path reads comments from {@code REMARKS}, which the Oracle driver leaves empty, so loaded
+   * columns would otherwise always have a {@code null} comment (see issue #855).
+   *
+   * @param connection the JDBC connection.
+   * @param tableName the table whose column comments are fetched.
+   * @param jdbcTableBuilder the builder holding the already-loaded columns to be corrected.
+   * @throws SQLException if the column-comment query fails.
+   */
+  private void correctColumnComments(
+      Connection connection, String tableName, JdbcTable.Builder jdbcTableBuilder)
+      throws SQLException {
+    Column[] columns = jdbcTableBuilder.columns();
+    if (columns == null || columns.length == 0) {
+      return;
+    }
+
+    Map<String, String> columnComments = getColumnComments(connection, tableName);
+    if (columnComments.isEmpty()) {
+      return;
+    }
+
+    Column[] corrected = columns.clone();
+    for (int i = 0; i < corrected.length; i++) {
+      Column column = corrected[i];
+      String comment = columnComments.get(column.name());
+      if (StringUtils.isNotBlank(comment) && !comment.equals(column.comment())) {
+        corrected[i] =
+            JdbcColumn.builder()
+                .withName(column.name())
+                .withType(column.dataType())
+                .withComment(comment)
+                .withNullable(column.nullable())
+                .withAutoIncrement(column.autoIncrement())
+                .withDefaultValue(column.defaultValue())
+                .build();
+      }
+    }
+    jdbcTableBuilder.withColumns(corrected);
+  }
+
+  private Map<String, String> getColumnComments(Connection connection, String tableName)
+      throws SQLException {
+    Map<String, String> columnComments = new HashMap<>();
+    try (PreparedStatement statement = connection.prepareStatement(GET_COLUMN_COMMENTS_SQL)) {
+      statement.setString(1, connection.getSchema());
+      statement.setString(2, tableName);
+      try (ResultSet resultSet = statement.executeQuery()) {
+        while (resultSet.next()) {
+          String columnName = resultSet.getString("COLUMN_NAME");
+          String comment = resultSet.getString("COMMENTS");
+          if (StringUtils.isNotBlank(comment)) {
+            columnComments.put(columnName, comment);
+          }
+        }
+      }
+    }
+    return columnComments;
   }
 
   @Override

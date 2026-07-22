@@ -332,11 +332,10 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
               catalog.asTableCatalog().loadTable(NameIdentifier.of(databaseName, tableName));
           Assertions.assertNotNull(table);
           Assertions.assertEquals(comment, table.comment());
-          // Oracle JDBC does not return column REMARKS (remarksReporting=true not set).
           Column[] columns =
               new Column[] {
-                Column.of("STRING_TYPE", Types.StringType.get(), null),
-                Column.of("DOUBLE_TYPE", Types.DoubleType.get(), null)
+                Column.of("STRING_TYPE", Types.StringType.get(), "string_type"),
+                Column.of("DOUBLE_TYPE", Types.DoubleType.get(), "double_type")
               };
           assertColumns(columns, table.columns());
           Assertions.assertArrayEquals(EMPTY_TRANSFORM, table.partitioning());
@@ -425,10 +424,7 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
         supportDropCascade());
   }
 
-  /**
-   * Oracle JDBC does not return column REMARKS by default (remarksReporting=true not set). This
-   * override asserts that column comments are null after a RENAME COLUMN operation.
-   */
+  /** Verifies that Oracle preserves column comments after a {@code RENAME COLUMN} operation. */
   @Override
   @Test
   @EnabledIf("supportColumnOperation")
@@ -449,7 +445,6 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
               ResultKind.SUCCESS);
           TestUtils.assertTableResult(
               sql("ALTER TABLE %s RENAME user_id TO user_id_new", tableName), ResultKind.SUCCESS);
-          // Oracle JDBC does not return column REMARKS; assert null comments.
           Column[] actual =
               catalog
                   .asTableCatalog()
@@ -457,8 +452,8 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .columns();
           Column[] expected =
               new Column[] {
-                Column.of("user_id_new", Types.IntegerType.get(), null),
-                Column.of("order_amount", Types.DoubleType.get(), null),
+                Column.of("user_id_new", Types.IntegerType.get(), "USER_ID"),
+                Column.of("order_amount", Types.DoubleType.get(), "ORDER_AMOUNT"),
               };
           assertColumns(expected, actual);
         },
@@ -466,16 +461,12 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
         supportDropCascade());
   }
 
-  /**
-   * Oracle JDBC does not return column REMARKS. This override creates the table with null column
-   * comments and omits the Flink-level column-comment assertion from the base test.
-   */
+  /** Uses null column comments to focus this override on Oracle table metadata loading. */
   @Override
   @Test
   @EnabledIf("supportTableOperation")
   public void testGetSimpleTable() {
     String databaseName = "test_get_simple_table";
-    // Oracle JDBC does not return REMARKS, so create columns without comments.
     Column[] columns =
         new Column[] {
           Column.of("string_type", Types.StringType.get(), null),
@@ -504,7 +495,7 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
             Assertions.assertEquals(CatalogBaseTable.TableKind.TABLE, table.getTableKind());
             Assertions.assertEquals(comment, table.getComment());
             Assertions.assertFalse(((CatalogTable) table).isPartitioned());
-            // Verify columns via the Gravitino API (column comments always null in Oracle JDBC).
+            // Verify columns via the Gravitino API.
             Table gravitinoTable =
                 catalog
                     .asTableCatalog()
@@ -726,9 +717,8 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .asTableCatalog()
                   .loadTable(NameIdentifier.of(databaseName, tableName.toUpperCase(Locale.ROOT)))
                   .columns();
-          // Oracle JDBC does not return column REMARKS; comments are always null.
           Column[] expected =
-              new Column[] {Column.of("order_amount", Types.IntegerType.get(), null)};
+              new Column[] {Column.of("order_amount", Types.IntegerType.get(), "ORDER_AMOUNT")};
           assertColumns(expected, actual);
         },
         true,
@@ -774,11 +764,10 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .asTableCatalog()
                   .loadTable(NameIdentifier.of(databaseName, tableName.toUpperCase(Locale.ROOT)))
                   .columns();
-          // Oracle JDBC does not return column REMARKS; comments are always null.
           Column[] expected =
               new Column[] {
-                Column.of("user_id", Types.LongType.get(), null),
-                Column.of("order_amount", Types.LongType.get(), null)
+                Column.of("user_id", Types.LongType.get(), "new comment"),
+                Column.of("order_amount", Types.LongType.get(), "new comment2")
               };
           assertColumns(expected, actual);
         },
@@ -816,11 +805,10 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .asTableCatalog()
                   .loadTable(NameIdentifier.of(databaseName, tableName.toUpperCase(Locale.ROOT)))
                   .columns();
-          // Oracle JDBC does not return column REMARKS; comments are always null.
           Column[] expected =
               new Column[] {
-                Column.of("user_id", Types.IntegerType.get(), null),
-                Column.of("order_amount", Types.IntegerType.get(), null),
+                Column.of("user_id", Types.IntegerType.get(), "USER_ID"),
+                Column.of("order_amount", Types.IntegerType.get(), "ORDER_AMOUNT"),
                 Column.of("new_column_2", Types.IntegerType.get(), null),
               };
           assertColumns(expected, actual);
