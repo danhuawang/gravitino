@@ -25,6 +25,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.gravitino.catalog.jdbc.operation.TableOperation;
 import org.apache.gravitino.connector.BaseTable;
 import org.apache.gravitino.connector.TableOperations;
+import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.SupportsPartitions;
 
 /** Represents a Jdbc Table entity in the jdbc table. */
@@ -112,6 +113,15 @@ public class JdbcTable extends BaseTable {
 
     public Map<String, String> properties() {
       return properties;
+    }
+
+    /**
+     * Returns the columns currently set on this builder.
+     *
+     * @return the columns set on this builder, or {@code null} if none have been set.
+     */
+    public Column[] columns() {
+      return columns;
     }
   }
 

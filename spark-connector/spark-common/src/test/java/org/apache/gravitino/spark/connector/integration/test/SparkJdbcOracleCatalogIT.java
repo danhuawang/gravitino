@@ -170,11 +170,11 @@ public abstract class SparkJdbcOracleCatalogIT extends SparkCommonIT {
     return p;
   }
 
-  // Oracle JDBC metadata does not return column comments, so strip them from expectations.
+  // Oracle stores an empty string comment as null.
   @Override
   protected List<SparkColumnInfo> getSimpleTableColumn() {
     return Arrays.asList(
-        SparkColumnInfo.of("id", DataTypes.IntegerType, null),
+        SparkColumnInfo.of("id", DataTypes.IntegerType, "id comment"),
         SparkColumnInfo.of("name", DataTypes.StringType, null),
         SparkColumnInfo.of("age", DataTypes.IntegerType, null));
   }

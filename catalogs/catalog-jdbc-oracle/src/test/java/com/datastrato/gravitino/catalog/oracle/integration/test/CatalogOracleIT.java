@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -174,11 +175,10 @@ public class CatalogOracleIT extends BaseIT {
     return loaded;
   }
 
-  // Column comments are deliberately null in most tests. Oracle's JDBC driver only returns REMARKS
-  // when the connection is opened with remarksReporting=true, which Gravitino does not set by
-  // default, so round-tripping comments through loadTable would give flaky equality checks. We
-  // verify column comments via OracleService (ALL_COL_COMMENTS) in testAlterTableColumnOperations
-  // when we want to assert the COMMENT ON COLUMN statement actually ran.
+  // Column comments are left null in most tests just to keep unrelated assertions simple. Column
+  // comments themselves round-trip correctly through loadTable via ALL_COL_COMMENTS (see #855 and
+  // testColumnCommentsRoundTripThroughLoad); the Oracle driver leaves REMARKS empty, so the catalog
+  // reads ALL_COL_COMMENTS explicitly rather than relying on DatabaseMetaData.
   private Column[] simpleColumns() {
     return new Column[] {
       Column.of("id", Types.IntegerType.get(), null, false, false, null),
@@ -250,6 +250,30 @@ public class CatalogOracleIT extends BaseIT {
   }
 
   @Test
+  void testSystemSchemasAreFiltered() {
+    // Every account maintained by Oracle must be filtered, including accounts installed by optional
+    // components that are not present in a fixed list. See issue #839.
+    Set<String> listed = Sets.newHashSet(catalog.asSchemas().listSchemas());
+    Set<String> oracleMaintainedUsers = oracleService.listOracleMaintainedUsers();
+
+    assertTrue(
+        oracleMaintainedUsers.contains("SYS"),
+        "Expected SYS to be maintained by Oracle: " + oracleMaintainedUsers);
+
+    for (String account : oracleMaintainedUsers) {
+      assertFalse(
+          listed.contains(account),
+          account + " is maintained by Oracle but was returned by listSchemas: " + listed);
+    }
+
+    // The application schema must still be listed.
+    assertTrue(listed.contains(schemaName), "Expected " + schemaName + " in " + listed);
+    assertFalse(
+        oracleMaintainedUsers.contains(schemaName),
+        "Application schema must not be marked as maintained by Oracle");
+  }
+
+  @Test
   void testCreateAndDropSchemaUnsupported() {
     SupportsSchemas schemas = catalog.asSchemas();
     // Oracle does not expose CREATE SCHEMA — the catalog refuses the request with a clear error.
@@ -292,6 +316,40 @@ public class CatalogOracleIT extends BaseIT {
     // Tablespace is not asserted: Oracle Free 23c's default tablespace for APP_USER may come back
     // as null under ALL_TABLES.TABLESPACE_NAME, and the property metadata drops null values.
     assertTrue(oracleService.tableExists(name));
+  }
+
+  @Test
+  void testColumnCommentsRoundTripThroughLoad() {
+    // Issue #855: Oracle leaves REMARKS empty, so column comments must be read from
+    // ALL_COL_COMMENTS. Verify both the create+load and the alter+load paths.
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_COL_COMMENTS";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("name", Types.VarCharType.of(64), "person name", true, false, null)
+        };
+    createTable(name, columns);
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    Map<String, Column> byName =
+        Arrays.stream(loaded.columns())
+            .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
+    assertEquals("person name", byName.get("name").comment());
+    // A column created without a comment stays null.
+    assertNull(byName.get("id").comment());
+
+    // Update the comment via alterTable and confirm the new value is returned by loadTable.
+    tableCatalog.alterTable(
+        tableIdent, TableChange.updateColumnComment(new String[] {"name"}, "updated name comment"));
+    Table reloaded = tableCatalog.loadTable(tableIdent);
+    Map<String, Column> reloadedByName =
+        Arrays.stream(reloaded.columns())
+            .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
+    assertEquals("updated name comment", reloadedByName.get("name").comment());
+    // Cross-check that the write path actually updated ALL_COL_COMMENTS.
+    assertEquals("updated name comment", oracleService.getColumnComment(name, "name"));
   }
 
   @Test

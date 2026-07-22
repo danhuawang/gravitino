@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.catalog.oracle.converter.OracleExceptionConverter;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -34,13 +35,17 @@ public class TestOracleDatabaseOperations {
   private OracleDatabaseOperations operations;
   private DataSource dataSource;
   private Connection connection;
+  private DatabaseMetaData metadata;
 
   @BeforeEach
   void setUp() throws Exception {
     operations = new OracleDatabaseOperations();
     dataSource = mock(DataSource.class);
     connection = mock(Connection.class);
+    metadata = mock(DatabaseMetaData.class);
     when(dataSource.getConnection()).thenReturn(connection);
+    when(connection.getMetaData()).thenReturn(metadata);
+    when(metadata.getDatabaseMajorVersion()).thenReturn(11);
     operations.initialize(dataSource, new OracleExceptionConverter(), Collections.emptyMap());
   }
 
@@ -113,5 +118,56 @@ public class TestOracleDatabaseOperations {
     assertTrue(systemUsers.contains("anonymous"));
     assertTrue(systemUsers.contains("xs$null"));
     assertFalse(systemUsers.contains("app_user"));
+  }
+
+  @Test
+  void testSystemUsersCoverOracle23aiBuiltInAccounts() {
+    // Oracle 18c+/23ai introduced these built-in accounts; they must be filtered from listSchemas
+    // (see issue #839). The set is keyed in lower case because isSystemDatabase() lower-cases.
+    Set<String> systemUsers = new OracleDatabaseOperations().createSysDatabaseNameSet();
+    List<String> oracle23aiAccounts =
+        List.of(
+            "audsys",
+            "baassys",
+            "dbsfwuser",
+            "dgpdb_int",
+            "dip",
+            "dvf",
+            "dvsys",
+            "ggsharedcap",
+            "ggsys",
+            "gsmadmin_internal",
+            "gsmcatuser",
+            "gsmuser",
+            "lbacsys",
+            "pdbadmin",
+            "remote_scheduler_agent",
+            "sys$umf",
+            "sysbackup",
+            "sysdg",
+            "syskm",
+            "sysrac",
+            "vecsys");
+    for (String account : oracle23aiAccounts) {
+      assertTrue(systemUsers.contains(account), "System user set must contain: " + account);
+    }
+  }
+
+  @Test
+  void testListDatabasesFiltersOracleMaintainedAccounts() throws Exception {
+    Statement statement = mock(Statement.class);
+    ResultSet resultSet = mock(ResultSet.class);
+    when(metadata.getDatabaseMajorVersion()).thenReturn(23);
+    when(connection.createStatement()).thenReturn(statement);
+    when(statement.executeQuery(
+            "SELECT USERNAME, ORACLE_MAINTAINED FROM ALL_USERS ORDER BY USERNAME"))
+        .thenReturn(resultSet);
+    when(resultSet.next()).thenReturn(true, true, true, true, false);
+    when(resultSet.getString("USERNAME"))
+        .thenReturn("OPTIONAL_COMPONENT_OWNER", "SYS", "APP_USER", "CUSTOM_USER");
+    when(resultSet.getString("ORACLE_MAINTAINED")).thenReturn("Y", null, "N", "N");
+
+    List<String> databases = operations.listDatabases();
+    assertEquals(List.of("APP_USER", "CUSTOM_USER"), databases);
   }
 }

@@ -30,6 +30,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
@@ -37,6 +38,7 @@ import org.apache.gravitino.catalog.jdbc.JdbcColumn;
 import org.apache.gravitino.catalog.jdbc.JdbcTable;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
+import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.distributions.Distributions;
 import org.apache.gravitino.rel.expressions.literals.Literal;
@@ -253,6 +255,60 @@ public class TestOracleTableOperations {
 
     verify(indexStmt).setString(1, "APP_USER");
     verify(indexStmt).setString(2, "T1");
+  }
+
+  @Test
+  void testCorrectJdbcTableFieldsPopulatesColumnComments() throws Exception {
+    // Simulate the Oracle driver leaving REMARKS empty: columns loaded with null comments.
+    JdbcColumn idColumn =
+        JdbcColumn.builder()
+            .withName("ID")
+            .withType(Types.IntegerType.get())
+            .withNullable(false)
+            .build();
+    JdbcColumn nameColumn =
+        JdbcColumn.builder()
+            .withName("NAME")
+            .withType(Types.VarCharType.of(64))
+            .withNullable(true)
+            .build();
+
+    PreparedStatement commentStmt = mock(PreparedStatement.class);
+    ResultSet commentRs = mock(ResultSet.class);
+    when(connection.getSchema()).thenReturn("APP_USER");
+    when(connection.prepareStatement(anyString())).thenReturn(commentStmt);
+    when(commentStmt.executeQuery()).thenReturn(commentRs);
+    // Only NAME has a comment in ALL_COL_COMMENTS; ID has none.
+    when(commentRs.next()).thenReturn(true, true, false);
+    when(commentRs.getString("COLUMN_NAME")).thenReturn("NAME", "ID");
+    when(commentRs.getString("COMMENTS")).thenReturn("the person name", (String) null);
+
+    JdbcTable.Builder builder =
+        JdbcTable.builder()
+            .withName("T1")
+            .withComment("")
+            .withProperties(Map.of())
+            .withColumns(new JdbcColumn[] {idColumn, nameColumn});
+    operations.correctJdbcTableFieldsForTest(connection, "APP_USER", "T1", builder);
+
+    Map<String, String> commentByName = new HashMap<>();
+    for (Column column : builder.columns()) {
+      commentByName.put(column.name(), column.comment());
+    }
+    assertEquals("the person name", commentByName.get("NAME"));
+    assertEquals(null, commentByName.get("ID"));
+
+    verify(commentStmt).setString(1, "APP_USER");
+    verify(commentStmt).setString(2, "T1");
+  }
+
+  @Test
+  void testCorrectJdbcTableFieldsSkipsColumnCommentQueryWhenNoColumns() throws Exception {
+    // Builder without columns must not issue an ALL_COL_COMMENTS query.
+    JdbcTable.Builder builder =
+        JdbcTable.builder().withName("T1").withComment("").withProperties(Map.of());
+    operations.correctJdbcTableFieldsForTest(connection, "APP_USER", "T1", builder);
+    verify(connection, never()).prepareStatement(anyString());
   }
 
   @Test
