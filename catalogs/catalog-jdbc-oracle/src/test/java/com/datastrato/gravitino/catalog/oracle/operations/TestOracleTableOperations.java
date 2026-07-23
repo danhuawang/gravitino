@@ -13,30 +13,38 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetadata;
 import com.datastrato.gravitino.catalog.oracle.converter.OracleColumnDefaultValueConverter;
 import com.datastrato.gravitino.catalog.oracle.converter.OracleExceptionConverter;
 import com.datastrato.gravitino.catalog.oracle.converter.OracleTypeConverter;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
 import org.apache.gravitino.catalog.jdbc.JdbcColumn;
 import org.apache.gravitino.catalog.jdbc.JdbcTable;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
+import org.apache.gravitino.exceptions.NoSuchColumnException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.TableChange;
@@ -53,6 +61,7 @@ import org.apache.gravitino.rel.partitions.RangePartition;
 import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 public class TestOracleTableOperations {
 
@@ -334,12 +343,12 @@ public class TestOracleTableOperations {
             "T1", columns, props, new Transform[] {Transforms.bucket(4, new String[] {"id"})});
     assertTrue(hashSql.contains("PARTITION BY HASH (\"id\") PARTITIONS 4"));
 
-    // RANGE partitioning without assignments
-    String rangeSql =
-        operations.createSqlWithPartitionForTest(
-            "T1", columns, props, new Transform[] {Transforms.range(new String[] {"id"})});
-    assertTrue(rangeSql.contains("PARTITION BY RANGE (\"id\")"));
-    assertFalse(rangeSql.contains("VALUES LESS THAN"));
+    // Oracle rejects RANGE partitioning without at least one partition definition.
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            operations.createSqlWithPartitionForTest(
+                "T1", columns, props, new Transform[] {Transforms.range(new String[] {"id"})}));
 
     // RANGE partitioning with assignments
     String rangeWithPartsSql =
@@ -355,13 +364,22 @@ public class TestOracleTableOperations {
                     Partitions.range(
                         "p_date", Literals.dateLiteral("2026-04-27"), Literals.NULL, Map.of()),
                     Partitions.range(
+                        "p_timestamp",
+                        Literals.timestampLiteral("2026-04-28T12:34:56"),
+                        Literals.NULL,
+                        Map.of()),
+                    Partitions.range(
                         "p\"quote", Literals.longLiteral(200L), Literals.NULL, Map.of()),
                     Partitions.range("p2", Literals.NULL, Literals.NULL, Map.of())
                   })
             });
     assertTrue(rangeWithPartsSql.contains("PARTITION BY RANGE (\"id\")"));
     assertTrue(rangeWithPartsSql.contains("PARTITION \"p1\" VALUES LESS THAN (100)"));
-    assertTrue(rangeWithPartsSql.contains("PARTITION \"p_date\" VALUES LESS THAN ('2026-04-27')"));
+    assertTrue(
+        rangeWithPartsSql.contains("PARTITION \"p_date\" VALUES LESS THAN (DATE '2026-04-27')"));
+    assertTrue(
+        rangeWithPartsSql.contains(
+            "PARTITION \"p_timestamp\" VALUES LESS THAN (TIMESTAMP '2026-04-28 12:34:56')"));
     assertTrue(rangeWithPartsSql.contains("PARTITION \"p\"\"quote\" VALUES LESS THAN (200)"));
     assertTrue(rangeWithPartsSql.contains("PARTITION \"p2\" VALUES LESS THAN (MAXVALUE)"));
 
@@ -493,7 +511,14 @@ public class TestOracleTableOperations {
     ResultSet typeRs2 = mock(ResultSet.class);
     PreparedStatement colStmt2 = mock(PreparedStatement.class);
     ResultSet colRs2 = mock(ResultSet.class);
-    when(connection.prepareStatement(anyString())).thenReturn(typeStmt2, colStmt2);
+    PreparedStatement columnTypeStmt = mock(PreparedStatement.class);
+    ResultSet columnTypeRs = mock(ResultSet.class);
+    PreparedStatement partitionsStmt = mock(PreparedStatement.class);
+    ResultSet partitionsRs = mock(ResultSet.class);
+    Statement rangeBoundStmt = mock(Statement.class);
+    ResultSet rangeBoundRs = mock(ResultSet.class);
+    when(connection.prepareStatement(anyString()))
+        .thenReturn(typeStmt2, colStmt2, columnTypeStmt, partitionsStmt);
     when(typeStmt2.executeQuery()).thenReturn(typeRs2);
     when(typeRs2.next()).thenReturn(true);
     when(typeRs2.getString("PARTITIONING_TYPE")).thenReturn("RANGE");
@@ -501,12 +526,44 @@ public class TestOracleTableOperations {
     when(colStmt2.executeQuery()).thenReturn(colRs2);
     when(colRs2.next()).thenReturn(true, false);
     when(colRs2.getString("COLUMN_NAME")).thenReturn("ORDER_DATE");
+    when(columnTypeStmt.executeQuery()).thenReturn(columnTypeRs);
+    when(columnTypeRs.next()).thenReturn(true);
+    when(columnTypeRs.getString("DATA_TYPE")).thenReturn("TIMESTAMP(6)");
+    when(columnTypeRs.getObject("DATA_PRECISION", Integer.class)).thenReturn(null);
+    when(columnTypeRs.getObject("DATA_SCALE", Integer.class)).thenReturn(6);
+    when(columnTypeRs.getObject("CHAR_LENGTH", Integer.class)).thenReturn(null);
+    when(partitionsStmt.executeQuery()).thenReturn(partitionsRs);
+    when(partitionsRs.next()).thenReturn(true, true, false);
+    when(partitionsRs.getString("PARTITION_NAME")).thenReturn("P_2024", "P_MAX");
+    when(partitionsRs.getString("HIGH_VALUE"))
+        .thenReturn("TO_TIMESTAMP('2024-01-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS')", "MAXVALUE");
+    when(connection.createStatement()).thenReturn(rangeBoundStmt);
+    when(rangeBoundStmt.executeQuery(
+            "SELECT (TO_TIMESTAMP('2024-01-01 00:00:00', 'YYYY-MM-DD HH24:MI:SS')) "
+                + "FROM SYS.DUAL"))
+        .thenReturn(rangeBoundRs);
+    when(rangeBoundRs.next()).thenReturn(true, false);
+    when(rangeBoundRs.getTimestamp(1)).thenReturn(Timestamp.valueOf("2024-01-01 00:00:00"));
 
     Transform[] rangeTransforms =
         operations.getTablePartitioningForTest(connection, "APP_USER", "T1");
     assertEquals(1, rangeTransforms.length);
     assertTrue(rangeTransforms[0] instanceof Transforms.RangeTransform);
-    assertEquals("ORDER_DATE", ((Transforms.RangeTransform) rangeTransforms[0]).fieldName()[0]);
+    Transforms.RangeTransform rangeTransform = (Transforms.RangeTransform) rangeTransforms[0];
+    assertEquals("ORDER_DATE", rangeTransform.fieldName()[0]);
+    assertEquals(2, rangeTransform.assignments().length);
+    assertEquals("P_2024", rangeTransform.assignments()[0].name());
+    assertEquals(
+        LocalDateTime.of(2024, 1, 1, 0, 0), rangeTransform.assignments()[0].upper().value());
+    assertEquals(
+        Types.TimestampType.withoutTimeZone(6), rangeTransform.assignments()[0].upper().dataType());
+    assertEquals(Literals.NULL, rangeTransform.assignments()[0].lower());
+    assertEquals("P_MAX", rangeTransform.assignments()[1].name());
+    assertEquals(Literals.NULL, rangeTransform.assignments()[1].upper());
+    verify(columnTypeStmt).setString(3, "ORDER_DATE");
+    verify(partitionsStmt).setString(1, "APP_USER");
+    verify(partitionsStmt).setString(2, "T1");
+    verify(rangeBoundRs).getTimestamp(1);
 
     PreparedStatement typeStmt3 = mock(PreparedStatement.class);
     ResultSet typeRs3 = mock(ResultSet.class);
@@ -558,6 +615,298 @@ public class TestOracleTableOperations {
     when(colRs5.getString("COLUMN_NAME")).thenReturn("ORDER_DATE");
 
     assertEquals(0, operations.getTablePartitioningForTest(connection, "APP_USER", "T1").length);
+  }
+
+  @Test
+  void testGetTablePartitioningThrowsWhenPartitionColumnIsMissing() throws Exception {
+    PreparedStatement typeStmt = mock(PreparedStatement.class);
+    ResultSet typeRs = mock(ResultSet.class);
+    PreparedStatement colStmt = mock(PreparedStatement.class);
+    ResultSet colRs = mock(ResultSet.class);
+    PreparedStatement columnTypeStmt = mock(PreparedStatement.class);
+    ResultSet columnTypeRs = mock(ResultSet.class);
+
+    when(connection.prepareStatement(anyString())).thenReturn(typeStmt, colStmt, columnTypeStmt);
+    when(typeStmt.executeQuery()).thenReturn(typeRs);
+    when(typeRs.next()).thenReturn(true);
+    when(typeRs.getString("PARTITIONING_TYPE")).thenReturn("RANGE");
+    when(colStmt.executeQuery()).thenReturn(colRs);
+    when(colRs.next()).thenReturn(true, false);
+    when(colRs.getString("COLUMN_NAME")).thenReturn("MISSING_COLUMN");
+    when(columnTypeStmt.executeQuery()).thenReturn(columnTypeRs);
+    when(columnTypeRs.next()).thenReturn(false);
+
+    assertThrows(
+        NoSuchColumnException.class,
+        () -> operations.getTablePartitioningForTest(connection, "APP_USER", "T1"));
+    verify(columnTypeStmt).setString(3, "MISSING_COLUMN");
+  }
+
+  @Test
+  void testGetPartitionColumnTypeIgnoresZeroCharacterLengthForNumber() throws Exception {
+    PreparedStatement columnTypeStmt = mock(PreparedStatement.class);
+    ResultSet columnTypeRs = mock(ResultSet.class);
+    when(connection.prepareStatement(anyString())).thenReturn(columnTypeStmt);
+    when(columnTypeStmt.executeQuery()).thenReturn(columnTypeRs);
+    when(columnTypeRs.next()).thenReturn(true);
+    when(columnTypeRs.getString("DATA_TYPE")).thenReturn("NUMBER");
+    when(columnTypeRs.getObject("DATA_PRECISION", Integer.class)).thenReturn(null);
+    when(columnTypeRs.getObject("DATA_SCALE", Integer.class)).thenReturn(null);
+    when(columnTypeRs.getObject("CHAR_LENGTH", Integer.class)).thenReturn(0);
+
+    assertEquals(
+        Types.ExternalType.of("NUMBER"),
+        operations.getPartitionColumnType(connection, "APP_USER", "T1", "AMOUNT"));
+    verify(columnTypeStmt).setString(1, "APP_USER");
+    verify(columnTypeStmt).setString(2, "T1");
+    verify(columnTypeStmt).setString(3, "AMOUNT");
+  }
+
+  @Test
+  void testGetTablePartitioningBatchesNumericBounds() throws Exception {
+    PreparedStatement typeStmt = mock(PreparedStatement.class);
+    ResultSet typeRs = mock(ResultSet.class);
+    PreparedStatement colStmt = mock(PreparedStatement.class);
+    ResultSet colRs = mock(ResultSet.class);
+    PreparedStatement columnTypeStmt = mock(PreparedStatement.class);
+    ResultSet columnTypeRs = mock(ResultSet.class);
+    PreparedStatement partitionsStmt = mock(PreparedStatement.class);
+    ResultSet partitionsRs = mock(ResultSet.class);
+    Statement rangeBoundStmt = mock(Statement.class);
+    ResultSet firstBatchRs = mock(ResultSet.class);
+    ResultSet secondBatchRs = mock(ResultSet.class);
+
+    when(connection.prepareStatement(anyString()))
+        .thenReturn(typeStmt, colStmt, columnTypeStmt, partitionsStmt);
+    when(typeStmt.executeQuery()).thenReturn(typeRs);
+    when(typeRs.next()).thenReturn(true);
+    when(typeRs.getString("PARTITIONING_TYPE")).thenReturn("RANGE");
+    when(typeRs.getInt("PARTITION_COUNT")).thenReturn(102);
+    when(colStmt.executeQuery()).thenReturn(colRs);
+    when(colRs.next()).thenReturn(true, false);
+    when(colRs.getString("COLUMN_NAME")).thenReturn("ID");
+    when(columnTypeStmt.executeQuery()).thenReturn(columnTypeRs);
+    when(columnTypeRs.next()).thenReturn(true);
+    when(columnTypeRs.getString("DATA_TYPE")).thenReturn("NUMBER");
+    when(columnTypeRs.getObject("DATA_PRECISION", Integer.class)).thenReturn(10);
+    when(columnTypeRs.getObject("DATA_SCALE", Integer.class)).thenReturn(0);
+    when(columnTypeRs.getObject("CHAR_LENGTH", Integer.class)).thenReturn(null);
+    when(partitionsStmt.executeQuery()).thenReturn(partitionsRs);
+    AtomicInteger partitionIndex = new AtomicInteger();
+    when(partitionsRs.next()).thenAnswer(ignored -> partitionIndex.getAndIncrement() < 102);
+    when(partitionsRs.getString("PARTITION_NAME"))
+        .thenAnswer(
+            ignored -> {
+              int current = partitionIndex.get() - 1;
+              return current < 101 ? "P_" + (current + 1) : "P_MAX";
+            });
+    when(partitionsRs.getString("HIGH_VALUE"))
+        .thenAnswer(
+            ignored -> {
+              int current = partitionIndex.get() - 1;
+              return current < 101 ? Integer.toString(current + 1) : "MAXVALUE";
+            });
+    when(connection.createStatement()).thenReturn(rangeBoundStmt);
+    when(rangeBoundStmt.executeQuery(anyString())).thenReturn(firstBatchRs, secondBatchRs);
+    when(firstBatchRs.next()).thenReturn(true, false);
+    when(firstBatchRs.getInt(anyInt()))
+        .thenAnswer(invocation -> invocation.<Integer>getArgument(0));
+    when(secondBatchRs.next()).thenReturn(true, false);
+    when(secondBatchRs.getInt(1)).thenReturn(101);
+
+    Transform[] transforms = operations.getTablePartitioningForTest(connection, "APP_USER", "T1");
+    Transforms.RangeTransform rangeTransform = (Transforms.RangeTransform) transforms[0];
+    assertEquals(102, rangeTransform.assignments().length);
+    assertEquals(1, rangeTransform.assignments()[0].upper().value());
+    assertEquals(100, rangeTransform.assignments()[99].upper().value());
+    assertEquals(101, rangeTransform.assignments()[100].upper().value());
+    assertEquals(Types.IntegerType.get(), rangeTransform.assignments()[100].upper().dataType());
+    assertEquals(Literals.NULL, rangeTransform.assignments()[101].upper());
+
+    ArgumentCaptor<String> queryCaptor = ArgumentCaptor.forClass(String.class);
+    verify(rangeBoundStmt, times(2)).executeQuery(queryCaptor.capture());
+    List<String> queries = queryCaptor.getAllValues();
+    assertTrue(queries.get(0).startsWith("SELECT (1), (2)"));
+    assertTrue(queries.get(0).endsWith("(100) FROM SYS.DUAL"));
+    assertEquals("SELECT (101) FROM SYS.DUAL", queries.get(1));
+    assertFalse(queries.stream().anyMatch(query -> query.contains("MAXVALUE")));
+  }
+
+  @Test
+  void testEvaluateRangeUpperBoundsSplitsLongQueries() throws Exception {
+    Statement rangeBoundStmt = mock(Statement.class);
+    ResultSet firstBatchRs = mock(ResultSet.class);
+    ResultSet secondBatchRs = mock(ResultSet.class);
+    when(connection.createStatement()).thenReturn(rangeBoundStmt);
+    when(rangeBoundStmt.executeQuery(anyString())).thenReturn(firstBatchRs, secondBatchRs);
+    when(firstBatchRs.next()).thenReturn(true, false);
+    when(firstBatchRs.getInt(1)).thenReturn(1);
+    when(firstBatchRs.getInt(2)).thenReturn(2);
+    when(secondBatchRs.next()).thenReturn(true, false);
+    when(secondBatchRs.getInt(1)).thenReturn(3);
+
+    String padding = "x".repeat(14_000);
+    String firstExpression = "1 /*" + padding + "*/";
+    String secondExpression = "2 /*" + padding + "*/";
+    String thirdExpression = "3 /*" + padding + "*/";
+    Literal<?>[] bounds =
+        operations.evaluateRangeUpperBounds(
+            connection,
+            List.of(firstExpression, secondExpression, thirdExpression),
+            Types.IntegerType.get());
+
+    assertEquals(1, bounds[0].value());
+    assertEquals(2, bounds[1].value());
+    assertEquals(3, bounds[2].value());
+    ArgumentCaptor<String> queryCaptor = ArgumentCaptor.forClass(String.class);
+    verify(rangeBoundStmt, times(2)).executeQuery(queryCaptor.capture());
+    assertTrue(queryCaptor.getAllValues().get(0).contains(firstExpression));
+    assertTrue(queryCaptor.getAllValues().get(0).contains(secondExpression));
+    assertFalse(queryCaptor.getAllValues().get(0).contains(thirdExpression));
+    assertEquals(
+        "SELECT (" + thirdExpression + ") FROM SYS.DUAL", queryCaptor.getAllValues().get(1));
+  }
+
+  @Test
+  void testEvaluateRangeUpperBoundsRejectsInvalidResults() throws Exception {
+    SQLException emptyExpressionException =
+        assertThrows(
+            SQLException.class,
+            () ->
+                operations.evaluateRangeUpperBounds(
+                    connection, List.of(" "), Types.IntegerType.get()));
+    assertTrue(emptyExpressionException.getMessage().contains("empty"));
+
+    Statement rangeBoundStmt = mock(Statement.class);
+    ResultSet noRowsRs = mock(ResultSet.class);
+    ResultSet nullValueRs = mock(ResultSet.class);
+    ResultSet multipleRowsRs = mock(ResultSet.class);
+    when(connection.createStatement()).thenReturn(rangeBoundStmt);
+    when(rangeBoundStmt.executeQuery(anyString()))
+        .thenReturn(noRowsRs, nullValueRs, multipleRowsRs);
+    when(noRowsRs.next()).thenReturn(false);
+    when(nullValueRs.next()).thenReturn(true, false);
+    when(nullValueRs.wasNull()).thenReturn(true);
+    when(multipleRowsRs.next()).thenReturn(true, true);
+    when(multipleRowsRs.getInt(1)).thenReturn(1);
+
+    SQLException noRowsException =
+        assertThrows(
+            SQLException.class,
+            () ->
+                operations.evaluateRangeUpperBounds(
+                    connection, List.of("1"), Types.IntegerType.get()));
+    assertTrue(noRowsException.getMessage().contains("no row"));
+
+    SQLException nullValueException =
+        assertThrows(
+            SQLException.class,
+            () ->
+                operations.evaluateRangeUpperBounds(
+                    connection, List.of("2"), Types.IntegerType.get()));
+    assertTrue(nullValueException.getMessage().contains("NULL"));
+
+    SQLException multipleRowsException =
+        assertThrows(
+            SQLException.class,
+            () ->
+                operations.evaluateRangeUpperBounds(
+                    connection, List.of("3"), Types.IntegerType.get()));
+    assertTrue(multipleRowsException.getMessage().contains("multiple rows"));
+  }
+
+  @Test
+  void testEvaluateRawRangeUpperBoundAsHexText() throws Exception {
+    Statement rangeBoundStmt = mock(Statement.class);
+    ResultSet rangeBoundRs = mock(ResultSet.class);
+    when(connection.createStatement()).thenReturn(rangeBoundStmt);
+    when(rangeBoundStmt.executeQuery("SELECT (HEXTORAW('0AFF')) FROM SYS.DUAL"))
+        .thenReturn(rangeBoundRs);
+    when(rangeBoundRs.next()).thenReturn(true, false);
+    when(rangeBoundRs.getString(1)).thenReturn("0AFF");
+
+    Literal<?>[] bounds =
+        operations.evaluateRangeUpperBounds(
+            connection, List.of("HEXTORAW('0AFF')"), Types.BinaryType.get());
+
+    assertEquals("0AFF", bounds[0].value());
+    assertEquals(Types.BinaryType.get(), bounds[0].dataType());
+    verify(rangeBoundRs).getString(1);
+  }
+
+  @Test
+  void testEvaluateNumberOneRangeBoundsWithoutCollapsingValues() throws Exception {
+    Statement rangeBoundStmt = mock(Statement.class);
+    ResultSet rangeBoundRs = mock(ResultSet.class);
+    when(connection.createStatement()).thenReturn(rangeBoundStmt);
+    when(rangeBoundStmt.executeQuery("SELECT (1), (2) FROM SYS.DUAL")).thenReturn(rangeBoundRs);
+    when(rangeBoundRs.next()).thenReturn(true, false);
+    when(rangeBoundRs.getBigDecimal(1)).thenReturn(BigDecimal.ONE);
+    when(rangeBoundRs.getBigDecimal(2)).thenReturn(new BigDecimal("2"));
+
+    Literal<?>[] bounds =
+        operations.evaluateRangeUpperBounds(connection, List.of("1", "2"), Types.BooleanType.get());
+
+    assertEquals(true, bounds[0].value());
+    assertEquals(new BigDecimal("2"), bounds[1].value());
+    assertEquals(Types.BooleanType.get(), bounds[0].dataType());
+    assertEquals(Types.BooleanType.get(), bounds[1].dataType());
+    verify(rangeBoundRs, times(2)).getBigDecimal(anyInt());
+    verify(rangeBoundRs, never()).getBoolean(anyInt());
+  }
+
+  @Test
+  void testGetTablePartitioningPreservesCharacterBoundWhitespace() throws Exception {
+    PreparedStatement typeStmt = mock(PreparedStatement.class);
+    ResultSet typeRs = mock(ResultSet.class);
+    PreparedStatement colStmt = mock(PreparedStatement.class);
+    ResultSet colRs = mock(ResultSet.class);
+    PreparedStatement columnTypeStmt = mock(PreparedStatement.class);
+    ResultSet columnTypeRs = mock(ResultSet.class);
+    PreparedStatement partitionsStmt = mock(PreparedStatement.class);
+    ResultSet partitionsRs = mock(ResultSet.class);
+    Statement rangeBoundStmt = mock(Statement.class);
+    ResultSet rangeBoundRs = mock(ResultSet.class);
+
+    when(connection.prepareStatement(anyString()))
+        .thenReturn(typeStmt, colStmt, columnTypeStmt, partitionsStmt);
+    when(typeStmt.executeQuery()).thenReturn(typeRs);
+    when(typeRs.next()).thenReturn(true);
+    when(typeRs.getString("PARTITIONING_TYPE")).thenReturn("RANGE");
+    when(typeRs.getInt("PARTITION_COUNT")).thenReturn(2);
+    when(colStmt.executeQuery()).thenReturn(colRs);
+    when(colRs.next()).thenReturn(true, false);
+    when(colRs.getString("COLUMN_NAME")).thenReturn("CODE");
+    when(columnTypeStmt.executeQuery()).thenReturn(columnTypeRs);
+    when(columnTypeRs.next()).thenReturn(true);
+    when(columnTypeRs.getString("DATA_TYPE")).thenReturn("VARCHAR2");
+    when(columnTypeRs.getObject("DATA_PRECISION", Integer.class)).thenReturn(null);
+    when(columnTypeRs.getObject("DATA_SCALE", Integer.class)).thenReturn(null);
+    when(columnTypeRs.getObject("CHAR_LENGTH", Integer.class)).thenReturn(10);
+    when(partitionsStmt.executeQuery()).thenReturn(partitionsRs);
+    when(partitionsRs.next()).thenReturn(true, true, false);
+    when(partitionsRs.getString("PARTITION_NAME")).thenReturn("P_CODE", "P_MAX");
+    when(partitionsRs.getString("HIGH_VALUE")).thenReturn("RPAD(' A ', 5, ' ')", "MAXVALUE");
+    when(connection.createStatement()).thenReturn(rangeBoundStmt);
+    when(rangeBoundStmt.executeQuery("SELECT (RPAD(' A ', 5, ' ')) FROM SYS.DUAL"))
+        .thenReturn(rangeBoundRs);
+    when(rangeBoundRs.next()).thenReturn(true, false);
+    when(rangeBoundRs.getString(1)).thenReturn(" A   ");
+
+    Transform[] transforms = operations.getTablePartitioningForTest(connection, "APP_USER", "T1");
+    Transforms.RangeTransform rangeTransform = (Transforms.RangeTransform) transforms[0];
+    assertEquals(" A   ", rangeTransform.assignments()[0].upper().value());
+    assertEquals(Types.VarCharType.of(10), rangeTransform.assignments()[0].upper().dataType());
+    assertEquals(Literals.NULL, rangeTransform.assignments()[1].upper());
+    verify(rangeBoundRs).getString(1);
+  }
+
+  @Test
+  void testCommentPropertyIsHiddenAndReserved() {
+    OracleTablePropertiesMetadata metadata = new OracleTablePropertiesMetadata();
+
+    assertTrue(metadata.isHiddenProperty(COMMENT_KEY));
+    assertTrue(metadata.isReservedProperty(COMMENT_KEY));
   }
 
   @Test

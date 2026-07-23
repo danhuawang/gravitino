@@ -25,6 +25,7 @@ public class OracleTablePropertiesMetadata extends JdbcTablePropertiesMetadata {
 
   private static Map<String, PropertyEntry<?>> createPropertiesMetadata() {
     Map<String, PropertyEntry<?>> map = new HashMap<>();
+    map.put(COMMENT_KEY, stringReservedPropertyEntry(COMMENT_KEY, "The table comment", true));
     // These properties are metadata read from Oracle's ALL_TABLES view. They are not sensitive, so
     // they must stay visible (hidden=false) to be returned by loadTable. TABLESPACE can be selected
     // when a table is created but cannot be altered, while the other three values are derived by

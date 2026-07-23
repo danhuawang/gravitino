@@ -7,6 +7,11 @@ package com.datastrato.gravitino.catalog.oracle.converter;
 import static org.apache.gravitino.rel.Column.DEFAULT_VALUE_NOT_SET;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.util.Locale;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcColumnDefaultValueConverter;
@@ -17,9 +22,17 @@ import org.apache.gravitino.rel.expressions.UnparsedExpression;
 import org.apache.gravitino.rel.expressions.literals.Literal;
 import org.apache.gravitino.rel.expressions.literals.Literals;
 import org.apache.gravitino.rel.types.Decimal;
+import org.apache.gravitino.rel.types.Type;
+import org.apache.gravitino.rel.types.Types;
 
 /** Column default value converter for Oracle. */
 public class OracleColumnDefaultValueConverter extends JdbcColumnDefaultValueConverter {
+
+  private static final DateTimeFormatter ORACLE_TIMESTAMP_FORMATTER =
+      new DateTimeFormatterBuilder()
+          .appendPattern("yyyy-MM-dd HH:mm:ss")
+          .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+          .toFormatter();
 
   @Override
   public Expression toGravitino(
@@ -108,8 +121,22 @@ public class OracleColumnDefaultValueConverter extends JdbcColumnDefaultValueCon
           return functionName + "()";
       }
     }
-    if (defaultValue instanceof Literal && ((Literal<?>) defaultValue).value() instanceof String) {
-      return escapeSqlStringLiteral((String) ((Literal<?>) defaultValue).value());
+    if (defaultValue instanceof Literal) {
+      Literal<?> literal = (Literal<?>) defaultValue;
+      Type type = literal.dataType();
+      if (type instanceof Types.BooleanType) {
+        return formatBoolean(literal.value());
+      }
+      if (type instanceof Types.TimestampType) {
+        return "TIMESTAMP "
+            + escapeSqlStringLiteral(formatTimestamp(literal.value(), (Types.TimestampType) type));
+      }
+      if (type instanceof Types.DateType) {
+        return "DATE " + escapeSqlStringLiteral(literal.value().toString());
+      }
+      if (literal.value() instanceof String) {
+        return escapeSqlStringLiteral((String) literal.value());
+      }
     }
     if (defaultValue instanceof UnparsedExpression) {
       return ((UnparsedExpression) defaultValue).unparsedExpression();
@@ -119,6 +146,42 @@ public class OracleColumnDefaultValueConverter extends JdbcColumnDefaultValueCon
 
   private static String escapeSqlStringLiteral(String value) {
     return "'" + value.replace("'", "''") + "'";
+  }
+
+  private static String formatBoolean(Object value) {
+    if (value instanceof Boolean) {
+      return (Boolean) value ? "1" : "0";
+    }
+    String stringValue = value.toString();
+    if ("true".equalsIgnoreCase(stringValue)) {
+      return "1";
+    }
+    if ("false".equalsIgnoreCase(stringValue)) {
+      return "0";
+    }
+    try {
+      return new BigDecimal(stringValue).stripTrailingZeros().toPlainString();
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("Invalid Oracle NUMBER(1) value: " + stringValue, e);
+    }
+  }
+
+  private static String formatTimestamp(Object value, Types.TimestampType type) {
+    if (type.hasTimeZone()) {
+      OffsetDateTime timestamp =
+          value instanceof OffsetDateTime
+              ? (OffsetDateTime) value
+              : OffsetDateTime.parse(value.toString());
+      String offset = timestamp.getOffset().getId();
+      return ORACLE_TIMESTAMP_FORMATTER.format(timestamp)
+          + " "
+          + ("Z".equals(offset) ? "+00:00" : offset);
+    }
+    LocalDateTime timestamp =
+        value instanceof LocalDateTime
+            ? (LocalDateTime) value
+            : LocalDateTime.parse(value.toString());
+    return ORACLE_TIMESTAMP_FORMATTER.format(timestamp);
   }
 
   private static String unescapeSqlStringLiteral(String quoted) {

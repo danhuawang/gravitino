@@ -11,14 +11,20 @@ import static com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetad
 import static org.apache.gravitino.catalog.jdbc.JdbcTablePropertiesMetadata.COMMENT_KEY;
 import static org.apache.gravitino.rel.Column.DEFAULT_VALUE_NOT_SET;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,8 +38,10 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.catalog.jdbc.JdbcColumn;
 import org.apache.gravitino.catalog.jdbc.JdbcTable;
+import org.apache.gravitino.catalog.jdbc.converter.JdbcTypeConverter;
 import org.apache.gravitino.catalog.jdbc.operation.JdbcTableOperations;
 import org.apache.gravitino.catalog.jdbc.utils.JdbcConnectorUtils;
+import org.apache.gravitino.exceptions.NoSuchColumnException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.rel.Column;
@@ -49,13 +57,20 @@ import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.rel.indexes.Indexes;
 import org.apache.gravitino.rel.partitions.ListPartition;
+import org.apache.gravitino.rel.partitions.Partitions;
 import org.apache.gravitino.rel.partitions.RangePartition;
+import org.apache.gravitino.rel.types.Decimal;
 import org.apache.gravitino.rel.types.Type;
+import org.apache.gravitino.rel.types.Types;
 
 /** Table operations for Oracle. */
 public class OracleTableOperations extends JdbcTableOperations {
 
+  private static final int MAX_RANGE_EXPRESSIONS_PER_QUERY = 100;
+  private static final int MAX_RANGE_EXPRESSION_QUERY_LENGTH = 30_000;
   private static final String DOUBLE_QUOTE = "\"";
+  private static final String EVALUATE_RANGE_EXPRESSIONS_SQL_PREFIX = "SELECT ";
+  private static final String EVALUATE_RANGE_EXPRESSIONS_SQL_SUFFIX = " FROM SYS.DUAL";
   private static final String GET_TABLE_PROPERTIES_SQL =
       "SELECT t.TABLESPACE_NAME, t.PARTITIONED, t.ROW_MOVEMENT, t.COMPRESSION, c.COMMENTS "
           + "FROM ALL_TABLES t LEFT JOIN ALL_TAB_COMMENTS c "
@@ -78,6 +93,12 @@ public class OracleTableOperations extends JdbcTableOperations {
   private static final String GET_PARTITION_COLUMNS_SQL =
       "SELECT COLUMN_NAME FROM ALL_PART_KEY_COLUMNS "
           + "WHERE OWNER = ? AND NAME = ? ORDER BY COLUMN_POSITION";
+  private static final String GET_PARTITION_COLUMN_TYPE_SQL =
+      "SELECT DATA_TYPE, DATA_PRECISION, DATA_SCALE, CHAR_LENGTH FROM ALL_TAB_COLUMNS "
+          + "WHERE OWNER = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?";
+  private static final String GET_RANGE_PARTITIONS_SQL =
+      "SELECT PARTITION_NAME, HIGH_VALUE FROM ALL_TAB_PARTITIONS "
+          + "WHERE TABLE_OWNER = ? AND TABLE_NAME = ? ORDER BY PARTITION_POSITION";
 
   @Override
   protected String generateCreateTableSql(
@@ -246,7 +267,11 @@ public class OracleTableOperations extends JdbcTableOperations {
               throw new UnsupportedOperationException(
                   "Oracle composite RANGE partitioning is not supported.");
             }
-            return new Transform[] {Transforms.range(columns)};
+            Type columnType =
+                getPartitionColumnType(connection, databaseName, tableName, columns[0]);
+            RangePartition[] assignments =
+                getRangePartitions(connection, databaseName, tableName, columnType);
+            return new Transform[] {Transforms.range(columns, assignments)};
           case "LIST":
             String[][] listColumns =
                 Arrays.stream(columns).map(c -> new String[] {c}).toArray(String[][]::new);
@@ -455,6 +480,104 @@ public class OracleTableOperations extends JdbcTableOperations {
     return false;
   }
 
+  @VisibleForTesting
+  Type getPartitionColumnType(
+      Connection connection, String databaseName, String tableName, String columnName)
+      throws SQLException {
+    try (PreparedStatement stmt = connection.prepareStatement(GET_PARTITION_COLUMN_TYPE_SQL)) {
+      stmt.setString(1, databaseName);
+      stmt.setString(2, tableName);
+      stmt.setString(3, columnName);
+      try (ResultSet rs = stmt.executeQuery()) {
+        if (!rs.next()) {
+          throw new NoSuchColumnException(
+              "Partition column %s does not exist in table %s.%s.",
+              columnName, databaseName, tableName);
+        }
+        JdbcTypeConverter.JdbcTypeBean typeBean =
+            new JdbcTypeConverter.JdbcTypeBean(rs.getString("DATA_TYPE"));
+        Integer precision = rs.getObject("DATA_PRECISION", Integer.class);
+        Integer charLength = rs.getObject("CHAR_LENGTH", Integer.class);
+        Integer columnSize = precision;
+        if (columnSize == null && charLength != null && charLength > 0) {
+          columnSize = charLength;
+        }
+        typeBean.setColumnSize(columnSize);
+        typeBean.setScale(rs.getObject("DATA_SCALE", Integer.class));
+        return typeConverter.toGravitino(typeBean);
+      }
+    }
+  }
+
+  @VisibleForTesting
+  Literal<?>[] evaluateRangeUpperBounds(
+      Connection connection, List<String> expressions, Type columnType) throws SQLException {
+    Literal<?>[] upperBounds = new Literal<?>[expressions.size()];
+    List<Integer> finiteBoundPositions = new ArrayList<>();
+    List<String> finiteBoundExpressions = new ArrayList<>();
+    for (int i = 0; i < expressions.size(); i++) {
+      String expression = expressions.get(i);
+      if (StringUtils.isBlank(expression)) {
+        throw new SQLException("Oracle returned an empty range partition bound expression.");
+      }
+      if ("MAXVALUE".equalsIgnoreCase(expression)) {
+        upperBounds[i] = Literals.NULL;
+      } else {
+        finiteBoundPositions.add(i);
+        finiteBoundExpressions.add(expression);
+      }
+    }
+
+    if (finiteBoundExpressions.isEmpty()) {
+      return upperBounds;
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      int batchStart = 0;
+      while (batchStart < finiteBoundExpressions.size()) {
+        StringBuilder sql = new StringBuilder(EVALUATE_RANGE_EXPRESSIONS_SQL_PREFIX);
+        int batchEnd = batchStart;
+        while (batchEnd < finiteBoundExpressions.size()
+            && batchEnd - batchStart < MAX_RANGE_EXPRESSIONS_PER_QUERY) {
+          String expression = finiteBoundExpressions.get(batchEnd);
+          int separatorLength = batchEnd == batchStart ? 0 : 2;
+          int projectedLength =
+              sql.length()
+                  + separatorLength
+                  + expression.length()
+                  + 2
+                  + EVALUATE_RANGE_EXPRESSIONS_SQL_SUFFIX.length();
+          if (batchEnd > batchStart && projectedLength > MAX_RANGE_EXPRESSION_QUERY_LENGTH) {
+            break;
+          }
+          if (separatorLength > 0) {
+            sql.append(", ");
+          }
+          sql.append('(').append(expression).append(')');
+          batchEnd++;
+        }
+        sql.append(EVALUATE_RANGE_EXPRESSIONS_SQL_SUFFIX);
+
+        try (ResultSet resultSet = statement.executeQuery(sql.toString())) {
+          if (!resultSet.next()) {
+            throw new SQLException("Oracle returned no row while evaluating partition bounds.");
+          }
+          for (int i = batchStart; i < batchEnd; i++) {
+            int columnIndex = i - batchStart + 1;
+            upperBounds[finiteBoundPositions.get(i)] =
+                toRangeLiteral(resultSet, columnIndex, columnType);
+          }
+          if (resultSet.next()) {
+            throw new SQLException(
+                "Oracle returned multiple rows while evaluating partition bounds.");
+          }
+        }
+        batchStart = batchEnd;
+      }
+    }
+    return upperBounds;
+  }
+
   private String[] getPartitionKeyColumns(
       Connection connection, String databaseName, String tableName) throws SQLException {
     List<String> columns = new ArrayList<>();
@@ -468,6 +591,137 @@ public class OracleTableOperations extends JdbcTableOperations {
       }
     }
     return columns.toArray(new String[0]);
+  }
+
+  private RangePartition[] getRangePartitions(
+      Connection connection, String databaseName, String tableName, Type columnType)
+      throws SQLException {
+    List<String> partitionNames = new ArrayList<>();
+    List<String> highValueExpressions = new ArrayList<>();
+    try (PreparedStatement stmt = connection.prepareStatement(GET_RANGE_PARTITIONS_SQL)) {
+      stmt.setString(1, databaseName);
+      stmt.setString(2, tableName);
+      try (ResultSet rs = stmt.executeQuery()) {
+        while (rs.next()) {
+          partitionNames.add(rs.getString("PARTITION_NAME"));
+          highValueExpressions.add(StringUtils.trimToEmpty(rs.getString("HIGH_VALUE")));
+        }
+      }
+    }
+
+    Literal<?>[] upperBounds =
+        evaluateRangeUpperBounds(connection, highValueExpressions, columnType);
+    RangePartition[] partitions = new RangePartition[partitionNames.size()];
+    for (int i = 0; i < partitionNames.size(); i++) {
+      partitions[i] =
+          Partitions.range(
+              partitionNames.get(i), upperBounds[i], Literals.NULL, Collections.emptyMap());
+    }
+    return partitions;
+  }
+
+  private Literal<?> toRangeLiteral(ResultSet resultSet, int columnIndex, Type columnType)
+      throws SQLException {
+    Object value;
+    switch (columnType.name()) {
+      case BOOLEAN:
+        BigDecimal booleanNumber = resultSet.getBigDecimal(columnIndex);
+        if (booleanNumber == null) {
+          value = null;
+        } else if (BigDecimal.ZERO.compareTo(booleanNumber) == 0) {
+          value = false;
+        } else if (BigDecimal.ONE.compareTo(booleanNumber) == 0) {
+          value = true;
+        } else {
+          // Oracle models booleans as NUMBER(1), which can also contain -9 through 9. Preserve
+          // those external values instead of collapsing every non-zero bound to true.
+          value = booleanNumber.stripTrailingZeros();
+        }
+        break;
+      case BYTE:
+        if (((Types.ByteType) columnType).signed()) {
+          value = resultSet.getByte(columnIndex);
+        } else {
+          value = resultSet.getShort(columnIndex);
+        }
+        break;
+      case SHORT:
+        if (((Types.ShortType) columnType).signed()) {
+          value = resultSet.getShort(columnIndex);
+        } else {
+          value = resultSet.getInt(columnIndex);
+        }
+        break;
+      case INTEGER:
+        if (((Types.IntegerType) columnType).signed()) {
+          value = resultSet.getInt(columnIndex);
+        } else {
+          value = resultSet.getLong(columnIndex);
+        }
+        break;
+      case LONG:
+        if (((Types.LongType) columnType).signed()) {
+          value = resultSet.getLong(columnIndex);
+        } else {
+          BigDecimal unsignedLongValue = resultSet.getBigDecimal(columnIndex);
+          value = unsignedLongValue == null ? null : Decimal.of(unsignedLongValue);
+        }
+        break;
+      case FLOAT:
+        value = resultSet.getFloat(columnIndex);
+        break;
+      case DOUBLE:
+        value = resultSet.getDouble(columnIndex);
+        break;
+      case DECIMAL:
+        BigDecimal decimalValue = resultSet.getBigDecimal(columnIndex);
+        Types.DecimalType decimalType = (Types.DecimalType) columnType;
+        value =
+            decimalValue == null
+                ? null
+                : Decimal.of(decimalValue, decimalType.precision(), decimalType.scale());
+        break;
+      case DATE:
+        Date date = resultSet.getDate(columnIndex);
+        value = date == null ? null : date.toLocalDate();
+        break;
+      case TIME:
+        Time time = resultSet.getTime(columnIndex);
+        value = time == null ? null : time.toLocalTime();
+        break;
+      case TIMESTAMP:
+        Types.TimestampType timestampType = (Types.TimestampType) columnType;
+        if (timestampType.hasTimeZone()) {
+          value = resultSet.getObject(columnIndex, OffsetDateTime.class);
+        } else {
+          Timestamp timestamp = resultSet.getTimestamp(columnIndex);
+          value = timestamp == null ? null : timestamp.toLocalDateTime();
+        }
+        break;
+      case STRING:
+      case VARCHAR:
+      case FIXEDCHAR:
+      case EXTERNAL:
+        value = resultSet.getString(columnIndex);
+        break;
+      case FIXED:
+      case BINARY:
+        // Oracle JDBC exposes RAW values as stable hexadecimal text through getString. Keep that
+        // representation because partition literals cross the REST boundary as strings, whereas a
+        // byte array's toString() would lose the value.
+        value = resultSet.getString(columnIndex);
+        break;
+      default:
+        throw new UnsupportedOperationException(
+            String.format(
+                "Oracle range partition bounds do not support Gravitino type %s.",
+                columnType.simpleString()));
+    }
+
+    if (value == null || resultSet.wasNull()) {
+      throw new SQLException("Oracle returned NULL while evaluating a range partition bound.");
+    }
+    return Literals.of(value, columnType);
   }
 
   private String generatePartitionClauseSql(Transform[] partitioning) {
@@ -494,19 +748,20 @@ public class OracleTableOperations extends JdbcTableOperations {
     String col = quotedName(rangeTransform.fieldName()[0]);
     StringBuilder sb = new StringBuilder(String.format(" PARTITION BY RANGE (%s)", col));
     RangePartition[] assignments = rangeTransform.assignments();
-    if (ArrayUtils.isNotEmpty(assignments)) {
-      String partitions =
-          Arrays.stream(assignments)
-              .map(
-                  p -> {
-                    validateRangePartition(p);
-                    return String.format(
-                        "PARTITION %s VALUES LESS THAN (%s)",
-                        quotedName(p.name()), formatRangeUpperBound(p.upper()));
-                  })
-              .collect(Collectors.joining(", "));
-      sb.append(" (").append(partitions).append(")");
-    }
+    Preconditions.checkArgument(
+        ArrayUtils.isNotEmpty(assignments),
+        "Oracle RANGE partitioning requires at least one assignment.");
+    String partitions =
+        Arrays.stream(assignments)
+            .map(
+                p -> {
+                  validateRangePartition(p);
+                  return String.format(
+                      "PARTITION %s VALUES LESS THAN (%s)",
+                      quotedName(p.name()), formatRangeUpperBound(p.upper()));
+                })
+            .collect(Collectors.joining(", "));
+    sb.append(" (").append(partitions).append(")");
     return sb.toString();
   }
 

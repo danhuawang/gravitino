@@ -66,6 +66,17 @@ public class TestOracleDatabaseOperations {
   }
 
   @Test
+  void testCreateSchemaUnsupportedWhenCatalogIsNull() throws Exception {
+    when(connection.getCatalog()).thenReturn(null);
+
+    UnsupportedOperationException exception =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> operations.create("APP_USER", null, Collections.emptyMap()));
+    assertTrue(exception.getMessage().contains(UNSUPPORTED_CREATE_MSG));
+  }
+
+  @Test
   void testListDatabasesFiltersSystemUsers() throws Exception {
     Statement statement = mock(Statement.class);
     ResultSet resultSet = mock(ResultSet.class);

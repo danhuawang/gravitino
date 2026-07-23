@@ -7,6 +7,7 @@ package com.datastrato.gravitino.catalog.oracle.integration.test;
 import static com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetadata.COMPRESSION;
 import static com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetadata.PARTITIONED;
 import static com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetadata.ROW_MOVEMENT;
+import static org.apache.gravitino.catalog.jdbc.JdbcTablePropertiesMetadata.COMMENT_KEY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -21,6 +22,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import java.io.IOException;
 import java.sql.SQLException;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
@@ -277,11 +279,13 @@ public class CatalogOracleIT extends BaseIT {
   void testCreateAndDropSchemaUnsupported() {
     SupportsSchemas schemas = catalog.asSchemas();
     // Oracle does not expose CREATE SCHEMA — the catalog refuses the request with a clear error.
-    assertThrows(
-        RuntimeException.class,
-        () ->
-            schemas.createSchema(
-                GravitinoITUtils.genRandomName("unsupported"), null, Collections.emptyMap()));
+    RuntimeException createException =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                schemas.createSchema(
+                    GravitinoITUtils.genRandomName("unsupported"), null, Collections.emptyMap()));
+    assertTrue(createException.getMessage().contains("does not support creating schemas"));
 
     // And the same holds for DROP SCHEMA — even targeting the existing APP_USER schema.
     assertThrows(RuntimeException.class, () -> schemas.dropSchema(schemaName, false));
@@ -307,6 +311,7 @@ public class CatalogOracleIT extends BaseIT {
     Table loaded = tableCatalog.loadTable(tableIdent);
     assertEquals(name, loaded.name());
     assertEquals("table_comment", loaded.comment());
+    assertFalse(loaded.properties().containsKey(COMMENT_KEY));
     assertEquals(columns.length, loaded.columns().length);
     for (int i = 0; i < columns.length; i++) {
       assertEquals(columns[i].name(), loaded.columns()[i].name());
@@ -899,10 +904,58 @@ public class CatalogOracleIT extends BaseIT {
 
     Table loaded = tableCatalog.loadTable(tableIdent);
     assertTrue(loaded.partitioning().length > 0, "Expected partitioning to be reported");
-    assertInstanceOf(Transforms.RangeTransform.class, loaded.partitioning()[0]);
+    Transforms.RangeTransform loadedRange =
+        assertInstanceOf(Transforms.RangeTransform.class, loaded.partitioning()[0]);
+    assertEquals(2, loadedRange.assignments().length);
+    assertEquals("p_low", loadedRange.assignments()[0].name().toLowerCase());
+    assertEquals("100", loadedRange.assignments()[0].upper().value());
+    assertEquals(Literals.NULL, loadedRange.assignments()[0].lower());
+    assertEquals("p_rest", loadedRange.assignments()[1].name().toLowerCase());
+    assertEquals(Literals.NULL, loadedRange.assignments()[1].upper());
     // The "partitioned" property is derived from ALL_TABLES.PARTITIONED and is now visible on load
     // (see issue #854); a partitioned table reports "YES".
     assertEquals("YES", loaded.properties().get(PARTITIONED));
+  }
+
+  @Test
+  void testCreateTimestampRangePartitionedTable() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_TIMESTAMP_RANGE_PART";
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of("event_time", Types.TimestampType.withoutTimeZone(), null, false, false, null)
+        };
+    RangePartition p2024 =
+        Partitions.range(
+            "p_2024",
+            Literals.timestampLiteral("2025-01-01T00:00:00"),
+            Literals.NULL,
+            Collections.emptyMap());
+    RangePartition pMax =
+        Partitions.range("p_max", Literals.NULL, Literals.NULL, Collections.emptyMap());
+
+    createTable(
+        name,
+        columns,
+        null,
+        ImmutableMap.of(),
+        new Transform[] {
+          Transforms.range(new String[] {"event_time"}, new RangePartition[] {p2024, pMax})
+        });
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    Transforms.RangeTransform loadedRange =
+        assertInstanceOf(Transforms.RangeTransform.class, loaded.partitioning()[0]);
+    assertEquals(2, loadedRange.assignments().length);
+    assertEquals("p_2024", loadedRange.assignments()[0].name().toLowerCase());
+    assertEquals(
+        LocalDateTime.parse("2025-01-01T00:00:00"),
+        LocalDateTime.parse(loadedRange.assignments()[0].upper().value().toString()));
+    assertEquals("p_max", loadedRange.assignments()[1].name().toLowerCase());
+    assertEquals(Literals.NULL, loadedRange.assignments()[1].upper());
   }
 
   @Test

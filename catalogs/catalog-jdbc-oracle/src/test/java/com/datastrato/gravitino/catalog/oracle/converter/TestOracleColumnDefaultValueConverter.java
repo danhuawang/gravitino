@@ -6,12 +6,14 @@ package com.datastrato.gravitino.catalog.oracle.converter;
 
 import static org.apache.gravitino.rel.Column.DEFAULT_VALUE_NOT_SET;
 
+import java.time.OffsetDateTime;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcTypeConverter;
 import org.apache.gravitino.rel.expressions.Expression;
 import org.apache.gravitino.rel.expressions.FunctionExpression;
 import org.apache.gravitino.rel.expressions.UnparsedExpression;
 import org.apache.gravitino.rel.expressions.literals.Literals;
 import org.apache.gravitino.rel.types.Decimal;
+import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -70,6 +72,45 @@ public class TestOracleColumnDefaultValueConverter {
     Assertions.assertEquals(
         "SYS_GUID()", converter.fromGravitino(FunctionExpression.of("SYS_GUID")));
     Assertions.assertEquals("'ab''c'", converter.fromGravitino(Literals.stringLiteral("ab'c")));
+    Assertions.assertEquals(
+        "DATE '2026-07-15'", converter.fromGravitino(Literals.dateLiteral("2026-07-15")));
+    Assertions.assertEquals(
+        "TIMESTAMP '2026-07-15 12:34:56'",
+        converter.fromGravitino(Literals.timestampLiteral("2026-07-15T12:34:56")));
+    Assertions.assertEquals(
+        "TIMESTAMP '2026-07-15 12:34:00'",
+        converter.fromGravitino(Literals.timestampLiteral("2026-07-15T12:34:00")));
+    Assertions.assertEquals(
+        "TIMESTAMP '2026-07-15 12:34:56'",
+        converter.fromGravitino(
+            Literals.of("2026-07-15T12:34:56", Types.TimestampType.withoutTimeZone())));
+    Assertions.assertEquals(
+        "TIMESTAMP '2026-07-15 12:34:00'",
+        converter.fromGravitino(
+            Literals.of("2026-07-15T12:34", Types.TimestampType.withoutTimeZone())));
+    Assertions.assertEquals(
+        "TIMESTAMP '2026-07-15 12:34:56.123456789'",
+        converter.fromGravitino(
+            Literals.of("2026-07-15T12:34:56.123456789", Types.TimestampType.withoutTimeZone(9))));
+    Assertions.assertEquals(
+        "TIMESTAMP '2026-07-15 12:34:56.123456789 +08:00'",
+        converter.fromGravitino(
+            Literals.of(
+                OffsetDateTime.parse("2026-07-15T12:34:56.123456789+08:00"),
+                Types.TimestampType.withTimeZone(9))));
+    Assertions.assertEquals(
+        "TIMESTAMP '2026-07-15 04:34:56 +00:00'",
+        converter.fromGravitino(
+            Literals.of("2026-07-15T04:34:56Z", Types.TimestampType.withTimeZone(9))));
+    Assertions.assertEquals("1", converter.fromGravitino(Literals.booleanLiteral(true)));
+    Assertions.assertEquals("0", converter.fromGravitino(Literals.booleanLiteral(false)));
+    Assertions.assertEquals(
+        "1", converter.fromGravitino(Literals.of("true", Types.BooleanType.get())));
+    Assertions.assertEquals(
+        "2", converter.fromGravitino(Literals.of("2", Types.BooleanType.get())));
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> converter.fromGravitino(Literals.of("invalid", Types.BooleanType.get())));
     Assertions.assertEquals("123", converter.fromGravitino(Literals.integerLiteral(123)));
     Assertions.assertEquals(
         "RAW_SQL()", converter.fromGravitino(UnparsedExpression.of("RAW_SQL()")));

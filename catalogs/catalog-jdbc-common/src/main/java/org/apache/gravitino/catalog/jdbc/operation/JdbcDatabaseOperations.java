@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.apache.commons.collections4.MapUtils;
@@ -69,7 +70,7 @@ public abstract class JdbcDatabaseOperations implements DatabaseOperation {
     }
 
     try (final Connection connection = getConnection()) {
-      if (connection.getCatalog().equals(databaseName)) {
+      if (Objects.equals(connection.getCatalog(), databaseName)) {
         connection.setCatalog(createSysDatabaseNameSet().iterator().next());
       }
 
