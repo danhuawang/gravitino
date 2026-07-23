@@ -83,6 +83,12 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
 
   private static final String FLINK_BYPASS_DEFAULT_DATABASE = "flink.bypass.default-database";
 
+  // Uppercase: Flink validates ALTER TABLE column references by exact case-sensitive match
+  // against the catalog's reported schema (no case folding of its own, unlike Oracle/Spark), so
+  // existing columns must be referenced in the uppercase form Gravitino now reports them as.
+  private static final String COL_USER_ID = "USER_ID";
+  private static final String COL_ORDER_AMOUNT = "ORDER_AMOUNT";
+
   private static final String ORACLE_JDBC_DRIVER_URL =
       "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc8/23.4.0.24.05/ojdbc8-23.4.0.24.05.jar";
 
@@ -444,7 +450,8 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   tableName),
               ResultKind.SUCCESS);
           TestUtils.assertTableResult(
-              sql("ALTER TABLE %s RENAME user_id TO user_id_new", tableName), ResultKind.SUCCESS);
+              sql("ALTER TABLE %s RENAME " + COL_USER_ID + " TO USER_ID_NEW", tableName),
+              ResultKind.SUCCESS);
           Column[] actual =
               catalog
                   .asTableCatalog()
@@ -452,8 +459,8 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .columns();
           Column[] expected =
               new Column[] {
-                Column.of("user_id_new", Types.IntegerType.get(), "USER_ID"),
-                Column.of("order_amount", Types.DoubleType.get(), "ORDER_AMOUNT"),
+                Column.of("USER_ID_NEW", Types.IntegerType.get(), COL_USER_ID),
+                Column.of(COL_ORDER_AMOUNT, Types.DoubleType.get(), COL_ORDER_AMOUNT),
               };
           assertColumns(expected, actual);
         },
@@ -469,8 +476,8 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
     String databaseName = "test_get_simple_table";
     Column[] columns =
         new Column[] {
-          Column.of("string_type", Types.StringType.get(), null),
-          Column.of("double_type", Types.DoubleType.get(), null)
+          Column.of("STRING_TYPE", Types.StringType.get(), null),
+          Column.of("DOUBLE_TYPE", Types.DoubleType.get(), null)
         };
     doWithSchema(
         currentCatalog(),
@@ -711,14 +718,14 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   tableName),
               ResultKind.SUCCESS);
           TestUtils.assertTableResult(
-              sql("ALTER TABLE %s DROP user_id", tableName), ResultKind.SUCCESS);
+              sql("ALTER TABLE %s DROP " + COL_USER_ID, tableName), ResultKind.SUCCESS);
           Column[] actual =
               catalog
                   .asTableCatalog()
                   .loadTable(NameIdentifier.of(databaseName, tableName.toUpperCase(Locale.ROOT)))
                   .columns();
           Column[] expected =
-              new Column[] {Column.of("order_amount", Types.IntegerType.get(), "ORDER_AMOUNT")};
+              new Column[] {Column.of(COL_ORDER_AMOUNT, Types.IntegerType.get(), COL_ORDER_AMOUNT)};
           assertColumns(expected, actual);
         },
         true,
@@ -750,13 +757,19 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   tableName),
               ResultKind.SUCCESS);
           TestUtils.assertTableResult(
-              sql("ALTER TABLE %s MODIFY order_amount INT COMMENT 'new comment2'", tableName),
+              sql(
+                  "ALTER TABLE %s MODIFY " + COL_ORDER_AMOUNT + " INT COMMENT 'new comment2'",
+                  tableName),
               ResultKind.SUCCESS);
           TestUtils.assertTableResult(
-              sql("ALTER TABLE %s MODIFY order_amount BIGINT COMMENT 'new comment2'", tableName),
+              sql(
+                  "ALTER TABLE %s MODIFY " + COL_ORDER_AMOUNT + " BIGINT COMMENT 'new comment2'",
+                  tableName),
               ResultKind.SUCCESS);
           TestUtils.assertTableResult(
-              sql("ALTER TABLE %s MODIFY user_id BIGINT COMMENT 'new comment'", tableName),
+              sql(
+                  "ALTER TABLE %s MODIFY " + COL_USER_ID + " BIGINT COMMENT 'new comment'",
+                  tableName),
               ResultKind.SUCCESS);
           // Oracle does not support column reordering (MODIFY … AFTER) — skip that step.
           Column[] actual =
@@ -766,8 +779,8 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .columns();
           Column[] expected =
               new Column[] {
-                Column.of("user_id", Types.LongType.get(), "new comment"),
-                Column.of("order_amount", Types.LongType.get(), "new comment2")
+                Column.of(COL_USER_ID, Types.LongType.get(), "new comment"),
+                Column.of(COL_ORDER_AMOUNT, Types.LongType.get(), "new comment2")
               };
           assertColumns(expected, actual);
         },
@@ -807,9 +820,9 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .columns();
           Column[] expected =
               new Column[] {
-                Column.of("user_id", Types.IntegerType.get(), "USER_ID"),
-                Column.of("order_amount", Types.IntegerType.get(), "ORDER_AMOUNT"),
-                Column.of("new_column_2", Types.IntegerType.get(), null),
+                Column.of(COL_USER_ID, Types.IntegerType.get(), COL_USER_ID),
+                Column.of(COL_ORDER_AMOUNT, Types.IntegerType.get(), COL_ORDER_AMOUNT),
+                Column.of("NEW_COLUMN_2", Types.IntegerType.get(), null),
               };
           assertColumns(expected, actual);
         },

@@ -19,19 +19,13 @@
 
 package org.apache.gravitino.flink.connector.jdbc.oracle;
 
-import java.util.List;
-import java.util.Locale;
 import org.apache.flink.table.catalog.AbstractCatalog;
-import org.apache.flink.table.catalog.CatalogBaseTable;
 import org.apache.flink.table.catalog.CatalogFunction;
 import org.apache.flink.table.catalog.CatalogPartitionSpec;
 import org.apache.flink.table.catalog.ObjectPath;
-import org.apache.flink.table.catalog.TableChange;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
-import org.apache.flink.table.catalog.exceptions.DatabaseNotExistException;
 import org.apache.flink.table.catalog.exceptions.FunctionNotExistException;
 import org.apache.flink.table.catalog.exceptions.PartitionNotExistException;
-import org.apache.flink.table.catalog.exceptions.TableAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.catalog.stats.CatalogColumnStatistics;
 import org.apache.flink.table.catalog.stats.CatalogTableStatistics;
@@ -49,10 +43,6 @@ import org.slf4j.LoggerFactory;
  * <p>Flink's built-in {@code JdbcCatalogFactory} does not support Oracle JDBC URLs, so this class
  * overrides {@link #open()} to skip inner catalog creation and relies entirely on Gravitino's
  * server-side metadata for all catalog operations.
- *
- * <p>All table-name operations are normalized to uppercase before being sent to Gravitino. Oracle
- * stores unquoted identifiers in uppercase, and the Flink JDBC connector sends unquoted SQL, so
- * table names must be uppercase for the two layers to resolve to the same physical object.
  */
 public class GravitinoOracleJdbcCatalog extends GravitinoJdbcCatalog {
 
@@ -101,58 +91,6 @@ public class GravitinoOracleJdbcCatalog extends GravitinoJdbcCatalog {
   }
 
   // ---------------------------------------------------------------------------
-  // Table-name normalization — uppercase all table names before delegation.
-  // Oracle stores unquoted identifiers in uppercase; Flink JDBC sends unquoted
-  // SQL, so both layers must agree on the same (uppercase) name.
-  // ---------------------------------------------------------------------------
-
-  @Override
-  public CatalogBaseTable getTable(ObjectPath tablePath)
-      throws TableNotExistException, CatalogException {
-    return super.getTable(upperCaseTable(tablePath));
-  }
-
-  @Override
-  public boolean tableExists(ObjectPath tablePath) throws CatalogException {
-    return super.tableExists(upperCaseTable(tablePath));
-  }
-
-  @Override
-  public void createTable(ObjectPath tablePath, CatalogBaseTable table, boolean ignoreIfExists)
-      throws TableAlreadyExistException, DatabaseNotExistException, CatalogException {
-    super.createTable(upperCaseTable(tablePath), table, ignoreIfExists);
-  }
-
-  @Override
-  public void dropTable(ObjectPath tablePath, boolean ignoreIfNotExists)
-      throws TableNotExistException, CatalogException {
-    super.dropTable(upperCaseTable(tablePath), ignoreIfNotExists);
-  }
-
-  @Override
-  public void renameTable(ObjectPath tablePath, String newTableName, boolean ignoreIfNotExists)
-      throws TableNotExistException, TableAlreadyExistException, CatalogException {
-    super.renameTable(
-        upperCaseTable(tablePath), newTableName.toUpperCase(Locale.ROOT), ignoreIfNotExists);
-  }
-
-  @Override
-  public void alterTable(ObjectPath tablePath, CatalogBaseTable newTable, boolean ignoreIfNotExists)
-      throws TableNotExistException, CatalogException {
-    super.alterTable(upperCaseTable(tablePath), newTable, ignoreIfNotExists);
-  }
-
-  @Override
-  public void alterTable(
-      ObjectPath tablePath,
-      CatalogBaseTable newTable,
-      List<TableChange> tableChanges,
-      boolean ignoreIfNotExists)
-      throws TableNotExistException, CatalogException {
-    super.alterTable(upperCaseTable(tablePath), newTable, tableChanges, ignoreIfNotExists);
-  }
-
-  // ---------------------------------------------------------------------------
   // Functions — Oracle JDBC catalog does not expose user-defined functions.
   // Throw FunctionNotExistException rather than delegating to realCatalog(),
   // which is unavailable.
@@ -198,14 +136,5 @@ public class GravitinoOracleJdbcCatalog extends GravitinoJdbcCatalog {
       ObjectPath tablePath, CatalogPartitionSpec partitionSpec)
       throws PartitionNotExistException, CatalogException {
     return CatalogColumnStatistics.UNKNOWN;
-  }
-
-  /**
-   * Returns a new {@link ObjectPath} with the table name converted to uppercase. The database name
-   * is preserved as-is because it is already normalized upstream (Oracle schema = user, always
-   * stored uppercase by Gravitino's {@code normalizeSchemaName}).
-   */
-  static ObjectPath upperCaseTable(ObjectPath path) {
-    return new ObjectPath(path.getDatabaseName(), path.getObjectName().toUpperCase(Locale.ROOT));
   }
 }

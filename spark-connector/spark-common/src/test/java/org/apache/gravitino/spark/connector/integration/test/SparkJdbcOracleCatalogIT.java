@@ -27,15 +27,21 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.apache.gravitino.integration.test.container.ContainerSuite;
 import org.apache.gravitino.integration.test.container.OracleContainer;
 import org.apache.gravitino.integration.test.util.ITUtils;
+import org.apache.gravitino.spark.connector.ConnectorConstants;
 import org.apache.gravitino.spark.connector.integration.test.jdbc.SparkJdbcTableInfoChecker;
+import org.apache.gravitino.spark.connector.integration.test.util.SparkTableInfo;
 import org.apache.gravitino.spark.connector.integration.test.util.SparkTableInfo.SparkColumnInfo;
 import org.apache.gravitino.spark.connector.integration.test.util.SparkTableInfoChecker;
 import org.apache.gravitino.spark.connector.jdbc.JdbcPropertiesConstants;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.types.DataTypes;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
@@ -130,9 +136,11 @@ public abstract class SparkJdbcOracleCatalogIT extends SparkCommonIT {
   }
 
   // Oracle schema = user (APP_USER). The container pre-creates the GRAVITINO user; we reuse it.
+  // Gravitino exposes it as the bare uppercase logical schema name ("GRAVITINO"), so the base test
+  // suite's identifier comparisons (which use getDefaultDatabase() as the expected name) match.
   @Override
   protected String getDefaultDatabase() {
-    return OracleContainer.APP_USER;
+    return OracleContainer.APP_USER.toUpperCase(Locale.ROOT);
   }
 
   // Oracle does not support CREATE USER via Gravitino; the GRAVITINO schema already exists.
@@ -170,13 +178,15 @@ public abstract class SparkJdbcOracleCatalogIT extends SparkCommonIT {
     return p;
   }
 
-  // Oracle stores an empty string comment as null.
+  // Unquoted Oracle logical column names are already uppercase, matching the physical Oracle
+  // columns, so the expected column names here are uppercase too. Oracle also stores an empty
+  // string comment as null.
   @Override
   protected List<SparkColumnInfo> getSimpleTableColumn() {
     return Arrays.asList(
-        SparkColumnInfo.of("id", DataTypes.IntegerType, "id comment"),
-        SparkColumnInfo.of("name", DataTypes.StringType, null),
-        SparkColumnInfo.of("age", DataTypes.IntegerType, null));
+        SparkColumnInfo.of("ID", DataTypes.IntegerType, "id comment"),
+        SparkColumnInfo.of("NAME", DataTypes.StringType, null),
+        SparkColumnInfo.of("AGE", DataTypes.IntegerType, null));
   }
 
   @Test
@@ -185,7 +195,8 @@ public abstract class SparkJdbcOracleCatalogIT extends SparkCommonIT {
     String schemaName = "TEST_CREATE_SCHEMA";
     createOracleUser(schemaName);
     try {
-      Assertions.assertTrue(getDatabases().contains(schemaName));
+      // Gravitino exposes the Oracle user as the bare uppercase logical schema name.
+      Assertions.assertTrue(getDatabases().contains(schemaName.toUpperCase(Locale.ROOT)));
       Assertions.assertDoesNotThrow(() -> getDatabaseMetadata(schemaName));
     } finally {
       dropOracleUser(schemaName);
@@ -218,6 +229,128 @@ public abstract class SparkJdbcOracleCatalogIT extends SparkCommonIT {
         () -> "Expected drop-schema unsupported error, but got: " + exception);
   }
 
+  // Oracle exposes unquoted table names as bare uppercase logical names (see the "Case
+  // sensitivity" section of the Oracle catalog docs), so the base tests' literal lowercase table
+  // names need to be compared against the uppercase form Gravitino actually reports.
+
+  @Test
+  @Override
+  void testCreateSimpleTable() {
+    String tableName = "simple_table";
+    dropTableIfExists(tableName);
+    createSimpleTable(tableName);
+    SparkTableInfo tableInfo = getTableInfo(tableName);
+
+    SparkTableInfoChecker checker =
+        getTableInfoChecker()
+            .withName(tableName.toUpperCase(Locale.ROOT))
+            .withColumns(getSimpleTableColumn())
+            .withComment(null);
+    checker.check(tableInfo);
+
+    checkTableReadWrite(tableInfo);
+  }
+
+  @Test
+  @Override
+  void testListTables() {
+    String tableName = "t_list";
+    dropTableIfExists(tableName);
+    Set<String> tableNames = listTableNames();
+    Assertions.assertFalse(tableNames.contains(tableName.toUpperCase(Locale.ROOT)));
+    createSimpleTable(tableName);
+    tableNames = listTableNames();
+    Assertions.assertTrue(tableNames.contains(tableName.toUpperCase(Locale.ROOT)));
+    Assertions.assertThrowsExactly(
+        NoSuchNamespaceException.class, () -> sql("SHOW TABLES IN nonexistent_schema"));
+  }
+
+  @Test
+  @Override
+  void testDropTable() {
+    String tableName = "drop_table";
+    createSimpleTable(tableName);
+    Assertions.assertEquals(true, tableExists(tableName.toUpperCase(Locale.ROOT)));
+
+    dropTableIfExists(tableName);
+    Assertions.assertEquals(false, tableExists(tableName.toUpperCase(Locale.ROOT)));
+
+    // may throw NoSuchTableException or AnalysisException for different spark version
+    Assertions.assertThrows(Exception.class, () -> sql("DROP TABLE not_exists"));
+  }
+
+  @Test
+  @Override
+  protected void testRenameTable() {
+    String tableName = "rename1";
+    String newTableName = "rename2";
+    dropTableIfExists(tableName);
+    dropTableIfExists(newTableName);
+
+    createSimpleTable(tableName);
+    Assertions.assertTrue(tableExists(tableName.toUpperCase(Locale.ROOT)));
+    Assertions.assertFalse(tableExists(newTableName.toUpperCase(Locale.ROOT)));
+
+    sql(String.format("ALTER TABLE %s RENAME TO %s", tableName, newTableName));
+    Assertions.assertTrue(tableExists(newTableName.toUpperCase(Locale.ROOT)));
+    Assertions.assertFalse(tableExists(tableName.toUpperCase(Locale.ROOT)));
+
+    // rename to an existing table
+    createSimpleTable(tableName);
+    Assertions.assertThrows(
+        RuntimeException.class,
+        () -> sql(String.format("ALTER TABLE %s RENAME TO %s", tableName, newTableName)));
+
+    // rename a not existing tables
+    // Spark will throw AnalysisException before 3.5, ExtendedAnalysisException in 3.5
+    Assertions.assertThrows(
+        Exception.class, () -> sql("ALTER TABLE not_exists1 RENAME TO not_exist2"));
+  }
+
+  @Test
+  @Override
+  void testAlterTableUpdateComment() {
+    String tableName = "test_comment";
+    String comment = "comment1";
+    dropTableIfExists(tableName);
+
+    createSimpleTable(tableName);
+    sql(
+        String.format(
+            "ALTER TABLE %s SET TBLPROPERTIES('%s'='%s')",
+            tableName, ConnectorConstants.COMMENT, comment));
+    SparkTableInfo tableInfo = getTableInfo(tableName);
+    SparkTableInfoChecker checker =
+        getTableInfoChecker().withName(tableName.toUpperCase(Locale.ROOT)).withComment(comment);
+    checker.check(tableInfo);
+  }
+
+  // Spark CTAS doesn't copy table properties and partition schema from source table.
+  @Test
+  @Override
+  void testCreateTableAsSelect() {
+    String tableName = "ctas_table";
+    dropTableIfExists(tableName);
+    createSimpleTable(tableName);
+    SparkTableInfo tableInfo = getTableInfo(tableName);
+    checkTableReadWrite(tableInfo);
+
+    String newTableName = "new_" + tableName;
+    dropTableIfExists(newTableName);
+    createTableAsSelect(tableName, newTableName);
+
+    SparkTableInfo newTableInfo = getTableInfo(newTableName);
+    SparkTableInfoChecker checker =
+        getTableInfoChecker()
+            .withName(newTableName.toUpperCase(Locale.ROOT))
+            .withColumns(getSimpleTableColumn());
+    checker.check(newTableInfo);
+
+    List<String> tableData = getTableData(newTableName);
+    Assertions.assertTrue(tableData.size() == 1);
+    Assertions.assertEquals(getExpectedTableData(newTableInfo), tableData.get(0));
+  }
+
   // Oracle cannot create extra schemas, so cross-schema table reference tests are skipped.
   @Test
   @Disabled("Oracle does not support creating schemas dynamically")
@@ -236,6 +369,47 @@ public abstract class SparkJdbcOracleCatalogIT extends SparkCommonIT {
   @Disabled("Oracle JDBC metadata does not return column comments")
   @Override
   void testAlterTableUpdateColumnComment() {}
+
+  // SparkOracleJdbcTable reports uppercase column names (see getSimpleTableColumn() above), but
+  // Spark's default case-insensitive column resolution should still let SQL reference columns by
+  // their original lowercase (or any-case) name. Uses a fully schema-qualified reference (schema in
+  // its canonical uppercase form, table/columns in their original lowercase form) to also prove the
+  // table name and columns resolve consistently despite the case mismatch.
+  @Test
+  void testLowercaseColumnReference() {
+    String qualifiedTableName = getDefaultDatabase() + ".test_lowercase_column_ref";
+    dropTableIfExists(qualifiedTableName);
+    createSimpleTable(qualifiedTableName);
+    sql(String.format("INSERT INTO %s VALUES (1, 'Alice', 30)", qualifiedTableName));
+
+    Assertions.assertEquals(
+        Collections.singletonList("1,Alice,30"),
+        getQueryData(
+            String.format("SELECT id, name, age FROM %s WHERE id = 1", qualifiedTableName)));
+    Assertions.assertEquals(
+        Collections.singletonList("1,Alice,30"),
+        getQueryData(String.format("SELECT * FROM %s ORDER BY id", qualifiedTableName)));
+  }
+
+  // Mirrors testLowercaseColumnReference: SQL should also be able to reference the schema, table,
+  // and columns using the uppercase form that DESC/SHOW COLUMNS report, not just the original
+  // lowercase declaration.
+  @Test
+  void testUppercaseColumnReference() {
+    String qualifiedTableName =
+        getDefaultDatabase().toUpperCase(Locale.ROOT) + ".TEST_UPPERCASE_COLUMN_REF";
+    dropTableIfExists(qualifiedTableName);
+    createSimpleTable(qualifiedTableName);
+    sql(String.format("INSERT INTO %s VALUES (1, 'Alice', 30)", qualifiedTableName));
+
+    Assertions.assertEquals(
+        Collections.singletonList("1,Alice,30"),
+        getQueryData(
+            String.format("SELECT ID, NAME, AGE FROM %s WHERE ID = 1", qualifiedTableName)));
+    Assertions.assertEquals(
+        Collections.singletonList("1,Alice,30"),
+        getQueryData(String.format("SELECT * FROM %s ORDER BY ID", qualifiedTableName)));
+  }
 
   private void createOracleUser(String schemaName) {
     dropOracleUser(schemaName);

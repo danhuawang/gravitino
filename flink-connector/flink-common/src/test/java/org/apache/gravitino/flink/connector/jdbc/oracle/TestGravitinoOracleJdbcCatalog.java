@@ -61,31 +61,6 @@ public class TestGravitinoOracleJdbcCatalog {
   }
 
   // ---------------------------------------------------------------------------
-  // upperCaseTable
-  // ---------------------------------------------------------------------------
-
-  @Test
-  public void testUpperCaseTableUppercasesObjectName() {
-    ObjectPath result =
-        GravitinoOracleJdbcCatalog.upperCaseTable(new ObjectPath("mySchema", "my_table"));
-    Assertions.assertEquals("MY_TABLE", result.getObjectName());
-  }
-
-  @Test
-  public void testUpperCaseTablePreservesDatabaseName() {
-    // The schema name must be left as-is; only the table name is uppercased.
-    ObjectPath result = GravitinoOracleJdbcCatalog.upperCaseTable(new ObjectPath("my_schema", "t"));
-    Assertions.assertEquals("my_schema", result.getDatabaseName());
-  }
-
-  @Test
-  public void testUpperCaseTableAlreadyUppercase() {
-    ObjectPath result = GravitinoOracleJdbcCatalog.upperCaseTable(new ObjectPath("SC", "T"));
-    Assertions.assertEquals("SC", result.getDatabaseName());
-    Assertions.assertEquals("T", result.getObjectName());
-  }
-
-  // ---------------------------------------------------------------------------
   // getFunction — must throw FunctionNotExistException, never UnsupportedOperationException
   // ---------------------------------------------------------------------------
 

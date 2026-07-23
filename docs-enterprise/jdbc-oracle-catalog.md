@@ -23,6 +23,31 @@ Gravitino saves some system information in table and column comments, like `(Fro
 The Oracle catalog targets **Oracle 11g Release 2 (11.2.x)**. Oracle 12c+ may also work but is not tested. Because Oracle 11g has no Identity Columns, the catalog does **not** support auto-increment.
 :::
 
+## Case sensitivity
+
+The Oracle catalog follows Oracle's own native case-folding rule, applied per identifier: an **unquoted** identifier folds to uppercase and is compared case-insensitively; a **quoted** identifier (e.g. `"MyTable"`) preserves its exact case and is compared case-sensitively. You express this by including literal double-quote characters in the schema/table/column name string when you specify it (create, rename, or look up an object) — no separate API parameter is needed.
+
+- **Unquoted**: `app_user`, `APP_USER`, and `App_User` all resolve to the same Gravitino schema `APP_USER`, backed by the Oracle user `APP_USER`. This makes Oracle objects reachable via unquoted SQL from any client, even ones that never go through Gravitino.
+- **Quoted**: passing the literal string `"MyTable"` (including the two `"` characters) as the table name creates a case-sensitive Oracle object whose physical name is exactly `MyTable`. The quoting is evaluated once, at the point you specify the name — Gravitino never stores or returns a name containing literal quote characters — so you must re-supply the quoted form (e.g. `NameIdentifier.of(schema, "\"MyTable\"")`) every time you reference this object again (load, alter, drop, rename). A quoted name lets you use characters, spaces, or reserved words that would otherwise be illegal or ambiguous unquoted (e.g. `"comment"` as a table name).
+
+:::info
+The name Gravitino reports back (from `createTable`, `loadTable`, `listTables`, etc.) always matches Oracle's physical name exactly, letter case included, and never contains a literal quote character — whether the object was created quoted or not.
+:::
+
+:::caution
+Breaking changes from earlier versions of this catalog:
+- Unquoted logical names are now uppercase (e.g. `APP_USER`), not lowercase (`app_user`) as in previous releases.
+- Quoted mixed-case tables — created outside Gravitino, by older Gravitino versions, or now directly through this catalog — are visible again via `listTables`/`loadTable` (reported using their exact physical case), instead of being skipped with a warning. Referencing one of these tables again for `alterTable`/`dropTable`/etc. still requires supplying the quoted form.
+:::
+
+Index names are the one exception: Gravitino does not fold them and does not apply the quoted/unquoted convention to them, so an index/constraint name is always quoted case-preserving, exactly as given, and must be referenced with that same exact case thereafter (e.g. an index created as `PK_USERS` cannot be dropped by referencing `pk_users`).
+
+:::note
+Tag and role/privilege APIs resolve names from a caller-supplied `MetadataObject` string, which is not folded the same way `createTable`/`loadTable` names are. Always reference a table/schema by the exact same casing it resolved to (e.g. the name returned by `loadTable`), rather than relying on case-insensitive matching, when calling those APIs.
+:::
+
+See [Identifier naming rules](#identifier-naming-rules) for the separate character/length restrictions the catalog enforces on every name.
+
 ## Catalog
 
 ### Catalog capabilities
@@ -76,9 +101,6 @@ Please refer to [Manage Relational Metadata Using Gravitino](../docs/manage-rela
 - **Does not support** schema comment. Oracle has no `COMMENT ON SCHEMA` syntax, so the comment is always empty.
 - System schemas (such as `SYS`, `SYSTEM`, `CTXSYS`, `XDB`, etc.) are filtered out from the list results automatically.
 
-:::info
-Oracle stores unquoted identifiers in uppercase by default. Schema names are normalized to uppercase. Table, column, and index names are quoted by the Oracle catalog, so mixed-case names can be preserved and must be referenced with consistent casing.
-:::
 
 ### Schema properties
 
@@ -99,6 +121,8 @@ Please refer to [Manage Relational Metadata Using Gravitino](../docs/manage-rela
 - Supports Oracle partitioning: single-level `RANGE`, `LIST`, `HASH` (composite partitions are not supported).
 - **Does not support** auto-increment (Oracle 11g has no Identity Columns).
 - **Does not support** `UpdateColumnPosition` (Oracle cannot reorder columns).
+
+See [Case sensitivity](#case-sensitivity) for how table/column names are folded, and how quoted (mixed-case) table names are created and reached.
 
 ### Table column types
 

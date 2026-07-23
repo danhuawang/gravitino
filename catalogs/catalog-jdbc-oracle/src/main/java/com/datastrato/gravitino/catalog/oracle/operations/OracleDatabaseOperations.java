@@ -28,8 +28,11 @@ public class OracleDatabaseOperations extends JdbcDatabaseOperations {
       "SELECT USERNAME FROM ALL_USERS ORDER BY USERNAME";
   private static final String LIST_ALL_USERS_WITH_ORACLE_MAINTAINED_SQL =
       "SELECT USERNAME, ORACLE_MAINTAINED FROM ALL_USERS ORDER BY USERNAME";
-  private static final String LOAD_USER_SQL =
-      "SELECT USERNAME FROM ALL_USERS WHERE USERNAME = UPPER(?)";
+  // databaseName is already normalized to its canonical physical form by
+  // OracleCatalogCapability.normalizeName before reaching load(), so this must not fold case again
+  // (e.g. via UPPER()) or a quoted, case-sensitive schema name would be looked up as the wrong,
+  // uppercase physical object.
+  private static final String LOAD_USER_SQL = "SELECT USERNAME FROM ALL_USERS WHERE USERNAME = ?";
 
   private static final Set<String> ORACLE_SYSTEM_USERS =
       ImmutableSet.of(
@@ -96,6 +99,10 @@ public class OracleDatabaseOperations extends JdbcDatabaseOperations {
 
   @Override
   public List<String> listDatabases() {
+    // Database (schema/user) names are returned exactly as Oracle stores them, with no synthetic
+    // quoting added: Capability.normalizeName is not idempotent for a catalog whose folding depends
+    // on whether the name was originally quoted, so this must not be run back through it (core's
+    // SchemaNormalizeDispatcher.listSchemas deliberately does not re-normalize this result).
     List<String> databaseNames = new ArrayList<>();
     try (Connection connection = getConnection()) {
       DatabaseMetaData metadata = connection.getMetaData();
@@ -126,6 +133,8 @@ public class OracleDatabaseOperations extends JdbcDatabaseOperations {
 
   @Override
   public JdbcSchema load(String databaseName) throws NoSuchSchemaException {
+    // databaseName has already been normalized to its canonical physical form by
+    // OracleCatalogCapability.normalizeName before reaching this method, so it can be used as-is.
     try (Connection connection = getConnection();
         PreparedStatement statement = connection.prepareStatement(LOAD_USER_SQL)) {
       statement.setString(1, databaseName);

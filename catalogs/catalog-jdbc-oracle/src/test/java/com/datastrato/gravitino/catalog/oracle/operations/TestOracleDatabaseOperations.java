@@ -8,7 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.catalog.oracle.converter.OracleExceptionConverter;
@@ -88,6 +90,7 @@ public class TestOracleDatabaseOperations {
 
     List<String> databases = operations.listDatabases();
     assertEquals(1, databases.size());
+    // All-uppercase physical username is returned as a bare uppercase logical name.
     assertEquals("APP_USER", databases.get(0));
   }
 
@@ -95,26 +98,45 @@ public class TestOracleDatabaseOperations {
   void testLoadReturnsSchemaWithoutComment() throws Exception {
     PreparedStatement statement = mock(PreparedStatement.class);
     ResultSet resultSet = mock(ResultSet.class);
-    when(connection.prepareStatement("SELECT USERNAME FROM ALL_USERS WHERE USERNAME = UPPER(?)"))
+    when(connection.prepareStatement("SELECT USERNAME FROM ALL_USERS WHERE USERNAME = ?"))
         .thenReturn(statement);
     when(statement.executeQuery()).thenReturn(resultSet);
     when(resultSet.next()).thenReturn(true);
     when(resultSet.getString("USERNAME")).thenReturn("APP_USER");
 
-    assertEquals("APP_USER", operations.load("app_user").name());
-    assertEquals("", operations.load("app_user").comment());
+    // databaseName has already been normalized to its canonical physical form by
+    // OracleCatalogCapability.normalizeName before reaching this method, so it is used as-is.
+    assertEquals("APP_USER", operations.load("APP_USER").name());
+    assertEquals("", operations.load("APP_USER").comment());
+    verify(statement, atLeastOnce()).setString(1, "APP_USER");
   }
 
   @Test
   void testLoadThrowsWhenSchemaNotFound() throws Exception {
     PreparedStatement statement = mock(PreparedStatement.class);
     ResultSet resultSet = mock(ResultSet.class);
-    when(connection.prepareStatement("SELECT USERNAME FROM ALL_USERS WHERE USERNAME = UPPER(?)"))
+    when(connection.prepareStatement("SELECT USERNAME FROM ALL_USERS WHERE USERNAME = ?"))
         .thenReturn(statement);
     when(statement.executeQuery()).thenReturn(resultSet);
     when(resultSet.next()).thenReturn(false);
 
-    assertThrows(NoSuchSchemaException.class, () -> operations.load("missing_user"));
+    assertThrows(NoSuchSchemaException.class, () -> operations.load("MISSING_USER"));
+  }
+
+  @Test
+  void testLoadWithMixedCaseSchemaNameDoesExactCaseLookup() throws Exception {
+    PreparedStatement statement = mock(PreparedStatement.class);
+    ResultSet resultSet = mock(ResultSet.class);
+    when(connection.prepareStatement("SELECT USERNAME FROM ALL_USERS WHERE USERNAME = ?"))
+        .thenReturn(statement);
+    when(statement.executeQuery()).thenReturn(resultSet);
+    when(resultSet.next()).thenReturn(true);
+    when(resultSet.getString("USERNAME")).thenReturn("MySchema");
+
+    // A schema name that was quoted (case-sensitive) at the API boundary arrives here already
+    // unquoted with its exact case preserved (e.g. "MySchema" -> MySchema); it is bound as-is.
+    assertEquals("MySchema", operations.load("MySchema").name());
+    verify(statement).setString(1, "MySchema");
   }
 
   @Test

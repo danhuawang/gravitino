@@ -44,6 +44,6 @@ public class GravitinoOracleCatalogSpark35 extends GravitinoOracleJdbcCatalog {
   @Override
   public Table loadTable(Identifier ident, Set<TableWritePrivilege> writePrivileges)
       throws NoSuchTableException {
-    return loadTableForWriting(upperCaseNamespace(ident));
+    return loadTableForWriting(ident);
   }
 }

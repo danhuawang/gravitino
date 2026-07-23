@@ -44,12 +44,20 @@ public class OracleService {
     }
   }
 
-  /** Returns whether a table exists in the current user's schema. */
+  /** Returns whether a table exists in the current user's schema, matched case-insensitively. */
   public boolean tableExists(String tableName) {
+    return tableExistsExact(tableName.toUpperCase(Locale.ROOT));
+  }
+
+  /**
+   * Returns whether a table with this exact physical name (case preserved, not uppercased) exists
+   * in the current user's schema. Used to verify quoted, case-sensitive Oracle tables.
+   */
+  public boolean tableExistsExact(String exactTableName) {
     String sql = "SELECT 1 FROM ALL_TABLES WHERE OWNER = ? AND TABLE_NAME = ?";
     try (PreparedStatement stmt = connection.prepareStatement(sql)) {
       stmt.setString(1, schemaOwner);
-      stmt.setString(2, tableName.toUpperCase(Locale.ROOT));
+      stmt.setString(2, exactTableName);
       try (ResultSet rs = stmt.executeQuery()) {
         return rs.next();
       }

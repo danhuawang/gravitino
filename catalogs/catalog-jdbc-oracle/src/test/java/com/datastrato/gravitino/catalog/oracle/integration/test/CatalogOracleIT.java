@@ -25,6 +25,7 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -243,12 +244,14 @@ public class CatalogOracleIT extends BaseIT {
     SupportsSchemas schemas = catalog.asSchemas();
     String[] names = schemas.listSchemas();
     Set<String> schemaSet = Sets.newHashSet(names);
+    // Unquoted schema (Oracle user) names are exposed as bare uppercase logical names.
+    String expectedSchemaName = schemaName.toUpperCase(Locale.ROOT);
     assertTrue(
-        schemaSet.contains(schemaName),
-        "Expected APP_USER schema " + schemaName + " to appear in " + schemaSet);
+        schemaSet.contains(expectedSchemaName),
+        "Expected APP_USER schema " + expectedSchemaName + " to appear in " + schemaSet);
 
     Schema loaded = schemas.loadSchema(schemaName);
-    assertEquals(schemaName, loaded.name());
+    assertEquals(expectedSchemaName, loaded.name());
   }
 
   @Test
@@ -306,15 +309,17 @@ public class CatalogOracleIT extends BaseIT {
 
     Table created =
         createTable(name, columns, "table_comment", ImmutableMap.of(), Transforms.EMPTY_TRANSFORM);
-    assertEquals(name, created.name());
+    // Unquoted table name input folds to the bare uppercase logical name.
+    assertEquals(name.toUpperCase(Locale.ROOT), created.name());
 
     Table loaded = tableCatalog.loadTable(tableIdent);
-    assertEquals(name, loaded.name());
+    assertEquals(name.toUpperCase(Locale.ROOT), loaded.name());
     assertEquals("table_comment", loaded.comment());
     assertFalse(loaded.properties().containsKey(COMMENT_KEY));
     assertEquals(columns.length, loaded.columns().length);
     for (int i = 0; i < columns.length; i++) {
-      assertEquals(columns[i].name(), loaded.columns()[i].name());
+      // Unquoted column name input folds to the bare uppercase logical name.
+      assertEquals(columns[i].name().toUpperCase(Locale.ROOT), loaded.columns()[i].name());
       assertEquals(columns[i].nullable(), loaded.columns()[i].nullable());
     }
 
@@ -353,8 +358,10 @@ public class CatalogOracleIT extends BaseIT {
         Arrays.stream(reloaded.columns())
             .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
     assertEquals("updated name comment", reloadedByName.get("name").comment());
-    // Cross-check that the write path actually updated ALL_COL_COMMENTS.
-    assertEquals("updated name comment", oracleService.getColumnComment(name, "name"));
+    // Cross-check that the write path actually updated ALL_COL_COMMENTS. getColumnComment queries
+    // ALL_COL_COMMENTS.COLUMN_NAME with an exact, case-sensitive match, so the physical (uppercase,
+    // unquoted-folded) column name is required here, not the lowercase logical name used above.
+    assertEquals("updated name comment", oracleService.getColumnComment(name, "NAME"));
   }
 
   @Test
@@ -445,94 +452,192 @@ public class CatalogOracleIT extends BaseIT {
   }
 
   // ----------------------------------------------------------------------
-  // Identifier case sensitivity
+  // Identifier case folding
   // ----------------------------------------------------------------------
   //
-  // Oracle folds unquoted identifiers to upper case, but OracleTableOperations always wraps column
-  // and table names in double quotes (see quotedName()). Quoted identifiers are case-sensitive in
-  // Oracle, so the cases below verify that:
-  //   1. Column names round-trip with their exact original casing (lower / mixed / upper),
-  //   2. Two columns whose names differ only in case can coexist in the same table,
-  //   3. Mixed-case names also work for ALTER TABLE add/drop, since those code paths quote too.
+  // Oracle's native rule is per-identifier: an unquoted identifier folds to uppercase and compares
+  // case-insensitively; a quoted identifier preserves its exact case and compares case-sensitively.
+  // Gravitino encodes "this identifier was quoted" directly in the logical name string using
+  // literal double-quote characters (e.g. the Gravitino name `"MyTable"` means "case-sensitive,
+  // exact case MyTable"). The cases below verify that:
+  //   1. Any unquoted input casing (schema/table/column) folds to the same bare uppercase logical
+  //      name, and the physical Oracle object is reachable via unquoted SQL,
+  //   2. A quoted logical name preserves its exact case end-to-end: the physical Oracle name and
+  //      the Gravitino logical name have identical letter casing,
+  //   3. Reserved-word column names still work unquoted because the physical name is quoted in the
+  //      generated DDL,
+  //   4. ALTER TABLE ADD/RENAME/DELETE COLUMN and index operations fold mixed-case input too.
 
   @Test
-  void testColumnNameCasePreservedAcrossLoad() {
+  void testNamesFoldToUppercase() {
     TableCatalog tableCatalog = catalog.asTableCatalog();
-    String name = "IT_COL_CASE_TBL";
-    NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
 
-    // Three column names exercising the three identifier-case shapes Gravitino users commonly use.
     Column[] columns =
         new Column[] {
-          Column.of("lowercol", Types.IntegerType.get(), null, true, false, null),
-          Column.of("MixedCol", Types.VarCharType.of(32), null, true, false, null),
-          Column.of("UPPERCOL", Types.IntegerType.get(), null, true, false, null)
+          Column.of("MixedCol", Types.IntegerType.get(), null, true, false, null),
+          Column.of("UPPERCOL", Types.VarCharType.of(16), null, true, false, null),
+          Column.of("lowercol", Types.IntegerType.get(), null, true, false, null)
         };
 
-    createTable(name, columns);
-    Table loaded = tableCatalog.loadTable(tableIdent);
+    createTable("FooBar", columns);
 
-    // Order preservation: Oracle returns columns in their CREATE TABLE order through getColumns(),
-    // and OracleTableOperations passes them through unchanged.
-    assertEquals(columns.length, loaded.columns().length);
-    for (int i = 0; i < columns.length; i++) {
-      assertEquals(
-          columns[i].name(),
-          loaded.columns()[i].name(),
-          "Column at index " + i + " should preserve its original casing exactly");
+    // The physical Oracle table/columns are uppercase and reachable via unquoted SQL.
+    assertTrue(oracleService.tableExists("FOOBAR"));
+
+    // loadTable with any input casing resolves to the same bare uppercase logical table.
+    for (String variant : new String[] {"foobar", "FOOBAR", "FooBar"}) {
+      Table loaded = tableCatalog.loadTable(NameIdentifier.of(schemaName, variant));
+      assertEquals("FOOBAR", loaded.name());
+      Set<String> columnNames =
+          Arrays.stream(loaded.columns()).map(Column::name).collect(Collectors.toSet());
+      assertTrue(columnNames.contains("MIXEDCOL"), "columns: " + columnNames);
+      assertTrue(columnNames.contains("UPPERCOL"), "columns: " + columnNames);
+      assertTrue(columnNames.contains("LOWERCOL"), "columns: " + columnNames);
     }
-
-    Set<String> loadedNames =
-        Arrays.stream(loaded.columns()).map(Column::name).collect(Collectors.toSet());
-    assertTrue(loadedNames.contains("lowercol"), "Lower-case name not preserved: " + loadedNames);
-    assertTrue(loadedNames.contains("MixedCol"), "Mixed-case name not preserved: " + loadedNames);
-    assertTrue(loadedNames.contains("UPPERCOL"), "Upper-case name not preserved: " + loadedNames);
   }
 
   @Test
-  void testColumnNamesAreCaseSensitive() {
+  void testQuotedNamePreservesExactCase() {
     TableCatalog tableCatalog = catalog.asTableCatalog();
-    String name = "IT_COL_CASE_DISTINCT";
+
+    Column[] columns =
+        new Column[] {Column.of("id", Types.IntegerType.get(), null, false, false, null)};
+
+    // A quoted logical name creates a case-sensitive Oracle object with its exact case preserved.
+    // The quoting is a one-time signal evaluated at specification time; the name Gravitino reports
+    // back is a plain string that never itself contains a literal quote character.
+    Table created = createTable("\"MyQuotedTable\"", columns);
+    assertEquals("MyQuotedTable", created.name());
+
+    // The physical Oracle table is stored with the exact case, and is NOT reachable via the
+    // all-uppercase unquoted form.
+    assertTrue(oracleService.tableExistsExact("MyQuotedTable"));
+    assertFalse(oracleService.tableExistsExact("MYQUOTEDTABLE"));
+
+    // A later reference must re-supply the quoted form to be treated as case-sensitive again.
+    Table loaded = tableCatalog.loadTable(NameIdentifier.of(schemaName, "\"MyQuotedTable\""));
+    assertEquals("MyQuotedTable", loaded.name());
+
+    Set<String> listed =
+        Arrays.stream(tableCatalog.listTables(Namespace.of(schemaName)))
+            .map(NameIdentifier::name)
+            .collect(Collectors.toSet());
+    assertTrue(listed.contains("MyQuotedTable"), "Listed tables: " + listed);
+  }
+
+  @Test
+  void testQuotedNameStartingWithDigitSucceeds() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    Column[] columns =
+        new Column[] {Column.of("id", Types.IntegerType.get(), null, false, false, null)};
+
+    // A quoted name starting with a digit is invalid unquoted-identifier grammar (which requires
+    // starting with a letter), but must be validated against its original (still-quoted) form, not
+    // its already-normalized (unquoted) form, or it would be wrongly rejected as illegal even
+    // though it is valid as supplied.
+    Table created = createTable("\"1Table\"", columns);
+    assertEquals("1Table", created.name());
+    assertTrue(oracleService.tableExistsExact("1Table"));
+
+    Table loaded = tableCatalog.loadTable(NameIdentifier.of(schemaName, "\"1Table\""));
+    assertEquals("1Table", loaded.name());
+
+    // The canonical name "1Table" itself fails Oracle's unquoted-identifier grammar (must start
+    // with a letter), so it must be purged here using the re-quoted form: the shared per-test
+    // cleanup helper purges by bare name and cannot reach a table whose canonical name is
+    // grammar-invalid unquoted.
+    assertTrue(tableCatalog.purgeTable(NameIdentifier.of(schemaName, "\"1Table\"")));
+  }
+
+  @Test
+  void testQuotedReservedWordNameSucceedsWhereUnquotedWouldFail() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    Column[] columns =
+        new Column[] {Column.of("id", Types.IntegerType.get(), null, false, false, null)};
+
+    // "comment" (lowercase, quoted) is a case-sensitive, reserved-word table name that only
+    // succeeds because it is quoted in the generated DDL.
+    Table created = createTable("\"comment\"", columns);
+    assertEquals("comment", created.name());
+    assertTrue(oracleService.tableExistsExact("comment"));
+
+    Table loaded = tableCatalog.loadTable(NameIdentifier.of(schemaName, "\"comment\""));
+    assertEquals("comment", loaded.name());
+  }
+
+  @Test
+  void testLegacyQuotedTableCreatedOutsideGravitinoIsVisible() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+
+    // Bypass Gravitino entirely and create a mixed-case quoted table directly via JDBC, simulating
+    // a table created by an older Gravitino version or external tooling.
+    oracleService.executeQuery("CREATE TABLE \"LegacyFoo\" (\"ID\" NUMBER(10))");
+
+    Set<String> listed =
+        Arrays.stream(tableCatalog.listTables(Namespace.of(schemaName)))
+            .map(NameIdentifier::name)
+            .collect(Collectors.toSet());
+    assertTrue(listed.contains("LegacyFoo"), "Listed tables: " + listed);
+
+    // The name Gravitino reports never itself contains a literal quote character; a later
+    // reference must re-supply the quoted form to reach this case-sensitive physical table.
+    Table loaded = tableCatalog.loadTable(NameIdentifier.of(schemaName, "\"LegacyFoo\""));
+    assertEquals("LegacyFoo", loaded.name());
+  }
+
+  @Test
+  void testQuotedAndUnquotedNameCollisionSurfacesAsTableAlreadyExists() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    Column[] columns =
+        new Column[] {Column.of("id", Types.IntegerType.get(), null, false, false, null)};
+
+    createTable("IT_COLLISION_TBL", columns);
+
+    // The quoted form "IT_COLLISION_TBL" targets the identical physical object as the unquoted
+    // table just created, so Oracle rejects it as an existing-name conflict.
+    assertThrows(RuntimeException.class, () -> createTable("\"IT_COLLISION_TBL\"", columns));
+
+    assertNotNull(tableCatalog.loadTable(NameIdentifier.of(schemaName, "IT_COLLISION_TBL")));
+  }
+
+  @Test
+  void testReservedWordColumnNames() {
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "it_reserved_cols";
     NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
 
-    // "value" and "VALUE" are distinct identifiers in Oracle once they are double-quoted, so the
-    // catalog should be able to create both in the same table without collision.
+    // "comment" and "number" are Oracle reserved words; OracleTableOperations quotes the
+    // uppercased physical name, which protects them from failing as unquoted identifiers.
     Column[] columns =
         new Column[] {
           Column.of("id", Types.IntegerType.get(), null, false, false, null),
-          Column.of("value", Types.VarCharType.of(16), null, true, false, null),
-          Column.of("VALUE", Types.IntegerType.get(), null, true, false, null)
+          Column.of("comment", Types.VarCharType.of(64), null, true, false, null),
+          Column.of("number", Types.IntegerType.get(), null, true, false, null)
         };
 
     createTable(name, columns);
     Table loaded = tableCatalog.loadTable(tableIdent);
 
-    // Both case-variant columns must come back, and each must keep its declared type — that proves
-    // the JDBC round trip did not silently merge them into a single column.
-    Map<String, Column> byExactName =
-        Arrays.stream(loaded.columns()).collect(Collectors.toMap(Column::name, c -> c));
-    assertTrue(
-        byExactName.containsKey("value"), "lowercase 'value' missing: " + byExactName.keySet());
-    assertTrue(
-        byExactName.containsKey("VALUE"), "uppercase 'VALUE' missing: " + byExactName.keySet());
-    assertEquals(Types.VarCharType.of(16), byExactName.get("value").dataType());
-    assertEquals(Types.IntegerType.get(), byExactName.get("VALUE").dataType());
+    Set<String> columnNames =
+        Arrays.stream(loaded.columns()).map(Column::name).collect(Collectors.toSet());
+    assertTrue(columnNames.contains("COMMENT"), "columns: " + columnNames);
+    assertTrue(columnNames.contains("NUMBER"), "columns: " + columnNames);
   }
 
   @Test
-  void testAlterTableColumnCaseSensitive() {
+  void testAlterTableColumnCaseFolding() {
     TableCatalog tableCatalog = catalog.asTableCatalog();
-    String name = "IT_COL_CASE_ALTER";
+    String name = "it_col_case_alter";
     NameIdentifier tableIdent = NameIdentifier.of(schemaName, name);
 
     Column[] columns =
         new Column[] {
           Column.of("id", Types.IntegerType.get(), null, false, false, null),
-          Column.of("KeepMe", Types.VarCharType.of(16), null, true, false, null)
+          Column.of("keepme", Types.VarCharType.of(16), null, true, false, null)
         };
     createTable(name, columns);
 
-    // Add a mixed-case column; the ALTER TABLE ADD path goes through quotedName() too.
+    // Mixed-case field name folds to uppercase before the ADD COLUMN path applies it to Oracle.
     tableCatalog.alterTable(
         tableIdent,
         TableChange.addColumn(
@@ -547,21 +652,19 @@ public class CatalogOracleIT extends BaseIT {
     Table afterAdd = tableCatalog.loadTable(tableIdent);
     Set<String> namesAfterAdd =
         Arrays.stream(afterAdd.columns()).map(Column::name).collect(Collectors.toSet());
+    assertTrue(namesAfterAdd.contains("NEWCOL"), "NEWCOL should be added: " + namesAfterAdd);
     assertTrue(
-        namesAfterAdd.contains("NewCol"),
-        "NewCol should be added with exact case: " + namesAfterAdd);
-    assertTrue(
-        namesAfterAdd.contains("KeepMe"), "KeepMe should still be present: " + namesAfterAdd);
+        namesAfterAdd.contains("KEEPME"), "KEEPME should still be present: " + namesAfterAdd);
 
-    // Drop the mixed-case column with the exact original casing.
-    tableCatalog.alterTable(tableIdent, TableChange.deleteColumn(new String[] {"NewCol"}, false));
+    // Drop it using yet another casing — folding makes it the same logical column.
+    tableCatalog.alterTable(tableIdent, TableChange.deleteColumn(new String[] {"NEWCOL"}, false));
 
     Table afterDrop = tableCatalog.loadTable(tableIdent);
     Set<String> namesAfterDrop =
         Arrays.stream(afterDrop.columns()).map(Column::name).collect(Collectors.toSet());
-    assertFalse(namesAfterDrop.contains("NewCol"), "NewCol should be dropped: " + namesAfterDrop);
+    assertFalse(namesAfterDrop.contains("NEWCOL"), "NEWCOL should be dropped: " + namesAfterDrop);
     assertTrue(
-        namesAfterDrop.contains("KeepMe"), "KeepMe should still be present: " + namesAfterDrop);
+        namesAfterDrop.contains("KEEPME"), "KEEPME should still be present: " + namesAfterDrop);
   }
 
   // ----------------------------------------------------------------------
@@ -705,7 +808,7 @@ public class CatalogOracleIT extends BaseIT {
     tableCatalog.alterTable(oldIdent, TableChange.rename(newName));
 
     Table renamed = tableCatalog.loadTable(newIdent);
-    assertEquals(newName, renamed.name());
+    assertEquals(newName.toUpperCase(Locale.ROOT), renamed.name());
     assertFalse(oracleService.tableExists(oldName));
     assertTrue(oracleService.tableExists(newName));
   }
@@ -823,7 +926,9 @@ public class CatalogOracleIT extends BaseIT {
     assertTrue(typesAfterAdd.contains(Index.IndexType.PRIMARY_KEY));
     assertTrue(typesAfterAdd.contains(Index.IndexType.UNIQUE_KEY));
 
-    // Drop the unique constraint.
+    // Drop the unique constraint. Index names are not folded by Gravitino core (unlike
+    // table/column names) and are quoted case-preserving, exactly like Oracle's own case-sensitive
+    // quoted-identifier semantics, so this must reference the exact case it was created with.
     tableCatalog.alterTable(tableIdent, TableChange.deleteIndex("UK_IT_ALTER_IDX_CODE", false));
 
     Table afterDrop = tableCatalog.loadTable(tableIdent);

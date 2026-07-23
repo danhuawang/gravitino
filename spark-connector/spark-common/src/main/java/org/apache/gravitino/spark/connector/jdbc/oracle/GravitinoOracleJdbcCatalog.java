@@ -19,26 +19,35 @@
 package org.apache.gravitino.spark.connector.jdbc.oracle;
 
 import java.util.Arrays;
-import java.util.Locale;
-import java.util.Map;
 import org.apache.gravitino.spark.connector.PropertiesConverter;
+import org.apache.gravitino.spark.connector.SparkTransformConverter;
+import org.apache.gravitino.spark.connector.SparkTypeConverter;
 import org.apache.gravitino.spark.connector.jdbc.GravitinoJdbcCatalog;
 import org.apache.gravitino.spark.connector.jdbc.JdbcPropertiesConverter;
-import org.apache.spark.sql.catalyst.analysis.NamespaceAlreadyExistsException;
-import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
-import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
-import org.apache.spark.sql.catalyst.analysis.NonEmptyNamespaceException;
-import org.apache.spark.sql.catalyst.analysis.TableAlreadyExistsException;
 import org.apache.spark.sql.connector.catalog.Identifier;
-import org.apache.spark.sql.connector.catalog.NamespaceChange;
 import org.apache.spark.sql.connector.catalog.Table;
-import org.apache.spark.sql.connector.catalog.TableChange;
-import org.apache.spark.sql.connector.expressions.Transform;
-import org.apache.spark.sql.types.StructType;
+import org.apache.spark.sql.connector.catalog.TableCatalog;
+import org.apache.spark.sql.execution.datasources.v2.jdbc.JDBCTable;
+import org.apache.spark.sql.execution.datasources.v2.jdbc.JDBCTableCatalog;
 
 /**
- * Base Oracle JDBC catalog. Uppercases the namespace in all table operations because Oracle stores
- * schema names (= usernames) in uppercase while Spark's case-insensitive SQL may pass lowercase.
+ * Base Oracle JDBC catalog.
+ *
+ * <p>Gravitino stores Oracle identifiers as logical names following Oracle's own quoting
+ * convention: a quoted logical name (e.g. {@code "MyTable"}) preserves its exact case, while an
+ * unquoted logical name is folded to uppercase. The Gravitino server folds any client-supplied case
+ * server-side, so no folding is needed when calling Gravitino APIs.
+ *
+ * <p>The wrapped Spark {@code JDBCTableCatalog} connects directly to Oracle and uses Oracle's
+ * quoting rules, so it must receive the physical identifiers. Overriding {@link #loadSparkTable}
+ * and {@link #invalidateTable} converts logical identifiers to physical ones (via {@link
+ * OracleNameFolding#toPhysicalName}) before delegating to the underlying Spark catalog.
+ *
+ * <p>Spark's write path ({@code INSERT INTO}, {@code CREATE TABLE ... AS SELECT}, {@code
+ * DataFrameWriter}) goes through Spark's built-in JDBC data source directly and builds its SQL from
+ * the table's Spark-visible schema, not through Gravitino's name folding. {@link #createSparkTable}
+ * therefore returns a {@link SparkOracleJdbcTable}, which reports the physical Oracle schema
+ * instead of Gravitino's logical one, so that generated SQL matches the physical columns.
  */
 public abstract class GravitinoOracleJdbcCatalog extends GravitinoJdbcCatalog {
 
@@ -48,77 +57,43 @@ public abstract class GravitinoOracleJdbcCatalog extends GravitinoJdbcCatalog {
   }
 
   @Override
-  public boolean tableExists(Identifier ident) {
-    return super.tableExists(upperCaseNamespace(ident));
+  protected Table createSparkTable(
+      Identifier identifier,
+      org.apache.gravitino.rel.Table gravitinoTable,
+      Table sparkTable,
+      TableCatalog sparkCatalog,
+      PropertiesConverter propertiesConverter,
+      SparkTransformConverter sparkTransformConverter,
+      SparkTypeConverter sparkTypeConverter) {
+    return new SparkOracleJdbcTable(
+        identifier,
+        gravitinoTable,
+        (JDBCTable) sparkTable,
+        (JDBCTableCatalog) sparkCatalog,
+        propertiesConverter,
+        sparkTransformConverter,
+        sparkTypeConverter);
   }
 
   @Override
-  public Table loadTable(Identifier ident) throws NoSuchTableException {
-    return super.loadTable(upperCaseNamespace(ident));
+  protected Table loadSparkTable(Identifier ident) {
+    return super.loadSparkTable(toPhysicalIdentifier(ident));
   }
 
   @Override
-  public Table createTable(
-      Identifier ident, StructType schema, Transform[] transforms, Map<String, String> properties)
-      throws TableAlreadyExistsException, NoSuchNamespaceException {
-    return super.createTable(upperCaseNamespace(ident), schema, transforms, properties);
+  public void invalidateTable(Identifier ident) {
+    super.invalidateTable(toPhysicalIdentifier(ident));
   }
 
-  @Override
-  public Table alterTable(Identifier ident, TableChange... changes) throws NoSuchTableException {
-    return super.alterTable(upperCaseNamespace(ident), changes);
-  }
-
-  @Override
-  public boolean dropTable(Identifier ident) {
-    return super.dropTable(upperCaseNamespace(ident));
-  }
-
-  @Override
-  public boolean purgeTable(Identifier ident) {
-    return super.purgeTable(upperCaseNamespace(ident));
-  }
-
-  @Override
-  public void renameTable(Identifier oldIdent, Identifier newIdent)
-      throws NoSuchTableException, TableAlreadyExistsException {
-    super.renameTable(upperCaseNamespace(oldIdent), upperCaseNamespace(newIdent));
-  }
-
-  @Override
-  public Identifier[] listTables(String[] namespace) throws NoSuchNamespaceException {
-    return super.listTables(upperCase(namespace));
-  }
-
-  @Override
-  public Map<String, String> loadNamespaceMetadata(String[] namespace)
-      throws NoSuchNamespaceException {
-    return super.loadNamespaceMetadata(upperCase(namespace));
-  }
-
-  @Override
-  public void createNamespace(String[] namespace, Map<String, String> metadata)
-      throws NamespaceAlreadyExistsException {
-    super.createNamespace(upperCase(namespace), metadata);
-  }
-
-  @Override
-  public void alterNamespace(String[] namespace, NamespaceChange... changes)
-      throws NoSuchNamespaceException {
-    super.alterNamespace(upperCase(namespace), changes);
-  }
-
-  @Override
-  public boolean dropNamespace(String[] namespace, boolean cascade)
-      throws NoSuchNamespaceException, NonEmptyNamespaceException {
-    return super.dropNamespace(upperCase(namespace), cascade);
-  }
-
-  protected static Identifier upperCaseNamespace(Identifier ident) {
-    return Identifier.of(upperCase(ident.namespace()), ident.name());
-  }
-
-  static String[] upperCase(String[] namespace) {
-    return Arrays.stream(namespace).map(s -> s.toUpperCase(Locale.ROOT)).toArray(String[]::new);
+  /**
+   * Converts a logical identifier to the physical Oracle identifier, for use when calling the
+   * underlying Spark {@code JDBCTableCatalog}.
+   */
+  protected static Identifier toPhysicalIdentifier(Identifier ident) {
+    String[] physicalNamespace =
+        Arrays.stream(ident.namespace())
+            .map(OracleNameFolding::toPhysicalName)
+            .toArray(String[]::new);
+    return Identifier.of(physicalNamespace, OracleNameFolding.toPhysicalName(ident.name()));
   }
 }

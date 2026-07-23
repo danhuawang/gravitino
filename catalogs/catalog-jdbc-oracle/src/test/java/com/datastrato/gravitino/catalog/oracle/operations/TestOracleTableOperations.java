@@ -167,15 +167,18 @@ public class TestOracleTableOperations {
 
   @Test
   void testCreateAndDropSql() {
+    // Names have already been normalized to their physical (uppercase) form by
+    // OracleCatalogCapability.normalizeName before reaching generateCreateTableSql, which only
+    // quotes them.
     JdbcColumn[] columns =
         new JdbcColumn[] {
           JdbcColumn.builder()
-              .withName("id")
+              .withName("ID")
               .withType(Types.IntegerType.get())
               .withNullable(false)
               .build(),
           JdbcColumn.builder()
-              .withName("name")
+              .withName("NAME")
               .withType(Types.VarCharType.of(16))
               .withNullable(true)
               .build()
@@ -183,41 +186,44 @@ public class TestOracleTableOperations {
 
     String sql =
         operations.createSqlForTest(
-            "t1",
+            "T1",
             columns,
             Map.of(TABLESPACE, "USERS"),
             new Index[] {
-              Indexes.primary("PK_T1", new String[][] {new String[] {"id"}}),
-              Indexes.unique("UK_T1_NAME", new String[][] {new String[] {"name"}})
+              Indexes.primary("PK_T1", new String[][] {new String[] {"ID"}}),
+              Indexes.unique("UK_T1_NAME", new String[][] {new String[] {"NAME"}})
             });
-    assertTrue(sql.contains("CREATE TABLE \"t1\""));
-    assertTrue(sql.contains("CONSTRAINT \"PK_T1\" PRIMARY KEY (\"id\")"));
-    assertTrue(sql.contains("CONSTRAINT \"UK_T1_NAME\" UNIQUE (\"name\")"));
+    assertTrue(sql.contains("CREATE TABLE \"T1\""));
+    assertTrue(sql.contains("CONSTRAINT \"PK_T1\" PRIMARY KEY (\"ID\")"));
+    assertTrue(sql.contains("CONSTRAINT \"UK_T1_NAME\" UNIQUE (\"NAME\")"));
     assertTrue(sql.endsWith("TABLESPACE \"USERS\""));
 
-    assertEquals("DROP TABLE \"t1\" PURGE", operations.dropSqlForTest("t1"));
+    assertEquals("DROP TABLE \"T1\" PURGE", operations.dropSqlForTest("T1"));
   }
 
   @Test
-  void testCreateSqlWithUnnamedConstraintsAndEscapedIdentifier() {
+  void testCreateSqlWithUnnamedConstraintsAndReservedWordColumns() {
+    // Unnamed constraints and reserved-word column names (e.g. "comment", "number") are safe
+    // because quote() wraps the name in double quotes.
     JdbcColumn[] columns =
         new JdbcColumn[] {
-          JdbcColumn.builder().withName("id").withType(Types.IntegerType.get()).build(),
-          JdbcColumn.builder().withName("name").withType(Types.VarCharType.of(16)).build()
+          JdbcColumn.builder().withName("ID").withType(Types.IntegerType.get()).build(),
+          JdbcColumn.builder().withName("COMMENT").withType(Types.VarCharType.of(255)).build()
         };
 
     String sql =
         operations.createSqlForTest(
-            "a\"b",
+            "T1",
             columns,
             Collections.emptyMap(),
             new Index[] {
-              Indexes.primary("", new String[][] {new String[] {"id"}}),
-              Indexes.unique("", new String[][] {new String[] {"name"}})
+              Indexes.primary("", new String[][] {new String[] {"ID"}}),
+              Indexes.unique("", new String[][] {new String[] {"COMMENT"}})
             });
-    assertTrue(sql.contains("CREATE TABLE \"a\"\"b\""));
-    assertTrue(sql.contains("PRIMARY KEY (\"id\")"));
-    assertTrue(sql.contains("UNIQUE (\"name\")"));
+    assertTrue(sql.contains("CREATE TABLE \"T1\""));
+    assertTrue(sql.contains("\"COMMENT\" VARCHAR2(255)"));
+    assertTrue(sql.contains("PRIMARY KEY (\"ID\")"));
+    assertTrue(sql.contains("UNIQUE (\"COMMENT\")"));
     assertFalse(sql.contains("CONSTRAINT"));
   }
 
@@ -238,14 +244,16 @@ public class TestOracleTableOperations {
     when(propertiesRs.getString("COMPRESSION")).thenReturn("DISABLED");
     when(propertiesRs.getString("COMMENTS")).thenReturn("table comment");
 
-    Map<String, String> properties = operations.getTablePropertiesForTest(connection, "mixedCase");
+    Map<String, String> properties = operations.getTablePropertiesForTest(connection, "MixedCase");
     assertEquals("USERS", properties.get(TABLESPACE));
     assertEquals("NO", properties.get(PARTITIONED));
     assertEquals("DISABLED", properties.get(ROW_MOVEMENT));
     assertEquals("DISABLED", properties.get(COMPRESSION));
     assertEquals("table comment", properties.get(COMMENT_KEY));
     verify(propertiesStmt).setString(1, "APP_USER");
-    verify(propertiesStmt).setString(2, "mixedCase");
+    // tableName has already been normalized by OracleCatalogCapability.normalizeName, so it is
+    // bound as-is, with its case preserved, not re-folded.
+    verify(propertiesStmt).setString(2, "MixedCase");
 
     JdbcTable.Builder builder = JdbcTable.builder().withComment("").withProperties(properties);
     operations.correctJdbcTableFieldsForTest(connection, "APP_USER", "T1", builder);
@@ -260,7 +268,13 @@ public class TestOracleTableOperations {
     List<Index> indexes = operations.getIndexesForTest(connection, "APP_USER", "T1");
     assertEquals(2, indexes.size());
     assertEquals(Index.IndexType.PRIMARY_KEY, indexes.get(0).type());
+    // Constraint/column names are returned exactly as read from the JDBC result set.
+    assertEquals("PK_T1", indexes.get(0).name());
+    assertEquals("ID", indexes.get(0).fieldNames()[0][0]);
+    assertEquals("ID2", indexes.get(0).fieldNames()[1][0]);
     assertEquals(Index.IndexType.UNIQUE_KEY, indexes.get(1).type());
+    assertEquals("UK_T1_NAME", indexes.get(1).name());
+    assertEquals("NAME", indexes.get(1).fieldNames()[0][0]);
 
     verify(indexStmt).setString(1, "APP_USER");
     verify(indexStmt).setString(2, "T1");
@@ -322,15 +336,17 @@ public class TestOracleTableOperations {
 
   @Test
   void testCreateTableWithPartitioning() {
+    // Column, partition, and table names have already been normalized to their physical
+    // (uppercase) form by core before reaching this method, which only quotes them.
     JdbcColumn[] columns =
         new JdbcColumn[] {
           JdbcColumn.builder()
-              .withName("id")
+              .withName("ID")
               .withType(Types.IntegerType.get())
               .withNullable(false)
               .build(),
           JdbcColumn.builder()
-              .withName("region")
+              .withName("REGION")
               .withType(Types.VarCharType.of(32))
               .withNullable(true)
               .build()
@@ -340,15 +356,15 @@ public class TestOracleTableOperations {
     // HASH partitioning
     String hashSql =
         operations.createSqlWithPartitionForTest(
-            "T1", columns, props, new Transform[] {Transforms.bucket(4, new String[] {"id"})});
-    assertTrue(hashSql.contains("PARTITION BY HASH (\"id\") PARTITIONS 4"));
+            "T1", columns, props, new Transform[] {Transforms.bucket(4, new String[] {"ID"})});
+    assertTrue(hashSql.contains("PARTITION BY HASH (\"ID\") PARTITIONS 4"));
 
     // Oracle rejects RANGE partitioning without at least one partition definition.
     assertThrows(
         IllegalArgumentException.class,
         () ->
             operations.createSqlWithPartitionForTest(
-                "T1", columns, props, new Transform[] {Transforms.range(new String[] {"id"})}));
+                "T1", columns, props, new Transform[] {Transforms.range(new String[] {"ID"})}));
 
     // RANGE partitioning with assignments
     String rangeWithPartsSql =
@@ -358,30 +374,27 @@ public class TestOracleTableOperations {
             props,
             new Transform[] {
               Transforms.range(
-                  new String[] {"id"},
+                  new String[] {"ID"},
                   new RangePartition[] {
-                    Partitions.range("p1", Literals.longLiteral(100L), Literals.NULL, Map.of()),
+                    Partitions.range("P1", Literals.longLiteral(100L), Literals.NULL, Map.of()),
                     Partitions.range(
-                        "p_date", Literals.dateLiteral("2026-04-27"), Literals.NULL, Map.of()),
+                        "P_DATE", Literals.dateLiteral("2026-04-27"), Literals.NULL, Map.of()),
                     Partitions.range(
-                        "p_timestamp",
+                        "P_TIMESTAMP",
                         Literals.timestampLiteral("2026-04-28T12:34:56"),
                         Literals.NULL,
                         Map.of()),
-                    Partitions.range(
-                        "p\"quote", Literals.longLiteral(200L), Literals.NULL, Map.of()),
-                    Partitions.range("p2", Literals.NULL, Literals.NULL, Map.of())
+                    Partitions.range("P2", Literals.NULL, Literals.NULL, Map.of())
                   })
             });
-    assertTrue(rangeWithPartsSql.contains("PARTITION BY RANGE (\"id\")"));
-    assertTrue(rangeWithPartsSql.contains("PARTITION \"p1\" VALUES LESS THAN (100)"));
+    assertTrue(rangeWithPartsSql.contains("PARTITION BY RANGE (\"ID\")"));
+    assertTrue(rangeWithPartsSql.contains("PARTITION \"P1\" VALUES LESS THAN (100)"));
     assertTrue(
-        rangeWithPartsSql.contains("PARTITION \"p_date\" VALUES LESS THAN (DATE '2026-04-27')"));
+        rangeWithPartsSql.contains("PARTITION \"P_DATE\" VALUES LESS THAN (DATE '2026-04-27')"));
     assertTrue(
         rangeWithPartsSql.contains(
-            "PARTITION \"p_timestamp\" VALUES LESS THAN (TIMESTAMP '2026-04-28 12:34:56')"));
-    assertTrue(rangeWithPartsSql.contains("PARTITION \"p\"\"quote\" VALUES LESS THAN (200)"));
-    assertTrue(rangeWithPartsSql.contains("PARTITION \"p2\" VALUES LESS THAN (MAXVALUE)"));
+            "PARTITION \"P_TIMESTAMP\" VALUES LESS THAN (TIMESTAMP '2026-04-28 12:34:56')"));
+    assertTrue(rangeWithPartsSql.contains("PARTITION \"P2\" VALUES LESS THAN (MAXVALUE)"));
 
     // LIST partitioning without assignments
     String listSql =
@@ -389,8 +402,8 @@ public class TestOracleTableOperations {
             "T1",
             columns,
             props,
-            new Transform[] {Transforms.list(new String[][] {new String[] {"region"}})});
-    assertTrue(listSql.contains("PARTITION BY LIST (\"region\")"));
+            new Transform[] {Transforms.list(new String[][] {new String[] {"REGION"}})});
+    assertTrue(listSql.contains("PARTITION BY LIST (\"REGION\")"));
     assertFalse(listSql.contains("VALUES"));
 
     // LIST partitioning with assignments
@@ -401,21 +414,21 @@ public class TestOracleTableOperations {
             props,
             new Transform[] {
               Transforms.list(
-                  new String[][] {new String[] {"region"}},
+                  new String[][] {new String[] {"REGION"}},
                   new ListPartition[] {
                     Partitions.list(
-                        "p_east",
+                        "P_EAST",
                         new Literal<?>[][] {new Literal<?>[] {Literals.stringLiteral("East")}},
                         Map.of()),
                     Partitions.list(
-                        "p_west",
+                        "P_WEST",
                         new Literal<?>[][] {new Literal<?>[] {Literals.stringLiteral("West")}},
                         Map.of())
                   })
             });
-    assertTrue(listWithPartsSql.contains("PARTITION BY LIST (\"region\")"));
-    assertTrue(listWithPartsSql.contains("PARTITION \"p_east\" VALUES ('East')"));
-    assertTrue(listWithPartsSql.contains("PARTITION \"p_west\" VALUES ('West')"));
+    assertTrue(listWithPartsSql.contains("PARTITION BY LIST (\"REGION\")"));
+    assertTrue(listWithPartsSql.contains("PARTITION \"P_EAST\" VALUES ('East')"));
+    assertTrue(listWithPartsSql.contains("PARTITION \"P_WEST\" VALUES ('West')"));
   }
 
   @Test
@@ -583,6 +596,8 @@ public class TestOracleTableOperations {
     assertTrue(listTransforms[0] instanceof Transforms.ListTransform);
     assertEquals("REGION", ((Transforms.ListTransform) listTransforms[0]).fieldNames()[0][0]);
     assertEquals("CATEGORY", ((Transforms.ListTransform) listTransforms[0]).fieldNames()[1][0]);
+    // tableName has already been normalized by OracleCatalogCapability.normalizeName, so it is
+    // bound as-is, with its case preserved, not re-folded.
     verify(typeStmt3).setString(2, "MixedTable");
     verify(colStmt3).setString(2, "MixedTable");
 
@@ -932,7 +947,7 @@ public class TestOracleTableOperations {
     when(partitionTypeStmt.executeQuery()).thenReturn(partitionTypeRs);
     when(partitionTypeRs.next()).thenReturn(false);
     when(connection.getSchema()).thenReturn("APP_USER");
-    Connection schemaConnection = operations.getConnection("app_user");
+    Connection schemaConnection = operations.getConnection("APP_USER");
     assertEquals(connection, schemaConnection);
     verify(statement).execute(eq("ALTER SESSION SET CURRENT_SCHEMA = \"APP_USER\""));
     verify(connection).setSchema("APP_USER");
@@ -947,6 +962,7 @@ public class TestOracleTableOperations {
     when(metaData.getColumns(null, "APP_USER", "T1", null)).thenReturn(columns);
 
     assertEquals(tables, operations.getTablesForTest(connection));
+    // tableName has already been normalized by core, so it is passed to DatabaseMetaData as-is.
     assertEquals(table, operations.getTableForTest(connection, "APP_USER", "T1"));
     assertEquals(columns, operations.getColumnsForTest(connection, "APP_USER", "T1"));
 
@@ -959,59 +975,85 @@ public class TestOracleTableOperations {
   }
 
   @Test
+  void testListTablesReturnsPhysicalNamesAsIs() throws Exception {
+    // listTables() returns names exactly as Oracle stores them, with no synthetic quoting added:
+    // Capability.normalizeName is not idempotent for a catalog whose folding depends on whether the
+    // name was originally quoted, and TableNormalizeDispatcher.listTables does not re-normalize
+    // this result, so returning an already-canonical physical name here is required for
+    // correctness.
+    Statement sessionStatement = mock(Statement.class);
+    when(connection.createStatement()).thenReturn(sessionStatement);
+    when(connection.getSchema()).thenReturn("APP_USER");
+    DatabaseMetaData metaData = mock(DatabaseMetaData.class);
+    when(connection.getMetaData()).thenReturn(metaData);
+
+    ResultSet tables = mock(ResultSet.class);
+    when(metaData.getTables(null, "APP_USER", null, new String[] {"TABLE"})).thenReturn(tables);
+    when(tables.next()).thenReturn(true, true, true, false);
+    when(tables.getString("TABLE_SCHEM")).thenReturn("APP_USER", "APP_USER", "APP_USER");
+    when(tables.getString("TABLE_NAME")).thenReturn("foo", "Foo", "BAR");
+
+    assertEquals(List.of("foo", "Foo", "BAR"), operations.listTables("APP_USER"));
+  }
+
+  @Test
   void testGenerateAlterTableSql() {
+    // Column and table names have already been normalized to their physical (uppercase) form by
+    // core before reaching this method, which only quotes them.
     String sql =
         operations.generateAlterTableSql(
             "APP_USER",
             "T1",
             TableChange.addColumn(
-                new String[] {"new_col"},
+                new String[] {"NEW_COL"},
                 Types.VarCharType.of(100),
                 "new col comment",
                 TableChange.ColumnPosition.defaultPos(),
                 true,
                 false,
                 Literals.stringLiteral("v1")),
-            TableChange.updateColumnType(new String[] {"new_col"}, Types.LongType.get()),
+            TableChange.updateColumnType(new String[] {"NEW_COL"}, Types.LongType.get()),
             TableChange.updateColumnDefaultValue(
-                new String[] {"new_col"}, Literals.longLiteral(10L)),
-            TableChange.updateColumnNullability(new String[] {"new_col"}, false),
-            TableChange.renameColumn(new String[] {"new_col"}, "new_col_2"),
-            TableChange.updateColumnComment(new String[] {"new_col_2"}, "updated"),
-            TableChange.deleteColumn(new String[] {"old_col"}, false),
+                new String[] {"NEW_COL"}, Literals.longLiteral(10L)),
+            TableChange.updateColumnNullability(new String[] {"NEW_COL"}, false),
+            TableChange.renameColumn(new String[] {"NEW_COL"}, "NEW_COL_2"),
+            TableChange.updateColumnComment(new String[] {"NEW_COL_2"}, "updated"),
+            TableChange.deleteColumn(new String[] {"OLD_COL"}, false),
             TableChange.updateComment("table comment"));
 
     assertTrue(
         sql.contains(
-            "ALTER TABLE \"APP_USER\".\"T1\" ADD (\"new_col\" VARCHAR2(100) DEFAULT 'v1')"));
+            "ALTER TABLE \"APP_USER\".\"T1\" ADD (\"NEW_COL\" VARCHAR2(100) DEFAULT 'v1')"));
     assertTrue(
-        sql.contains("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"new_col\" IS 'new col comment'"));
-    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"new_col\" NUMBER(19))"));
-    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"new_col\" DEFAULT 10)"));
-    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"new_col\" NOT NULL)"));
+        sql.contains("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"NEW_COL\" IS 'new col comment'"));
+    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"NEW_COL\" NUMBER(19))"));
+    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"NEW_COL\" DEFAULT 10)"));
+    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" MODIFY (\"NEW_COL\" NOT NULL)"));
     assertTrue(
-        sql.contains("ALTER TABLE \"APP_USER\".\"T1\" RENAME COLUMN \"new_col\" TO \"new_col_2\""));
-    assertTrue(sql.contains("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"new_col_2\" IS 'updated'"));
-    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" DROP COLUMN \"old_col\""));
+        sql.contains("ALTER TABLE \"APP_USER\".\"T1\" RENAME COLUMN \"NEW_COL\" TO \"NEW_COL_2\""));
+    assertTrue(sql.contains("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"NEW_COL_2\" IS 'updated'"));
+    assertTrue(sql.contains("ALTER TABLE \"APP_USER\".\"T1\" DROP COLUMN \"OLD_COL\""));
     assertTrue(sql.contains("COMMENT ON TABLE \"APP_USER\".\"T1\" IS 'table comment'"));
   }
 
   @Test
-  void testGenerateAlterTableSqlNormalizesSchemaName() {
+  void testGenerateAlterTableSqlUsesGivenSchemaNameAsIs() {
+    // The schema name has already been normalized by core before reaching this method, so it is
+    // quoted as-is, with no further folding.
     String sql =
         operations.generateAlterTableSql(
             "app_user", "T1", TableChange.updateComment("table comment"));
 
-    assertEquals("COMMENT ON TABLE \"APP_USER\".\"T1\" IS 'table comment'", sql);
+    assertEquals("COMMENT ON TABLE \"app_user\".\"T1\" IS 'table comment'", sql);
   }
 
   @Test
   void testGenerateAlterTableSqlSupportsNullColumnComment() {
     String sql =
         operations.generateAlterTableSql(
-            "app_user", "T1", TableChange.updateColumnComment(new String[] {"col_a"}, null));
+            "APP_USER", "T1", TableChange.updateColumnComment(new String[] {"COL_A"}, null));
 
-    assertEquals("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"col_a\" IS NULL", sql);
+    assertEquals("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"COL_A\" IS NULL", sql);
   }
 
   @Test
@@ -1022,17 +1064,17 @@ public class TestOracleTableOperations {
     when(connection.createStatement()).thenReturn(sessionStatement, ddlStatement1, ddlStatement2);
 
     operations.alterTable(
-        "app_user",
+        "APP_USER",
         "T1",
         TableChange.updateComment("table comment"),
-        TableChange.updateColumnComment(new String[] {"col_a"}, "column comment"));
+        TableChange.updateColumnComment(new String[] {"COL_A"}, "column comment"));
 
     verify(sessionStatement).execute(eq("ALTER SESSION SET CURRENT_SCHEMA = \"APP_USER\""));
     verify(connection).setSchema("APP_USER");
     verify(ddlStatement1)
         .executeUpdate(eq("COMMENT ON TABLE \"APP_USER\".\"T1\" IS 'table comment'"));
     verify(ddlStatement2)
-        .executeUpdate(eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"col_a\" IS 'column comment'"));
+        .executeUpdate(eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"COL_A\" IS 'column comment'"));
   }
 
   @Test
@@ -1042,22 +1084,22 @@ public class TestOracleTableOperations {
     Statement ddlStatement2 = mock(Statement.class);
     when(connection.createStatement()).thenReturn(sessionStatement, ddlStatement1, ddlStatement2);
     when(ddlStatement2.executeUpdate(
-            eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"col_a\" IS 'column comment'")))
+            eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"COL_A\" IS 'column comment'")))
         .thenThrow(new SQLException("failed"));
 
     assertThrows(
         GravitinoRuntimeException.class,
         () ->
             operations.alterTable(
-                "app_user",
+                "APP_USER",
                 "T1",
                 TableChange.updateComment("table comment"),
-                TableChange.updateColumnComment(new String[] {"col_a"}, "column comment")));
+                TableChange.updateColumnComment(new String[] {"COL_A"}, "column comment")));
 
     verify(ddlStatement1)
         .executeUpdate(eq("COMMENT ON TABLE \"APP_USER\".\"T1\" IS 'table comment'"));
     verify(ddlStatement2)
-        .executeUpdate(eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"col_a\" IS 'column comment'"));
+        .executeUpdate(eq("COMMENT ON COLUMN \"APP_USER\".\"T1\".\"COL_A\" IS 'column comment'"));
   }
 
   @Test
@@ -1069,25 +1111,28 @@ public class TestOracleTableOperations {
 
   @Test
   void testGenerateAlterTableSqlIndexChanges() {
+    // Column names referenced by an index have already been normalized to their physical
+    // (uppercase) form by core before reaching this method, which only quotes them. Index names
+    // themselves are not covered by that normalization and are quoted as given.
     String addPkSql =
         operations.generateAlterTableSql(
             "APP_USER",
             "T1",
             TableChange.addIndex(
-                Index.IndexType.PRIMARY_KEY, "PK_T1", new String[][] {new String[] {"id"}}));
+                Index.IndexType.PRIMARY_KEY, "PK_T1", new String[][] {new String[] {"ID"}}));
     assertTrue(
         addPkSql.contains(
-            "ALTER TABLE \"APP_USER\".\"T1\" ADD CONSTRAINT \"PK_T1\" PRIMARY KEY (\"id\")"));
+            "ALTER TABLE \"APP_USER\".\"T1\" ADD CONSTRAINT \"PK_T1\" PRIMARY KEY (\"ID\")"));
 
     String addUkSql =
         operations.generateAlterTableSql(
             "APP_USER",
             "T1",
             TableChange.addIndex(
-                Index.IndexType.UNIQUE_KEY, "UK_T1_NAME", new String[][] {new String[] {"name"}}));
+                Index.IndexType.UNIQUE_KEY, "UK_T1_NAME", new String[][] {new String[] {"NAME"}}));
     assertTrue(
         addUkSql.contains(
-            "ALTER TABLE \"APP_USER\".\"T1\" ADD CONSTRAINT \"UK_T1_NAME\" UNIQUE (\"name\")"));
+            "ALTER TABLE \"APP_USER\".\"T1\" ADD CONSTRAINT \"UK_T1_NAME\" UNIQUE (\"NAME\")"));
 
     String dropSql =
         operations.generateAlterTableSql("APP_USER", "T1", TableChange.deleteIndex("PK_T1", false));
@@ -1098,7 +1143,7 @@ public class TestOracleTableOperations {
             .withName("T1")
             .withDatabaseName("APP_USER")
             .withColumns(new JdbcColumn[0])
-            .withIndexes(new Index[] {Indexes.primary("PK_T1", new String[][] {{"id"}})})
+            .withIndexes(new Index[] {Indexes.primary("PK_T1", new String[][] {{"ID"}})})
             .build();
 
     String skipMissingIndexSql =
@@ -1110,6 +1155,13 @@ public class TestOracleTableOperations {
         operations.generateAlterTableSql("APP_USER", "T1", TableChange.deleteIndex("PK_T1", true));
     assertTrue(
         dropExistingIndexSql.contains("ALTER TABLE \"APP_USER\".\"T1\" DROP CONSTRAINT \"PK_T1\""));
+
+    // Index names are quoted case-preserving (not folded), matching Oracle's own case-sensitive
+    // quoted-identifier semantics, so a differently-cased reference does not match the existing
+    // index and is skipped, exactly like Oracle would treat "pk_t1" and "PK_T1" as distinct.
+    String skipDifferentCaseIndexSql =
+        operations.generateAlterTableSql("APP_USER", "T1", TableChange.deleteIndex("pk_t1", true));
+    assertEquals("", skipDifferentCaseIndexSql);
   }
 
   @Test
@@ -1135,6 +1187,21 @@ public class TestOracleTableOperations {
         UnsupportedOperationException.class,
         () ->
             operations.generateAlterTableSql("APP_USER", "T1", TableChange.setProperty("k", "v")));
+  }
+
+  @Test
+  void testGetConnectionPreservesCaseForMixedCaseSchemaName() throws Exception {
+    // databaseName has already been normalized (unquoted, case preserved) by
+    // OracleCatalogCapability.normalizeName before reaching this method, so it is used as-is,
+    // without any further folding.
+    Statement statement = mock(Statement.class);
+    when(connection.createStatement()).thenReturn(statement);
+    when(connection.getSchema()).thenReturn("MySchema");
+
+    Connection schemaConnection = operations.getConnection("MySchema");
+    assertEquals(connection, schemaConnection);
+    verify(statement).execute(eq("ALTER SESSION SET CURRENT_SCHEMA = \"MySchema\""));
+    verify(connection).setSchema("MySchema");
   }
 
   @Test

@@ -30,9 +30,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -68,7 +68,6 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   private static final int MAX_RANGE_EXPRESSIONS_PER_QUERY = 100;
   private static final int MAX_RANGE_EXPRESSION_QUERY_LENGTH = 30_000;
-  private static final String DOUBLE_QUOTE = "\"";
   private static final String EVALUATE_RANGE_EXPRESSIONS_SQL_PREFIX = "SELECT ";
   private static final String EVALUATE_RANGE_EXPRESSIONS_SQL_SUFFIX = " FROM SYS.DUAL";
   private static final String GET_TABLE_PROPERTIES_SQL =
@@ -121,7 +120,7 @@ public class OracleTableOperations extends JdbcTableOperations {
 
       StringBuilder columnSql = new StringBuilder();
       columnSql
-          .append(quotedName(column.name()))
+          .append(OracleIdentifierUtil.quote(column.name()))
           .append(" ")
           .append(typeConverter.fromGravitino(column.dataType()));
       // Oracle requires DEFAULT to precede NOT NULL in a column definition (ORA-03076 otherwise).
@@ -138,16 +137,17 @@ public class OracleTableOperations extends JdbcTableOperations {
 
     columnDefinitions.addAll(buildConstraintDefinitions(indexes));
 
-    // Quote the table name and column names to preserve case sensitivity, as Oracle treats unquoted
-    // identifiers as uppercase by default. This allows users to create tables with mixed-case names
-    // if desired, but requires consistent quoting when referencing them.
+    // tableName has already been normalized to its canonical physical form by
+    // OracleCatalogCapability.normalizeName before reaching this method, so it only needs quoting
+    // here, not re-folding.
     StringBuilder sql =
         new StringBuilder(
             String.format(
                 "CREATE TABLE %s (%s)",
-                quotedName(tableName), String.join(", ", columnDefinitions)));
+                OracleIdentifierUtil.quote(tableName), String.join(", ", columnDefinitions)));
     if (properties.containsKey(TABLESPACE) && StringUtils.isNotBlank(properties.get(TABLESPACE))) {
-      sql.append(" TABLESPACE ").append(quotedName(properties.get(TABLESPACE)));
+      sql.append(" TABLESPACE ")
+          .append(OracleIdentifierUtil.quotedName(properties.get(TABLESPACE)));
     }
     if (!ArrayUtils.isEmpty(partitioning)) {
       sql.append(generatePartitionClauseSql(partitioning));
@@ -188,12 +188,12 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   @Override
   protected String generateDropTableSql(String tableName) {
-    return String.format("DROP TABLE %s PURGE", quotedName(tableName));
+    return String.format("DROP TABLE %s PURGE", OracleIdentifierUtil.quote(tableName));
   }
 
   @Override
   protected String generatePurgeTableSql(String tableName) {
-    return String.format("DROP TABLE %s PURGE", quotedName(tableName));
+    return String.format("DROP TABLE %s PURGE", OracleIdentifierUtil.quote(tableName));
   }
 
   @Override
@@ -367,7 +367,8 @@ public class OracleTableOperations extends JdbcTableOperations {
   @Override
   protected String generateRenameTableSql(String oldTableName, String newTableName) {
     return String.format(
-        "ALTER TABLE %s RENAME TO %s", quotedName(oldTableName), quotedName(newTableName));
+        "ALTER TABLE %s RENAME TO %s",
+        OracleIdentifierUtil.quote(oldTableName), OracleIdentifierUtil.quote(newTableName));
   }
 
   @Override
@@ -419,11 +420,11 @@ public class OracleTableOperations extends JdbcTableOperations {
   @Override
   protected Connection getConnection(String databaseName) throws SQLException {
     Connection connection = dataSource.getConnection();
-    String schemaName = normalizeSchemaName(databaseName);
     try (Statement statement = connection.createStatement()) {
       statement.execute(
-          String.format("ALTER SESSION SET CURRENT_SCHEMA = %s", quotedName(schemaName)));
-      connection.setSchema(schemaName);
+          String.format(
+              "ALTER SESSION SET CURRENT_SCHEMA = %s", OracleIdentifierUtil.quote(databaseName)));
+      connection.setSchema(databaseName);
       return connection;
     } catch (SQLException e) {
       try {
@@ -439,15 +440,19 @@ public class OracleTableOperations extends JdbcTableOperations {
   public List<String> listTables(String databaseName) throws NoSuchSchemaException {
     // Oracle returns TABLE_CAT=null in DatabaseMetaData.getTables, so the catalog-based filter in
     // JdbcTableOperations.listTables would drop every row. Filter by TABLE_SCHEM (== Oracle owner)
-    // instead.
+    // instead. Table names are returned exactly as Oracle stores them, with no synthetic quoting
+    // added: Capability.normalizeName is not idempotent for a catalog whose folding depends on
+    // whether the name was originally quoted, so this must not be run back through it (core's
+    // TableNormalizeDispatcher.listTables deliberately does not re-normalize this result).
     List<String> names = Lists.newArrayList();
     try (Connection connection = getConnection(databaseName);
         ResultSet tables = getTables(connection)) {
       String schema = connection.getSchema();
       while (tables.next()) {
-        if (Objects.equals(tables.getString("TABLE_SCHEM"), schema)) {
-          names.add(tables.getString("TABLE_NAME"));
+        if (!Objects.equals(tables.getString("TABLE_SCHEM"), schema)) {
+          continue;
         }
+        names.add(tables.getString("TABLE_NAME"));
       }
       return names;
     } catch (SQLException se) {
@@ -473,6 +478,25 @@ public class OracleTableOperations extends JdbcTableOperations {
       throws SQLException {
     DatabaseMetaData metaData = connection.getMetaData();
     return metaData.getColumns(null, connection.getSchema(), tableName, null);
+  }
+
+  @Override
+  protected JdbcTable.Builder getTableBuilder(
+      ResultSet tablesResult, String databaseName, String tableName) throws SQLException {
+    // tableName has already been normalized to its canonical physical form by
+    // OracleCatalogCapability.normalizeName before reaching this method, and the JDBC ResultSet was
+    // queried using that same name, so it can be used as-is without any further conversion.
+    return super.getTableBuilder(tablesResult, databaseName, tableName).withName(tableName);
+  }
+
+  @Override
+  protected JdbcColumn.Builder getColumnBuilder(
+      ResultSet columnsResult, String databaseName, String tableName) throws SQLException {
+    JdbcColumn.Builder builder = super.getColumnBuilder(columnsResult, databaseName, tableName);
+    if (builder != null) {
+      builder.withName(columnsResult.getString("COLUMN_NAME"));
+    }
+    return builder;
   }
 
   @Override
@@ -745,7 +769,7 @@ public class OracleTableOperations extends JdbcTableOperations {
     Preconditions.checkArgument(
         rangeTransform.fieldName().length == 1,
         "Oracle RANGE partition supports only a single column.");
-    String col = quotedName(rangeTransform.fieldName()[0]);
+    String col = OracleIdentifierUtil.quote(rangeTransform.fieldName()[0]);
     StringBuilder sb = new StringBuilder(String.format(" PARTITION BY RANGE (%s)", col));
     RangePartition[] assignments = rangeTransform.assignments();
     Preconditions.checkArgument(
@@ -758,7 +782,7 @@ public class OracleTableOperations extends JdbcTableOperations {
                   validateRangePartition(p);
                   return String.format(
                       "PARTITION %s VALUES LESS THAN (%s)",
-                      quotedName(p.name()), formatRangeUpperBound(p.upper()));
+                      OracleIdentifierUtil.quote(p.name()), formatRangeUpperBound(p.upper()));
                 })
             .collect(Collectors.joining(", "));
     sb.append(" (").append(partitions).append(")");
@@ -777,7 +801,7 @@ public class OracleTableOperations extends JdbcTableOperations {
                   p ->
                       String.format(
                           "PARTITION %s VALUES (%s)",
-                          quotedName(p.name()),
+                          OracleIdentifierUtil.quote(p.name()),
                           formatListPartitionValues(p.lists(), fieldNames.length)))
               .collect(Collectors.joining(", "));
       sb.append(" (").append(partitions).append(")");
@@ -792,16 +816,14 @@ public class OracleTableOperations extends JdbcTableOperations {
   }
 
   private String formatPartitionColumns(String[][] fieldNames) {
-    Preconditions.checkArgument(
-        ArrayUtils.isNotEmpty(fieldNames), "Partition fields cannot be empty.");
-    return Arrays.stream(fieldNames)
-        .map(
-            names -> {
-              Preconditions.checkArgument(
-                  names.length == 1, "Oracle does not support nested partition fields.");
-              return quotedName(names[0]);
-            })
-        .collect(Collectors.joining(", "));
+    // Transform[] at CREATE TABLE time is normalized by core
+    // (CapabilityHelpers.applyCapabilities(Transform[], ...)), so these field names are already in
+    // physical form and only need quoting, not folding.
+    return formatColumnRefs(
+        fieldNames,
+        "Partition fields cannot be empty.",
+        "Oracle does not support nested partition fields.",
+        OracleIdentifierUtil::quote);
   }
 
   private void validateRangePartition(RangePartition partition) {
@@ -853,18 +875,25 @@ public class OracleTableOperations extends JdbcTableOperations {
     return Arrays.stream(indexes)
         .map(
             index -> {
-              String columns = formatIndexColumns(index.fieldNames());
+              // Index[] at CREATE TABLE time is normalized by core
+              // (CapabilityHelpers.applyCapabilities(Index[], ...)), so these field names are
+              // already in physical form and only need quoting, not folding (unlike
+              // TableChange.AddIndex's field names at ALTER TABLE time; see
+              // formatIndexColumnsForAlter).
+              String columns = formatIndexColumnsForCreate(index.fieldNames());
               if (index.type() == Index.IndexType.PRIMARY_KEY) {
                 if (StringUtils.isNotBlank(index.name())) {
                   return String.format(
-                      "CONSTRAINT %s PRIMARY KEY (%s)", quotedName(index.name()), columns);
+                      "CONSTRAINT %s PRIMARY KEY (%s)",
+                      OracleIdentifierUtil.quote(index.name()), columns);
                 }
                 return String.format("PRIMARY KEY (%s)", columns);
               }
               if (index.type() == Index.IndexType.UNIQUE_KEY) {
                 if (StringUtils.isNotBlank(index.name())) {
                   return String.format(
-                      "CONSTRAINT %s UNIQUE (%s)", quotedName(index.name()), columns);
+                      "CONSTRAINT %s UNIQUE (%s)",
+                      OracleIdentifierUtil.quote(index.name()), columns);
                 }
                 return String.format("UNIQUE (%s)", columns);
               }
@@ -874,14 +903,38 @@ public class OracleTableOperations extends JdbcTableOperations {
         .collect(Collectors.toList());
   }
 
-  private String formatIndexColumns(String[][] fieldNames) {
-    Preconditions.checkArgument(ArrayUtils.isNotEmpty(fieldNames), "Index fields cannot be empty.");
+  private String formatIndexColumnsForCreate(String[][] fieldNames) {
+    return formatColumnRefs(
+        fieldNames,
+        "Index fields cannot be empty.",
+        "Oracle does not support complex index fields.",
+        OracleIdentifierUtil::quote);
+  }
+
+  private String formatIndexColumnsForAlter(String[][] fieldNames) {
+    // Unlike Index[] at CREATE TABLE time, TableChange.AddIndex/DeleteIndex (used for ALTER TABLE)
+    // are never passed through Capability normalization by core
+    // (CapabilityHelpers.applyCapabilities
+    // only handles ColumnChange and RenameTable for TableChange), so these field names may still
+    // need folding.
+    return formatColumnRefs(
+        fieldNames,
+        "Index fields cannot be empty.",
+        "Oracle does not support complex index fields.",
+        OracleIdentifierUtil::quotedName);
+  }
+
+  private String formatColumnRefs(
+      String[][] fieldNames,
+      String emptyMessage,
+      String nestedFieldMessage,
+      Function<String, String> quoter) {
+    Preconditions.checkArgument(ArrayUtils.isNotEmpty(fieldNames), emptyMessage);
     return Arrays.stream(fieldNames)
         .map(
             names -> {
-              Preconditions.checkArgument(
-                  names.length == 1, "Oracle does not support complex index fields.");
-              return quotedName(names[0]);
+              Preconditions.checkArgument(names.length == 1, nestedFieldMessage);
+              return quoter.apply(names[0]);
             })
         .collect(Collectors.joining(", "));
   }
@@ -905,7 +958,8 @@ public class OracleTableOperations extends JdbcTableOperations {
     if (StringUtils.isNotBlank(comment)) {
       String tableCommentSql =
           String.format(
-              "COMMENT ON TABLE %s IS '%s'", quotedName(tableName), escapeSqlComment(comment));
+              "COMMENT ON TABLE %s IS '%s'",
+              OracleIdentifierUtil.quote(tableName), escapeSqlComment(comment));
       JdbcConnectorUtils.executeUpdate(connection, tableCommentSql);
     }
 
@@ -914,8 +968,8 @@ public class OracleTableOperations extends JdbcTableOperations {
         String columnCommentSql =
             String.format(
                 "COMMENT ON COLUMN %s.%s IS '%s'",
-                quotedName(tableName),
-                quotedName(column.name()),
+                OracleIdentifierUtil.quote(tableName),
+                OracleIdentifierUtil.quote(column.name()),
                 escapeSqlComment(column.comment()));
         JdbcConnectorUtils.executeUpdate(connection, columnCommentSql);
       }
@@ -924,24 +978,6 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   private static String escapeSqlComment(String value) {
     return value.replace("'", "''");
-  }
-
-  /**
-   * Wraps an identifier in double quotes, preserving its case. Quoted identifiers are intentionally
-   * case-sensitive per Oracle's SQL semantics; callers must use consistent casing for
-   * table/column/index names across create and load. Schema names are separately normalized to
-   * uppercase via {@link #normalizeSchemaName(String)} because Oracle schemas map to users.
-   */
-  private static String quotedName(String name) {
-    Preconditions.checkArgument(
-        StringUtils.isNotBlank(name), "Identifier name cannot be null or blank.");
-    return DOUBLE_QUOTE + name.replace(DOUBLE_QUOTE, DOUBLE_QUOTE + DOUBLE_QUOTE) + DOUBLE_QUOTE;
-  }
-
-  private static String normalizeSchemaName(String databaseName) {
-    Preconditions.checkArgument(
-        StringUtils.isNotBlank(databaseName), "Schema name cannot be null or blank.");
-    return databaseName.toUpperCase(Locale.ROOT);
   }
 
   private List<String> generateAlterTableSqlList(
@@ -1072,7 +1108,7 @@ public class OracleTableOperations extends JdbcTableOperations {
         fieldName.length == 1, "Oracle does not support nested column names.");
 
     StringBuilder columnDefinition = new StringBuilder();
-    columnDefinition.append(quotedName(fieldName[0]));
+    columnDefinition.append(OracleIdentifierUtil.quote(fieldName[0]));
     if (type != null) {
       columnDefinition.append(" ").append(typeConverter.fromGravitino(type));
     }
@@ -1104,7 +1140,8 @@ public class OracleTableOperations extends JdbcTableOperations {
       return "";
     }
     return String.format(
-        "ALTER TABLE %s DROP COLUMN %s", qualifiedTableName, quotedName(columnName));
+        "ALTER TABLE %s DROP COLUMN %s",
+        qualifiedTableName, OracleIdentifierUtil.quote(columnName));
   }
 
   private String generateRenameColumnSql(
@@ -1114,8 +1151,8 @@ public class OracleTableOperations extends JdbcTableOperations {
     return String.format(
         "ALTER TABLE %s RENAME COLUMN %s TO %s",
         qualifiedTableName,
-        quotedName(renameColumn.fieldName()[0]),
-        quotedName(renameColumn.getNewName()));
+        OracleIdentifierUtil.quote(renameColumn.fieldName()[0]),
+        OracleIdentifierUtil.quote(renameColumn.getNewName()));
   }
 
   private String generateUpdateColumnCommentSql(
@@ -1124,27 +1161,28 @@ public class OracleTableOperations extends JdbcTableOperations {
         fieldName.length == 1, "Oracle does not support nested column names.");
     if (comment == null) {
       return String.format(
-          "COMMENT ON COLUMN %s.%s IS NULL", qualifiedTableName, quotedName(fieldName[0]));
+          "COMMENT ON COLUMN %s.%s IS NULL",
+          qualifiedTableName, OracleIdentifierUtil.quote(fieldName[0]));
     }
     return String.format(
         "COMMENT ON COLUMN %s.%s IS '%s'",
-        qualifiedTableName, quotedName(fieldName[0]), escapeSqlComment(comment));
+        qualifiedTableName, OracleIdentifierUtil.quote(fieldName[0]), escapeSqlComment(comment));
   }
 
   private String generateAddConstraintSql(
       String qualifiedTableName, TableChange.AddIndex addIndex) {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(addIndex.getName()), "Oracle constraint requires a name.");
-    String columns = formatIndexColumns(addIndex.getFieldNames());
+    String columns = formatIndexColumnsForAlter(addIndex.getFieldNames());
     if (addIndex.getType() == Index.IndexType.PRIMARY_KEY) {
       return String.format(
           "ALTER TABLE %s ADD CONSTRAINT %s PRIMARY KEY (%s)",
-          qualifiedTableName, quotedName(addIndex.getName()), columns);
+          qualifiedTableName, OracleIdentifierUtil.quote(addIndex.getName()), columns);
     }
     if (addIndex.getType() == Index.IndexType.UNIQUE_KEY) {
       return String.format(
           "ALTER TABLE %s ADD CONSTRAINT %s UNIQUE (%s)",
-          qualifiedTableName, quotedName(addIndex.getName()), columns);
+          qualifiedTableName, OracleIdentifierUtil.quote(addIndex.getName()), columns);
     }
     throw new UnsupportedOperationException(
         "Oracle supports only PRIMARY_KEY and UNIQUE_KEY indexes.");
@@ -1154,17 +1192,24 @@ public class OracleTableOperations extends JdbcTableOperations {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(constraintName), "Oracle DROP CONSTRAINT requires a name.");
     return String.format(
-        "ALTER TABLE %s DROP CONSTRAINT %s", qualifiedTableName, quotedName(constraintName));
+        "ALTER TABLE %s DROP CONSTRAINT %s",
+        qualifiedTableName, OracleIdentifierUtil.quote(constraintName));
   }
 
   private boolean indexExists(JdbcTable table, String indexName) {
+    // Index names are never folded by Gravitino core (there is no Scope.INDEX) and are quoted
+    // case-preserving, exactly like Oracle's own case-sensitive quoted-identifier semantics, so
+    // this must match exactly, not case-insensitively.
     return Arrays.stream(table.index()).anyMatch(index -> Objects.equals(index.name(), indexName));
   }
 
   private String buildColumnDefinition(
       String columnName, Type type, boolean nullable, Expression defaultValue) {
     StringBuilder definition = new StringBuilder();
-    definition.append(quotedName(columnName)).append(" ").append(typeConverter.fromGravitino(type));
+    definition
+        .append(OracleIdentifierUtil.quote(columnName))
+        .append(" ")
+        .append(typeConverter.fromGravitino(type));
     // Oracle requires DEFAULT to precede NOT NULL in a column definition (ORA-03076 otherwise).
     if (!DEFAULT_VALUE_NOT_SET.equals(defaultValue)) {
       definition
@@ -1178,6 +1223,6 @@ public class OracleTableOperations extends JdbcTableOperations {
   }
 
   private String qualifiedTableName(String databaseName, String tableName) {
-    return quotedName(normalizeSchemaName(databaseName)) + "." + quotedName(tableName);
+    return OracleIdentifierUtil.quote(databaseName) + "." + OracleIdentifierUtil.quote(tableName);
   }
 }
