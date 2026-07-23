@@ -23,6 +23,7 @@ dependencies {
   implementation(libs.commons.collections4)
   implementation(libs.commons.lang3)
   implementation(libs.guava)
+  runtimeOnly(libs.oracle.driver)
 
   testImplementation(project(":api"))
   testImplementation(project(":catalogs:catalog-jdbc-common", "testArtifacts"))

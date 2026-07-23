@@ -40,5 +40,8 @@ while IFS=: read -r container_name address; do
     mssql)
       echo "sqlserver_uri=jdbc:sqlserver://$address:1433;databaseName=gt_db;encrypt=true;trustServerCertificate=true"
       ;;
+    oracle)
+      echo "oracle_uri=jdbc:oracle:thin:@//$address:1521/FREEPDB1"
+      ;;
   esac
 done <<< "$container_urls"

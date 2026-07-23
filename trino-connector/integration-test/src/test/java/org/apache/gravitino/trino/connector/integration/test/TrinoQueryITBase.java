@@ -65,6 +65,7 @@ public class TrinoQueryITBase {
       String.format(
           "jdbc:sqlserver://%s:1433;databaseName=gt_db;encrypt=true;trustServerCertificate=true",
           testHost);
+  public static String oracleUri = String.format("jdbc:oracle:thin:@//%s:1521/FREEPDB1", testHost);
 
   protected static GravitinoAdminClient gravitinoClient;
   protected static TrinoITContainers trinoITContainers;
@@ -136,6 +137,7 @@ public class TrinoQueryITBase {
       mysqlUri = serviceUrls.getOrDefault("mysql_uri", mysqlUri);
       postgresqlUri = serviceUrls.getOrDefault("postgresql_uri", postgresqlUri);
       sqlserverUri = serviceUrls.getOrDefault("sqlserver_uri", sqlserverUri);
+      oracleUri = serviceUrls.getOrDefault("oracle_uri", oracleUri);
 
     } else if (autoStartGravitino) {
       baseIT.startIntegrationTest();

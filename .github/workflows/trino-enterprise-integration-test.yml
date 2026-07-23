@@ -52,8 +52,8 @@ jobs:
     outputs:
       source_changes: ${{ steps.filter.outputs.source_changes }}
 
-  # Integration test for enterprise-only Trino catalogs (e.g. SQL Server), run in their own
-  # pipeline since they need dedicated docker compose container subsets not started by the
+  # Integration test for enterprise-only Trino catalogs (e.g. SQL Server, Oracle), run in their
+  # own pipeline since they need dedicated docker compose container subsets not started by the
   # default Trino integration test pipeline.
   TrinoEnterpriseCatalogIT:
     needs: changes
@@ -113,14 +113,19 @@ jobs:
         run: |
           dev/ci/util_free_space.sh
 
-      - name: Trino Enterprise Catalog Integration Test
+      - name: Trino Enterprise Catalog Integration Test - SQL Server
         id: integrationTest
         run: |
           trino-connector/integration-test/trino-test-tools/trino_integration_test.sh --test_set=jdbc-sqlserver
 
+      - name: Trino Enterprise Catalog Integration Test - Oracle
+        id: integrationTestOracle
+        run: |
+          trino-connector/integration-test/trino-test-tools/trino_integration_test.sh --test_set=jdbc-oracle
+
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v7
-        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
+        if: ${{ (failure() && (steps.integrationTest.outcome == 'failure' || steps.integrationTestOracle.outcome == 'failure')) || contains(github.event.pull_request.labels.*.name, 'upload log') }}
         with:
           name: trino-connector-enterprise-integrate-test-reports-${{ matrix.java-version }}
           path: |

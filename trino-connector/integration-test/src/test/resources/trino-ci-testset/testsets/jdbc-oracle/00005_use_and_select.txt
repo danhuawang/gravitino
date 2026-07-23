@@ -1,0 +1,26 @@
+USE
+
+CREATE TABLE
+
+INSERT: 4 rows
+
+CREATE TABLE
+
+INSERT: 4 rows
+
+"bob","14.00"
+"jerry","13.00"
+"sam","11.00"
+"tom","12.00"
+
+"bob","14.00"
+"jerry","13.00"
+"sam","11.00"
+"tom","12.00"
+
+"gt_oracle_use_copy"
+"gt_oracle_use_table"
+
+DROP TABLE
+
+DROP TABLE
