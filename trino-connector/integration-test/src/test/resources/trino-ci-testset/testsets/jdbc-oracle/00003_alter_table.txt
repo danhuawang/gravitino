@@ -1,0 +1,53 @@
+CREATE TABLE
+
+DROP COLUMN
+
+"CREATE TABLE gt_oracle.gravitino.gt_oracle_alter_table (
+   name varchar(40),
+   salary decimal(10, 2)
+)
+COMMENT ''"
+
+SET COLUMN TYPE
+
+"CREATE TABLE gt_oracle.gravitino.gt_oracle_alter_table (
+   name varchar(40),
+   salary decimal(12, 2)
+)
+COMMENT ''"
+
+COMMENT
+
+"CREATE TABLE gt_oracle.gravitino.gt_oracle_alter_table (
+   name varchar(40),
+   salary decimal(12, 2)
+)
+COMMENT 'oracle alter table comments'"
+
+RENAME COLUMN
+
+"CREATE TABLE gt_oracle.gravitino.gt_oracle_alter_table (
+   employee_name varchar(40),
+   salary decimal(12, 2)
+)
+COMMENT 'oracle alter table comments'"
+
+COMMENT
+
+"CREATE TABLE gt_oracle.gravitino.gt_oracle_alter_table (
+   employee_name varchar(40) COMMENT 'employee name comments',
+   salary decimal(12, 2)
+)
+COMMENT 'oracle alter table comments'"
+
+ADD COLUMN
+
+"employee_name","varchar(40)","","employee name comments"
+"salary","decimal(12,2)","",""
+"department","varchar(40)","","department comments"
+
+RENAME TABLE
+
+"gt_oracle_alter_table_renamed"
+
+DROP TABLE

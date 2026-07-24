@@ -1,0 +1,19 @@
+CREATE TABLE
+
+INSERT: 1 row
+
+INSERT: 1 row
+
+INSERT: 2 rows
+
+"bob","14.00"
+"jerry","13.00"
+"sam","11.00"
+"tom","12.00"
+
+"jerry","13.00"
+"bob","14.00"
+
+"4","50.00"
+
+DROP TABLE

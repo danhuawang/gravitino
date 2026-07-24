@@ -64,7 +64,8 @@ public class TrinoQueryIT extends TrinoQueryITBase {
 
   static Set<String> ciTestsets = new HashSet<>();
 
-  static Set<String> skipTestsets = new HashSet<>(Arrays.asList("glue", "jdbc-sqlserver"));
+  static Set<String> skipTestsets =
+      new HashSet<>(Arrays.asList("glue", "jdbc-sqlserver", "jdbc-oracle"));
 
   static TrinoQueryITBase trinoQueryITBase;
 
@@ -93,6 +94,7 @@ public class TrinoQueryIT extends TrinoQueryITBase {
     queryParams.put("trino_uri", trinoUri);
     queryParams.put("postgresql_uri", postgresqlUri);
     queryParams.put("sqlserver_uri", sqlserverUri);
+    queryParams.put("oracle_uri", oracleUri);
     queryParams.put("gravitino_uri", gravitinoUri);
 
     LOG.info("Test query env parameters: {}", queryParams);

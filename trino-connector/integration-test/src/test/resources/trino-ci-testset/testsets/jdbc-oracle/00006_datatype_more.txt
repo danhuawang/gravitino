@@ -1,0 +1,20 @@
+CREATE TABLE
+
+"f_char","char(10)","",""
+"f_varchar","varchar(200)","",""
+"f_integer","integer","",""
+"f_bigint","bigint","",""
+"f_decimal","decimal(12,3)","",""
+"f_double","double","",""
+"f_date","timestamp(3)","",""
+"f_timestamp3","timestamp(3)","",""
+"f_timestamp6","timestamp(6)","",""
+
+INSERT: 1 row
+
+INSERT: 1 row
+
+"Text1     ","Sample text 1","123.456","12.34","2024-01-01 00:00:00.000","2024-01-01 08:00:00.123","2024-01-01 08:00:00.123456"
+"","","","","","",""
+
+DROP TABLE

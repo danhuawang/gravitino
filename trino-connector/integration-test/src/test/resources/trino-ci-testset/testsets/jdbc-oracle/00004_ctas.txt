@@ -1,0 +1,26 @@
+CREATE TABLE
+
+INSERT: 3 rows
+
+CREATE TABLE: 3 rows
+
+"alice"
+"bob"
+"charlie"
+
+CREATE TABLE: 2 rows
+
+"BOB"
+"CHARLIE"
+
+CREATE TABLE: 0 rows
+
+"0"
+
+DROP TABLE
+
+DROP TABLE
+
+DROP TABLE
+
+DROP TABLE

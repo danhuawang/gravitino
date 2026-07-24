@@ -1,0 +1,11 @@
+"gravitino"
+
+CREATE TABLE
+
+"gt_oracle_create_table"
+
+DROP TABLE
+
+<BLANK_LINE>
+
+DROP TABLE
