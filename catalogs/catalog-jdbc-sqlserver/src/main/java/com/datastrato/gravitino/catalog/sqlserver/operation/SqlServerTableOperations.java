@@ -246,6 +246,13 @@ public class SqlServerTableOperations extends JdbcTableOperations
         alterSql.add(
             updateColumnNullabilityDefinition(
                 (TableChange.UpdateColumnNullability) change, lazyLoadTable, schemaName));
+      } else if (change instanceof TableChange.DeleteIndex) {
+        lazyLoadTable = getOrCreateTable(schemaName, tableName, lazyLoadTable);
+        String deleteIdxSql =
+            deleteIndexDefinition((TableChange.DeleteIndex) change, lazyLoadTable, schemaName);
+        if (StringUtils.isNotEmpty(deleteIdxSql)) {
+          alterSql.add(deleteIdxSql);
+        }
       } else {
         throw new IllegalArgumentException(
             "Unsupported table change type: " + change.getClass().getName());
@@ -628,6 +635,27 @@ public class SqlServerTableOperations extends JdbcTableOperations
               quoteIdentifier(col)));
     }
     return sb.toString();
+  }
+
+  private String deleteIndexDefinition(
+      TableChange.DeleteIndex change, JdbcTable lazyLoadTable, String schemaName) {
+    String indexName = change.getName();
+    boolean indexExists =
+        Arrays.stream(lazyLoadTable.index()).anyMatch(index -> index.name().equals(indexName));
+    if (!indexExists) {
+      Preconditions.checkArgument(
+          change.isIfExists(),
+          "Index %s does not exist in table %s",
+          indexName,
+          lazyLoadTable.name());
+      return "";
+    }
+    // SQL Server creates PRIMARY KEY and UNIQUE as constraints, so use DROP CONSTRAINT.
+    return String.format(
+        "ALTER TABLE %s.%s DROP CONSTRAINT %s;",
+        quoteIdentifier(schemaName),
+        quoteIdentifier(lazyLoadTable.name()),
+        quoteIdentifier(indexName));
   }
 
   private String updateColumnTypeFieldDefinition(

@@ -916,6 +916,42 @@ public class CatalogSqlServerIT extends BaseIT {
     }
   }
 
+  @Test
+  void testDeleteIndex() {
+    Column col1 = Column.of("id", Types.IntegerType.get(), null, false, false, null);
+    Column col2 = Column.of("email", Types.VarCharType.of(200), null, false, false, null);
+
+    String deleteIndexTable = GravitinoITUtils.genRandomName("del_idx_table");
+    String uqName = "UQ_" + deleteIndexTable;
+    Index[] indexes =
+        new Index[] {
+          Indexes.primary("PK_" + deleteIndexTable, new String[][] {{"id"}}),
+          Indexes.unique(uqName, new String[][] {{"email"}})
+        };
+
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, deleteIndexTable);
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    tableCatalog.createTable(
+        tableIdent,
+        new Column[] {col1, col2},
+        null,
+        ImmutableMap.of(),
+        Transforms.EMPTY_TRANSFORM,
+        Distributions.NONE,
+        new SortOrder[0],
+        indexes);
+
+    // Delete the UNIQUE index
+    tableCatalog.alterTable(tableIdent, TableChange.deleteIndex(uqName, false));
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    Set<String> indexNames =
+        Arrays.stream(loaded.index()).map(Index::name).collect(Collectors.toSet());
+    Assertions.assertFalse(
+        indexNames.contains(uqName), "Deleted index should not appear after deleteIndex");
+    Assertions.assertTrue(indexNames.contains("PK_" + deleteIndexTable), "PK should still exist");
+  }
+
   // ==================== Additional Tests ====================
 
   @Test
