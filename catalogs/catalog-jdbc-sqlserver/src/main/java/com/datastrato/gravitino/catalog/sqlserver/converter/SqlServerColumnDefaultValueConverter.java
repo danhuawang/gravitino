@@ -47,8 +47,14 @@ public class SqlServerColumnDefaultValueConverter extends JdbcColumnDefaultValue
       return DEFAULT_VALUE_OF_CURRENT_TIMESTAMP;
     }
 
-    // Check for NULL
+    // Check for NULL — SQL Server may store as (NULL) or ('NULL') depending on how
+    // the DEFAULT constraint was created. For string types (char, varchar, nvarchar),
+    // ('NULL') is a valid string literal default, so only treat unquoted NULL as Literals.NULL.
     if (stripped.equalsIgnoreCase(NULL)) {
+      return Literals.NULL;
+    }
+    String typeName = type.getTypeName().toLowerCase();
+    if (stripped.equalsIgnoreCase("'NULL'") && !isStringType(typeName)) {
       return Literals.NULL;
     }
 
@@ -131,5 +137,11 @@ public class SqlServerColumnDefaultValueConverter extends JdbcColumnDefaultValue
       default:
         throw new IllegalArgumentException("Unknown data type for literal: " + typeName);
     }
+  }
+
+  private static boolean isStringType(String typeName) {
+    return SqlServerTypeConverter.CHAR.equals(typeName)
+        || JdbcTypeConverter.VARCHAR.equals(typeName)
+        || SqlServerTypeConverter.NVARCHAR.equals(typeName);
   }
 }

@@ -580,6 +580,30 @@ public class CatalogSqlServerIT extends BaseIT {
   }
 
   @Test
+  void testUpdateColumnDefaultToNull() {
+    Column col1 =
+        Column.of(
+            "col_int", Types.IntegerType.get(), null, true, false, Literals.integerLiteral(10));
+
+    NameIdentifier tableIdent = NameIdentifier.of(schemaName, tableName);
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    tableCatalog.createTable(tableIdent, new Column[] {col1}, null, ImmutableMap.of());
+
+    // Verify initial default is persisted before updating
+    Table beforeUpdate = tableCatalog.loadTable(tableIdent);
+    Assertions.assertEquals(Literals.integerLiteral(10), beforeUpdate.columns()[0].defaultValue());
+
+    tableCatalog.alterTable(
+        tableIdent, TableChange.updateColumnDefaultValue(new String[] {"col_int"}, Literals.NULL));
+
+    Table loaded = tableCatalog.loadTable(tableIdent);
+    Assertions.assertEquals(
+        Literals.NULL,
+        loaded.columns()[0].defaultValue(),
+        "Default must be Literals.NULL after update");
+  }
+
+  @Test
   void testAlterTableUpdateColumnDefaultValue() {
     Column col1 =
         Column.of(

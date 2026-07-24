@@ -71,6 +71,23 @@ public class TestSqlServerColumnDefaultValueConverter {
   }
 
   @Test
+  void testNullLiteralQuoted() {
+    // SQL Server may store DEFAULT NULL as ('NULL') for non-string types
+    JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean("int");
+    Expression result = converter.toGravitino(type, "('NULL')", false, true);
+    Assertions.assertEquals(Literals.NULL, result);
+  }
+
+  @Test
+  void testNullStringLiteralForVarchar() {
+    // For string types, ('NULL') is a valid string literal default, not Literals.NULL
+    JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean("varchar");
+    type.setColumnSize(100);
+    Expression result = converter.toGravitino(type, "('NULL')", false, true);
+    Assertions.assertEquals(Literals.varcharLiteral(100, "NULL"), result);
+  }
+
+  @Test
   void testIntegerLiteral() {
     JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean("int");
     Expression result = converter.toGravitino(type, "((42))", false, false);
