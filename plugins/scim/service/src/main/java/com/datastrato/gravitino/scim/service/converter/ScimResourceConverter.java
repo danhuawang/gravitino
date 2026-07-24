@@ -35,6 +35,8 @@ public final class ScimResourceConverter {
     scimUser.setId(externalId);
     scimUser.setExternalId(externalId);
     scimUser.setUserName(user.name());
+    // Keycloak SCIM client calls displayName.get() after create; keep it non-empty.
+    scimUser.setDisplayName(user.name());
     scimUser.setActive(user.enabled());
     return scimUser;
   }

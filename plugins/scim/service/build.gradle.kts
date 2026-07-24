@@ -19,24 +19,6 @@ val scimServerLib by configurations.creating {
   isTransitive = true
 }
 
-sourceSets {
-  create("integrationTest") {
-    java.srcDir("src/integrationTest/java")
-    // Do not inherit unit-test SCIMple/Jakarta: MiniGravitino stays on Jersey 2 / Jetty 9.
-    compileClasspath += sourceSets["main"].output
-    runtimeClasspath += output + compileClasspath
-  }
-}
-
-configurations {
-  named("integrationTestImplementation") {
-    extendsFrom(configurations["implementation"])
-  }
-  named("integrationTestRuntimeOnly") {
-    extendsFrom(configurations["runtimeOnly"])
-  }
-}
-
 dependencies {
   annotationProcessor(libs.lombok)
   compileOnly(libs.lombok)
@@ -116,48 +98,6 @@ dependencies {
     .forEach { testImplementation(it) }
 
   testRuntimeOnly(libs.junit.jupiter.engine)
-
-  // MiniGravitino (Jersey 2 / Jetty 9) + client; SCIM HTTP stack comes from scim-server/libs.
-  "integrationTestImplementation"(project(":clients:client-java"))
-  "integrationTestImplementation"(project(":server"))
-  "integrationTestImplementation"(project(":plugins:scim", "testArtifacts"))
-  "integrationTestImplementation"(project(":integration-test-common", "testArtifacts"))
-  "integrationTestImplementation"(libs.javax.ws.rs.api)
-  "integrationTestImplementation"(libs.bundles.jersey)
-  "integrationTestImplementation"(libs.servlet)
-  "integrationTestImplementation"(libs.awaitility)
-  "integrationTestImplementation"(libs.commons.io)
-  "integrationTestImplementation"(libs.javax.jaxb.api)
-  "integrationTestImplementation"(libs.mybatis)
-  "integrationTestImplementation"(libs.h2db)
-  "integrationTestImplementation"(libs.junit.jupiter.api)
-  "integrationTestImplementation"(libs.mysql.driver)
-  "integrationTestImplementation"(libs.postgresql.driver)
-  "integrationTestImplementation"(libs.testcontainers)
-  "integrationTestImplementation"(libs.testcontainers.mysql)
-  "integrationTestImplementation"(libs.testcontainers.postgresql)
-  "integrationTestRuntimeOnly"(libs.junit.jupiter.engine)
-}
-
-configurations.configureEach {
-  if (name == "integrationTestRuntimeClasspath" || name == "integrationTestCompileClasspath") {
-    val jerseyVersion = libs.versions.jersey.get()
-    val jettyVersion = libs.versions.jetty.get()
-    resolutionStrategy {
-      force(libs.javax.ws.rs.api)
-      force("org.glassfish.jersey.core:jersey-server:$jerseyVersion")
-      force("org.glassfish.jersey.core:jersey-common:$jerseyVersion")
-      force("org.glassfish.jersey.core:jersey-client:$jerseyVersion")
-      force("org.glassfish.jersey.containers:jersey-container-servlet-core:$jerseyVersion")
-      force("org.glassfish.jersey.containers:jersey-container-jetty-http:$jerseyVersion")
-      force("org.glassfish.jersey.media:jersey-media-json-jackson:$jerseyVersion")
-      force("org.glassfish.jersey.inject:jersey-hk2:$jerseyVersion")
-      force("org.eclipse.jetty:jetty-server:$jettyVersion")
-      force("org.eclipse.jetty:jetty-servlet:$jettyVersion")
-      force("org.eclipse.jetty:jetty-servlets:$jettyVersion")
-      force("org.eclipse.jetty:jetty-webapp:$jettyVersion")
-    }
-  }
 }
 
 tasks {
@@ -187,26 +127,7 @@ tasks {
     dependsOn(copyLibs)
   }
 
-  val skipITs = project.hasProperty("skipITs")
-
-  register<Test>("integrationTest") {
-    description =
-      "Run SCIM service REST integration tests against the Jersey 3 auxiliary listener"
-    group = "verification"
-    dependsOn("copyLibAndConfigs")
-    dependsOn(":plugins:scim:copyLibAndConfigs")
-    enabled = !skipITs
-
-    testClassesDirs = sourceSets["integrationTest"].output.classesDirs
-    classpath = sourceSets["integrationTest"].runtimeClasspath
-    useJUnitPlatform()
-  }
-
   test {
     dependsOn("copyLibAndConfigs")
-
-    if (skipITs) {
-      exclude("**/integration/test/**")
-    }
   }
 }

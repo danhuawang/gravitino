@@ -104,6 +104,7 @@ jobs:
             -x :iceberg:iceberg-rest-trino-it:test \
             -x :plugins:idp-basic:test \
             -x :plugins:scim:test \
+            -x :plugins:scim:integration-test:test \
             $EXCLUDE_SCIM_SERVICE_TESTS \
             -x :authorizations:authorization-chain:test -x :authorizations:authorization-ranger:test \
             -x :clients:cli:test -x :maintenance:jobs:test -x :maintenance:optimizer:test \

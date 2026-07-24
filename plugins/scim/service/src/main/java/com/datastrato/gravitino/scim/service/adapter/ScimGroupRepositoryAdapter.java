@@ -91,16 +91,18 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     if (StringUtils.isBlank(externalId)) {
       throw new ResourceException(400, "externalId is required on Group create");
     }
+    String groupName = resolveGroupName(resource.getDisplayName(), externalId);
     try {
-      Group group =
-          createGroup(
-              ScimMetalakeContext.getMetalake(),
-              externalId,
-              resource.getDisplayName(),
-              resource.getMembers());
+      String metalake = ScimMetalakeContext.getMetalake();
+      Group group = dispatcher.addGroup(metalake, groupName, externalId);
+      List<GroupMembership> members = resource.getMembers();
+      if (members != null && !members.isEmpty()) {
+        replaceGroupMembers(metalake, group.externalId(), members);
+      }
       return toScimGroup(group);
     } catch (GroupAlreadyExistsException e) {
-      throw new ResourceException(409, "Group already exists: " + resource.getDisplayName(), e);
+      throw new ResourceException(
+          409, "Group already exists: displayName=" + groupName + ", externalId=" + externalId, e);
     }
   }
 
@@ -112,7 +114,18 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       Set<AttributeReference> includedAttributes,
       Set<AttributeReference> excludedAttributes)
       throws ResourceException {
-    throw new ResourceException(405, "PUT is not supported for Groups");
+    String metalake = ScimMetalakeContext.getMetalake();
+    Group group;
+    try {
+      group = getGroupByExternalId(metalake, id);
+    } catch (NoSuchGroupException e) {
+      throw new ResourceException(404, "Group not found: " + id);
+    }
+
+    validateImmutableGroupIdentity(group, id, resource);
+    validateImmutableDisplayName(group, resource.getDisplayName());
+    replaceGroupMembers(metalake, group.externalId(), resource.getMembers());
+    return toScimGroup(group);
   }
 
   @Override
@@ -186,23 +199,6 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   @Override
   public List<Class<? extends ScimExtension>> getExtensionList() {
     return List.of();
-  }
-
-  private Group createGroup(
-      String metalake, String externalId, String rawDisplayName, List<GroupMembership> members)
-      throws ResourceException, GroupAlreadyExistsException {
-    validateExternalId(externalId);
-    try {
-      return dispatcher.getGroupByExternalId(metalake, externalId);
-    } catch (NoSuchGroupException ignored) {
-      // Not provisioned yet — create below.
-    }
-    String groupName = resolveGroupName(rawDisplayName, externalId);
-    Group group = dispatcher.addGroup(metalake, groupName, externalId);
-    if (members != null && !members.isEmpty()) {
-      replaceGroupMembers(metalake, group.externalId(), members);
-    }
-    return group;
   }
 
   private Group getGroupByExternalId(String metalake, String externalId)
@@ -329,6 +325,36 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     return StringUtils.isBlank(rawDisplayName)
         ? externalId
         : ScimNameMappers.mapGroupName(scimConfig.groupMapper(), rawDisplayName);
+  }
+
+  /**
+   * Rejects PUT attempts to change group identity. Gravitino treats {@code externalId} as stable.
+   */
+  private static void validateImmutableGroupIdentity(Group group, String pathId, ScimGroup resource)
+      throws ResourceException {
+    if (StringUtils.isNotBlank(resource.getId()) && !pathId.equals(resource.getId())) {
+      throw new ResourceException(400, "Group id is immutable");
+    }
+    if (StringUtils.isNotBlank(resource.getExternalId())
+        && !resource.getExternalId().equals(group.externalId())) {
+      throw new ResourceException(400, "Group externalId is immutable");
+    }
+  }
+
+  /**
+   * Rejects displayName renames. Gravitino group names cannot be changed after create.
+   *
+   * <p>Blank displayName is treated as unchanged so clients that only replace members still work.
+   */
+  private void validateImmutableDisplayName(Group group, String rawDisplayName)
+      throws ResourceException {
+    if (StringUtils.isBlank(rawDisplayName)) {
+      return;
+    }
+    String resolvedName = resolveGroupName(rawDisplayName, group.externalId());
+    if (!resolvedName.equals(group.name())) {
+      throw new ResourceException(400, "Group displayName is immutable");
+    }
   }
 
   private ScimGroup toScimGroup(Group group) {

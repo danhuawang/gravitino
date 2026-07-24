@@ -72,16 +72,14 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     if (StringUtils.isBlank(externalId)) {
       throw new ResourceException(400, "externalId is required on User create");
     }
+    String userName = resolveUserName(resource.getUserName(), externalId);
     try {
-      User user =
-          createUser(
-              ScimMetalakeContext.getMetalake(),
-              externalId,
-              resource.getUserName(),
-              resolveEnabled(resource));
+      String metalake = ScimMetalakeContext.getMetalake();
+      User user = dispatcher.addUser(metalake, userName, externalId, resolveEnabled(resource));
       return ScimResourceConverter.toScimUser(user);
     } catch (UserAlreadyExistsException e) {
-      throw new ResourceException(409, "User already exists: " + resource.getUserName(), e);
+      throw new ResourceException(
+          409, "User already exists: userName=" + userName + ", externalId=" + externalId, e);
     }
   }
 
@@ -93,7 +91,18 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       Set<AttributeReference> includedAttributes,
       Set<AttributeReference> excludedAttributes)
       throws ResourceException {
-    throw new ResourceException(405, "PUT is not supported for Users");
+    String metalake = ScimMetalakeContext.getMetalake();
+    User user;
+    try {
+      user = getUserByExternalId(metalake, id);
+    } catch (NoSuchUserException e) {
+      throw new ResourceException(404, "User not found: " + id);
+    }
+
+    validateImmutableUserIdentity(user, id, resource);
+    validateImmutableUserName(user, resource.getUserName());
+    user = applyActiveIfPresent(metalake, user, resource.getActive());
+    return ScimResourceConverter.toScimUser(user);
   }
 
   @Override
@@ -152,17 +161,6 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   @Override
   public List<Class<? extends ScimExtension>> getExtensionList() {
     return List.of();
-  }
-
-  private User createUser(String metalake, String externalId, String rawUserName, boolean enabled) {
-    validateExternalId(externalId);
-    try {
-      return dispatcher.getUserByExternalId(metalake, externalId);
-    } catch (NoSuchUserException ignored) {
-      // Not provisioned yet — create below.
-    }
-    String userName = resolveUserName(rawUserName, externalId);
-    return dispatcher.addUser(metalake, userName, externalId, enabled);
   }
 
   private User getUserByExternalId(String metalake, String externalId) throws NoSuchUserException {
@@ -227,6 +225,56 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     return StringUtils.isBlank(rawUserName)
         ? externalId
         : ScimNameMappers.mapUserName(scimConfig.userMapper(), rawUserName);
+  }
+
+  /**
+   * Rejects PUT attempts to change user identity. Gravitino treats {@code externalId} as stable.
+   */
+  private static void validateImmutableUserIdentity(User user, String pathId, ScimUser resource)
+      throws ResourceException {
+    if (StringUtils.isNotBlank(resource.getId()) && !pathId.equals(resource.getId())) {
+      throw new ResourceException(400, "User id is immutable");
+    }
+    if (StringUtils.isNotBlank(resource.getExternalId())
+        && !resource.getExternalId().equals(user.externalId())) {
+      throw new ResourceException(400, "User externalId is immutable");
+    }
+  }
+
+  /**
+   * Rejects userName renames. Gravitino user names cannot be changed after create.
+   *
+   * <p>Blank userName is treated as unchanged so clients that only replace {@code active} still
+   * work.
+   */
+  private void validateImmutableUserName(User user, String rawUserName) throws ResourceException {
+    if (StringUtils.isBlank(rawUserName)) {
+      return;
+    }
+    String resolvedName = resolveUserName(rawUserName, user.externalId());
+    if (!resolvedName.equals(user.name())) {
+      throw new ResourceException(400, "User userName is immutable");
+    }
+  }
+
+  /**
+   * Applies {@code active} when present. {@code null} keeps the current enabled state.
+   *
+   * @param metalake target metalake
+   * @param user current user
+   * @param active SCIM active flag from PUT body
+   * @return updated user when active changes, otherwise the current user
+   */
+  private User applyActiveIfPresent(String metalake, User user, Boolean active)
+      throws ResourceException {
+    if (active == null || active == user.enabled()) {
+      return user;
+    }
+    try {
+      return setUserActive(metalake, user.externalId(), active);
+    } catch (NoSuchUserException e) {
+      throw new ResourceException(404, "User not found: " + user.externalId());
+    }
   }
 
   /**

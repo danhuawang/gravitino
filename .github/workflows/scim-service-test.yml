@@ -90,11 +90,11 @@ jobs:
           set -euo pipefail
 
           # Unit tests and isolated scim-server/libs packaging checks (no Docker).
-          ./gradlew :plugins:scim:service:test -PskipITs -PskipDockerTests=true
+          ./gradlew :plugins:scim:service:test -PskipDockerTests=true
 
           # Jersey 3 SCIM auxiliary listener integration tests (h2 / MySQL / PostgreSQL).
           for backend in h2 mysql postgresql; do
-            ./gradlew :plugins:scim:service:integrationTest \
+            ./gradlew :plugins:scim:integration-test:test \
               -PjdbcBackend="${backend}" \
               -PskipDockerTests=false
           done
@@ -107,5 +107,6 @@ jobs:
           path: |
             plugins/scim/service/build/reports
             plugins/scim/service/build/test-results
-            plugins/scim/service/build/test-results/integrationTest
+            plugins/scim/integration-test/build/reports
+            plugins/scim/integration-test/build/test-results
             distribution/package/scim-server/libs

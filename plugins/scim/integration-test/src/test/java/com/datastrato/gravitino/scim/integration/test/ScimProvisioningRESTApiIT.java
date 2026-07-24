@@ -149,9 +149,7 @@ class ScimProvisioningRESTApiIT {
 
     HttpResponse<String> reimported =
         post(scimPath("/Users"), userBody(externalId, userName, true), bearerToken);
-    assertStatus(201, reimported);
-    JsonNode reimportedUser = JsonUtils.objectMapper().readTree(reimported.body());
-    Assertions.assertEquals(externalId, reimportedUser.get("id").asText());
+    assertStatus(409, reimported);
 
     HttpResponse<String> filtered =
         get(
@@ -197,6 +195,9 @@ class ScimProvisioningRESTApiIT {
     String groupId = createdGroup.get("id").asText();
     Assertions.assertEquals(displayName, createdGroup.get("displayName").asText());
     Assertions.assertEquals(externalId, createdGroup.get("externalId").asText());
+
+    assertStatus(
+        409, post(scimPath("/Groups"), groupBody(externalId, displayName, List.of()), bearerToken));
 
     HttpResponse<String> fetched = get(scimPath("/Groups/" + groupId), bearerToken);
     assertStatus(200, fetched);

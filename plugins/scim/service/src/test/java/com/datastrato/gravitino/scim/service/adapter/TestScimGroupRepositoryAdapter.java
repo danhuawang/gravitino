@@ -66,26 +66,7 @@ class TestScimGroupRepositoryAdapter {
   }
 
   @Test
-  void testCreateIdempotent() throws Exception {
-    Group existing = ScimServiceTestEntities.group(1L, "engineers", "ext-g1");
-    when(dispatcher.getGroupByExternalId(METALAKE, "ext-g1")).thenReturn(existing);
-    when(membershipManager.listUsernamesForGroup(METALAKE, "ext-g1")).thenReturn(List.of());
-
-    ScimGroup created =
-        adapter.create(
-            new ScimGroup()
-                .setExternalId("ext-g1")
-                .setDisplayName("engineers")
-                .setMembers(List.of(new GroupMembership().setValue("user-1"))));
-    assertEquals("ext-g1", created.getId());
-    assertEquals("engineers", created.getDisplayName());
-    verify(membershipManager, never()).replaceUsersInGroup(any(), any(), any());
-  }
-
-  @Test
   void testCreateConflict409() throws Exception {
-    when(dispatcher.getGroupByExternalId(METALAKE, "ext-g1"))
-        .thenThrow(new NoSuchGroupException("ext-g1"));
     when(dispatcher.addGroup(METALAKE, "engineers", "ext-g1"))
         .thenThrow(new GroupAlreadyExistsException("engineers"));
 
@@ -96,6 +77,8 @@ class TestScimGroupRepositoryAdapter {
                 adapter.create(
                     new ScimGroup().setExternalId("ext-g1").setDisplayName("engineers")));
     assertEquals(409, exception.getStatus());
+    assertEquals(
+        "Group already exists: displayName=engineers, externalId=ext-g1", exception.getMessage());
   }
 
   @Test
@@ -103,8 +86,6 @@ class TestScimGroupRepositoryAdapter {
     Group group = ScimServiceTestEntities.group(2L, "engineering", "group-1");
     GroupMembership membership = new GroupMembership().setValue("user-1");
     User member = ScimServiceTestEntities.user(3L, "alice", "user-1", true);
-    when(dispatcher.getGroupByExternalId(METALAKE, "group-1"))
-        .thenThrow(new NoSuchGroupException("group-1"));
     when(dispatcher.addGroup(METALAKE, "engineering", "group-1")).thenReturn(group);
     when(membershipManager.listUsernamesForGroup(METALAKE, "group-1")).thenReturn(List.of("alice"));
     when(dispatcher.getUser(METALAKE, "alice")).thenReturn(member);
@@ -125,8 +106,6 @@ class TestScimGroupRepositoryAdapter {
   @Test
   void testCreateGroup() throws Exception {
     Group created = ScimServiceTestEntities.group(1L, "engineers", "ext-g1");
-    when(dispatcher.getGroupByExternalId(METALAKE, "ext-g1"))
-        .thenThrow(new NoSuchGroupException("ext-g1"));
     when(dispatcher.addGroup(METALAKE, "engineers", "ext-g1")).thenReturn(created);
     when(membershipManager.listUsernamesForGroup(METALAKE, "ext-g1")).thenReturn(List.of());
 
@@ -207,10 +186,160 @@ class TestScimGroupRepositoryAdapter {
   }
 
   @Test
-  void testUpdate405() {
-    assertThrows(
-        ResourceException.class,
-        () -> adapter.update("group-1", null, new ScimGroup(), null, null));
+  void testUpdateMembers() throws Exception {
+    Group group = ScimServiceTestEntities.group(2L, "engineering", "group-1");
+    when(dispatcher.getGroupByExternalId(METALAKE, "group-1")).thenReturn(group);
+    when(membershipManager.listUsernamesForGroup(METALAKE, "group-1")).thenReturn(List.of("alice"));
+    when(dispatcher.getUser(METALAKE, "alice"))
+        .thenReturn(ScimServiceTestEntities.user(3L, "alice", "user-1", true));
+
+    ScimGroup updated =
+        adapter.update(
+            "group-1",
+            null,
+            new ScimGroup()
+                .setId("group-1")
+                .setExternalId("group-1")
+                .setDisplayName("engineering")
+                .setMembers(List.of(new GroupMembership().setValue("user-1"))),
+            null,
+            null);
+
+    assertEquals("group-1", updated.getId());
+    assertEquals(1, updated.getMembers().size());
+    assertEquals("user-1", updated.getMembers().get(0).getValue());
+    verify(membershipManager)
+        .replaceUsersInGroup(eq(METALAKE), eq("group-1"), eq(List.of("user-1")));
+  }
+
+  @Test
+  void testUpdateEmptyMembers() throws Exception {
+    Group group = ScimServiceTestEntities.group(2L, "engineering", "group-1");
+    when(dispatcher.getGroupByExternalId(METALAKE, "group-1")).thenReturn(group);
+    when(membershipManager.listUsernamesForGroup(METALAKE, "group-1")).thenReturn(List.of());
+
+    ScimGroup updated =
+        adapter.update(
+            "group-1",
+            null,
+            new ScimGroup()
+                .setExternalId("group-1")
+                .setDisplayName("engineering")
+                .setMembers(List.of()),
+            null,
+            null);
+
+    assertEquals("group-1", updated.getId());
+    assertEquals(0, updated.getMembers().size());
+    verify(membershipManager).replaceUsersInGroup(eq(METALAKE), eq("group-1"), eq(List.of()));
+  }
+
+  @Test
+  void testUpdateSameName() throws Exception {
+    Group group = ScimServiceTestEntities.group(2L, "engineering", "group-1");
+    when(dispatcher.getGroupByExternalId(METALAKE, "group-1")).thenReturn(group);
+    when(membershipManager.listUsernamesForGroup(METALAKE, "group-1")).thenReturn(List.of());
+
+    ScimGroup updated =
+        adapter.update(
+            "group-1",
+            null,
+            new ScimGroup().setDisplayName("engineering").setMembers(List.of()),
+            null,
+            null);
+
+    assertEquals("engineering", updated.getDisplayName());
+    verify(membershipManager).replaceUsersInGroup(eq(METALAKE), eq("group-1"), eq(List.of()));
+  }
+
+  @Test
+  void testUpdateNoName() throws Exception {
+    Group group = ScimServiceTestEntities.group(2L, "engineering", "group-1");
+    when(dispatcher.getGroupByExternalId(METALAKE, "group-1")).thenReturn(group);
+    when(membershipManager.listUsernamesForGroup(METALAKE, "group-1")).thenReturn(List.of());
+
+    ScimGroup updated =
+        adapter.update("group-1", null, new ScimGroup().setMembers(List.of()), null, null);
+
+    assertEquals("engineering", updated.getDisplayName());
+    verify(membershipManager).replaceUsersInGroup(eq(METALAKE), eq("group-1"), eq(List.of()));
+  }
+
+  @Test
+  void testUpdateRename400() throws Exception {
+    Group group = ScimServiceTestEntities.group(2L, "engineering", "group-1");
+    when(dispatcher.getGroupByExternalId(METALAKE, "group-1")).thenReturn(group);
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () ->
+                adapter.update(
+                    "group-1",
+                    null,
+                    new ScimGroup().setDisplayName("renamed").setMembers(List.of()),
+                    null,
+                    null));
+    assertEquals(400, exception.getStatus());
+    verify(membershipManager, never()).replaceUsersInGroup(any(), any(), any());
+  }
+
+  @Test
+  void testUpdateExtId400() throws Exception {
+    Group group = ScimServiceTestEntities.group(2L, "engineering", "group-1");
+    when(dispatcher.getGroupByExternalId(METALAKE, "group-1")).thenReturn(group);
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () ->
+                adapter.update(
+                    "group-1",
+                    null,
+                    new ScimGroup()
+                        .setExternalId("other-ext")
+                        .setDisplayName("engineering")
+                        .setMembers(List.of()),
+                    null,
+                    null));
+    assertEquals(400, exception.getStatus());
+    verify(membershipManager, never()).replaceUsersInGroup(any(), any(), any());
+  }
+
+  @Test
+  void testUpdateId400() throws Exception {
+    Group group = ScimServiceTestEntities.group(2L, "engineering", "group-1");
+    when(dispatcher.getGroupByExternalId(METALAKE, "group-1")).thenReturn(group);
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () ->
+                adapter.update(
+                    "group-1",
+                    null,
+                    new ScimGroup()
+                        .setId("other-id")
+                        .setDisplayName("engineering")
+                        .setMembers(List.of()),
+                    null,
+                    null));
+    assertEquals(400, exception.getStatus());
+    verify(membershipManager, never()).replaceUsersInGroup(any(), any(), any());
+  }
+
+  @Test
+  void testUpdate404() {
+    when(dispatcher.getGroupByExternalId(METALAKE, "missing"))
+        .thenThrow(new NoSuchGroupException("missing"));
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () ->
+                adapter.update(
+                    "missing", null, new ScimGroup().setDisplayName("engineering"), null, null));
+    assertEquals(404, exception.getStatus());
   }
 
   @Test
