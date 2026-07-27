@@ -4,14 +4,21 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import static org.apache.gravitino.Configs.CACHE_ENABLED;
+import static org.apache.gravitino.Configs.ENABLE_AUTHORIZATION;
+import static org.apache.gravitino.Configs.GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE;
 import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.apache.gravitino.file.Fileset.LOCATION_NAME_UNKNOWN;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
@@ -32,6 +39,8 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.Application;
@@ -41,8 +50,12 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.UserPrincipal;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
+import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
@@ -81,6 +94,9 @@ import org.apache.gravitino.rel.Representation;
 import org.apache.gravitino.rel.SQLRepresentation;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.GravitinoAuthorizerProvider;
+import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
+import org.apache.gravitino.utils.PrincipalUtils;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -88,6 +104,7 @@ import org.glassfish.jersey.test.TestProperties;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 public class TestEntityOperations extends JerseyTest {
@@ -97,6 +114,24 @@ public class TestEntityOperations extends JerseyTest {
       HttpServletRequest request = mock(HttpServletRequest.class);
       when(request.getRemoteUser()).thenReturn(null);
       return request;
+    }
+  }
+
+  private static class TestFailureTracker {
+    private Optional<Throwable> testFailure = Optional.empty();
+
+    private void record(Throwable failure) {
+      testFailure = Optional.of(failure);
+    }
+
+    private void handleRestoreFailure(IllegalAccessException failure) {
+      RuntimeException restoreFailure =
+          new RuntimeException("Failed to restore GravitinoEnv state after test", failure);
+      if (testFailure.isPresent()) {
+        testFailure.get().addSuppressed(restoreFailure);
+      } else {
+        throw restoreFailure;
+      }
     }
   }
 
@@ -560,6 +595,664 @@ public class TestEntityOperations extends JerseyTest {
     assertFunctions(modelResp.getFunctions());
   }
 
+  @Test
+  public void testListCatalogsWithAuthorizationFilter() throws Throwable {
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(mockConfig.get(CACHE_ENABLED)).thenReturn(false);
+    when(mockConfig.get(GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
+
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    lenient()
+        .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Object metadataObject = invocation.getArgument(2);
+              if (!(metadataObject instanceof MetadataObject)) {
+                return false;
+              }
+              MetadataObject object = (MetadataObject) metadataObject;
+              Privilege.Name privilege = invocation.getArgument(3);
+              return object.type() == MetadataObject.Type.CATALOG
+                  && "relCatalog1".equals(object.name())
+                  && privilege == Privilege.Name.USE_CATALOG;
+            });
+    lenient()
+        .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
+        .thenReturn(true);
+    lenient()
+        .when(mockAuthorizer.isOwner(any(), eq("testMetalake"), any(), any()))
+        .thenReturn(false);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+
+    TestCatalog catalog1 = buildCatalog("testMetalake", "relCatalog1");
+    TestCatalog catalog2 = buildCatalog("testMetalake", "relCatalog2");
+    TestCatalog[] mockedCatalogs = new TestCatalog[] {catalog1, catalog2};
+    when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
+        .thenReturn(mockedCatalogs);
+
+    GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizer oldProviderAuthorizer = null;
+    Executor oldMetadataAuthzExecutor = null;
+    TestFailureTracker failureTracker = new TestFailureTracker();
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      oldMetadataAuthzExecutor = replaceMetadataAuthzExecutor(Runnable::run);
+      GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+      oldProviderAuthorizer =
+          (GravitinoAuthorizer)
+              FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", mockAuthorizer, true);
+      try (MockedStatic<PrincipalUtils> principalUtilsStatic = mockStatic(PrincipalUtils.class)) {
+        principalUtilsStatic
+            .when(PrincipalUtils::getCurrentPrincipal)
+            .thenReturn(new UserPrincipal("tester"));
+        principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response resp =
+            target("/web/entities")
+                .queryParam("namespace", "testMetalake")
+                .queryParam("catalogType", "relational")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+        Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+        CatalogListResponse catalogResponse = resp.readEntity(CatalogListResponse.class);
+        Assertions.assertEquals(0, catalogResponse.getCode());
+        CatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
+        Assertions.assertEquals(1, catalogDTOs.length);
+        Assertions.assertEquals("relCatalog1", catalogDTOs[0].name());
+      }
+    } catch (Throwable failure) {
+      failureTracker.record(failure);
+      throw failure;
+    } finally {
+      try {
+        restoreMetadataAuthzExecutor(oldMetadataAuthzExecutor);
+        GravitinoEnv.getInstance().setGravitinoAuthorizer(oldGravitinoAuthorizer);
+        GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+        FieldUtils.writeField(
+            authorizerProvider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+        FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+      } catch (IllegalAccessException restoreFailure) {
+        failureTracker.handleRestoreFailure(restoreFailure);
+      }
+    }
+  }
+
+  @Test
+  public void testListSchemasWithAuthorizationFilter() throws Throwable {
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(mockConfig.get(CACHE_ENABLED)).thenReturn(false);
+    when(mockConfig.get(GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
+
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    lenient()
+        .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
+        .thenReturn(false);
+    lenient()
+        .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
+        .thenReturn(false);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+    lenient()
+        .when(mockAuthorizer.isOwner(any(), eq("testMetalake"), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Object metadataObject = invocation.getArgument(2);
+              if (!(metadataObject instanceof MetadataObject)) {
+                return false;
+              }
+              MetadataObject object = (MetadataObject) metadataObject;
+              return object.type() == MetadataObject.Type.SCHEMA
+                  && "relSchema1".equals(object.name());
+            });
+
+    Namespace namespace = Namespace.of("testMetalake", "relCatalog");
+    NameIdentifier schemaIdent1 = NameIdentifier.of(namespace, "relSchema1");
+    NameIdentifier schemaIdent2 = NameIdentifier.of(namespace, "relSchema2");
+    NameIdentifier[] schemaIdents = {schemaIdent1, schemaIdent2};
+    when(schemaDispatcher.listSchemas(namespace)).thenReturn(schemaIdents);
+    when(schemaDispatcher.listEntities(namespace)).thenReturn(buildSchemaEntity(schemaIdents));
+
+    GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizer oldProviderAuthorizer = null;
+    Executor oldMetadataAuthzExecutor = null;
+    TestFailureTracker failureTracker = new TestFailureTracker();
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      oldMetadataAuthzExecutor = replaceMetadataAuthzExecutor(Runnable::run);
+      GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+      oldProviderAuthorizer =
+          (GravitinoAuthorizer)
+              FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", mockAuthorizer, true);
+      try (MockedStatic<PrincipalUtils> principalUtilsStatic = mockStatic(PrincipalUtils.class)) {
+        principalUtilsStatic
+            .when(PrincipalUtils::getCurrentPrincipal)
+            .thenReturn(new UserPrincipal("tester"));
+        principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response resp =
+            target("/web/entities")
+                .queryParam("namespace", "testMetalake.relCatalog")
+                .queryParam("catalogType", "relational")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+        Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+        SchemaListResponse schemaResp = resp.readEntity(SchemaListResponse.class);
+        Assertions.assertEquals(0, schemaResp.getCode());
+        Assertions.assertEquals(1, schemaResp.getSchemas().length);
+        Assertions.assertEquals("relSchema1", schemaResp.getSchemas()[0].name());
+      }
+    } catch (Throwable failure) {
+      failureTracker.record(failure);
+      throw failure;
+    } finally {
+      try {
+        restoreMetadataAuthzExecutor(oldMetadataAuthzExecutor);
+        GravitinoEnv.getInstance().setGravitinoAuthorizer(oldGravitinoAuthorizer);
+        GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+        FieldUtils.writeField(
+            authorizerProvider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+        FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+      } catch (IllegalAccessException restoreFailure) {
+        failureTracker.handleRestoreFailure(restoreFailure);
+      }
+    }
+  }
+
+  @Test
+  public void testListCatalogsSkipAuthorizationFilterWhenMetadataAuthzNotReady() throws Throwable {
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Object oldAccessControlDispatcher;
+    try {
+      oldAccessControlDispatcher =
+          FieldUtils.readField(GravitinoEnv.getInstance(), "accessControlDispatcher", true);
+    } catch (IllegalAccessException e) {
+      throw new RuntimeException(
+          "Failed to read GravitinoEnv accessControlDispatcher before test", e);
+    }
+
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(mockConfig.get(CACHE_ENABLED)).thenReturn(false);
+    when(mockConfig.get(GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
+
+    TestCatalog catalog1 = buildCatalog("testMetalake", "relCatalog1");
+    TestCatalog catalog2 = buildCatalog("testMetalake", "relCatalog2");
+    Catalog[] mockedCatalogs = {catalog1, catalog2};
+    when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
+        .thenReturn(mockedCatalogs);
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+    lenient()
+        .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
+        .thenReturn(false);
+    lenient()
+        .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
+        .thenReturn(false);
+    lenient()
+        .when(mockAuthorizer.isOwner(any(), eq("testMetalake"), any(), any()))
+        .thenReturn(false);
+
+    GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizer oldProviderAuthorizer = null;
+    Executor oldMetadataAuthzExecutor = null;
+    TestFailureTracker failureTracker = new TestFailureTracker();
+
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "accessControlDispatcher", null, true);
+      oldMetadataAuthzExecutor =
+          replaceMetadataAuthzExecutor(
+              command -> {
+                throw new IllegalArgumentException("Metadata authorization executor is not ready");
+              });
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+      oldProviderAuthorizer =
+          (GravitinoAuthorizer)
+              FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+      FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", mockAuthorizer, true);
+
+      try (MockedStatic<PrincipalUtils> principalUtilsStatic = mockStatic(PrincipalUtils.class)) {
+        principalUtilsStatic
+            .when(PrincipalUtils::getCurrentPrincipal)
+            .thenReturn(new UserPrincipal("tester"));
+        principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response resp =
+            target("/web/entities")
+                .queryParam("namespace", "testMetalake")
+                .queryParam("catalogType", "relational")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+        Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+        CatalogListResponse catalogResponse = resp.readEntity(CatalogListResponse.class);
+        Assertions.assertEquals(0, catalogResponse.getCode());
+        CatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
+        Assertions.assertEquals(2, catalogDTOs.length);
+        assertCatalogs(catalogDTOs);
+        Mockito.verify(mockAuthorizer, Mockito.never())
+            .authorize(any(), eq("testMetalake"), any(), any(), any());
+      }
+    } catch (Throwable failure) {
+      failureTracker.record(failure);
+      throw failure;
+    } finally {
+      try {
+        restoreMetadataAuthzExecutor(oldMetadataAuthzExecutor);
+        FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+        GravitinoEnv.getInstance().setGravitinoAuthorizer(oldGravitinoAuthorizer);
+        GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+        FieldUtils.writeField(
+            authorizerProvider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+        FieldUtils.writeField(
+            GravitinoEnv.getInstance(),
+            "accessControlDispatcher",
+            oldAccessControlDispatcher,
+            true);
+      } catch (IllegalAccessException restoreFailure) {
+        failureTracker.handleRestoreFailure(restoreFailure);
+      }
+    }
+  }
+
+  @Test
+  public void testListTablesWithAuthorizationFilter() throws Throwable {
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(mockConfig.get(CACHE_ENABLED)).thenReturn(false);
+    when(mockConfig.get(GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
+
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    lenient()
+        .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
+        .thenReturn(false);
+    lenient()
+        .when(mockAuthorizer.deny(any(), eq("testMetalake"), any(), any(), any()))
+        .thenReturn(false);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+    lenient()
+        .when(mockAuthorizer.isOwner(any(), eq("testMetalake"), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Object metadataObject = invocation.getArgument(2);
+              if (!(metadataObject instanceof MetadataObject)) {
+                return false;
+              }
+              MetadataObject object = (MetadataObject) metadataObject;
+              return (object.type() == MetadataObject.Type.TABLE && "table1".equals(object.name()))
+                  || (object.type() == MetadataObject.Type.FUNCTION
+                      && "testFunction2".equals(object.name()))
+                  || (object.type() == MetadataObject.Type.VIEW
+                      && "testView2".equals(object.name()));
+            });
+    lenient()
+        .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
+        .thenReturn(false);
+
+    Namespace namespace = Namespace.of("testMetalake", "relCatalog", "relSchema");
+    NameIdentifier tableIdent1 = NameIdentifier.of(namespace, "table1");
+    NameIdentifier tableIdent2 = NameIdentifier.of(namespace, "table2");
+    when(tableDispatcher.listTables(namespace))
+        .thenReturn(new NameIdentifier[] {tableIdent1, tableIdent2});
+    when(tableDispatcher.listEntities(namespace))
+        .thenReturn(buildTableEntity(new NameIdentifier[] {tableIdent1, tableIdent2}));
+    when(functionDispatcher.listFunctionInfos(namespace))
+        .thenReturn(buildFunctionInfos(namespace, "testFunction1", "testFunction2"));
+    NameIdentifier viewIdent1 = NameIdentifier.of(namespace, "testView1");
+    NameIdentifier viewIdent2 = NameIdentifier.of(namespace, "testView2");
+    when(viewDispatcher.listViews(namespace))
+        .thenReturn(new NameIdentifier[] {viewIdent1, viewIdent2});
+    when(viewDispatcher.listEntities(namespace))
+        .thenReturn(buildViewEntity(new NameIdentifier[] {viewIdent1, viewIdent2}));
+
+    GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizer oldProviderAuthorizer = null;
+    Executor oldMetadataAuthzExecutor = null;
+    TestFailureTracker failureTracker = new TestFailureTracker();
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      oldMetadataAuthzExecutor = replaceMetadataAuthzExecutor(Runnable::run);
+      GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+      oldProviderAuthorizer =
+          (GravitinoAuthorizer)
+              FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", mockAuthorizer, true);
+      try (MockedStatic<PrincipalUtils> principalUtilsStatic = mockStatic(PrincipalUtils.class)) {
+        principalUtilsStatic
+            .when(PrincipalUtils::getCurrentPrincipal)
+            .thenReturn(new UserPrincipal("tester"));
+        principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response resp =
+            target("/web/entities")
+                .queryParam("namespace", "testMetalake.relCatalog.relSchema")
+                .queryParam("catalogType", "relational")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+        Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+        TableListResponse tableResp = resp.readEntity(TableListResponse.class);
+        Assertions.assertEquals(0, tableResp.getCode());
+        Assertions.assertEquals(1, tableResp.getTables().length);
+        Assertions.assertEquals("table1", tableResp.getTables()[0].name());
+        Assertions.assertEquals(1, tableResp.getFunctions().length);
+        Assertions.assertEquals("testFunction2", tableResp.getFunctions()[0].name());
+        Assertions.assertEquals(1, tableResp.getViews().length);
+        Assertions.assertEquals("testView2", tableResp.getViews()[0].name());
+      }
+    } catch (Throwable failure) {
+      failureTracker.record(failure);
+      throw failure;
+    } finally {
+      try {
+        restoreMetadataAuthzExecutor(oldMetadataAuthzExecutor);
+        GravitinoEnv.getInstance().setGravitinoAuthorizer(oldGravitinoAuthorizer);
+        GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+        FieldUtils.writeField(
+            authorizerProvider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+        FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+      } catch (IllegalAccessException restoreFailure) {
+        failureTracker.handleRestoreFailure(restoreFailure);
+      }
+    }
+  }
+
+  @Test
+  public void testListTopicsWithAuthorizationFilter() throws Throwable {
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(mockConfig.get(CACHE_ENABLED)).thenReturn(false);
+    when(mockConfig.get(GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
+
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    lenient()
+        .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
+        .thenReturn(false);
+    lenient()
+        .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
+        .thenReturn(false);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+    lenient()
+        .when(mockAuthorizer.isOwner(any(), eq("testMetalake"), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Object metadataObject = invocation.getArgument(2);
+              if (!(metadataObject instanceof MetadataObject)) {
+                return false;
+              }
+              MetadataObject object = (MetadataObject) metadataObject;
+              return (object.type() == MetadataObject.Type.TOPIC && "topic1".equals(object.name()))
+                  || (object.type() == MetadataObject.Type.FUNCTION
+                      && "testFunction2".equals(object.name()));
+            });
+
+    Namespace namespace = Namespace.of("testMetalake", "messagingCatalog", "messagingSchema");
+    NameIdentifier topicIdent1 = NameIdentifier.of(namespace, "topic1");
+    NameIdentifier topicIdent2 = NameIdentifier.of(namespace, "topic2");
+    when(topicDispatcher.listTopics(namespace))
+        .thenReturn(new NameIdentifier[] {topicIdent1, topicIdent2});
+    when(topicDispatcher.listEntities(namespace))
+        .thenReturn(buildTopicEntity(new NameIdentifier[] {topicIdent1, topicIdent2}));
+    when(functionDispatcher.listFunctionInfos(namespace))
+        .thenReturn(buildFunctionInfos(namespace, "testFunction1", "testFunction2"));
+
+    GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizer oldProviderAuthorizer = null;
+    Executor oldMetadataAuthzExecutor = null;
+    TestFailureTracker failureTracker = new TestFailureTracker();
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      oldMetadataAuthzExecutor = replaceMetadataAuthzExecutor(Runnable::run);
+      GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+      oldProviderAuthorizer =
+          (GravitinoAuthorizer)
+              FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", mockAuthorizer, true);
+      try (MockedStatic<PrincipalUtils> principalUtilsStatic = mockStatic(PrincipalUtils.class)) {
+        principalUtilsStatic
+            .when(PrincipalUtils::getCurrentPrincipal)
+            .thenReturn(new UserPrincipal("tester"));
+        principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response resp =
+            target("/web/entities")
+                .queryParam("namespace", "testMetalake.messagingCatalog.messagingSchema")
+                .queryParam("catalogType", "messaging")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+        Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+        TopicListResponse topicResp = resp.readEntity(TopicListResponse.class);
+        Assertions.assertEquals(0, topicResp.getCode());
+        Assertions.assertEquals(1, topicResp.getTopics().length);
+        Assertions.assertEquals("topic1", topicResp.getTopics()[0].name());
+        Assertions.assertEquals(1, topicResp.getFunctions().length);
+        Assertions.assertEquals("testFunction2", topicResp.getFunctions()[0].name());
+      }
+    } catch (Throwable failure) {
+      failureTracker.record(failure);
+      throw failure;
+    } finally {
+      try {
+        restoreMetadataAuthzExecutor(oldMetadataAuthzExecutor);
+        GravitinoEnv.getInstance().setGravitinoAuthorizer(oldGravitinoAuthorizer);
+        GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+        FieldUtils.writeField(
+            authorizerProvider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+        FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+      } catch (IllegalAccessException restoreFailure) {
+        failureTracker.handleRestoreFailure(restoreFailure);
+      }
+    }
+  }
+
+  @Test
+  public void testListFilesetsWithAuthorizationFilter() throws Throwable {
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(mockConfig.get(CACHE_ENABLED)).thenReturn(false);
+    when(mockConfig.get(GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
+
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    lenient()
+        .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
+        .thenReturn(false);
+    lenient()
+        .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
+        .thenReturn(false);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+    lenient()
+        .when(mockAuthorizer.isOwner(any(), eq("testMetalake"), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Object metadataObject = invocation.getArgument(2);
+              if (!(metadataObject instanceof MetadataObject)) {
+                return false;
+              }
+              MetadataObject object = (MetadataObject) metadataObject;
+              return (object.type() == MetadataObject.Type.FILESET
+                      && "fileset1".equals(object.name()))
+                  || (object.type() == MetadataObject.Type.FUNCTION
+                      && "testFunction2".equals(object.name()));
+            });
+
+    Namespace namespace = Namespace.of("testMetalake", "filesetCatalog", "filesetSchema");
+    NameIdentifier filesetIdent1 = NameIdentifier.of(namespace, "fileset1");
+    NameIdentifier filesetIdent2 = NameIdentifier.of(namespace, "fileset2");
+    when(filesetDispatcher.listEntities(namespace))
+        .thenReturn(buildFilesetEntity(new NameIdentifier[] {filesetIdent1, filesetIdent2}));
+    when(functionDispatcher.listFunctionInfos(namespace))
+        .thenReturn(buildFunctionInfos(namespace, "testFunction1", "testFunction2"));
+
+    GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizer oldProviderAuthorizer = null;
+    Executor oldMetadataAuthzExecutor = null;
+    TestFailureTracker failureTracker = new TestFailureTracker();
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      oldMetadataAuthzExecutor = replaceMetadataAuthzExecutor(Runnable::run);
+      GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+      oldProviderAuthorizer =
+          (GravitinoAuthorizer)
+              FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", mockAuthorizer, true);
+      try (MockedStatic<PrincipalUtils> principalUtilsStatic = mockStatic(PrincipalUtils.class)) {
+        principalUtilsStatic
+            .when(PrincipalUtils::getCurrentPrincipal)
+            .thenReturn(new UserPrincipal("tester"));
+        principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response resp =
+            target("/web/entities")
+                .queryParam("namespace", "testMetalake.filesetCatalog.filesetSchema")
+                .queryParam("catalogType", "fileset")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+        Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+        FilesetListResponse filesetResp = resp.readEntity(FilesetListResponse.class);
+        Assertions.assertEquals(0, filesetResp.getCode());
+        Assertions.assertEquals(1, filesetResp.getFilesets().length);
+        Assertions.assertEquals("fileset1", filesetResp.getFilesets()[0].name());
+        Assertions.assertEquals(1, filesetResp.getFunctions().length);
+        Assertions.assertEquals("testFunction2", filesetResp.getFunctions()[0].name());
+      }
+    } catch (Throwable failure) {
+      failureTracker.record(failure);
+      throw failure;
+    } finally {
+      try {
+        restoreMetadataAuthzExecutor(oldMetadataAuthzExecutor);
+        GravitinoEnv.getInstance().setGravitinoAuthorizer(oldGravitinoAuthorizer);
+        GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+        FieldUtils.writeField(
+            authorizerProvider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+        FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+      } catch (IllegalAccessException restoreFailure) {
+        failureTracker.handleRestoreFailure(restoreFailure);
+      }
+    }
+  }
+
+  @Test
+  public void testListModelsWithAuthorizationFilter() throws Throwable {
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(mockConfig.get(CACHE_ENABLED)).thenReturn(false);
+    when(mockConfig.get(GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
+
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    lenient()
+        .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
+        .thenReturn(false);
+    lenient()
+        .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
+        .thenReturn(false);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+    lenient()
+        .when(mockAuthorizer.isOwner(any(), eq("testMetalake"), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Object metadataObject = invocation.getArgument(2);
+              if (!(metadataObject instanceof MetadataObject)) {
+                return false;
+              }
+              MetadataObject object = (MetadataObject) metadataObject;
+              return (object.type() == MetadataObject.Type.MODEL && "model1".equals(object.name()))
+                  || (object.type() == MetadataObject.Type.FUNCTION
+                      && "testFunction2".equals(object.name()));
+            });
+
+    Namespace namespace = Namespace.of("testMetalake", "modelCatalog", "modelSchema");
+    NameIdentifier modelIdent1 = NameIdentifier.of(namespace, "model1");
+    NameIdentifier modelIdent2 = NameIdentifier.of(namespace, "model2");
+    when(modelDispatcher.listEntities(namespace))
+        .thenReturn(buildModelEntity(new NameIdentifier[] {modelIdent1, modelIdent2}));
+    when(functionDispatcher.listFunctionInfos(namespace))
+        .thenReturn(buildFunctionInfos(namespace, "testFunction1", "testFunction2"));
+
+    GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizer oldProviderAuthorizer = null;
+    Executor oldMetadataAuthzExecutor = null;
+    TestFailureTracker failureTracker = new TestFailureTracker();
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      oldMetadataAuthzExecutor = replaceMetadataAuthzExecutor(Runnable::run);
+      GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+      oldProviderAuthorizer =
+          (GravitinoAuthorizer)
+              FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", mockAuthorizer, true);
+      try (MockedStatic<PrincipalUtils> principalUtilsStatic = mockStatic(PrincipalUtils.class)) {
+        principalUtilsStatic
+            .when(PrincipalUtils::getCurrentPrincipal)
+            .thenReturn(new UserPrincipal("tester"));
+        principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response resp =
+            target("/web/entities")
+                .queryParam("namespace", "testMetalake.modelCatalog.modelSchema")
+                .queryParam("catalogType", "model")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+        Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+        ModelListResponse modelResp = resp.readEntity(ModelListResponse.class);
+        Assertions.assertEquals(0, modelResp.getCode());
+        Assertions.assertEquals(1, modelResp.getModels().length);
+        Assertions.assertEquals("model1", modelResp.getModels()[0].name());
+        Assertions.assertEquals(1, modelResp.getFunctions().length);
+        Assertions.assertEquals("testFunction2", modelResp.getFunctions()[0].name());
+      }
+    } catch (Throwable failure) {
+      failureTracker.record(failure);
+      throw failure;
+    } finally {
+      try {
+        restoreMetadataAuthzExecutor(oldMetadataAuthzExecutor);
+        GravitinoEnv.getInstance().setGravitinoAuthorizer(oldGravitinoAuthorizer);
+        GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+        FieldUtils.writeField(
+            authorizerProvider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+        FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+      } catch (IllegalAccessException restoreFailure) {
+        failureTracker.handleRestoreFailure(restoreFailure);
+      }
+    }
+  }
+
   private void assertViews(ViewDTO[] views) {
     ViewDTO viewDTO = views[0];
     Assertions.assertEquals("testView", viewDTO.name());
@@ -607,6 +1300,18 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals("comment", topicDTO.comment());
     Assertions.assertNull(topicDTO.properties());
     Assertions.assertEquals("creator", topicDTO.auditInfo().creator());
+  }
+
+  private Executor replaceMetadataAuthzExecutor(Executor replacement)
+      throws IllegalAccessException {
+    Executor oldExecutor =
+        (Executor) FieldUtils.readStaticField(MetadataAuthzHelper.class, "executor", true);
+    FieldUtils.writeStaticField(MetadataAuthzHelper.class, "executor", replacement, true);
+    return oldExecutor;
+  }
+
+  private void restoreMetadataAuthzExecutor(Executor executor) throws IllegalAccessException {
+    FieldUtils.writeStaticField(MetadataAuthzHelper.class, "executor", executor, true);
   }
 
   private void assertTables(TableDTO[] tableDTOs) {
@@ -657,6 +1362,27 @@ public class TestEntityOperations extends JerseyTest {
               AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
           .build()
     };
+  }
+
+  private Function[] buildFunctionInfos(Namespace namespace, String... functionNames) {
+    return Arrays.stream(functionNames)
+        .map(
+            functionName ->
+                FunctionEntity.builder()
+                    .withId(1L)
+                    .withName(functionName)
+                    .withNamespace(namespace)
+                    .withComment("test function comment")
+                    .withFunctionType(FunctionType.SCALAR)
+                    .withDeterministic(true)
+                    .withDefinitions(new org.apache.gravitino.function.FunctionDefinition[0])
+                    .withAuditInfo(
+                        AuditInfo.builder()
+                            .withCreator("creator")
+                            .withCreateTime(Instant.now())
+                            .build())
+                    .build())
+        .toArray(Function[]::new);
   }
 
   private void mockViews(Namespace namespace) {

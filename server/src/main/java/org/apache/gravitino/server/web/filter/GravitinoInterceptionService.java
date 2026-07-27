@@ -111,7 +111,9 @@ public class GravitinoInterceptionService implements InterceptionService {
             PolicyOperations.class.getName(),
             MetadataObjectPolicyOperations.class.getName(),
             JobOperations.class.getName(),
-            MetadataObjectCredentialOperations.class.getName()));
+            MetadataObjectCredentialOperations.class.getName(),
+            "com.datastrato.gravitino.server.web.rest.CreationWithTagsOperations",
+            "com.datastrato.gravitino.server.web.rest.EntityOperations"));
   }
 
   @Override

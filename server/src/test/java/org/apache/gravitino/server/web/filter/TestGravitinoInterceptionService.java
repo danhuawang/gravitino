@@ -55,12 +55,15 @@ import org.apache.gravitino.server.authorization.annotations.AuthorizationMetada
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.apache.gravitino.utils.RequestContext;
+import org.glassfish.hk2.api.Descriptor;
+import org.glassfish.hk2.api.Filter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 /** Test for {@link GravitinoInterceptionService}. */
 public class TestGravitinoInterceptionService {
@@ -265,6 +268,23 @@ public class TestGravitinoInterceptionService {
       assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
       assertEquals("success", response.getEntity());
     }
+  }
+
+  @Test
+  public void testDescriptorFilterIncludesEnterpriseRestResources() {
+    GravitinoInterceptionService gravitinoInterceptionService = new GravitinoInterceptionService();
+    Filter filter = gravitinoInterceptionService.getDescriptorFilter();
+
+    Descriptor enterpriseCreationWithTagsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(enterpriseCreationWithTagsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.CreationWithTagsOperations");
+
+    Descriptor enterpriseEntityOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(enterpriseEntityOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.EntityOperations");
+
+    Assertions.assertTrue(filter.matches(enterpriseCreationWithTagsDescriptor));
+    Assertions.assertTrue(filter.matches(enterpriseEntityOperationsDescriptor));
   }
 
   /**
