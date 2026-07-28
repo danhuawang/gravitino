@@ -119,7 +119,8 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             // env instance (DatastratoGravitinoEnv or its subclass), not a static singleton.
             () -> datastratoSchemaDispatcher);
     DatastratoTableHookDispatcher tableHookDispatcher =
-        new DatastratoTableHookDispatcher(tableOperationDispatcher);
+        new DatastratoTableHookDispatcher(
+            tableOperationDispatcher, this::ownerDispatcher, catalogManager());
     DatastratoTableDispatcher tableNormalizeDispatcher =
         new DatastratoTableNormalizeDispatcher(tableHookDispatcher, catalogManager());
     this.datastratoTableDispatcher =
