@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.DefaultValue;
@@ -35,8 +36,11 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
+import org.apache.gravitino.Entity;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
 import org.apache.gravitino.catalog.FunctionDispatcher;
@@ -59,8 +63,8 @@ import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
-import org.apache.gravitino.function.Function;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
@@ -68,10 +72,15 @@ import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.rel.types.Types;
+import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
 import org.apache.gravitino.utils.HierarchicalSchemaUtil;
+import org.apache.gravitino.utils.NameIdentifierUtil;
+import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -113,6 +122,7 @@ public class EntityOperations {
 
   @GET
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "")
   public Response listEntities(
       @QueryParam("namespace") Namespace namespace,
       @QueryParam("catalogType") Catalog.Type catalogType,
@@ -136,6 +146,12 @@ public class EntityOperations {
     if (resultLimit <= 0) {
       return Utils.illegalArguments(
           "Result limit should be greater than 0", new IllegalArgumentException());
+    }
+
+    try {
+      AuthorizationUtils.checkCurrentUser(namespace.level(0), PrincipalUtils.getCurrentUserName());
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
     }
 
     try {
@@ -253,6 +269,13 @@ public class EntityOperations {
 
   private Response listCatalogs(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
     Catalog[] catalogs = catalogDispatcher.listCatalogsInfo(namespace);
+    catalogs =
+        filterByExpression(
+            namespace.level(0),
+            AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
+            Entity.EntityType.CATALOG,
+            catalogs,
+            catalog -> NameIdentifierUtil.ofCatalog(namespace.level(0), catalog.name()));
     CatalogDTO[] catalogDTOs =
         Arrays.stream(catalogs)
             .filter(catalog -> catalogType == null || catalog.type() == catalogType)
@@ -275,6 +298,13 @@ public class EntityOperations {
 
   private SchemaDTO[] listSchemaDTOs(Namespace namespace, int resultLimit) {
     NameIdentifier[] schemaIdents = schemaDispatcher.listSchemas(namespace);
+    schemaIdents =
+        filterByExpression(
+            namespace.level(0),
+            AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
+            Entity.EntityType.SCHEMA,
+            schemaIdents,
+            schemaIdent -> schemaIdent);
     // Schema entities are stored flat under the catalog namespace, even for parentSchema listings.
     Namespace schemaEntityNs = Namespace.of(namespace.level(0), namespace.level(1));
     List<SchemaEntity> schemaEntities = schemaDispatcher.listEntities(schemaEntityNs);
@@ -296,6 +326,12 @@ public class EntityOperations {
 
   private Response listTables(Namespace namespace, String parentSchema, int resultLimit) {
     NameIdentifier[] tableIdents = tableDispatcher.listTables(namespace);
+    tableIdents =
+        filterByNameIdentifier(
+            namespace.level(0),
+            AuthorizationExpressionConstants.FILTER_TABLE_AUTHORIZATION_EXPRESSION,
+            Entity.EntityType.TABLE,
+            tableIdents);
     List<TableEntity> tableEntities;
     try {
       tableEntities = tableDispatcher.listEntities(namespace);
@@ -350,6 +386,12 @@ public class EntityOperations {
 
   private Response listTopics(Namespace namespace, int resultLimit) {
     NameIdentifier[] topicIdents = topicDispatcher.listTopics(namespace);
+    topicIdents =
+        filterByNameIdentifier(
+            namespace.level(0),
+            AuthorizationExpressionConstants.FILTER_TOPICS_AUTHORIZATION_EXPRESSION,
+            Entity.EntityType.TOPIC,
+            topicIdents);
     List<TopicEntity> topicEntities;
     try {
       topicEntities = topicDispatcher.listEntities(namespace);
@@ -387,6 +429,19 @@ public class EntityOperations {
   private Response listFilesets(Namespace namespace, int resultLimit) {
     // since fileset is managed by Gravitino, we can directly list them from store
     List<FilesetEntity> filesetEntities = filesetDispatcher.listEntities(namespace);
+    filesetEntities =
+        Arrays.asList(
+            filterByExpression(
+                namespace.level(0),
+                AuthorizationExpressionConstants.FILTER_FILESET_AUTHORIZATION_EXPRESSION,
+                Entity.EntityType.FILESET,
+                filesetEntities.toArray(new FilesetEntity[0]),
+                fileset ->
+                    NameIdentifierUtil.ofFileset(
+                        namespace.level(0),
+                        namespace.level(1),
+                        namespace.level(2),
+                        fileset.name())));
     FilesetDTO[] filesetDTOs =
         filesetEntities.stream()
             .sorted(Comparator.comparing(FilesetEntity::name))
@@ -412,6 +467,16 @@ public class EntityOperations {
   private Response listModels(Namespace namespace, int resultLimit) {
     // since model is managed by Gravitino, we can directly list them from store
     List<ModelEntity> modelEntities = modelDispatcher.listEntities(namespace);
+    modelEntities =
+        Arrays.asList(
+            filterByExpression(
+                namespace.level(0),
+                AuthorizationExpressionConstants.FILTER_MODEL_AUTHORIZATION_EXPRESSION,
+                Entity.EntityType.MODEL,
+                modelEntities.toArray(new ModelEntity[0]),
+                model ->
+                    NameIdentifierUtil.ofModel(
+                        namespace.level(0), namespace.level(1), namespace.level(2), model.name())));
     ModelDTO[] modelDTOs =
         modelEntities.stream()
             .sorted(Comparator.comparing(ModelEntity::name))
@@ -435,9 +500,19 @@ public class EntityOperations {
 
   private FunctionDTO[] listFunctionDTOs(Namespace namespace, int resultLimit) {
     try {
-      Function[] functions = functionDispatcher.listFunctionInfos(namespace);
+      org.apache.gravitino.function.Function[] functions =
+          functionDispatcher.listFunctionInfos(namespace);
+      functions =
+          filterByExpression(
+              namespace.level(0),
+              AuthorizationExpressionConstants.FILTER_FUNCTION_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.FUNCTION,
+              functions,
+              function ->
+                  NameIdentifierUtil.ofFunction(
+                      namespace.level(0), namespace.level(1), namespace.level(2), function.name()));
       return Arrays.stream(functions)
-          .sorted(Comparator.comparing(Function::name))
+          .sorted(Comparator.comparing(org.apache.gravitino.function.Function::name))
           .limit(resultLimit)
           .map(DTOConverters::toDTO)
           .toArray(FunctionDTO[]::new);
@@ -450,6 +525,12 @@ public class EntityOperations {
   private ViewDTO[] listViewDTOs(Namespace namespace, int resultLimit) {
     try {
       NameIdentifier[] viewIdents = viewDispatcher.listViews(namespace);
+      viewIdents =
+          filterByNameIdentifier(
+              namespace.level(0),
+              AuthorizationExpressionConstants.FILTER_VIEW_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.VIEW,
+              viewIdents);
       List<ViewEntity> viewEntities;
       try {
         viewEntities = viewDispatcher.listEntities(namespace);
@@ -499,5 +580,58 @@ public class EntityOperations {
           .withDefaultValue(null)
           .build()
     };
+  }
+
+  private NameIdentifier[] filterByNameIdentifier(
+      String metalake,
+      String expression,
+      Entity.EntityType entityType,
+      NameIdentifier[] identifiers) {
+    return filterByExpression(metalake, expression, entityType, identifiers, id -> id);
+  }
+
+  private NameIdentifier[] filterByExpression(
+      String metalake,
+      String expression,
+      Entity.EntityType entityType,
+      NameIdentifier[] identifiers,
+      Function<NameIdentifier, NameIdentifier> toNameIdentifier) {
+    try {
+      return MetadataAuthzHelper.filterByExpression(
+          metalake, expression, entityType, identifiers, toNameIdentifier);
+    } catch (IllegalArgumentException e) {
+      if (!isMetadataAuthorizationReady()) {
+        LOG.warn(
+            "Skip metadata authorization filtering for {} due to uninitialized GravitinoEnv.",
+            entityType);
+        return identifiers;
+      }
+      throw e;
+    }
+  }
+
+  private <E> E[] filterByExpression(
+      String metalake,
+      String expression,
+      Entity.EntityType entityType,
+      E[] entities,
+      Function<E, NameIdentifier> toNameIdentifier) {
+    try {
+      return MetadataAuthzHelper.filterByExpression(
+          metalake, expression, entityType, entities, toNameIdentifier);
+    } catch (IllegalArgumentException e) {
+      if (!isMetadataAuthorizationReady()) {
+        LOG.warn(
+            "Skip metadata authorization filtering for {} due to uninitialized GravitinoEnv.",
+            entityType);
+        return entities;
+      }
+      throw e;
+    }
+  }
+
+  private boolean isMetadataAuthorizationReady() {
+    return GravitinoEnv.getInstance().config() != null
+        && GravitinoEnv.getInstance().accessControlDispatcher() != null;
   }
 }

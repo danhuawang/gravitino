@@ -7,6 +7,7 @@ package com.datastrato.gravitino.server.web.rest;
 import static org.apache.gravitino.dto.util.DTOConverters.fromDTO;
 import static org.apache.gravitino.dto.util.DTOConverters.fromDTOs;
 import static org.apache.gravitino.file.Fileset.LOCATION_NAME_UNKNOWN;
+import static org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants.CAN_ACCESS_METADATA_AND_TAG;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
@@ -44,10 +45,13 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.Catalog;
+import org.apache.gravitino.Entity;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Schema;
+import org.apache.gravitino.authorization.AuthorizationRequestContext;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
 import org.apache.gravitino.catalog.ModelDispatcher;
@@ -61,14 +65,20 @@ import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.file.Fileset;
 import org.apache.gravitino.messaging.Topic;
 import org.apache.gravitino.model.Model;
 import org.apache.gravitino.rel.Table;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationRequest;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionEvaluator;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
 import org.apache.gravitino.tag.TagDispatcher;
+import org.apache.gravitino.utils.MetadataObjectUtil;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -111,8 +121,13 @@ public class CreationWithTagsOperations {
 
   @POST
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression = "METALAKE::CREATE_CATALOG || METALAKE::OWNER",
+      accessMetadataType = MetadataObject.Type.METALAKE)
   public Response createCatalogWithTag(
-      @PathParam("metalake") String metalake, CatalogWithTagsCreateRequest request) {
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      CatalogWithTagsCreateRequest request) {
     LOG.info(
         "Received create catalog with tags request: {}.{}: {}",
         metalake,
@@ -124,6 +139,14 @@ public class CreationWithTagsOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
+            request.validate();
+            authorizeTagsIfNeeded(
+                metalake,
+                MetadataObject.Type.CATALOG,
+                request.getName(),
+                request.getTagsToAdd(),
+                Collections.emptyMap());
+
             CatalogDTO catalogDTO = createCatalog(metalake, request);
             catalogCreated.set(true);
 
@@ -159,10 +182,15 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas")
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression = "ANY(OWNER, METALAKE, CATALOG, SCHEMA) || ANY_USE_CATALOG && ANY_CREATE_SCHEMA",
+      accessMetadataType = MetadataObject.Type.SCHEMA)
   public Response createSchemaWithTag(
-      @PathParam("metalake") String metalake,
-      @PathParam("catalog") String catalog,
-      SchemaWithTagsCreateRequest request) {
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("catalog") @AuthorizationMetadata(type = Entity.EntityType.CATALOG) String catalog,
+      @AuthorizationRequest(type = AuthorizationRequest.RequestType.CREATE_SCHEMA)
+          SchemaWithTagsCreateRequest request) {
     LOG.info(
         "Received create schema with tags request: {}.{}.{}: {}",
         metalake,
@@ -176,6 +204,14 @@ public class CreationWithTagsOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
+            request.validate();
+            authorizeTagsIfNeeded(
+                metalake,
+                MetadataObject.Type.SCHEMA,
+                fullName,
+                request.getTagsToAdd(),
+                Collections.emptyMap());
+
             SchemaDTO schemaDTO = createSchema(metalake, catalog, request);
             schemaCreated.set(true);
 
@@ -208,10 +244,17 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/tables")
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression =
+          "ANY(OWNER, METALAKE, CATALOG) || "
+              + "SCHEMA_OWNER_WITH_USE_CATALOG || "
+              + "ANY_USE_CATALOG && ANY_USE_SCHEMA && ANY_CREATE_TABLE",
+      accessMetadataType = MetadataObject.Type.SCHEMA)
   public Response createTableWithTag(
-      @PathParam("metalake") String metalake,
-      @PathParam("catalog") String catalog,
-      @PathParam("schema") String schema,
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("catalog") @AuthorizationMetadata(type = Entity.EntityType.CATALOG) String catalog,
+      @PathParam("schema") @AuthorizationMetadata(type = Entity.EntityType.SCHEMA) String schema,
       TableWithTagsCreateRequest request) {
     LOG.info(
         "Received create table with tags request: {}.{}.{}.{}: {}",
@@ -227,6 +270,14 @@ public class CreationWithTagsOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
+            request.validate();
+            authorizeTagsIfNeeded(
+                metalake,
+                MetadataObject.Type.TABLE,
+                fullName,
+                request.getTagsToAdd(),
+                request.getColumnTags());
+
             TableDTO tableDTO = createTable(metalake, catalog, schema, request);
             tableCreated.set(true);
 
@@ -281,10 +332,17 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/filesets")
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression =
+          "ANY(OWNER, METALAKE, CATALOG) || "
+              + "SCHEMA_OWNER_WITH_USE_CATALOG || "
+              + "ANY_USE_CATALOG && ANY_USE_SCHEMA && ANY_CREATE_FILESET",
+      accessMetadataType = MetadataObject.Type.SCHEMA)
   public Response createFilesetWithTag(
-      @PathParam("metalake") String metalake,
-      @PathParam("catalog") String catalog,
-      @PathParam("schema") String schema,
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("catalog") @AuthorizationMetadata(type = Entity.EntityType.CATALOG) String catalog,
+      @PathParam("schema") @AuthorizationMetadata(type = Entity.EntityType.SCHEMA) String schema,
       FilesetWithTagsCreateRequest request) {
     LOG.info(
         "Received create fileset with tags request: {}.{}.{}.{}: {}",
@@ -300,6 +358,14 @@ public class CreationWithTagsOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
+            request.validate();
+            authorizeTagsIfNeeded(
+                metalake,
+                MetadataObject.Type.FILESET,
+                fullName,
+                request.getTagsToAdd(),
+                Collections.emptyMap());
+
             FilesetDTO filesetDTO = createFileset(metalake, catalog, schema, request);
             filesetCreated.set(true);
 
@@ -333,10 +399,17 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/topics")
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression =
+          "ANY(OWNER, METALAKE, CATALOG) || "
+              + "SCHEMA_OWNER_WITH_USE_CATALOG || "
+              + "ANY_USE_CATALOG && ANY_USE_SCHEMA && ANY_CREATE_TOPIC",
+      accessMetadataType = MetadataObject.Type.SCHEMA)
   public Response createTopicWithTag(
-      @PathParam("metalake") String metalake,
-      @PathParam("catalog") String catalog,
-      @PathParam("schema") String schema,
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("catalog") @AuthorizationMetadata(type = Entity.EntityType.CATALOG) String catalog,
+      @PathParam("schema") @AuthorizationMetadata(type = Entity.EntityType.SCHEMA) String schema,
       TopicWithTagsCreateRequest request) {
     LOG.info(
         "Received create topic with tags request: {}.{}.{}.{}: {}",
@@ -352,6 +425,14 @@ public class CreationWithTagsOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
+            request.validate();
+            authorizeTagsIfNeeded(
+                metalake,
+                MetadataObject.Type.TOPIC,
+                fullName,
+                request.getTagsToAdd(),
+                Collections.emptyMap());
+
             TopicDTO topicDTO = createTopic(metalake, catalog, schema, request);
             topicCreated.set(true);
 
@@ -385,10 +466,17 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/models")
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression =
+          "ANY(OWNER, METALAKE, CATALOG) || "
+              + "SCHEMA_OWNER_WITH_USE_CATALOG || "
+              + "ANY_USE_CATALOG && ANY_USE_SCHEMA && ANY_REGISTER_MODEL",
+      accessMetadataType = MetadataObject.Type.SCHEMA)
   public Response registerModelWithTag(
-      @PathParam("metalake") String metalake,
-      @PathParam("catalog") String catalog,
-      @PathParam("schema") String schema,
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("catalog") @AuthorizationMetadata(type = Entity.EntityType.CATALOG) String catalog,
+      @PathParam("schema") @AuthorizationMetadata(type = Entity.EntityType.SCHEMA) String schema,
       ModelWithTagsCreateRequest request) {
     LOG.info(
         "Received register model with tags request: {}.{}.{}.{}: {}",
@@ -404,6 +492,14 @@ public class CreationWithTagsOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
+            request.validate();
+            authorizeTagsIfNeeded(
+                metalake,
+                MetadataObject.Type.MODEL,
+                fullName,
+                request.getTagsToAdd(),
+                Collections.emptyMap());
+
             ModelDTO modelDTO = registerModel(metalake, catalog, schema, request);
             modelRegistered.set(true);
 
@@ -436,7 +532,6 @@ public class CreationWithTagsOperations {
 
   private ModelDTO registerModel(
       String metalake, String catalog, String schema, ModelWithTagsCreateRequest request) {
-    request.validate();
     NameIdentifier ident = NameIdentifierUtil.ofModel(metalake, catalog, schema, request.getName());
 
     Model model =
@@ -448,7 +543,6 @@ public class CreationWithTagsOperations {
 
   private TopicDTO createTopic(
       String metalake, String catalog, String schema, TopicWithTagsCreateRequest request) {
-    request.validate();
     NameIdentifier ident = NameIdentifierUtil.ofTopic(metalake, catalog, schema, request.getName());
 
     Topic topic =
@@ -464,7 +558,6 @@ public class CreationWithTagsOperations {
 
   private FilesetDTO createFileset(
       String metalake, String catalog, String schema, FilesetWithTagsCreateRequest request) {
-    request.validate();
     NameIdentifier ident =
         NameIdentifierUtil.ofFileset(metalake, catalog, schema, request.getName());
 
@@ -490,7 +583,6 @@ public class CreationWithTagsOperations {
 
   private TableDTO createTable(
       String metalake, String catalog, String schema, TableWithTagsCreateRequest request) {
-    request.validate();
     NameIdentifier ident = NameIdentifierUtil.ofTable(metalake, catalog, schema, request.getName());
 
     Table table =
@@ -509,7 +601,6 @@ public class CreationWithTagsOperations {
   }
 
   private CatalogDTO createCatalog(String metalake, CatalogWithTagsCreateRequest request) {
-    request.validate();
     NameIdentifier ident = NameIdentifierUtil.ofCatalog(metalake, request.getName());
     Catalog catalog =
         catalogDispatcher.createCatalog(
@@ -525,7 +616,6 @@ public class CreationWithTagsOperations {
 
   private SchemaDTO createSchema(
       String metalake, String catalog, SchemaWithTagsCreateRequest request) {
-    request.validate();
     NameIdentifier ident = NameIdentifierUtil.ofSchema(metalake, catalog, request.getName());
     Schema schema =
         schemaDispatcher.createSchema(ident, request.getComment(), request.getProperties());
@@ -540,7 +630,63 @@ public class CreationWithTagsOperations {
       return new String[0];
     }
     MetadataObject object = MetadataObjects.parse(fullName, objectType);
+    authorizeTags(metalake, object, tags);
     return tagDispatcher.associateTagsForMetadataObject(metalake, object, tags, new String[0]);
+  }
+
+  private void authorizeTagsIfNeeded(
+      String metalake,
+      MetadataObject.Type objectType,
+      String fullName,
+      String[] tagsToAdd,
+      Map<String, String[]> columnTags) {
+    authorizeTags(metalake, MetadataObjects.parse(fullName, objectType), tagsToAdd);
+
+    if (columnTags == null || columnTags.isEmpty()) {
+      return;
+    }
+
+    for (Map.Entry<String, String[]> tagsByColumn : columnTags.entrySet()) {
+      authorizeTags(
+          metalake,
+          MetadataObjects.parse(
+              String.join(".", fullName, tagsByColumn.getKey()), MetadataObject.Type.COLUMN),
+          tagsByColumn.getValue());
+    }
+  }
+
+  private void authorizeTags(String metalake, MetadataObject object, String[] tags) {
+    if (tags == null
+        || tags.length == 0
+        || GravitinoEnv.getInstance().gravitinoAuthorizer() == null) {
+      return;
+    }
+
+    Map<Entity.EntityType, NameIdentifier> metadataContext =
+        NameIdentifierUtil.splitNameIdentifier(
+            metalake,
+            MetadataObjectUtil.toEntityType(object),
+            MetadataObjectUtil.toEntityIdent(metalake, object));
+    AuthorizationRequestContext authorizationRequestContext = new AuthorizationRequestContext();
+    AuthorizationExpressionEvaluator evaluator =
+        new AuthorizationExpressionEvaluator(
+            CAN_ACCESS_METADATA_AND_TAG, GravitinoEnv.getInstance().gravitinoAuthorizer());
+    for (String tag : tags) {
+      Map<Entity.EntityType, NameIdentifier> tagMetadataContext = new HashMap<>(metadataContext);
+      tagMetadataContext.put(Entity.EntityType.TAG, NameIdentifierUtil.ofTag(metalake, tag));
+
+      boolean authorized =
+          evaluator.evaluate(
+              tagMetadataContext,
+              Collections.emptyMap(),
+              authorizationRequestContext,
+              Optional.of(object.type().name()));
+      if (!authorized) {
+        throw new ForbiddenException(
+            "No permission to associate tag [%s] with object type [%s] name [%s] in metalake [%s]",
+            tag, object.type(), object.fullName(), metalake);
+      }
+    }
   }
 
   private Response rollbackIfNecessary(

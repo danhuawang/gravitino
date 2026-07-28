@@ -5,6 +5,7 @@
 package com.datastrato.gravitino.server.web.rest;
 
 import static javax.ws.rs.core.Response.Status.CONFLICT;
+import static javax.ws.rs.core.Response.Status.FORBIDDEN;
 import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
@@ -50,6 +51,7 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.Schema;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
@@ -252,6 +254,47 @@ public class TestCreationWithTagsOperations extends JerseyTest {
   }
 
   @Test
+  public void testCreateCatalogWithTagForbiddenByTagPermission() {
+    reset(catalogDispatcher, tagDispatcher);
+    GravitinoAuthorizer oldAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoEnv.getInstance().setGravitinoAuthorizer(mock(GravitinoAuthorizer.class));
+    try {
+      String[] tags = new String[] {"tag1", "tag2"};
+      CatalogWithTagsCreateRequest req =
+          new CatalogWithTagsCreateRequest(
+              "catalog4",
+              Catalog.Type.RELATIONAL,
+              "test",
+              "comment",
+              ImmutableMap.of("key", "value"),
+              tags);
+
+      Catalog catalog = buildCatalog("metalake", "catalog4");
+      when(catalogDispatcher.createCatalog(any(), any(), any(), any(), any())).thenReturn(catalog);
+
+      Response resp =
+          target("/web/with-tags/metalakes/metalake1/catalogs")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+      Assertions.assertEquals(FORBIDDEN.getStatusCode(), resp.getStatus());
+      ErrorResponse errorResponse = resp.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(ErrorConstants.FORBIDDEN_CODE, errorResponse.getCode());
+      Assertions.assertEquals(
+          org.apache.gravitino.exceptions.ForbiddenException.class.getSimpleName(),
+          errorResponse.getType());
+
+      Mockito.verify(catalogDispatcher, Mockito.never())
+          .createCatalog(any(), any(), any(), any(), any());
+      Mockito.verify(tagDispatcher, Mockito.never())
+          .associateTagsForMetadataObject(any(), any(), any(), any());
+    } finally {
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(oldAuthorizer);
+    }
+  }
+
+  @Test
   public void testCreateSchemaWithTag() {
     // test create schema without tags
     SchemaWithTagsCreateRequest req =
@@ -339,6 +382,37 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
     Assertions.assertEquals(
         TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testCreateSchemaWithTagForbiddenByTagPermission() {
+    reset(schemaDispatcher, tagDispatcher);
+    GravitinoAuthorizer oldAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoEnv.getInstance().setGravitinoAuthorizer(mock(GravitinoAuthorizer.class));
+    try {
+      String[] tags = new String[] {"tag1", "tag2"};
+      SchemaWithTagsCreateRequest req =
+          new SchemaWithTagsCreateRequest("schema4", "comment", null, tags);
+
+      Response resp =
+          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+      Assertions.assertEquals(FORBIDDEN.getStatusCode(), resp.getStatus());
+      ErrorResponse errorResponse = resp.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(ErrorConstants.FORBIDDEN_CODE, errorResponse.getCode());
+      Assertions.assertEquals(
+          org.apache.gravitino.exceptions.ForbiddenException.class.getSimpleName(),
+          errorResponse.getType());
+
+      Mockito.verify(schemaDispatcher, Mockito.never()).createSchema(any(), any(), any());
+      Mockito.verify(tagDispatcher, Mockito.never())
+          .associateTagsForMetadataObject(any(), any(), any(), any());
+    } finally {
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(oldAuthorizer);
+    }
   }
 
   @Test
@@ -463,6 +537,96 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
     Assertions.assertEquals(
         TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testCreateTableWithTagForbiddenByTagPermission() {
+    reset(tableDispatcher, tagDispatcher);
+    GravitinoAuthorizer oldAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoEnv.getInstance().setGravitinoAuthorizer(mock(GravitinoAuthorizer.class));
+    try {
+      Column[] columns =
+          new Column[] {
+            mockColumn("col1", Types.StringType.get()), mockColumn("col2", Types.ByteType.get())
+          };
+      TableWithTagsCreateRequest req =
+          new TableWithTagsCreateRequest(
+              "table4",
+              null,
+              Arrays.stream(columns).map(DTOConverters::toDTO).toArray(ColumnDTO[]::new),
+              null,
+              null,
+              null,
+              null,
+              null,
+              new String[] {"tag1", "tag2"},
+              Collections.emptyMap());
+
+      Response resp =
+          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+      Assertions.assertEquals(FORBIDDEN.getStatusCode(), resp.getStatus());
+      ErrorResponse errorResponse = resp.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(ErrorConstants.FORBIDDEN_CODE, errorResponse.getCode());
+      Assertions.assertEquals(
+          org.apache.gravitino.exceptions.ForbiddenException.class.getSimpleName(),
+          errorResponse.getType());
+
+      Mockito.verify(tableDispatcher, Mockito.never())
+          .createTable(any(), any(), any(), any(), any(), any(), any(), any());
+      Mockito.verify(tagDispatcher, Mockito.never())
+          .associateTagsForMetadataObject(any(), any(), any(), any());
+    } finally {
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(oldAuthorizer);
+    }
+  }
+
+  @Test
+  public void testCreateTableWithColumnTagForbiddenByTagPermission() {
+    reset(tableDispatcher, tagDispatcher);
+    GravitinoAuthorizer oldAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoEnv.getInstance().setGravitinoAuthorizer(mock(GravitinoAuthorizer.class));
+    try {
+      Column[] columns =
+          new Column[] {
+            mockColumn("col1", Types.StringType.get()), mockColumn("col2", Types.ByteType.get())
+          };
+      TableWithTagsCreateRequest req =
+          new TableWithTagsCreateRequest(
+              "table5",
+              null,
+              Arrays.stream(columns).map(DTOConverters::toDTO).toArray(ColumnDTO[]::new),
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              ImmutableMap.of("col1", new String[] {"tag1"}));
+
+      Response resp =
+          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+      Assertions.assertEquals(FORBIDDEN.getStatusCode(), resp.getStatus());
+      ErrorResponse errorResponse = resp.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(ErrorConstants.FORBIDDEN_CODE, errorResponse.getCode());
+      Assertions.assertEquals(
+          org.apache.gravitino.exceptions.ForbiddenException.class.getSimpleName(),
+          errorResponse.getType());
+
+      Mockito.verify(tableDispatcher, Mockito.never())
+          .createTable(any(), any(), any(), any(), any(), any(), any(), any());
+      Mockito.verify(tagDispatcher, Mockito.never())
+          .associateTagsForMetadataObject(any(), any(), any(), any());
+    } finally {
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(oldAuthorizer);
+    }
   }
 
   @Test
@@ -639,6 +803,38 @@ public class TestCreationWithTagsOperations extends JerseyTest {
   }
 
   @Test
+  public void testCreateFilesetWithTagForbiddenByTagPermission() {
+    reset(filesetDispatcher, tagDispatcher);
+    GravitinoAuthorizer oldAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoEnv.getInstance().setGravitinoAuthorizer(mock(GravitinoAuthorizer.class));
+    try {
+      FilesetWithTagsCreateRequest req =
+          new FilesetWithTagsCreateRequest(
+              "fileset4", null, null, null, null, new String[] {"tag1"});
+
+      Response resp =
+          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+      Assertions.assertEquals(FORBIDDEN.getStatusCode(), resp.getStatus());
+      ErrorResponse errorResponse = resp.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(ErrorConstants.FORBIDDEN_CODE, errorResponse.getCode());
+      Assertions.assertEquals(
+          org.apache.gravitino.exceptions.ForbiddenException.class.getSimpleName(),
+          errorResponse.getType());
+
+      Mockito.verify(filesetDispatcher, Mockito.never())
+          .createMultipleLocationFileset(any(), any(), any(), any(), any());
+      Mockito.verify(tagDispatcher, Mockito.never())
+          .associateTagsForMetadataObject(any(), any(), any(), any());
+    } finally {
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(oldAuthorizer);
+    }
+  }
+
+  @Test
   public void testCreateTopicWithTag() {
     // test create topic without tags
     Topic topic = mockTopic("topic1", "comment", null);
@@ -722,6 +918,36 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
     Assertions.assertEquals(
         TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testCreateTopicWithTagForbiddenByTagPermission() {
+    reset(topicDispatcher, tagDispatcher);
+    GravitinoAuthorizer oldAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoEnv.getInstance().setGravitinoAuthorizer(mock(GravitinoAuthorizer.class));
+    try {
+      TopicWithTagsCreateRequest req =
+          new TopicWithTagsCreateRequest("topic4", "comment", null, new String[] {"tag1"});
+
+      Response resp =
+          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+      Assertions.assertEquals(FORBIDDEN.getStatusCode(), resp.getStatus());
+      ErrorResponse errorResponse = resp.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(ErrorConstants.FORBIDDEN_CODE, errorResponse.getCode());
+      Assertions.assertEquals(
+          org.apache.gravitino.exceptions.ForbiddenException.class.getSimpleName(),
+          errorResponse.getType());
+
+      Mockito.verify(topicDispatcher, Mockito.never()).createTopic(any(), any(), any(), any());
+      Mockito.verify(tagDispatcher, Mockito.never())
+          .associateTagsForMetadataObject(any(), any(), any(), any());
+    } finally {
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(oldAuthorizer);
+    }
   }
 
   @Test
@@ -809,6 +1035,36 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
     Assertions.assertEquals(
         TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testRegisterModelWithTagForbiddenByTagPermission() {
+    reset(modelDispatcher, tagDispatcher);
+    GravitinoAuthorizer oldAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoEnv.getInstance().setGravitinoAuthorizer(mock(GravitinoAuthorizer.class));
+    try {
+      ModelWithTagsCreateRequest req =
+          new ModelWithTagsCreateRequest("model4", "comment", null, new String[] {"tag1"});
+
+      Response resp =
+          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+      Assertions.assertEquals(FORBIDDEN.getStatusCode(), resp.getStatus());
+      ErrorResponse errorResponse = resp.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(ErrorConstants.FORBIDDEN_CODE, errorResponse.getCode());
+      Assertions.assertEquals(
+          org.apache.gravitino.exceptions.ForbiddenException.class.getSimpleName(),
+          errorResponse.getType());
+
+      Mockito.verify(modelDispatcher, Mockito.never()).registerModel(any(), any(), any());
+      Mockito.verify(tagDispatcher, Mockito.never())
+          .associateTagsForMetadataObject(any(), any(), any(), any());
+    } finally {
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(oldAuthorizer);
+    }
   }
 
   private Model mockModel(String name, String comment, Map<String, String> properties) {
