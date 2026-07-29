@@ -307,11 +307,13 @@ Caches are local to each server, so a metalake modified on one server would othe
 its neighbors. Every server writes its changes to an entity change log table and polls that table
 to invalidate what other servers have touched. A separate cleaner trims old rows.
 
-| Configuration Item                              | Description                                                              | Default Value   |
-|--------------------------------------------------|---------------------------------------------------------------------------|-----------------|
-| `gravitino.entityChangeLog.pollIntervalSecs`    | Interval in seconds between polls. Must be positive.                    | `3`             |
-| `gravitino.entityChangeLog.retentionSecs`       | How long in seconds change log rows are kept before being pruned. `0` disables cleanup. Must be non-negative. | `86400` (1 day) |
-| `gravitino.entityChangeLog.cleanupIntervalSecs` | Interval in seconds between cleanup runs that prune expired change log rows. Must be positive. | `3600` (1 hour) |
+| Configuration Item                               | Description                                                                                                                                                                                        | Default Value      |
+|--------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------|
+| `gravitino.entityChangeLog.pollIntervalSecs`     | Interval in seconds between polls. Must be positive.                                                                                                                                               | `3`                |
+| `gravitino.entityChangeLog.listenerMaxRetries`   | Number of times a change log batch is retried for a failing listener before applying `listenerFailureAction`. Must be non-negative.                                                                | `10`               |
+| `gravitino.entityChangeLog.listenerFailureAction` | Action after a listener exhausts its retries. `EXIT` stops the server rather than serving stale caches; `SKIP` drops the batch for that listener and keeps serving.                                | `EXIT`             |
+| `gravitino.entityChangeLog.retentionSecs`        | How long change log rows are retained. A dedicated cleaner removes older rows using database time. `0` disables cleanup; otherwise the value must be at least 10 times `pollIntervalSecs`.         | `2592000` (30 days) |
+| `gravitino.entityChangeLog.cleanupIntervalSecs`  | Interval in seconds between dedicated cleaner runs. Must be positive.                                                                                                                              | `86400` (1 day)    |
 
 #### Tree Lock
 
