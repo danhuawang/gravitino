@@ -52,16 +52,16 @@ load_config() {
     if [[ -n "$GRAVITINO_HOME" ]] && [[ -d "$GRAVITINO_HOME" ]]; then
         local conf_file="$GRAVITINO_HOME/conf/gravitino.conf"
         if [[ -f "$conf_file" ]]; then
-            SEARCH_STORAGE=$(grep '^gravitino.datastrato.search.storage.impl' "$conf_file" | awk -F '=' '{print $2}' | xargs)
+            SEARCH_STORAGE=$(grep '^gravitino.datastrato.search.storage.impl' "$conf_file" | cut -d '=' -f2- | xargs)
             if [[ "$SEARCH_STORAGE" != "opensearch" ]]; then
                 echo "Search storage is not OpenSearch, ignore the command"
                 exit 1;
             fi
 
-            OPENSEARCH_URL=$(grep '^gravitino.datastrato.search.opensearch.url' "$conf_file" | awk -F '=' '{print $2}' | xargs)
-            USERNAME=$(grep '^gravitino.datastrato.search.opensearch.username' "$conf_file" | awk -F '=' '{print $2}' | xargs)
-            PASSWORD=$(grep '^gravitino.datastrato.search.opensearch.password' "$conf_file" | awk -F '=' '{print $2}' | xargs)
-            GRAVITINO_URI="http://127.0.0.1:$(grep '^gravitino.server.webserver.httpPort' "$conf_file" | awk -F '=' '{print $2}' | xargs)"
+            OPENSEARCH_URL=$(grep '^gravitino.datastrato.search.opensearch.url' "$conf_file" | cut -d '=' -f2- | xargs)
+            USERNAME=$(grep '^gravitino.datastrato.search.opensearch.username' "$conf_file" | cut -d '=' -f2- | xargs)
+            PASSWORD=$(grep '^gravitino.datastrato.search.opensearch.password' "$conf_file" | cut -d '=' -f2- | xargs)
+            GRAVITINO_URI="http://127.0.0.1:$(grep '^gravitino.server.webserver.httpPort' "$conf_file" | cut -d '=' -f2- | xargs)"
             echo "[INFO] Loaded OpenSearch config from $conf_file"
         else
             echo "[WARN] Config file not found: $conf_file. Skipping OpenSearch config init."
