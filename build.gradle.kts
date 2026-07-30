@@ -895,6 +895,7 @@ tasks.rat {
     "dev/charts/gravitino-lance-rest-server/README.md",
     "dev/docker/**/*.xml",
     "dev/docker/**/*.conf",
+    "dev/docker/opensearch/opensearch-docker-entrypoint.sh",
     "dev/docker/kerberos-hive/kadm5.acl",
     "docs/**/*.md",
     ".claude/**",

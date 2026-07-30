@@ -17,8 +17,30 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-#set -ex
+
+set -euo pipefail
+
+# Configuration
+OPENSEARCH_VERSION="${OPENSEARCH_VERSION:-2.17.1}"
+IMAGE_NAME="${IMAGE_NAME:-datastratosandbox/opensearch-with-analysis-ik}"
+IMAGE_TAG="${IMAGE_TAG:-${OPENSEARCH_VERSION}}"
+
+echo "Building OpenSearch IK image (UBI 9 certified)"
+echo "  OpenSearch version: ${OPENSEARCH_VERSION}"
+echo "  Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+echo "  Platform: linux/amd64,linux/arm64"
 
 # docker login -u datastratosandbox
 
-docker buildx build --no-cache --pull --platform=linux/amd64,linux/arm64 --build-arg IMAGE_NAME=opensearch-with-analysis-ik --build-arg TAG_NAME=2.17.1 --push --progress plain -f Dockerfile -t docker.io/datastratosandbox/opensearch-with-analysis-ik:2.17.1 .
+docker buildx build \
+  --no-cache \
+  --pull \
+  --platform=linux/amd64,linux/arm64 \
+  --build-arg OPENSEARCH_VERSION="${OPENSEARCH_VERSION}" \
+  --push \
+  --progress plain \
+  -f Dockerfile \
+  -t "docker.io/${IMAGE_NAME}:${IMAGE_TAG}" \
+  .
+
+echo "Done. Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
