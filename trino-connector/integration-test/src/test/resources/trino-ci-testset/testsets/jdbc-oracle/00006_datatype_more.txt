@@ -2,8 +2,8 @@ CREATE TABLE
 
 "f_char","char(10)","",""
 "f_varchar","varchar(200)","",""
-"f_integer","integer","",""
-"f_bigint","bigint","",""
+"f_integer","decimal(10,0)","",""
+"f_bigint","decimal(19,0)","",""
 "f_decimal","decimal(12,3)","",""
 "f_double","double","",""
 "f_date","timestamp(3)","",""
