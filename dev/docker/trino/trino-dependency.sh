@@ -48,3 +48,33 @@ fi
 
 mkdir -p "${trino_dir}/packages/trino"
 cp -r -p "${trino_dir}/conf" "${trino_dir}/packages/trino/conf"
+
+# Download Trino server tarball from datastrato/Trino private repo release
+TRINO_VERSION="478"
+TRINO_TARBALL="${trino_dir}/packages/trino-server-${TRINO_VERSION}.tar.gz"
+TRINO_RELEASE_URL="https://github.com/datastrato/Trino/releases/download/gravitino-${TRINO_VERSION}/trino-server-${TRINO_VERSION}.tar.gz"
+
+if [ ! -f "${TRINO_TARBALL}" ]; then
+  echo "Downloading Trino server tarball from datastrato/Trino release..."
+  # Requires GH_TOKEN or gh CLI auth for private repo access
+  if command -v gh &> /dev/null; then
+    gh release download "gravitino-${TRINO_VERSION}" \
+      --repo datastrato/Trino \
+      --pattern "trino-server-${TRINO_VERSION}.tar.gz" \
+      --dir "${trino_dir}/packages"
+  elif [ -n "${GH_TOKEN:-}" ]; then
+    curl -L --retry 3 --retry-delay 5 -fS \
+      -H "Authorization: token ${GH_TOKEN}" \
+      -H "Accept: application/octet-stream" \
+      "${TRINO_RELEASE_URL}" \
+      -o "${TRINO_TARBALL}"
+  else
+    echo "ERROR: Cannot download Trino tarball. Either install 'gh' CLI and authenticate, or set GH_TOKEN env var."
+    echo "  Option 1: gh auth login && gh release download gravitino-${TRINO_VERSION} --repo datastrato/Trino --pattern 'trino-server-${TRINO_VERSION}.tar.gz' --dir ${trino_dir}/packages"
+    echo "  Option 2: export GH_TOKEN=<your-github-token>"
+    echo "  Option 3: Manually download from https://github.com/datastrato/Trino/releases/tag/gravitino-${TRINO_VERSION} and place at ${TRINO_TARBALL}"
+    exit 1
+  fi
+fi
+
+echo "Trino tarball ready: ${TRINO_TARBALL}"

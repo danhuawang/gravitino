@@ -1,0 +1,21 @@
+APACHE GRAVITINO LICENSE NOTICE
+
+Version: Draft v0.1 for internal review
+Component: Apache Gravitino
+Upstream Project: https://gravitino.apache.org/
+Upstream Repository: https://github.com/apache/gravitino
+License: Apache License, Version 2.0
+
+IMPORTANT NOTE
+For final packaging, this file should be replaced with the exact LICENSE file from the Apache Gravitino upstream source distribution or the exact Apache License, Version 2.0 text plus any upstream license appendix that applies to the version bundled in Datastrato Enterprise.
+
+Apache Gravitino is licensed under the Apache License, Version 2.0.
+
+The Apache License, Version 2.0 requires that redistributions provide recipients with a copy of the license and preserve required copyright, patent, trademark, and attribution notices. If the upstream distribution includes a NOTICE file, the applicable attribution notices from that NOTICE file should also be preserved.
+
+Recommended final action:
+Copy the exact upstream Apache Gravitino LICENSE file for the bundled version into this file, or keep the upstream file name as LICENSE and place a direct copy or symbolic link under /licenses.
+
+Reference:
+https://github.com/apache/gravitino/blob/main/LICENSE
+https://www.apache.org/licenses/LICENSE-2.0

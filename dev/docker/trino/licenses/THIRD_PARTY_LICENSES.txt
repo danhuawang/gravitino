@@ -1,0 +1,142 @@
+THIRD PARTY LICENSES FOR DATASTRATO ENTERPRISE
+
+Version: Draft v0.1 for internal review
+Product: Datastrato Enterprise
+Provider: Datastrato Inc.
+
+IMPORTANT NOTE
+This file is a draft template. Before final certification or customer distribution, this file should be replaced or supplemented with a complete dependency scan result from the actual container image and build artifacts.
+
+Datastrato Enterprise may include third-party and open source software components. Each third-party component is licensed under its own license terms. This file is intended to summarize the third-party components known or expected to be included in Datastrato Enterprise.
+
+The absence of a component from this draft file does not change the license obligations for that component. The final file should include all third-party components shipped in the container image, including server-side dependencies, UI dependencies, operating-system packages, connector dependencies, and bundled tools.
+
+1. Core Open Source Components
+
+Component: Apache Gravitino
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://gravitino.apache.org/
+Notes: Apache Gravitino license and notice files are also included separately as APACHE_GRAVITINO_LICENSE.txt and APACHE_GRAVITINO_NOTICE.txt.
+
+Component: Apache Iceberg
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://iceberg.apache.org/
+Notes: Include only if Apache Iceberg libraries, connectors, or related components are bundled in the image.
+
+Component: Apache Paimon
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://paimon.apache.org/
+Notes: Include only if Apache Paimon libraries, connectors, or related components are bundled in the image.
+
+Component: Apache Spark
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://spark.apache.org/
+Notes: Include only if Spark libraries, connectors, or related components are bundled in the image.
+
+Component: Apache Hive
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://hive.apache.org/
+Notes: Include only if Hive libraries, Hive Metastore libraries, or related components are bundled in the image.
+
+Component: Apache Hadoop
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://hadoop.apache.org/
+Notes: Include only if Hadoop libraries or related components are bundled in the image.
+
+Component: Apache Kafka
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://kafka.apache.org/
+Notes: Include only if Kafka libraries, clients, or related components are bundled in the image.
+
+Component: Apache Arrow
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://arrow.apache.org/
+Notes: Include only if Arrow libraries or related components are bundled in the image.
+
+Component: Apache Ranger
+License: Apache License 2.0
+Copyright: The Apache Software Foundation
+Project: https://ranger.apache.org/
+Notes: Include only if Ranger integration libraries or related components are bundled in the image.
+
+2. Common Java Dependencies
+
+Component: Netty
+License: Apache License 2.0
+Project: https://netty.io/
+Notes: Include exact version after dependency scan.
+
+Component: Jackson
+License: Apache License 2.0
+Project: https://github.com/FasterXML/jackson
+Notes: Include exact module names and versions after dependency scan.
+
+Component: SLF4J
+License: MIT License
+Project: https://www.slf4j.org/
+Notes: Include exact version after dependency scan.
+
+Component: Logback
+License: Eclipse Public License 1.0 / GNU Lesser General Public License 2.1
+Project: https://logback.qos.ch/
+Notes: Include exact version after dependency scan.
+
+Component: Guava
+License: Apache License 2.0
+Project: https://github.com/google/guava
+Notes: Include exact version after dependency scan.
+
+3. Common Web UI Dependencies
+
+Component: React
+License: MIT License
+Project: https://react.dev/
+Notes: Include exact version after dependency scan if bundled in the UI image.
+
+Component: Next.js
+License: MIT License
+Project: https://nextjs.org/
+Notes: Include exact version after dependency scan if bundled in the UI image.
+
+Component: Material UI
+License: MIT License
+Project: https://mui.com/
+Notes: Include exact version after dependency scan if bundled in the UI image.
+
+Component: Emotion
+License: MIT License
+Project: https://emotion.sh/
+Notes: Include exact version after dependency scan if bundled in the UI image.
+
+4. Base Image and Operating System Components
+
+The container image may be based on Red Hat Universal Base Image or another Red Hat base image. Operating-system packages included in the image are licensed under their respective open source licenses and Red Hat terms.
+
+The final version of this file should include the relevant RPM package license information or a generated software bill of materials if required by Datastrato Inc., Red Hat certification policy, or customer requirements.
+
+5. Recommended Finalization Process
+
+Before final release, generate a complete third-party license inventory from the actual build output. Recommended sources include:
+
+a. Java dependency license reports from Maven or Gradle
+b. Web UI dependency license reports from npm, pnpm, or yarn
+c. Container image SBOM generated by Syft, CycloneDX, SPDX-compatible tooling, or equivalent tooling
+d. Manual review of any bundled scripts, binaries, connectors, or vendor-provided files
+
+Final entries should include at least:
+
+Component name
+Version
+License
+Copyright holder, when available
+Project URL, when available
+Location or package name, when available
+Notes for copyleft or notice-sensitive licenses, when applicable
