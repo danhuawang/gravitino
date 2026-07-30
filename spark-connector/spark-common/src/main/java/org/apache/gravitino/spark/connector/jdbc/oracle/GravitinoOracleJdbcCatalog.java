@@ -57,6 +57,11 @@ public abstract class GravitinoOracleJdbcCatalog extends GravitinoJdbcCatalog {
   }
 
   @Override
+  protected SparkTypeConverter getSparkTypeConverter() {
+    return new SparkOracleTypeConverter();
+  }
+
+  @Override
   protected Table createSparkTable(
       Identifier identifier,
       org.apache.gravitino.rel.Table gravitinoTable,

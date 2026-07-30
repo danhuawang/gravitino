@@ -21,13 +21,12 @@ package org.apache.gravitino.spark.connector.jdbc.oracle;
 import org.apache.gravitino.spark.connector.SparkTableChangeConverter;
 import org.apache.gravitino.spark.connector.SparkTableChangeConverter34;
 import org.apache.gravitino.spark.connector.SparkTypeConverter;
-import org.apache.gravitino.spark.connector.jdbc.SparkJdbcTypeConverter34;
 
 public class GravitinoOracleCatalogSpark34 extends GravitinoOracleJdbcCatalog {
 
   @Override
   protected SparkTypeConverter getSparkTypeConverter() {
-    return new SparkJdbcTypeConverter34();
+    return new SparkOracleTypeConverter34();
   }
 
   @Override
