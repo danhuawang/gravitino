@@ -6,6 +6,7 @@
 plugins {
   `maven-publish`
   id("java")
+  id("java-test-fixtures")
 }
 
 dependencies {
@@ -23,6 +24,11 @@ dependencies {
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testRuntimeOnly(libs.junit.jupiter.engine)
+
+  testFixturesApi(project(":api"))
+  testFixturesApi(project(":common"))
+  testFixturesApi(libs.junit.jupiter.api)
+  testFixturesImplementation(libs.testcontainers)
 }
 
 tasks.javadoc {
