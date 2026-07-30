@@ -214,6 +214,7 @@ Gravitino provides security configurations for Gravitino, including HTTPS, authe
 * [Authentication](./security/how-to-authenticate.md): provides authentication configurations including simple, basic, OAuth, and Kerberos.
 * [Local users and groups](./security/local-users-and-groups.md): operator guide for the local user store behind HTTP Basic authentication, including service admin setup and `/api/idp` management APIs.
 * [Access Control](./security/access-control.md): provides access control configurations.
+* [Transit KMS authentication](./security/kms-transit-authentication.md): configures environment-sourced bearer tokens for Vault or OpenBao Transit.
 * [CORS](./security/how-to-use-cors.md): provides CORS configurations.
 
 ### Gravitino MCP Server
