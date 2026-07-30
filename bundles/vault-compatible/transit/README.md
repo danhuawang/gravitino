@@ -39,6 +39,9 @@ missing-key behavior, and authentication failure for a rejected environment-sour
   -PskipDockerTests=false
 ```
 
+The distribution packages Vault and OpenBao as separate self-contained provider artifacts. Each
+artifact contains one KMS factory and a provider-private copy of the shared Transit runtime.
+
 The default pinned images are:
 
 | Provider | Image | Optional override |

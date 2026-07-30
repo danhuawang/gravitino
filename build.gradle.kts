@@ -32,6 +32,7 @@ import org.gradle.kotlin.dsl.support.serviceOf
 import org.nosphere.apache.rat.RatTask
 import java.io.IOException
 import java.util.Locale
+import java.util.jar.JarFile
 
 Locale.setDefault(Locale.US)
 
@@ -72,6 +73,29 @@ if (scalaVersion !in listOf("2.12", "2.13")) {
 val skipWeb: Boolean = (project.findProperty("skipWeb") as? String)?.toBoolean() ?: false
 val distributionPackageDir = layout.projectDirectory.dir("distribution/package")
 val distributionPackageAllDir = layout.projectDirectory.dir("distribution/package-all")
+val kmsProviderBundleFactories =
+  linkedMapOf(
+    ":bundles:vault" to
+      setOf("com.datastrato.gravitino.transit.vault.VaultTransitKmsClientFactory"),
+    ":bundles:openbao" to
+      setOf("com.datastrato.gravitino.transit.openbao.OpenBaoTransitKmsClientFactory")
+  )
+val transitSensitiveHttpLoggers =
+  linkedMapOf(
+    "vaultTransitHttpHeaders" to
+      "com.datastrato.gravitino.transit.vault.shaded.org.apache.hc.client5.http.headers",
+    "vaultTransitHttpWire" to
+      "com.datastrato.gravitino.transit.vault.shaded.org.apache.hc.client5.http.wire",
+    "openBaoTransitHttpHeaders" to
+      "com.datastrato.gravitino.transit.openbao.shaded.org.apache.hc.client5.http.headers",
+    "openBaoTransitHttpWire" to
+      "com.datastrato.gravitino.transit.openbao.shaded.org.apache.hc.client5.http.wire"
+  )
+val transitLoggingConfigurationFiles =
+  listOf(
+    layout.projectDirectory.file("conf/log4j2.properties.template"),
+    layout.projectDirectory.file("dev/charts/gravitino/resources/config/log4j2.properties")
+  )
 val subprojectJarOutputDirs = subprojects.map { it.layout.buildDirectory.dir("libs") }
 
 project.extra["extraJvmArgs"] =
@@ -108,6 +132,12 @@ licenseReport {
   filters = arrayOf<DependencyFilter>(LicenseBundleNormalizer())
 }
 repositories { mavenCentral() }
+
+dependencies {
+  errorprone("com.google.errorprone:error_prone_core:2.10.0")
+  testImplementation(project(":api"))
+  testImplementation(project(":common"))
+}
 
 allprojects {
   // Gravitino Python client project didn't need to apply the Spotless plugin
@@ -759,6 +789,7 @@ val datastratoLicenseCheckIncludes = listOf(
   "bundles/vault-compatible/transit/**",
   "bundles/vault/**",
   "bundles/openbao/**",
+  "src/test/java/com/datastrato/gravitino/transit/packaging/TransitProviderDiscoveryProbe.java",
   "licensing/**",
   "scripts/enterprise/**",
   "plugins/scim/**",
@@ -1039,6 +1070,7 @@ tasks {
     val dependencies =
       mutableListOf(
         "copyCatalogLibAndConfigs",
+        "verifyKmsProviderBundles",
         "copySubprojectDependencies",
         "copySubprojectLib",
         "copyCliLib",
@@ -1058,6 +1090,11 @@ tasks {
     }
     dependsOn(cleanDistributionPackage)
     dependsOn(dependencies)
+    finalizedBy(
+      "runPackagedVaultProviderDiscoveryProbe",
+      "runPackagedOpenBaoProviderDiscoveryProbe",
+      "runPackagedTransitProviderCoexistenceProbe"
+    )
 
     group = "gravitino distribution"
     outputs.dir(distributionPackageDir)
@@ -1114,6 +1151,16 @@ tasks {
       // Create the directory 'data' for storage.
       val directory = File("distribution/package/data")
       directory.mkdirs()
+
+      // bundles/transit is an internal source dependency, never a deployable artifact.
+      val forbiddenTransitArtifacts =
+        fileTree(distributionPackageDir).matching {
+          include("**/${rootProject.name.lowercase()}-transit-*.jar")
+        }.files.sortedBy { it.path }
+      check(forbiddenTransitArtifacts.isEmpty()) {
+        "The distribution must not ship a shared or combined Transit artifact: " +
+          forbiddenTransitArtifacts.map { it.relativeTo(distributionPackageDir.asFile).path }
+      }
 
       // Copy the all directory distribution/package to distribution/package-all
       copy {
@@ -1401,7 +1448,263 @@ tasks {
     setDuplicatesStrategy(DuplicatesStrategy.EXCLUDE)
   }
 
+  register("copyKmsProviderBundles", Copy::class) {
+    group = "gravitino distribution"
+    description = "Copy shaded KMS provider bundles into the distribution package"
+
+    kmsProviderBundleFactories.keys.forEach { projectPath ->
+      val bundleProject = project(projectPath)
+      dependsOn("$projectPath:shadowJar")
+      from(bundleProject.layout.buildDirectory.dir("libs")) {
+        include("${rootProject.name.lowercase()}-${bundleProject.name}-*.jar")
+        exclude("*-empty.jar", "*-javadoc.jar", "*-sources.jar")
+      }
+    }
+
+    into("distribution/package/kms-providers")
+    setDuplicatesStrategy(DuplicatesStrategy.FAIL)
+  }
+
+  register("verifyKmsProviderBundles") {
+    group = "verification"
+    description = "Verify packaged KMS provider bundles and service descriptors"
+    dependsOn("copyKmsProviderBundles")
+
+    val providerDirectory = distributionPackageDir.dir("kms-providers")
+    inputs.dir(providerDirectory)
+    inputs.files(transitLoggingConfigurationFiles)
+    doLast {
+      val providerJars =
+        fileTree(providerDirectory).matching { include("*.jar") }.files.sortedBy { it.name }
+      check(providerJars.size == kmsProviderBundleFactories.size) {
+        "Expected ${kmsProviderBundleFactories.size} KMS provider bundle, " +
+          "but found ${providerJars.size}: ${providerJars.map { it.name }}"
+      }
+
+      val servicePath =
+        "META-INF/services/org.apache.gravitino.encryption.kms.KmsClientFactory"
+      val providerClassEntries = linkedMapOf<String, Set<String>>()
+      kmsProviderBundleFactories.forEach { (projectPath, expectedFactories) ->
+        val bundleName = project(projectPath).name
+        val oppositeProvider = if (bundleName == "vault") "openbao" else "vault"
+        val shadeRoot = "com/datastrato/gravitino/transit/$bundleName/shaded"
+        val jarPrefix = "${rootProject.name.lowercase()}-$bundleName-"
+        val matchingJars = providerJars.filter { it.name.startsWith(jarPrefix) }
+        check(matchingJars.size == 1) {
+          "Expected one packaged bundle matching $jarPrefix, " +
+            "but found ${matchingJars.map { it.name }}"
+        }
+
+        val bundleJar = matchingJars.single()
+        check(bundleJar.length() > 0L) { "Packaged KMS provider bundle is empty: $bundleJar" }
+        JarFile(bundleJar).use { jarFile ->
+          val entries = mutableSetOf<String>()
+          val jarEntries = jarFile.entries()
+          while (jarEntries.hasMoreElements()) {
+            entries.add(jarEntries.nextElement().name)
+          }
+          providerClassEntries[bundleName] = entries.filter { it.endsWith(".class") }.toSet()
+
+          check(entries.none { it == "module-info.class" || it.endsWith("/module-info.class") }) {
+            "$bundleJar contains a module descriptor that is invalid in a shaded provider artifact"
+          }
+
+          val expectedFactoryClass = expectedFactories.single().replace('.', '/') + ".class"
+          check(entries.contains(expectedFactoryClass)) {
+            "$bundleJar does not contain its expected provider factory $expectedFactoryClass"
+          }
+          val forbiddenPrefixes =
+            setOf(
+              "com/datastrato/gravitino/security/token/",
+              "com/datastrato/gravitino/transit/shaded/com/datastrato/gravitino/security/token/",
+              "com/datastrato/gravitino/transit/common/",
+              "com/datastrato/gravitino/transit/kms/",
+              "com/datastrato/gravitino/transit/$oppositeProvider/",
+              "com/fasterxml/jackson/",
+              "org/apache/commons/codec/",
+              "org/apache/gravitino/",
+              "org/apache/hc/",
+              "org/publicsuffix/",
+              "org/slf4j/"
+            )
+          forbiddenPrefixes.forEach { prefix ->
+            check(entries.none { it.startsWith(prefix) }) {
+              "$bundleJar contains unshaded or server-provided classes under $prefix"
+            }
+          }
+          val requiredRelocatedPrefixes =
+            setOf(
+              "$shadeRoot/com/datastrato/gravitino/transit/common/",
+              "$shadeRoot/com/datastrato/gravitino/transit/kms/",
+              "$shadeRoot/com/fasterxml/jackson/",
+              "$shadeRoot/org/apache/hc/",
+              "$shadeRoot/org/publicsuffix/"
+            )
+          requiredRelocatedPrefixes.forEach { prefix ->
+            check(entries.any { it.startsWith(prefix) }) {
+              "$bundleJar does not contain relocated dependency classes under $prefix"
+            }
+          }
+
+          val connectionClassPath =
+            "$shadeRoot/org/apache/hc/client5/http/impl/io/" +
+              "DefaultManagedHttpClientConnection.class"
+          val connectionClass = jarFile.getJarEntry(connectionClassPath)
+          check(connectionClass != null) {
+            "$bundleJar does not contain the relocated Apache HTTP connection class"
+          }
+          val connectionClassConstants =
+            jarFile.getInputStream(connectionClass).use { input ->
+              String(input.readBytes(), Charsets.ISO_8859_1)
+            }
+          transitSensitiveHttpLoggers.values
+            .filter { it.startsWith("com.datastrato.gravitino.transit.$bundleName.shaded.") }
+            .forEach { loggerName ->
+              check(connectionClassConstants.contains(loggerName)) {
+                "$bundleJar does not use the expected sensitive logger category $loggerName"
+              }
+            }
+
+          val serviceEntry = jarFile.getJarEntry(servicePath)
+          check(serviceEntry != null) { "$bundleJar does not contain $servicePath" }
+          val factories =
+            jarFile.getInputStream(serviceEntry).bufferedReader().useLines { lines ->
+              lines
+                .map { it.substringBefore('#').trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+            }
+          check(factories == expectedFactories) {
+            "$bundleJar contains $factories, expected exactly $expectedFactories"
+          }
+        }
+      }
+
+      check(providerClassEntries.size == 2) {
+        "Expected class inventories for Vault and OpenBao, but found ${providerClassEntries.keys}"
+      }
+      val duplicateClasses =
+        providerClassEntries.getValue("vault").intersect(providerClassEntries.getValue("openbao"))
+      check(duplicateClasses.isEmpty()) {
+        "Vault and OpenBao provider artifacts contain duplicate classes: $duplicateClasses"
+      }
+
+      transitLoggingConfigurationFiles.forEach { configurationFile ->
+        val content = configurationFile.asFile.readText()
+        transitSensitiveHttpLoggers.forEach { (loggerId, loggerName) ->
+          val loggerSetting =
+            Regex(
+              "(?m)^\\s*logger\\.${Regex.escape(loggerId)}\\.name\\s*=\\s*" +
+                "${Regex.escape(loggerName)}\\s*$"
+            )
+          val levelSetting =
+            Regex("(?mi)^\\s*logger\\.${Regex.escape(loggerId)}\\.level\\s*=\\s*off\\s*$")
+          check(loggerSetting.containsMatchIn(content) && levelSetting.containsMatchIn(content)) {
+            "${configurationFile.asFile} must disable sensitive HTTP logger $loggerName"
+          }
+        }
+      }
+    }
+  }
+
+  val runPackagedVaultProviderDiscoveryProbe by
+  registering(JavaExec::class) {
+    description = "Run the fresh-JVM Vault Transit provider discovery probe"
+    dependsOn("testClasses")
+    mustRunAfter("compileDistribution")
+    onlyIf {
+      compileDistribution.get().state.let { state -> state.executed && state.failure == null }
+    }
+
+    val providerDirectory = distributionPackageDir.dir("kms-providers")
+    val launcher = distributionPackageDir.file("bin/gravitino.sh")
+    classpath =
+      files(
+        sourceSets["test"].output.classesDirs,
+        fileTree(distributionPackageDir.dir("libs")) { include("*.jar") },
+        fileTree(providerDirectory) { include("${rootProject.name.lowercase()}-vault-*.jar") }
+      )
+    mainClass.set("com.datastrato.gravitino.transit.packaging.TransitProviderDiscoveryProbe")
+    environment("GRAVITINO_TRANSIT_PACKAGING_TOKEN", "packaging-probe-token")
+    args(
+      providerDirectory.asFile.absolutePath,
+      launcher.asFile.absolutePath,
+      "vault-transit=${rootProject.name.lowercase()}-vault-"
+    )
+  }
+
+  val runPackagedOpenBaoProviderDiscoveryProbe by
+  registering(JavaExec::class) {
+    description = "Run the fresh-JVM OpenBao Transit provider discovery probe"
+    dependsOn("testClasses")
+    mustRunAfter("compileDistribution")
+    onlyIf {
+      compileDistribution.get().state.let { state -> state.executed && state.failure == null }
+    }
+
+    val providerDirectory = distributionPackageDir.dir("kms-providers")
+    val launcher = distributionPackageDir.file("bin/gravitino.sh")
+    classpath =
+      files(
+        sourceSets["test"].output.classesDirs,
+        fileTree(distributionPackageDir.dir("libs")) { include("*.jar") },
+        fileTree(providerDirectory) { include("${rootProject.name.lowercase()}-openbao-*.jar") }
+      )
+    mainClass.set("com.datastrato.gravitino.transit.packaging.TransitProviderDiscoveryProbe")
+    environment("GRAVITINO_TRANSIT_PACKAGING_TOKEN", "packaging-probe-token")
+    args(
+      providerDirectory.asFile.absolutePath,
+      launcher.asFile.absolutePath,
+      "openbao-transit=${rootProject.name.lowercase()}-openbao-"
+    )
+  }
+
+  val runPackagedTransitProviderCoexistenceProbe by
+  registering(JavaExec::class) {
+    description = "Run the fresh-JVM Vault and OpenBao Transit coexistence probe"
+    dependsOn("testClasses")
+    mustRunAfter("compileDistribution")
+    onlyIf {
+      compileDistribution.get().state.let { state -> state.executed && state.failure == null }
+    }
+
+    val providerDirectory = distributionPackageDir.dir("kms-providers")
+    val launcher = distributionPackageDir.file("bin/gravitino.sh")
+    classpath =
+      files(
+        sourceSets["test"].output.classesDirs,
+        fileTree(distributionPackageDir.dir("libs")) { include("*.jar") },
+        fileTree(providerDirectory) {
+          include("${rootProject.name.lowercase()}-vault-*.jar")
+          include("${rootProject.name.lowercase()}-openbao-*.jar")
+        }
+      )
+    mainClass.set("com.datastrato.gravitino.transit.packaging.TransitProviderDiscoveryProbe")
+    environment("GRAVITINO_TRANSIT_PACKAGING_TOKEN", "packaging-probe-token")
+    args(
+      providerDirectory.asFile.absolutePath,
+      launcher.asFile.absolutePath,
+      "vault-transit=${rootProject.name.lowercase()}-vault-",
+      "openbao-transit=${rootProject.name.lowercase()}-openbao-"
+    )
+  }
+
+  register("verifyPackagedTransitProviderDiscovery") {
+    group = "verification"
+    description =
+      "Assemble the distribution and verify isolated and coexisting Transit provider discovery"
+    dependsOn(
+      compileDistribution,
+      runPackagedVaultProviderDiscoveryProbe,
+      runPackagedOpenBaoProviderDiscoveryProbe,
+      runPackagedTransitProviderCoexistenceProbe
+    )
+  }
+
   register("copySubprojectLib", Copy::class) {
+    // The packaged-runtime probe compiles test support in the same build. Keep test artifacts out
+    // of the distribution and order the copy after any test JAR task already in the task graph.
+    mustRunAfter(":core:testJar")
     subprojects.forEach() {
       if (!it.name.startsWith("authorization") &&
         !it.name.startsWith("catalog") &&
@@ -1436,7 +1739,7 @@ tasks {
         dependsOn("${it.name}:build")
         from("${it.name}/build/libs") {
           include("*.jar")
-          exclude("*-jcstress.jar", "*-jmh.jar", "error_prone_annotations-*.jar")
+          exclude("*-jcstress.jar", "*-jmh.jar", "*-tests.jar", "error_prone_annotations-*.jar")
         }
         into("distribution/package/libs")
         setDuplicatesStrategy(DuplicatesStrategy.INCLUDE)
