@@ -21,6 +21,7 @@ package org.apache.gravitino.spark.connector.integration.test.jdbc;
 import static org.apache.gravitino.integration.test.util.TestDatabaseName.SQLSERVER_CATALOG_SQLSERVER_IT;
 
 import com.google.common.collect.Maps;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -29,7 +30,9 @@ import org.apache.gravitino.integration.test.container.SqlServerContainer;
 import org.apache.gravitino.spark.connector.integration.test.SparkCommonIT;
 import org.apache.gravitino.spark.connector.integration.test.util.SparkTableInfoChecker;
 import org.apache.gravitino.spark.connector.jdbc.JdbcPropertiesConstants;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 
 @Tag("gravitino-docker-test")
@@ -136,5 +139,19 @@ public class SparkJdbcSqlServerCatalogIT extends SparkCommonIT {
     catalogProperties.put(
         JdbcPropertiesConstants.GRAVITINO_JDBC_DATABASE, SQLSERVER_CATALOG_SQLSERVER_IT.toString());
     return catalogProperties;
+  }
+
+  @Test
+  void testCreateTableWithTimestampColumn() {
+    // A `timestamp` column must be creatable via Spark SQL on a SQL Server catalog, since Spark's
+    // TimestampType has to be mapped to a Gravitino type that SQL Server's converter accepts.
+    String tableName = "timestamp_column_test";
+    dropTableIfExists(tableName);
+    sql(String.format("CREATE TABLE %s (id INT, created_at TIMESTAMP)", tableName));
+    sql(String.format("INSERT INTO %s VALUES (1, TIMESTAMP '2026-01-01 08:00:00')", tableName));
+
+    List<String> result = getQueryData(String.format("SELECT id FROM %s WHERE id = 1", tableName));
+    Assertions.assertEquals(1, result.size());
+    Assertions.assertEquals("1", result.get(0));
   }
 }

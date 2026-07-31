@@ -154,7 +154,6 @@ public enum TestDatabaseName {
    * com.datastrato.gravitino.catalog.sqlserver.integration.test.CatalogSqlServerIT.
    */
   SQLSERVER_CATALOG_JDBC_SQLSERVER_IT,
-
   /** Represents the MySQL database for the Flink Iceberg JDBC-backend catalog integration test. */
   FLINK_ICEBERG_JDBC_CATALOG_IT,
 }

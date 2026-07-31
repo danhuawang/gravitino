@@ -84,12 +84,12 @@ public class ContainerSuite implements Closeable {
       new EnumMap<>(DorisImageName.class);
   private static volatile OceanBaseContainer oceanBaseContainer;
   private static volatile OracleContainer oracleContainer;
+  private static volatile SqlServerContainer sqlServerContainer;
   private static volatile ClickHouseContainer clickHouseContainer;
   private static volatile ClickHouseContainer clickHouseClusterContainer;
   private static volatile ZooKeeperContainer zooKeeperContainer;
 
   private static volatile GravitinoLocalStackContainer gravitinoLocalStackContainer;
-  private static volatile SqlServerContainer sqlServerContainer;
 
   /**
    * We can share the same Hive container as Hive container with S3 contains the following
@@ -973,6 +973,7 @@ public class ContainerSuite implements Closeable {
       mySQLContainer = null;
       mySQLVersion5Container = null;
       oracleContainer = null;
+      sqlServerContainer = null;
       hiveContainer = null;
       hiveRangerContainer = null;
       trinoContainer = null;
@@ -984,7 +985,6 @@ public class ContainerSuite implements Closeable {
       kerberosHiveContainer = null;
       sqlBaseHiveContainer = null;
       pgContainerMap.clear();
-      sqlServerContainer = null;
     } catch (Exception e) {
       LOG.error("Failed to close ContainerEnvironment", e);
     }

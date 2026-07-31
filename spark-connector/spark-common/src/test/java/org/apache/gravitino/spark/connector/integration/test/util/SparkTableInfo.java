@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.Data;
@@ -68,12 +69,44 @@ public class SparkTableInfo {
     return tableName;
   }
 
+  public void setTableName(String tableName) {
+    this.tableName = tableName;
+  }
+
+  public String getDatabase() {
+    return database;
+  }
+
+  public void setDatabase(String database) {
+    this.database = database;
+  }
+
+  public String getComment() {
+    return comment;
+  }
+
+  public void setComment(String comment) {
+    this.comment = comment;
+  }
+
+  public List<SparkColumnInfo> getColumns() {
+    return columns;
+  }
+
+  public void setColumns(List<SparkColumnInfo> columns) {
+    this.columns = columns;
+  }
+
   public String getTableLocation() {
     return tableProperties.get(TableCatalog.PROP_LOCATION);
   }
 
   public Map<String, String> getTableProperties() {
     return tableProperties;
+  }
+
+  public void setTableProperties(Map<String, String> tableProperties) {
+    this.tableProperties = tableProperties;
   }
 
   // Include database name and table name
@@ -92,6 +125,22 @@ public class SparkTableInfo {
   void setBucket(Transform bucket) {
     Assertions.assertNull(this.bucket, "Should only one distribution");
     this.bucket = bucket;
+  }
+
+  public Transform getBucket() {
+    return bucket;
+  }
+
+  public List<Transform> getPartitions() {
+    return partitions;
+  }
+
+  public SparkMetadataColumnInfo[] getMetadataColumns() {
+    return metadataColumns;
+  }
+
+  public void setMetadataColumns(SparkMetadataColumnInfo[] metadataColumns) {
+    this.metadataColumns = metadataColumns;
   }
 
   void addPartition(Transform partition) {
@@ -226,6 +275,34 @@ public class SparkTableInfo {
     public static SparkColumnInfo of(
         String name, DataType type, String comment, boolean isNullable) {
       return new SparkColumnInfo(name, type, comment, isNullable);
+    }
+
+    public String getName() {
+      return name;
+    }
+
+    public DataType getType() {
+      return type;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof SparkColumnInfo)) {
+        return false;
+      }
+      SparkColumnInfo that = (SparkColumnInfo) o;
+      return isNullable == that.isNullable
+          && Objects.equals(name, that.name)
+          && Objects.equals(type, that.type)
+          && Objects.equals(comment, that.comment);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(name, type, comment, isNullable);
     }
   }
 }
