@@ -8,6 +8,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import io.trino.jdbc.Row;
 import io.trino.jdbc.RowField;
 import io.trino.jdbc.TrinoArray;
@@ -18,8 +19,11 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import javax.annotation.Nullable;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.dbcp2.BasicDataSource;
 import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
@@ -148,7 +152,8 @@ public class TrinoJdbcDataPreviewOperator {
     return dataSource.getConnection();
   }
 
-  private Map<String, Object>[] convertToRecords(
+  @VisibleForTesting
+  Map<String, Object>[] convertToRecords(
       ResultSet resultSet, int limit, List<String> sensitiveColumns, Column[] columns)
       throws SQLException {
     ResultSetMetaData metaData = resultSet.getMetaData();
@@ -158,9 +163,14 @@ public class TrinoJdbcDataPreviewOperator {
       colNames.add(metaData.getColumnName(colIndex + 1));
     }
 
-    Map<String, Type> columnTypes = Maps.newHashMap();
+    TypeNameLookup columnTypes = new TypeNameLookup("column");
     for (Column column : columns) {
       columnTypes.put(column.name(), column.dataType());
+    }
+
+    NameLookup sensitiveColumnNames = new NameLookup();
+    for (String sensitiveColumn : sensitiveColumns) {
+      sensitiveColumnNames.add(sensitiveColumn);
     }
 
     List<Map<String, Object>> recordList = Lists.newArrayList();
@@ -169,7 +179,7 @@ public class TrinoJdbcDataPreviewOperator {
     while (resultSet.next() && recordIndex < limit) {
       Map<String, Object> record = Maps.newHashMap();
       for (String colName : colNames) {
-        if (sensitiveColumns.contains(colName)) {
+        if (sensitiveColumnNames.contains(colName)) {
           record.put(colName, "*");
         } else {
           Type type = columnTypes.get(colName);
@@ -191,9 +201,73 @@ public class TrinoJdbcDataPreviewOperator {
     return records;
   }
 
+  private static String normalizeName(String name) {
+    return name.toLowerCase(Locale.ROOT);
+  }
+
+  private static class NameLookup {
+    private final Set<String> exactNames = Sets.newHashSet();
+    private final Set<String> caseInsensitiveNames = Sets.newHashSet();
+
+    private void add(String name) {
+      exactNames.add(name);
+      caseInsensitiveNames.add(normalizeName(name));
+    }
+
+    private boolean contains(String name) {
+      if (exactNames.contains(name)) {
+        return true;
+      }
+      return caseInsensitiveNames.contains(normalizeName(name));
+    }
+  }
+
+  private static class TypeNameLookup {
+    private final String nameKind;
+    private final Map<String, Type> exactTypes = Maps.newHashMap();
+    private final Map<String, Type> caseInsensitiveTypes = Maps.newHashMap();
+    private final Map<String, String> caseInsensitiveNames = Maps.newHashMap();
+    private final Set<String> ambiguousNames = Sets.newHashSet();
+
+    private TypeNameLookup(String nameKind) {
+      this.nameKind = nameKind;
+    }
+
+    private void put(String name, Type type) {
+      exactTypes.put(name, type);
+      String normalizedName = normalizeName(name);
+      String existingName = caseInsensitiveNames.putIfAbsent(normalizedName, name);
+      if (existingName == null || existingName.equals(name)) {
+        caseInsensitiveTypes.put(normalizedName, type);
+      } else {
+        ambiguousNames.add(normalizedName);
+      }
+    }
+
+    private Type get(String name) {
+      Type type = exactTypes.get(name);
+      if (type != null) {
+        return type;
+      }
+
+      String normalizedName = normalizeName(name);
+      if (ambiguousNames.contains(normalizedName)) {
+        throw new IllegalArgumentException(
+            String.format("Ambiguous %s name ignoring case: %s", nameKind, name));
+      }
+      return caseInsensitiveTypes.get(normalizedName);
+    }
+  }
+
   @VisibleForTesting
-  Object convertToValue(Object object, Type type) {
-    if (object instanceof TrinoArray) {
+  Object convertToValue(@Nullable Object object, @Nullable Type type) {
+    if (object == null) {
+      return null;
+    } else if (object instanceof byte[]) {
+      return String.format("x'%s'", Hex.encodeHexString((byte[]) object));
+    } else if (type == null) {
+      return object;
+    } else if (object instanceof TrinoArray) {
       Preconditions.checkArgument(
           type.name() == Type.Name.LIST, "Expected type to be a list, but got: %s", type.name());
       TrinoArray trinoArray = (TrinoArray) object;
@@ -221,7 +295,7 @@ public class TrinoJdbcDataPreviewOperator {
           type.name());
       Row row = (Row) object;
       Map<String, Object> convertedRow = Maps.newHashMap();
-      Map<String, Type> fieldTypes = Maps.newHashMap();
+      TypeNameLookup fieldTypes = new TypeNameLookup("field");
       Types.StructType structType = (Types.StructType) type;
       for (Types.StructType.Field field : structType.fields()) {
         fieldTypes.put(field.name(), field.type());
@@ -235,11 +309,7 @@ public class TrinoJdbcDataPreviewOperator {
                 });
       }
       return convertedRow;
-    } else if (object instanceof byte[]) {
-      return String.format("x'%s'", Hex.encodeHexString((byte[]) object));
-    } else if (type.name() == Type.Name.TIMESTAMP
-        && ((Types.TimestampType) type).hasTimeZone()
-        && object != null) {
+    } else if (type.name() == Type.Name.TIMESTAMP && ((Types.TimestampType) type).hasTimeZone()) {
       return String.format("%s UTC", object.toString());
     } else {
       return object;

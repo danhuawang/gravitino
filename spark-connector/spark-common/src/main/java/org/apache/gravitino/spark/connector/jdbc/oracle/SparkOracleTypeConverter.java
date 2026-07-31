@@ -14,12 +14,11 @@ import org.apache.spark.sql.types.DateType;
 /**
  * Type converter for the Oracle catalog.
  *
- * <p>Oracle has no pure date type: its {@code DATE} column stores both date and time, so {@code
- * OracleTypeConverter} rejects the semantically lossy {@link Types.DateType}. Spark's {@link
- * DateType} is mapped to {@code TimestampType.withoutTimeZone(3)} instead, matching how the Trino
- * connector's {@code OracleDataTypeTransformer} handles the same case, so {@code
- * OracleTypeConverter} emits {@code TIMESTAMP(3)} DDL and both engines round-trip the value with
- * the same precision.
+ * <p>Oracle has no pure date type: its {@code DATE} column stores both date and time, so {@link
+ * Types.DateType} is rejected by {@code OracleTypeConverter}. Spark's {@link DateType} is mapped to
+ * {@code TimestampType.withoutTimeZone(3)} instead, matching how the Trino connector's {@code
+ * OracleDataTypeTransformer} handles the same case, so {@code OracleTypeConverter} emits {@code
+ * TIMESTAMP(3)} DDL and both engines round-trip the value with the same precision.
  *
  * <p>{@code OracleTypeConverter#toGravitino} also produces {@link Types.ExternalType} for Oracle
  * types that have no Gravitino equivalent (unbounded {@code NUMBER}, {@code NCHAR}, {@code

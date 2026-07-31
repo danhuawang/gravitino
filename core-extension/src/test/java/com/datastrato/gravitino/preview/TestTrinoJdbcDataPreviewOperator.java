@@ -9,7 +9,10 @@ import static org.mockito.Mockito.when;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import io.trino.jdbc.Row;
 import io.trino.jdbc.TrinoArray;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.Config;
@@ -17,6 +20,7 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.tag.TagDispatcher;
 import org.junit.jupiter.api.Assertions;
@@ -169,5 +173,178 @@ public class TestTrinoJdbcDataPreviewOperator {
 
     // ISSUE-295: Convert null date
     Assertions.assertNull(operator.convertToValue(null, Types.TimestampType.withTimeZone()));
+
+    // case 6: Convert struct field when JDBC result and Gravitino type cases differ
+    Row row = Row.builder().addField("created_at", "2026-07-27 12:00:00").build();
+    value =
+        operator.convertToValue(
+            row,
+            Types.StructType.of(
+                Types.StructType.Field.nullableField(
+                    "CREATED_AT", Types.TimestampType.withTimeZone())));
+    Assertions.assertEquals("2026-07-27 12:00:00 UTC", ((Map<?, ?>) value).get("created_at"));
+  }
+
+  @Test
+  public void testConvertToRecordsMatchesColumnTypesIgnoringCase() throws Exception {
+    TrinoJdbcDataPreviewOperator operator = newOperator();
+
+    ResultSet resultSet = mock(ResultSet.class);
+    ResultSetMetaData metaData = mock(ResultSetMetaData.class);
+    when(resultSet.getMetaData()).thenReturn(metaData);
+    when(metaData.getColumnCount()).thenReturn(2);
+    when(metaData.getColumnName(1)).thenReturn("id");
+    when(metaData.getColumnName(2)).thenReturn("created_at");
+    when(resultSet.next()).thenReturn(true, false);
+    when(resultSet.getObject("id")).thenReturn("1");
+    when(resultSet.getObject("created_at")).thenReturn("2026-07-27 12:00:00");
+
+    Column[] columns =
+        new Column[] {
+          Column.of("ID", Types.StringType.get()),
+          Column.of("CREATED_AT", Types.TimestampType.withTimeZone())
+        };
+
+    Map<String, Object>[] records =
+        operator.convertToRecords(resultSet, 10, Lists.newArrayList(), columns);
+
+    Assertions.assertEquals(1, records.length);
+    Assertions.assertEquals("1", records[0].get("id"));
+    Assertions.assertEquals("2026-07-27 12:00:00 UTC", records[0].get("created_at"));
+  }
+
+  @Test
+  public void testConvertToRecordsMasksSensitiveColumnsIgnoringCase() throws Exception {
+    TrinoJdbcDataPreviewOperator operator = newOperator();
+
+    ResultSet resultSet = mock(ResultSet.class);
+    ResultSetMetaData metaData = mock(ResultSetMetaData.class);
+    when(resultSet.getMetaData()).thenReturn(metaData);
+    when(metaData.getColumnCount()).thenReturn(1);
+    when(metaData.getColumnName(1)).thenReturn("created_at");
+    when(resultSet.next()).thenReturn(true, false);
+    when(resultSet.getObject("created_at")).thenReturn("2026-07-27 12:00:00");
+
+    Column[] columns = new Column[] {Column.of("CREATED_AT", Types.TimestampType.withTimeZone())};
+
+    Map<String, Object>[] records =
+        operator.convertToRecords(resultSet, 10, Lists.newArrayList("CREATED_AT"), columns);
+
+    Assertions.assertEquals(1, records.length);
+    Assertions.assertEquals("*", records[0].get("created_at"));
+  }
+
+  @Test
+  public void testConvertToRecordsKeepsValueWhenColumnTypeIsMissing() throws Exception {
+    TrinoJdbcDataPreviewOperator operator = newOperator();
+
+    ResultSet resultSet = mock(ResultSet.class);
+    ResultSetMetaData metaData = mock(ResultSetMetaData.class);
+    when(resultSet.getMetaData()).thenReturn(metaData);
+    when(metaData.getColumnCount()).thenReturn(1);
+    when(metaData.getColumnName(1)).thenReturn("preview_only");
+    when(resultSet.next()).thenReturn(true, false);
+    when(resultSet.getObject("preview_only")).thenReturn("value");
+
+    Map<String, Object>[] records =
+        operator.convertToRecords(resultSet, 10, Lists.newArrayList(), new Column[0]);
+
+    Assertions.assertEquals(1, records.length);
+    Assertions.assertEquals("value", records[0].get("preview_only"));
+  }
+
+  @Test
+  public void testConvertToRecordsUsesExactColumnNameBeforeIgnoringCase() throws Exception {
+    TrinoJdbcDataPreviewOperator operator = newOperator();
+
+    ResultSet resultSet = mock(ResultSet.class);
+    ResultSetMetaData metaData = mock(ResultSetMetaData.class);
+    when(resultSet.getMetaData()).thenReturn(metaData);
+    when(metaData.getColumnCount()).thenReturn(1);
+    when(metaData.getColumnName(1)).thenReturn("CREATED_AT");
+    when(resultSet.next()).thenReturn(true, false);
+    when(resultSet.getObject("CREATED_AT")).thenReturn("2026-07-27 12:00:00");
+
+    Column[] columns =
+        new Column[] {
+          Column.of("created_at", Types.TimestampType.withTimeZone()),
+          Column.of("CREATED_AT", Types.StringType.get())
+        };
+
+    Map<String, Object>[] records =
+        operator.convertToRecords(resultSet, 10, Lists.newArrayList(), columns);
+
+    Assertions.assertEquals("2026-07-27 12:00:00", records[0].get("CREATED_AT"));
+  }
+
+  @Test
+  public void testConvertToValueUsesExactStructFieldNameBeforeIgnoringCase() {
+    TrinoJdbcDataPreviewOperator operator = newOperator();
+    Row row = Row.builder().addField("CREATED_AT", "2026-07-27 12:00:00").build();
+
+    Types.StructType structType =
+        Types.StructType.of(
+            Types.StructType.Field.nullableField("created_at", Types.TimestampType.withTimeZone()),
+            Types.StructType.Field.nullableField("CREATED_AT", Types.StringType.get()));
+
+    Map<?, ?> convertedRow = (Map<?, ?>) operator.convertToValue(row, structType);
+
+    Assertions.assertEquals("2026-07-27 12:00:00", convertedRow.get("CREATED_AT"));
+  }
+
+  @Test
+  public void testConvertToRecordsFailsOnAmbiguousColumnNameIgnoringCase() throws Exception {
+    TrinoJdbcDataPreviewOperator operator = newOperator();
+
+    ResultSet resultSet = mock(ResultSet.class);
+    ResultSetMetaData metaData = mock(ResultSetMetaData.class);
+    when(resultSet.getMetaData()).thenReturn(metaData);
+    when(metaData.getColumnCount()).thenReturn(1);
+    when(metaData.getColumnName(1)).thenReturn("Created_At");
+    when(resultSet.next()).thenReturn(true, false);
+    when(resultSet.getObject("Created_At")).thenReturn("2026-07-27 12:00:00");
+
+    Column[] columns =
+        new Column[] {
+          Column.of("created_at", Types.TimestampType.withTimeZone()),
+          Column.of("CREATED_AT", Types.StringType.get())
+        };
+
+    IllegalArgumentException exception =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> operator.convertToRecords(resultSet, 10, Lists.newArrayList(), columns));
+    Assertions.assertTrue(
+        exception.getMessage().contains("Ambiguous column name ignoring case: Created_At"));
+  }
+
+  @Test
+  public void testConvertToValueFailsOnAmbiguousStructFieldNameIgnoringCase() {
+    TrinoJdbcDataPreviewOperator operator = newOperator();
+    Row row = Row.builder().addField("Created_At", "2026-07-27 12:00:00").build();
+
+    Types.StructType structType =
+        Types.StructType.of(
+            Types.StructType.Field.nullableField("created_at", Types.TimestampType.withTimeZone()),
+            Types.StructType.Field.nullableField("CREATED_AT", Types.StringType.get()));
+
+    IllegalArgumentException exception =
+        Assertions.assertThrows(
+            IllegalArgumentException.class, () -> operator.convertToValue(row, structType));
+    Assertions.assertTrue(
+        exception.getMessage().contains("Ambiguous field name ignoring case: Created_At"));
+  }
+
+  private TrinoJdbcDataPreviewOperator newOperator() {
+    Config config = mock(Config.class);
+    TagDispatcher dispatcher = mock(TagDispatcher.class);
+    when(config.get(DataPreviewConfig.JDBC_URL_CONFIG)).thenReturn("jdbc://xxx");
+    when(config.get(DataPreviewConfig.JDBC_DRIVER_CONFIG)).thenReturn("xxx");
+    when(config.get(DataPreviewConfig.JDBC_USERNAME_CONFIG)).thenReturn("user");
+    when(config.get(DataPreviewConfig.JDBC_PASSWORD_CONFIG)).thenReturn("password");
+    when(config.get(DataPreviewConfig.TIMEOUT_CONFIG)).thenReturn(10);
+    when(config.get(DataPreviewConfig.MAX_ROW_COUNT_CONFIG)).thenReturn(10);
+    when(config.get(DataPreviewConfig.SENSITIVE_TAGS_CONFIG)).thenReturn(Lists.newArrayList());
+    return new TrinoJdbcDataPreviewOperator(config, dispatcher);
   }
 }
