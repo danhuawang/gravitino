@@ -89,6 +89,7 @@ public class ContainerSuite implements Closeable {
   private static volatile ZooKeeperContainer zooKeeperContainer;
 
   private static volatile GravitinoLocalStackContainer gravitinoLocalStackContainer;
+  private static volatile SqlServerContainer sqlServerContainer;
 
   /**
    * We can share the same Hive container as Hive container with S3 contains the following
@@ -449,6 +450,43 @@ public class ContainerSuite implements Closeable {
   public void startPostgreSQLContainer(TestDatabaseName testDatabaseName) {
     // Apply default image
     startPostgreSQLContainer(testDatabaseName, PGImageName.VERSION_13);
+  }
+
+  public void startSqlServerContainer(TestDatabaseName testDatabaseName) {
+    ITUtils.cleanDisk();
+    if (sqlServerContainer == null) {
+      synchronized (ContainerSuite.class) {
+        if (sqlServerContainer == null) {
+          initIfNecessary();
+          SqlServerContainer.Builder builder =
+              SqlServerContainer.builder()
+                  .withImage(SqlServerContainer.DEFAULT_IMAGE)
+                  .withHostName(SqlServerContainer.HOST_NAME)
+                  .withEnvVars(
+                      ImmutableMap.<String, String>builder()
+                          .put("ACCEPT_EULA", "Y")
+                          .put("MSSQL_SA_PASSWORD", SqlServerContainer.PASSWORD)
+                          .put("MSSQL_PID", "Express")
+                          .build())
+                  .withExposePorts(ImmutableSet.of(SqlServerContainer.MSSQL_PORT))
+                  .withNetwork(network);
+          sqlServerContainer = closer.register(builder.build());
+          sqlServerContainer.start();
+        }
+      }
+    }
+    synchronized (SqlServerContainer.class) {
+      sqlServerContainer.createDatabase(testDatabaseName);
+    }
+  }
+
+  public SqlServerContainer getSqlServerContainer() {
+    if (sqlServerContainer == null) {
+      throw new IllegalStateException(
+          "SQL Server container has not been started, "
+              + "please call startSqlServerContainer() first");
+    }
+    return sqlServerContainer;
   }
 
   public void startOracleContainer(TestDatabaseName testDatabaseName) {
@@ -946,6 +984,7 @@ public class ContainerSuite implements Closeable {
       kerberosHiveContainer = null;
       sqlBaseHiveContainer = null;
       pgContainerMap.clear();
+      sqlServerContainer = null;
     } catch (Exception e) {
       LOG.error("Failed to close ContainerEnvironment", e);
     }

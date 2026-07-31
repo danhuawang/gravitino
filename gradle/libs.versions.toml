@@ -337,8 +337,8 @@ lz4-java = { group = "org.lz4", name = "lz4-java", version.ref = "lz4" }
 snappy-java = { group = "org.xerial.snappy", name = "snappy-java", version.ref = "snappy-java" }
 mysql-driver = { group = "mysql", name = "mysql-connector-java", version.ref = "mysql" }
 postgresql-driver = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
-oracle-driver = { group = "com.oracle.database.jdbc", name = "ojdbc8", version.ref = "oracle" }
 mssql-jdbc = { group = "com.microsoft.sqlserver", name = "mssql-jdbc", version.ref = "mssql-jdbc" }
+oracle-driver = { group = "com.oracle.database.jdbc", name = "ojdbc8", version.ref = "oracle" }
 minikdc = { group = "org.apache.hadoop", name = "hadoop-minikdc", version.ref = "hadoop-minikdc"}
 immutables-value = { module = "org.immutables:value", version.ref = "immutables-value" }
 commons-cli = { group = "commons-cli", name = "commons-cli", version.ref = "commons-cli" }

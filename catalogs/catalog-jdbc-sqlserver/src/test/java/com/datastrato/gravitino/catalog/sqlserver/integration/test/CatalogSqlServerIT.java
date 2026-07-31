@@ -14,7 +14,6 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
@@ -31,9 +30,12 @@ import org.apache.gravitino.client.GravitinoMetalake;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
 import org.apache.gravitino.exceptions.TableAlreadyExistsException;
+import org.apache.gravitino.integration.test.container.ContainerSuite;
+import org.apache.gravitino.integration.test.container.SqlServerContainer;
 import org.apache.gravitino.integration.test.util.BaseIT;
 import org.apache.gravitino.integration.test.util.GravitinoITUtils;
 import org.apache.gravitino.integration.test.util.ITUtils;
+import org.apache.gravitino.integration.test.util.TestDatabaseName;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.rel.TableCatalog;
@@ -45,7 +47,6 @@ import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.rel.indexes.Indexes;
 import org.apache.gravitino.rel.types.Types;
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -54,22 +55,15 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.utility.DockerImageName;
 
-/**
- * Integration tests for the SQL Server JDBC catalog. Uses Docker image
- * mcr.microsoft.com/mssql/server:2022-latest for testing.
- */
+/** Integration tests for the SQL Server JDBC catalog. */
 @Tag("gravitino-docker-test")
 @TestInstance(Lifecycle.PER_CLASS)
 public class CatalogSqlServerIT extends BaseIT {
 
-  private static final String SQLSERVER_IMAGE = "mcr.microsoft.com/mssql/server:2022-latest";
-  private static final int SQLSERVER_PORT = 1433;
-  private static final String SA_PASSWORD = "YourStrong!Passw0rd";
-  private static final String DRIVER_CLASS = "com.microsoft.sqlserver.jdbc.SQLServerDriver";
+  private static final ContainerSuite containerSuite = ContainerSuite.getInstance();
+  private static final TestDatabaseName TEST_DB_NAME =
+      TestDatabaseName.SQLSERVER_CATALOG_JDBC_SQLSERVER_IT;
   private static final String PROVIDER = "jdbc-sqlserver";
 
   private String metalakeName = GravitinoITUtils.genRandomName("sqlserver_it_metalake");
@@ -87,9 +81,7 @@ public class CatalogSqlServerIT extends BaseIT {
 
   private GravitinoMetalake metalake;
   private Catalog catalog;
-
-  @SuppressWarnings("resource")
-  private GenericContainer<?> sqlServerContainer;
+  private SqlServerContainer sqlServerContainer;
 
   private String jdbcUrl;
 
@@ -97,46 +89,11 @@ public class CatalogSqlServerIT extends BaseIT {
   @Override
   public void startIntegrationTest() throws Exception {
     super.startIntegrationTest();
-    databaseName = GravitinoITUtils.genRandomName("sqlserver_it_db");
+    databaseName = TEST_DB_NAME.toString();
 
-    sqlServerContainer =
-        new GenericContainer<>(DockerImageName.parse(SQLSERVER_IMAGE))
-            .withExposedPorts(SQLSERVER_PORT)
-            .withEnv("ACCEPT_EULA", "Y")
-            .withEnv("MSSQL_SA_PASSWORD", SA_PASSWORD)
-            .waitingFor(
-                Wait.forLogMessage(".*SQL Server is now ready for client connections.*", 1)
-                    .withStartupTimeout(Duration.ofSeconds(120)));
-    sqlServerContainer.start();
-
-    String host = sqlServerContainer.getHost();
-    int port = sqlServerContainer.getMappedPort(SQLSERVER_PORT);
-    String baseJdbcUrl =
-        String.format(
-            "jdbc:sqlserver://%s:%d;encrypt=true;trustServerCertificate=true", host, port);
-
-    // Wait for SQL Server to be fully ready for login (the log message may appear before
-    // sa authentication is available)
-    Awaitility.await()
-        .atMost(Duration.ofSeconds(60))
-        .pollInterval(Duration.ofSeconds(2))
-        .pollDelay(Duration.ofSeconds(5))
-        .until(
-            () -> {
-              try (Connection conn = DriverManager.getConnection(baseJdbcUrl, "sa", SA_PASSWORD)) {
-                return true;
-              } catch (SQLException e) {
-                return false;
-              }
-            });
-
-    // Create the test database
-    try (Connection conn = DriverManager.getConnection(baseJdbcUrl, "sa", SA_PASSWORD);
-        Statement stmt = conn.createStatement()) {
-      stmt.execute("CREATE DATABASE [" + databaseName + "]");
-    }
-
-    jdbcUrl = baseJdbcUrl + ";databaseName=" + databaseName;
+    containerSuite.startSqlServerContainer(TEST_DB_NAME);
+    sqlServerContainer = containerSuite.getSqlServerContainer();
+    jdbcUrl = sqlServerContainer.getJdbcUrl(TEST_DB_NAME);
 
     createMetalake();
     catalog = createCatalog(catalogName);
@@ -148,9 +105,6 @@ public class CatalogSqlServerIT extends BaseIT {
     clearTableAndSchema();
     metalake.dropCatalog(catalogName, true);
     client.dropMetalake(metalakeName, true);
-    if (sqlServerContainer != null) {
-      sqlServerContainer.stop();
-    }
     super.stopIntegrationTest();
   }
 
@@ -181,10 +135,11 @@ public class CatalogSqlServerIT extends BaseIT {
   private Catalog createCatalog(String catalogName) {
     Map<String, String> properties = Maps.newHashMap();
     properties.put(JdbcConfig.JDBC_URL.getKey(), jdbcUrl);
-    properties.put(JdbcConfig.JDBC_DRIVER.getKey(), DRIVER_CLASS);
+    properties.put(
+        JdbcConfig.JDBC_DRIVER.getKey(), sqlServerContainer.getDriverClassName(TEST_DB_NAME));
     properties.put(JdbcConfig.JDBC_DATABASE.getKey(), databaseName);
-    properties.put(JdbcConfig.USERNAME.getKey(), "sa");
-    properties.put(JdbcConfig.PASSWORD.getKey(), SA_PASSWORD);
+    properties.put(JdbcConfig.USERNAME.getKey(), sqlServerContainer.getUsername());
+    properties.put(JdbcConfig.PASSWORD.getKey(), sqlServerContainer.getPassword());
 
     Catalog created =
         metalake.createCatalog(
@@ -700,7 +655,9 @@ public class CatalogSqlServerIT extends BaseIT {
     Assertions.assertEquals(Types.StringType.get(), loaded.columns()[0].dataType());
 
     // Verify via direct SQL that the underlying type is nvarchar
-    try (Connection conn = DriverManager.getConnection(jdbcUrl, "sa", SA_PASSWORD);
+    try (Connection conn =
+            DriverManager.getConnection(
+                jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
         Statement stmt = conn.createStatement();
         ResultSet rs =
             stmt.executeQuery(
@@ -722,7 +679,9 @@ public class CatalogSqlServerIT extends BaseIT {
   void testExternalTypeMapping() {
     // Create a table with ExternalType columns via direct SQL, then load via Gravitino
     String extTableName = GravitinoITUtils.genRandomName("ext_type_table");
-    try (Connection conn = DriverManager.getConnection(jdbcUrl, "sa", SA_PASSWORD);
+    try (Connection conn =
+            DriverManager.getConnection(
+                jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
         Statement stmt = conn.createStatement()) {
       stmt.execute(
           "CREATE TABLE ["

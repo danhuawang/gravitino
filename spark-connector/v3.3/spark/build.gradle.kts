@@ -145,6 +145,7 @@ dependencies {
   testImplementation(libs.mysql.driver)
   testImplementation(libs.oracle.driver)
   testImplementation(libs.postgresql.driver)
+  testImplementation(libs.mssql.jdbc)
   testImplementation(libs.testcontainers)
   testImplementation(libs.hadoop3.aws)
   // hadoop-aws declares hadoop-client-api as provided; add it explicitly so S3AFileSystem can load
@@ -211,6 +212,7 @@ tasks.test {
     dependsOn(":catalogs:catalog-jdbc-mysql:jar")
     dependsOn(":catalogs:catalog-jdbc-oracle:jar")
     dependsOn(":catalogs:catalog-jdbc-postgresql:jar")
+    dependsOn(":catalogs:catalog-jdbc-sqlserver:jar")
   }
 }
 

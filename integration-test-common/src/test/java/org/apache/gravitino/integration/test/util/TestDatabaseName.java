@@ -143,6 +143,18 @@ public enum TestDatabaseName {
   },
   FLINK_HIVE_CATALOG_IT,
 
+  /**
+   * Represents the SQL Server database for
+   * org.apache.gravitino.spark.connector.integration.test.jdbc.SparkJdbcSqlServerCatalogIT.
+   */
+  SQLSERVER_CATALOG_SQLSERVER_IT,
+
+  /**
+   * Represents the SQL Server database for
+   * com.datastrato.gravitino.catalog.sqlserver.integration.test.CatalogSqlServerIT.
+   */
+  SQLSERVER_CATALOG_JDBC_SQLSERVER_IT,
+
   /** Represents the MySQL database for the Flink Iceberg JDBC-backend catalog integration test. */
   FLINK_ICEBERG_JDBC_CATALOG_IT,
 }

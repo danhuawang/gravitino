@@ -23,6 +23,7 @@ import org.apache.gravitino.spark.connector.iceberg.GravitinoIcebergCatalogSpark
 import org.apache.gravitino.spark.connector.jdbc.GravitinoJdbcCatalogSpark33;
 import org.apache.gravitino.spark.connector.jdbc.oracle.GravitinoOracleCatalogSpark33;
 import org.apache.gravitino.spark.connector.jdbc.postgresql.GravitinoPostgreSqlCatalogSpark33;
+import org.apache.gravitino.spark.connector.jdbc.sqlserver.GravitinoSqlServerCatalogSpark33;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -39,6 +40,9 @@ public class TestCatalogNameAdaptor {
     Assertions.assertEquals(
         "org.apache.gravitino.spark.connector.paimon.GravitinoPaimonCatalogSpark33",
         paimonCatalogName);
+
+    String sqlServerCatalogName = CatalogNameAdaptor.getCatalogName("jdbc-sqlserver");
+    Assertions.assertEquals(GravitinoSqlServerCatalogSpark33.class.getName(), sqlServerCatalogName);
 
     String oracleCatalogName = CatalogNameAdaptor.getCatalogName("jdbc-oracle");
     Assertions.assertEquals(GravitinoOracleCatalogSpark33.class.getName(), oracleCatalogName);
