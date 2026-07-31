@@ -19,7 +19,7 @@
 
 # ==============================================================================
 # OpenSearch with IK Analysis Plugin - Red Hat UBI 9 Certified Image
-# Base: ubi9/ubi-minimal (RHEL 9)
+# Base: ubi10/ubi-minimal (RHEL 10)
 #
 # Multi-stage build:
 #   Stage 1 (downloader) - Download OpenSearch tarball + install IK plugin
@@ -40,17 +40,17 @@
 #   - OpenShift arbitrary UID compatible (GID 0 group permissions)
 # ==============================================================================
 
-ARG UBI_MINIMAL_TAG=9.5
+ARG UBI_MINIMAL_TAG=10.2
 ARG OPENSEARCH_VERSION=2.17.1
 
 # ==============================================================================
 # Stage 1: Download artifacts
-# Use ubi9/ubi (full) instead of ubi-minimal for the downloader stage because:
+# Use ubi10/ubi (full) instead of ubi-minimal for the downloader stage because:
 #   - tar, gzip, curl are pre-installed (no need for microdnf install)
 #   - Avoids QEMU + microdnf repo resolution issues on cross-arch buildx
 #   - This stage is discarded in the final image, so size doesn't matter
 # ==============================================================================
-FROM registry.access.redhat.com/ubi9/ubi:9.5 AS downloader
+FROM registry.access.redhat.com/ubi10/ubi:10.1 AS downloader
 
 ARG OPENSEARCH_VERSION
 ARG TARGETARCH
@@ -76,7 +76,7 @@ RUN /usr/share/opensearch/bin/opensearch-plugin install --batch \
 # ==============================================================================
 # Stage 2: Production runtime
 # ==============================================================================
-FROM registry.access.redhat.com/ubi9/ubi-minimal:${UBI_MINIMAL_TAG}
+FROM registry.access.redhat.com/ubi10/ubi-minimal:${UBI_MINIMAL_TAG}
 
 ARG OPENSEARCH_VERSION
 
@@ -100,7 +100,8 @@ LABEL name="enterprise-opensearch-ik" \
 # which: required by securityadmin.sh
 # Note: Do NOT install full 'curl' — it conflicts with pre-installed curl-minimal
 # Note: --releasever=9 ensures correct repo resolution on cross-arch buildx (QEMU)
-RUN microdnf install -y --setopt=install_weak_deps=0 --nodocs --releasever=9 \
+RUN microdnf update -y --nodocs \
+    && microdnf install -y --setopt=install_weak_deps=0 --nodocs \
       bash \
       hostname \
       procps-ng \
