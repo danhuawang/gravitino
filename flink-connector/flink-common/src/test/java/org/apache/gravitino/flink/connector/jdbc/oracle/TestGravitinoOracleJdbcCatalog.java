@@ -32,8 +32,11 @@ import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.catalog.stats.CatalogColumnStatistics;
 import org.apache.flink.table.catalog.stats.CatalogTableStatistics;
 import org.apache.flink.table.factories.CatalogFactory;
+import org.apache.flink.table.types.logical.DateType;
+import org.apache.flink.table.types.logical.IntType;
 import org.apache.gravitino.flink.connector.UnsupportPartitionConverter;
 import org.apache.gravitino.flink.connector.jdbc.JdbcPropertiesConstants;
+import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -130,5 +133,21 @@ public class TestGravitinoOracleJdbcCatalog {
   @Test
   public void testRealCatalogThrowsUnsupportedOperationException() {
     Assertions.assertThrows(UnsupportedOperationException.class, () -> catalog.realCatalog());
+  }
+
+  // ---------------------------------------------------------------------------
+  // toGravitinoType — Oracle has no pure date type, so DATE must map to TIMESTAMP(3) instead of
+  // the DateType that OracleTypeConverter rejects.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void testToGravitinoTypeMapsDateToTimestamp() {
+    Assertions.assertEquals(
+        Types.TimestampType.withoutTimeZone(3), catalog.toGravitinoType(new DateType()));
+  }
+
+  @Test
+  public void testToGravitinoTypeFallsBackForNonDateTypes() {
+    Assertions.assertEquals(Types.IntegerType.get(), catalog.toGravitinoType(new IntType()));
   }
 }

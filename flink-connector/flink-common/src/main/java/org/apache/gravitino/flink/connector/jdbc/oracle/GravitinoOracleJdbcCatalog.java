@@ -30,10 +30,14 @@ import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.catalog.stats.CatalogColumnStatistics;
 import org.apache.flink.table.catalog.stats.CatalogTableStatistics;
 import org.apache.flink.table.factories.CatalogFactory;
+import org.apache.flink.table.types.logical.DateType;
+import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.flink.connector.PartitionConverter;
 import org.apache.gravitino.flink.connector.SchemaAndTablePropertiesConverter;
 import org.apache.gravitino.flink.connector.jdbc.GravitinoJdbcCatalog;
+import org.apache.gravitino.rel.types.Type;
+import org.apache.gravitino.rel.types.Types;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,6 +92,21 @@ public class GravitinoOracleJdbcCatalog extends GravitinoJdbcCatalog {
   protected AbstractCatalog realCatalog() {
     throw new UnsupportedOperationException(
         "GravitinoOracleJdbcCatalog does not use an inner Flink JDBC catalog");
+  }
+
+  /**
+   * Maps Flink's {@code DATE} type to a Gravitino {@code TIMESTAMP(3)} instead of {@code DATE}.
+   * Oracle has no pure date type: its {@code DATE} column stores both date and time, so the
+   * server-side {@code OracleTypeConverter} rejects Gravitino's {@code DateType}. Precision 3
+   * matches the millisecond precision the Trino connector's {@code OracleDataTypeTransformer} uses
+   * for the same mapping.
+   */
+  @Override
+  protected Type toGravitinoType(LogicalType logicalType) {
+    if (logicalType instanceof DateType) {
+      return Types.TimestampType.withoutTimeZone(3);
+    }
+    return super.toGravitinoType(logicalType);
   }
 
   // ---------------------------------------------------------------------------

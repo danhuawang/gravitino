@@ -31,6 +31,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -637,6 +638,54 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                 sql("SELECT * FROM %s", tableName),
                 ResultKind.SUCCESS_WITH_CONTENT,
                 Row.of(1, 100));
+          } finally {
+            sql("DROP TABLE IF EXISTS %s", tableName);
+          }
+        });
+  }
+
+  /**
+   * Verifies DATE/TIMESTAMP column mapping via CREATE TABLE and Gravitino's schema API, then an
+   * INSERT/SELECT round trip.
+   */
+  @Test
+  public void testTimestampTypes() {
+    String tableName = "TEST_ORACLE_TIMESTAMP_TYPES";
+    doWithCatalog(
+        currentCatalog(),
+        catalog -> {
+          tableEnv.useDatabase(oracleDefaultDatabase);
+          try {
+            TestUtils.assertTableResult(
+                sql("CREATE TABLE %s (ID INT, DATE_COL DATE, TS_COL TIMESTAMP(3))", tableName),
+                ResultKind.SUCCESS);
+
+            NameIdentifier identifier = NameIdentifier.of(oracleDefaultDatabase, tableName);
+            Table table = catalog.asTableCatalog().loadTable(identifier);
+            Column[] expected =
+                new Column[] {
+                  Column.of("ID", Types.IntegerType.get(), null),
+                  // Oracle DATE stores date and time, so it maps to TIMESTAMP(3) here.
+                  Column.of("DATE_COL", Types.TimestampType.withoutTimeZone(3), null),
+                  Column.of("TS_COL", Types.TimestampType.withoutTimeZone(3), null),
+                };
+            assertColumns(expected, table.columns());
+
+            TestUtils.assertTableResult(
+                sql(
+                    "INSERT INTO %s VALUES (1, "
+                        + "TIMESTAMP '2026-01-15 00:00:00.000', "
+                        + "TIMESTAMP '2026-01-15 12:34:56.789')",
+                    tableName),
+                ResultKind.SUCCESS_WITH_CONTENT,
+                Row.of(-1));
+            TestUtils.assertTableResult(
+                sql("SELECT * FROM %s", tableName),
+                ResultKind.SUCCESS_WITH_CONTENT,
+                Row.of(
+                    1,
+                    LocalDateTime.of(2026, 1, 15, 0, 0, 0),
+                    LocalDateTime.of(2026, 1, 15, 12, 34, 56, 789_000_000)));
           } finally {
             sql("DROP TABLE IF EXISTS %s", tableName);
           }
