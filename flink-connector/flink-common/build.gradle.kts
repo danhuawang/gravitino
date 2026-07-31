@@ -95,6 +95,7 @@ dependencies {
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.mockito.core)
+  testImplementation(libs.mssql.jdbc)
   testImplementation(libs.mysql.driver)
   testImplementation(libs.oracle.driver)
   testImplementation(libs.sqlite.jdbc)

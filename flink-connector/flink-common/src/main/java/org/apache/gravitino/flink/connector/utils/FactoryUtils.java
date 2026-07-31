@@ -48,6 +48,7 @@ public class FactoryUtils {
           GravitinoIcebergCatalogFactoryOptions.IDENTIFIER,
           GravitinoJdbcCatalogFactoryOptions.MYSQL_IDENTIFIER,
           GravitinoJdbcCatalogFactoryOptions.POSTGRESQL_IDENTIFIER,
+          GravitinoJdbcCatalogFactoryOptions.SQLSERVER_IDENTIFIER,
           GravitinoPaimonCatalogFactoryOptions.IDENTIFIER);
 
   public static boolean isGravitinoManagedCatalogType(String type) {

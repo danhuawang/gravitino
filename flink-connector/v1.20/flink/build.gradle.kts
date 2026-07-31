@@ -78,6 +78,7 @@ dependencies {
   testImplementation(libs.metrics.core)
   testImplementation(libs.minikdc)
   testImplementation(libs.mockito.core)
+  testImplementation(libs.mssql.jdbc)
   testImplementation(libs.mysql.driver)
   testImplementation(libs.postgresql.driver)
   testImplementation(libs.oracle.driver)
@@ -197,6 +198,8 @@ tasks.test {
     dependsOn(":catalogs:catalog-jdbc-postgresql:runtimeJars")
     dependsOn(":catalogs:catalog-jdbc-oracle:jar")
     dependsOn(":catalogs:catalog-jdbc-oracle:runtimeJars")
+    dependsOn(":catalogs:catalog-jdbc-sqlserver:jar")
+    dependsOn(":catalogs:catalog-jdbc-sqlserver:runtimeJars")
   }
 }
 

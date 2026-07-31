@@ -23,3 +23,4 @@ org.apache.gravitino.flink.connector.iceberg.GravitinoIcebergCatalogFactoryFlink
 org.apache.gravitino.flink.connector.jdbc.mysql.GravitinoMysqlJdbcCatalogFactoryFlink119
 org.apache.gravitino.flink.connector.jdbc.postgresql.GravitinoPostgresJdbcCatalogFactoryFlink119
 org.apache.gravitino.flink.connector.jdbc.oracle.GravitinoOracleJdbcCatalogFactoryFlink119
+org.apache.gravitino.flink.connector.jdbc.sqlserver.GravitinoSqlServerJdbcCatalogFactoryFlink119
