@@ -151,12 +151,8 @@ public class TestRelationalEntityStore {
             true);
     inOrder
         .verify(cache)
-        .invalidate(
-            src, Entity.EntityType.TABLE, SupportsRelationOperations.Type.TAG_METADATA_OBJECT_REL);
-    inOrder
-        .verify(cache)
-        .invalidate(
-            dst, Entity.EntityType.TAG, SupportsRelationOperations.Type.TAG_METADATA_OBJECT_REL);
+        .invalidate(src, Entity.EntityType.TABLE);
+    inOrder.verify(cache).invalidate(dst, Entity.EntityType.TAG);
   }
 
   @ParameterizedTest
@@ -175,11 +171,11 @@ public class TestRelationalEntityStore {
     Mockito.doAnswer(
             invocation -> {
               Mockito.verify(cache, Mockito.never())
-                  .invalidate(src, Entity.EntityType.TABLE, relationType);
+                  .invalidate(src, Entity.EntityType.TABLE);
               Mockito.verify(cache, Mockito.never())
-                  .invalidate(destToAdd, destinationType, relationType);
+                  .invalidate(destToAdd, destinationType);
               Mockito.verify(cache, Mockito.never())
-                  .invalidate(destToRemove, destinationType, relationType);
+                  .invalidate(destToRemove, destinationType);
               return List.of();
             })
         .when(backend)
@@ -194,8 +190,8 @@ public class TestRelationalEntityStore {
         .verify(backend)
         .updateEntityRelations(
             relationType, src, Entity.EntityType.TABLE, destEntitiesToAdd, destEntitiesToRemove);
-    inOrder.verify(cache).invalidate(src, Entity.EntityType.TABLE, relationType);
-    inOrder.verify(cache).invalidate(destToAdd, destinationType, relationType);
-    inOrder.verify(cache).invalidate(destToRemove, destinationType, relationType);
+    inOrder.verify(cache).invalidate(src, Entity.EntityType.TABLE);
+    inOrder.verify(cache).invalidate(destToAdd, destinationType);
+    inOrder.verify(cache).invalidate(destToRemove, destinationType);
   }
 }
