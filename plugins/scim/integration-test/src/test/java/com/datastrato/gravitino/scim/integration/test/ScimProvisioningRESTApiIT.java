@@ -127,6 +127,7 @@ class ScimProvisioningRESTApiIT {
     String userId = createdUser.get("id").asText();
     Assertions.assertEquals(userName, createdUser.get("userName").asText());
     Assertions.assertEquals(externalId, createdUser.get("externalId").asText());
+    Assertions.assertNotEquals(externalId, userId);
 
     HttpResponse<String> fetched = get(scimPath("/Users/" + userId), bearerToken);
     assertStatus(200, fetched);
@@ -145,7 +146,10 @@ class ScimProvisioningRESTApiIT {
     String externalId = "scim-it-user-import-ext";
     String userName = "scim-it-user-import";
 
-    assertStatus(201, post(scimPath("/Users"), userBody(externalId, userName, true), bearerToken));
+    HttpResponse<String> created =
+        post(scimPath("/Users"), userBody(externalId, userName, true), bearerToken);
+    assertStatus(201, created);
+    String userId = JsonUtils.objectMapper().readTree(created.body()).get("id").asText();
 
     HttpResponse<String> reimported =
         post(scimPath("/Users"), userBody(externalId, userName, true), bearerToken);
@@ -158,29 +162,46 @@ class ScimProvisioningRESTApiIT {
     assertStatus(200, filtered);
     JsonNode list = JsonUtils.objectMapper().readTree(filtered.body());
     Assertions.assertEquals(1, list.get("totalResults").asInt());
-    Assertions.assertEquals(externalId, list.get("Resources").get(0).get("id").asText());
+    Assertions.assertEquals(userId, list.get("Resources").get(0).get("id").asText());
+    Assertions.assertEquals(externalId, list.get("Resources").get(0).get("externalId").asText());
 
     HttpResponse<String> disabled =
-        patch(scimPath("/Users/" + externalId), patchBody("replace", "active", false), bearerToken);
+        patch(scimPath("/Users/" + userId), patchBody("replace", "active", false), bearerToken);
     assertStatus(200, disabled);
     Assertions.assertFalse(
         JsonUtils.objectMapper().readTree(disabled.body()).get("active").asBoolean());
 
     HttpResponse<String> enabled =
-        patch(scimPath("/Users/" + externalId), patchBody("replace", "active", true), bearerToken);
+        patch(scimPath("/Users/" + userId), patchBody("replace", "active", true), bearerToken);
     assertStatus(200, enabled);
     Assertions.assertTrue(
         JsonUtils.objectMapper().readTree(enabled.body()).get("active").asBoolean());
 
-    assertStatus(204, delete(scimPath("/Users/" + externalId), bearerToken));
+    assertStatus(204, delete(scimPath("/Users/" + userId), bearerToken));
   }
 
   @Test
-  void testUserCreateRequiresExternalId() throws Exception {
+  void testUserCreateRequiresUserName() throws Exception {
     Map<String, Object> body = new HashMap<>();
     body.put("schemas", new String[] {SCIM_USER_SCHEMA});
-    body.put("userName", "missing-external-id");
+    body.put("externalId", "missing-user-name");
     assertStatus(400, post(scimPath("/Users"), body, bearerToken));
+  }
+
+  @Test
+  void testUserCreateWithoutExternalId() throws Exception {
+    Map<String, Object> body = new HashMap<>();
+    body.put("schemas", new String[] {SCIM_USER_SCHEMA});
+    body.put("userName", "scim-it-user-no-ext");
+    body.put("active", true);
+
+    HttpResponse<String> created = post(scimPath("/Users"), body, bearerToken);
+    assertStatus(201, created);
+    JsonNode createdUser = JsonUtils.objectMapper().readTree(created.body());
+    String userId = createdUser.get("id").asText();
+    Assertions.assertFalse(createdUser.hasNonNull("externalId"));
+
+    assertStatus(204, delete(scimPath("/Users/" + userId), bearerToken));
   }
 
   @Test
@@ -195,6 +216,7 @@ class ScimProvisioningRESTApiIT {
     String groupId = createdGroup.get("id").asText();
     Assertions.assertEquals(displayName, createdGroup.get("displayName").asText());
     Assertions.assertEquals(externalId, createdGroup.get("externalId").asText());
+    Assertions.assertNotEquals(externalId, groupId);
 
     assertStatus(
         409, post(scimPath("/Groups"), groupBody(externalId, displayName, List.of()), bearerToken));
@@ -220,13 +242,19 @@ class ScimProvisioningRESTApiIT {
     String extraUserExternalId = "scim-it-group-member-user2-ext";
     String extraUserName = "scim-it-group-member-user2";
 
-    assertStatus(
-        201, post(scimPath("/Users"), userBody(userExternalId, userName, true), bearerToken));
-    assertStatus(
-        201,
-        post(scimPath("/Users"), userBody(extraUserExternalId, extraUserName, true), bearerToken));
+    HttpResponse<String> firstUserCreated =
+        post(scimPath("/Users"), userBody(userExternalId, userName, true), bearerToken);
+    assertStatus(201, firstUserCreated);
+    String firstUserId =
+        JsonUtils.objectMapper().readTree(firstUserCreated.body()).get("id").asText();
 
-    Map<String, Object> member = Map.of("value", userExternalId);
+    HttpResponse<String> secondUserCreated =
+        post(scimPath("/Users"), userBody(extraUserExternalId, extraUserName, true), bearerToken);
+    assertStatus(201, secondUserCreated);
+    String secondUserId =
+        JsonUtils.objectMapper().readTree(secondUserCreated.body()).get("id").asText();
+
+    Map<String, Object> member = Map.of("value", firstUserId);
     HttpResponse<String> created =
         post(
             scimPath("/Groups"),
@@ -234,9 +262,9 @@ class ScimProvisioningRESTApiIT {
             bearerToken);
     assertStatus(201, created);
     JsonNode createdGroup = JsonUtils.objectMapper().readTree(created.body());
+    String groupId = createdGroup.get("id").asText();
     Assertions.assertEquals(1, createdGroup.get("members").size());
-    Assertions.assertEquals(
-        userExternalId, createdGroup.get("members").get(0).get("value").asText());
+    Assertions.assertEquals(firstUserId, createdGroup.get("members").get(0).get("value").asText());
 
     HttpResponse<String> filtered =
         get(
@@ -247,11 +275,12 @@ class ScimProvisioningRESTApiIT {
     assertStatus(200, filtered);
     JsonNode list = JsonUtils.objectMapper().readTree(filtered.body());
     Assertions.assertEquals(1, list.get("totalResults").asInt());
+    Assertions.assertEquals(groupId, list.get("Resources").get(0).get("id").asText());
 
     HttpResponse<String> withExtraMember =
         patch(
-            scimPath("/Groups/" + groupExternalId),
-            patchBody("add", "members", List.of(Map.of("value", extraUserExternalId))),
+            scimPath("/Groups/" + groupId),
+            patchBody("add", "members", List.of(Map.of("value", secondUserId))),
             bearerToken);
     assertStatus(200, withExtraMember);
     JsonNode membersAfterAdd =
@@ -260,26 +289,41 @@ class ScimProvisioningRESTApiIT {
 
     HttpResponse<String> withoutFirstMember =
         patch(
-            scimPath("/Groups/" + groupExternalId),
-            patchBody("remove", "members", List.of(Map.of("value", userExternalId))),
+            scimPath("/Groups/" + groupId),
+            patchBody("remove", "members", List.of(Map.of("value", firstUserId))),
             bearerToken);
     assertStatus(200, withoutFirstMember);
     JsonNode membersAfterRemove =
         JsonUtils.objectMapper().readTree(withoutFirstMember.body()).get("members");
     Assertions.assertEquals(1, membersAfterRemove.size());
-    Assertions.assertEquals(extraUserExternalId, membersAfterRemove.get(0).get("value").asText());
+    Assertions.assertEquals(secondUserId, membersAfterRemove.get(0).get("value").asText());
 
-    assertStatus(204, delete(scimPath("/Groups/" + groupExternalId), bearerToken));
-    assertStatus(204, delete(scimPath("/Users/" + userExternalId), bearerToken));
-    assertStatus(204, delete(scimPath("/Users/" + extraUserExternalId), bearerToken));
+    assertStatus(204, delete(scimPath("/Groups/" + groupId), bearerToken));
+    assertStatus(204, delete(scimPath("/Users/" + firstUserId), bearerToken));
+    assertStatus(204, delete(scimPath("/Users/" + secondUserId), bearerToken));
   }
 
   @Test
-  void testGroupCreateRequiresExternalId() throws Exception {
+  void testGroupCreateRequiresDisplayName() throws Exception {
     Map<String, Object> body = new HashMap<>();
     body.put("schemas", new String[] {SCIM_GROUP_SCHEMA});
-    body.put("displayName", "missing-external-id");
+    body.put("externalId", "missing-display-name");
     assertStatus(400, post(scimPath("/Groups"), body, bearerToken));
+  }
+
+  @Test
+  void testGroupCreateWithoutExternalId() throws Exception {
+    Map<String, Object> body = new HashMap<>();
+    body.put("schemas", new String[] {SCIM_GROUP_SCHEMA});
+    body.put("displayName", "scim-it-group-no-ext");
+
+    HttpResponse<String> created = post(scimPath("/Groups"), body, bearerToken);
+    assertStatus(201, created);
+    JsonNode createdGroup = JsonUtils.objectMapper().readTree(created.body());
+    String groupId = createdGroup.get("id").asText();
+    Assertions.assertFalse(createdGroup.hasNonNull("externalId"));
+
+    assertStatus(204, delete(scimPath("/Groups/" + groupId), bearerToken));
   }
 
   private static String scimPath(String suffix) {

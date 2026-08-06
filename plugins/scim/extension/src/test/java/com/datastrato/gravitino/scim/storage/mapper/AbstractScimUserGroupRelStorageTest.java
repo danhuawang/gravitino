@@ -124,24 +124,16 @@ public abstract class AbstractScimUserGroupRelStorageTest extends AbstractScimMe
   }
 
   protected void insertMembership(String metalakeName, long userId, long groupId) {
-    scimUserGroupRelMapper.insertMemberships(
-        metalakeName,
-        externalIdForGroup(groupId),
-        List.of(externalIdForUser(userId)),
-        "{}",
-        1L,
-        0L);
+    scimUserGroupRelMapper.insertMemberships(metalakeName, groupId, List.of(userId), "{}", 1L, 0L);
   }
 
-  protected Set<String> memberExternalIdsForGroup(long groupId) {
-    return memberExternalIdsForGroup(METALAKE_NAME, groupId);
+  protected Set<Long> memberUserIdsForGroup(long groupId) {
+    return memberUserIdsForGroup(METALAKE_NAME, groupId);
   }
 
-  protected Set<String> memberExternalIdsForGroup(String metalakeName, long groupId) {
-    return scimUserGroupRelMapper
-        .selectMembersByGroupExternalId(metalakeName, externalIdForGroup(groupId))
-        .stream()
-        .map(ScimGroupMemberPO::getExternalId)
+  protected Set<Long> memberUserIdsForGroup(String metalakeName, long groupId) {
+    return scimUserGroupRelMapper.selectMembersByGroupId(metalakeName, groupId).stream()
+        .map(ScimGroupMemberPO::getUserId)
         .collect(Collectors.toSet());
   }
 }

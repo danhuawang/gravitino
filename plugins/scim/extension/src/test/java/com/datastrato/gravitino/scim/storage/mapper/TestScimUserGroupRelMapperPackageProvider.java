@@ -26,6 +26,9 @@ class TestScimUserGroupRelMapperPackageProvider {
   private static final String POSTGRESQL_MILLISECOND_TIMESTAMP_COMPONENT =
       "FLOOR(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP(3)) * 1000)";
 
+  private static final long GROUP_ID = 200L;
+  private static final long USER_ID = 100L;
+
   @Test
   void testMapperClasses() {
     MapperPackageProvider provider = new ScimUserGroupRelMapperPackageProvider();
@@ -48,23 +51,25 @@ class TestScimUserGroupRelMapperPackageProvider {
   }
 
   @Test
-  void testSoftDeleteUserExtIdMs() {
+  void testSoftDeleteUserIdMs() {
     String sql =
-        new ScimUserGroupRelBaseSQLProvider()
-            .softDeleteMembersByUserExternalId("test_metalake", "user-ext-1");
+        new ScimUserGroupRelBaseSQLProvider().softDeleteMembersByUserId("test_metalake", USER_ID);
 
     assertUsesMillisecondTimestamp(sql);
+    assertTrue(sql.contains("r.user_id = #{userId}"));
+    assertFalse(sql.contains("external_id"));
   }
 
   @Test
-  void testPgSoftDeleteUserExtIdMs() {
+  void testPgSoftDeleteUserIdMs() {
     String sql =
         new ScimUserGroupRelPostgreSQLProvider()
-            .softDeleteMembersByUserExternalId("test_metalake", "user-ext-1");
+            .softDeleteMembersByUserId("test_metalake", USER_ID);
 
     assertUsesPostgreSQLMillisecondTimestamp(sql);
     assertTrue(sql.contains(" r SET deleted_at = "), sql);
     assertFalse(sql.contains("SET r.deleted_at"), sql);
+    assertFalse(sql.contains("external_id"));
   }
 
   @Test
@@ -78,22 +83,24 @@ class TestScimUserGroupRelMapperPackageProvider {
   }
 
   @Test
-  void testH2SoftDeleteUserExtIdMs() {
+  void testH2SoftDeleteUserIdMs() {
     String sql =
-        new ScimUserGroupRelH2Provider()
-            .softDeleteMembersByUserExternalId("test_metalake", "user-ext-1");
+        new ScimUserGroupRelH2Provider().softDeleteMembersByUserId("test_metalake", USER_ID);
 
     assertUsesMillisecondTimestamp(sql);
+    assertFalse(sql.contains("external_id"));
   }
 
   @Test
   void testSoftDeleteGroupUsersMs() {
     String sql =
         new ScimUserGroupRelBaseSQLProvider()
-            .softDeleteMembersByGroupAndUserExternalIds(
-                "test_metalake", "group-ext-1", List.of("user-ext-1"));
+            .softDeleteMembersByGroupAndUserIds("test_metalake", GROUP_ID, List.of(USER_ID));
 
     assertUsesMillisecondTimestamp(sql);
+    assertTrue(sql.contains("r.group_id = #{groupId}"));
+    assertTrue(sql.contains("r.user_id IN"));
+    assertFalse(sql.contains("external_id"));
   }
 
   private static void assertUsesMillisecondTimestamp(String sql) {

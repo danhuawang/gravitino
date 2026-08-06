@@ -11,8 +11,8 @@ import com.datastrato.gravitino.scim.service.converter.ScimResourceConverter;
 import com.datastrato.gravitino.scim.service.filter.ScimUserFilter;
 import com.datastrato.gravitino.scim.service.model.ScimPagedResult;
 import com.datastrato.gravitino.scim.service.web.ScimMetalakeContext;
-import com.google.common.base.Preconditions;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -31,6 +31,7 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.User;
+import org.apache.gravitino.authorization.UserChange;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 
@@ -68,11 +69,8 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
 
   @Override
   public ScimUser create(ScimUser resource) throws ResourceException {
-    String externalId = resource.getExternalId();
-    if (StringUtils.isBlank(externalId)) {
-      throw new ResourceException(400, "externalId is required on User create");
-    }
-    String userName = resolveUserName(resource.getUserName(), externalId);
+    String externalId = normalizeExternalId(resource.getExternalId());
+    String userName = resolveUserName(resource.getUserName());
     try {
       String metalake = ScimMetalakeContext.getMetalake();
       User user = dispatcher.addUser(metalake, userName, externalId, resolveEnabled(resource));
@@ -92,9 +90,10 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       Set<AttributeReference> excludedAttributes)
       throws ResourceException {
     String metalake = ScimMetalakeContext.getMetalake();
+    long userId = parseResourceId(id);
     User user;
     try {
-      user = getUserByExternalId(metalake, id);
+      user = dispatcher.getUserById(metalake, userId);
     } catch (NoSuchUserException e) {
       throw new ResourceException(404, "User not found: " + id);
     }
@@ -118,7 +117,11 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       throw new ResourceException(400, "PATCH on Users supports active only");
     }
     try {
-      User user = setUserActive(ScimMetalakeContext.getMetalake(), id, active.get());
+      User user =
+          dispatcher.alterUserById(
+              ScimMetalakeContext.getMetalake(),
+              parseResourceId(id),
+              UserChange.updateEnabled(active.get()));
       return ScimResourceConverter.toScimUser(user);
     } catch (NoSuchUserException e) {
       throw new ResourceException(404, "User not found: " + id);
@@ -128,7 +131,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   @Override
   public ScimUser get(String id) throws ResourceException {
     try {
-      User user = getUserByExternalId(ScimMetalakeContext.getMetalake(), id);
+      User user = dispatcher.getUserById(ScimMetalakeContext.getMetalake(), parseResourceId(id));
       return ScimResourceConverter.toScimUser(user);
     } catch (NoSuchUserException e) {
       throw new ResourceException(404, "User not found: " + id);
@@ -152,7 +155,8 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
 
   @Override
   public void delete(String id) throws ResourceException {
-    boolean deleted = deleteUserByExternalId(ScimMetalakeContext.getMetalake(), id);
+    boolean deleted =
+        dispatcher.removeUserById(ScimMetalakeContext.getMetalake(), parseResourceId(id));
     if (!deleted) {
       throw new ResourceException(404, "User not found: " + id);
     }
@@ -161,24 +165,6 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   @Override
   public List<Class<? extends ScimExtension>> getExtensionList() {
     return List.of();
-  }
-
-  private User getUserByExternalId(String metalake, String externalId) throws NoSuchUserException {
-    validateExternalId(externalId);
-    return dispatcher.getUserByExternalId(metalake, externalId);
-  }
-
-  private User setUserActive(String metalake, String externalId, boolean active)
-      throws NoSuchUserException {
-    validateExternalId(externalId);
-    return active
-        ? dispatcher.enableUser(metalake, externalId)
-        : dispatcher.disableUser(metalake, externalId);
-  }
-
-  private boolean deleteUserByExternalId(String metalake, String externalId) {
-    validateExternalId(externalId);
-    return dispatcher.removeUserByExternalId(metalake, externalId);
   }
 
   /**
@@ -201,7 +187,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   private Optional<User> lookupUser(String metalake, ScimUserFilter criteria) {
     try {
       if (criteria.externalId().isPresent()) {
-        return Optional.of(getUserByExternalId(metalake, criteria.externalId().get()));
+        return Optional.of(dispatcher.getUserByExternalId(metalake, criteria.externalId().get()));
       }
       return Optional.of(dispatcher.getUser(metalake, criteria.userName().orElseThrow()));
     } catch (NoSuchUserException ignored) {
@@ -214,21 +200,22 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       return false;
     }
     if (criteria.externalId().isPresent()
-        && user.externalId() != null
-        && !criteria.externalId().get().equals(user.externalId())) {
+        && !Objects.equals(criteria.externalId().get(), user.externalId())) {
       return false;
     }
     return true;
   }
 
-  private String resolveUserName(String rawUserName, String externalId) {
-    return StringUtils.isBlank(rawUserName)
-        ? externalId
-        : ScimNameMappers.mapUserName(scimConfig.userMapper(), rawUserName);
+  private String resolveUserName(String rawUserName) throws ResourceException {
+    if (StringUtils.isBlank(rawUserName)) {
+      throw new ResourceException(400, "userName is required on User create");
+    }
+    return ScimNameMappers.mapUserName(scimConfig.userMapper(), rawUserName);
   }
 
   /**
-   * Rejects PUT attempts to change user identity. Gravitino treats {@code externalId} as stable.
+   * Rejects PUT attempts to change user identity. Gravitino treats SCIM {@code id} as the immutable
+   * Gravitino-assigned id.
    */
   private static void validateImmutableUserIdentity(User user, String pathId, ScimUser resource)
       throws ResourceException {
@@ -236,7 +223,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       throw new ResourceException(400, "User id is immutable");
     }
     if (StringUtils.isNotBlank(resource.getExternalId())
-        && !resource.getExternalId().equals(user.externalId())) {
+        && !Objects.equals(resource.getExternalId(), user.externalId())) {
       throw new ResourceException(400, "User externalId is immutable");
     }
   }
@@ -251,7 +238,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     if (StringUtils.isBlank(rawUserName)) {
       return;
     }
-    String resolvedName = resolveUserName(rawUserName, user.externalId());
+    String resolvedName = ScimNameMappers.mapUserName(scimConfig.userMapper(), rawUserName);
     if (!resolvedName.equals(user.name())) {
       throw new ResourceException(400, "User userName is immutable");
     }
@@ -271,9 +258,9 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       return user;
     }
     try {
-      return setUserActive(metalake, user.externalId(), active);
+      return dispatcher.alterUserById(metalake, user.id(), UserChange.updateEnabled(active));
     } catch (NoSuchUserException e) {
-      throw new ResourceException(404, "User not found: " + user.externalId());
+      throw new ResourceException(404, "User not found: " + user.id());
     }
   }
 
@@ -288,7 +275,15 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     return active == null || active;
   }
 
-  private static void validateExternalId(String externalId) {
-    Preconditions.checkArgument(!StringUtils.isBlank(externalId), "externalId is required");
+  private static String normalizeExternalId(String externalId) {
+    return StringUtils.isBlank(externalId) ? null : externalId;
+  }
+
+  private static long parseResourceId(String id) throws ResourceException {
+    try {
+      return Long.parseLong(id);
+    } catch (NumberFormatException e) {
+      throw new ResourceException(404, "User not found: " + id);
+    }
   }
 }

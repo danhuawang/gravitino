@@ -20,89 +20,77 @@ import org.junit.jupiter.api.Test;
 
 class TestScimUserGroupRelBaseSQLProvider {
 
+  private static final long GROUP_ID = 200L;
+
   @Test
   void testSoftDeleteGroupUsersEmpty() {
     ScimUserGroupRelBaseSQLProvider provider = new ScimUserGroupRelBaseSQLProvider();
     String script =
-        provider.softDeleteMembersByGroupAndUserExternalIds(
-            "test_metalake", "group-ext-1", Collections.emptyList());
+        provider.softDeleteMembersByGroupAndUserIds(
+            "test_metalake", GROUP_ID, Collections.emptyList());
 
     SqlSource sqlSource =
         new XMLLanguageDriver().createSqlSource(new Configuration(), script, Map.class);
     Map<String, Object> params = new HashMap<>();
     params.put("metalakeName", "test_metalake");
-    params.put("groupExternalId", "group-ext-1");
-    params.put("userExternalIds", Collections.emptyList());
+    params.put("groupId", GROUP_ID);
+    params.put("userIds", Collections.emptyList());
 
     BoundSql boundSql = sqlSource.getBoundSql(params);
     String normalizedSql = boundSql.getSql().replaceAll("\\s+", " ").trim();
 
     Assertions.assertFalse(
         normalizedSql.matches(".*\\bIN\\s*\\(\\s*\\).*"),
-        "Empty userExternalIds should not generate invalid SQL IN (...) with no values");
-    Assertions.assertTrue(
-        normalizedSql.isEmpty(), "Empty userExternalIds should not generate UPDATE SQL");
+        "Empty userIds should not generate invalid SQL IN (...) with no values");
+    Assertions.assertTrue(normalizedSql.isEmpty(), "Empty userIds should not generate UPDATE SQL");
   }
 
   @Test
   void testSoftDeleteGroupUsersNonEmpty() {
     ScimUserGroupRelBaseSQLProvider provider = new ScimUserGroupRelBaseSQLProvider();
     String script =
-        provider.softDeleteMembersByGroupAndUserExternalIds(
-            "test_metalake", "group-ext-1", Arrays.asList("user-ext-1", "user-ext-2"));
+        provider.softDeleteMembersByGroupAndUserIds(
+            "test_metalake", GROUP_ID, Arrays.asList(100L, 101L));
 
-    SqlSource sqlSource =
-        new XMLLanguageDriver().createSqlSource(new Configuration(), script, Map.class);
-    Map<String, Object> params = new HashMap<>();
-    params.put("metalakeName", "test_metalake");
-    params.put("groupExternalId", "group-ext-1");
-    params.put("userExternalIds", Arrays.asList("user-ext-1", "user-ext-2"));
-
-    BoundSql boundSql = sqlSource.getBoundSql(params);
-    String normalizedSql = boundSql.getSql().replaceAll("\\s+", " ").trim();
-
-    Assertions.assertTrue(
-        normalizedSql.matches(".*\\buser_id\\s+IN\\s*\\(.*\\).*"),
-        "Non-empty userExternalIds should generate SQL with user_id IN (...) clause");
-    Assertions.assertTrue(normalizedSql.contains("u.external_id IN"));
+    Assertions.assertTrue(script.contains("r.user_id IN"));
+    Assertions.assertTrue(script.contains("r.group_id = #{groupId}"));
+    Assertions.assertFalse(script.contains("external_id"));
   }
 
   @Test
   void testSoftDeleteGroupUsersNull() {
     ScimUserGroupRelBaseSQLProvider provider = new ScimUserGroupRelBaseSQLProvider();
-    String script =
-        provider.softDeleteMembersByGroupAndUserExternalIds("test_metalake", "group-ext-1", null);
+    String script = provider.softDeleteMembersByGroupAndUserIds("test_metalake", GROUP_ID, null);
 
     SqlSource sqlSource =
         new XMLLanguageDriver().createSqlSource(new Configuration(), script, Map.class);
     Map<String, Object> params = new HashMap<>();
     params.put("metalakeName", "test_metalake");
-    params.put("groupExternalId", "group-ext-1");
-    params.put("userExternalIds", null);
+    params.put("groupId", GROUP_ID);
+    params.put("userIds", null);
 
     BoundSql boundSql = sqlSource.getBoundSql(params);
     String normalizedSql = boundSql.getSql().replaceAll("\\s+", " ").trim();
 
     Assertions.assertFalse(
         normalizedSql.matches(".*\\bIN\\s*\\(\\s*\\).*"),
-        "Null userExternalIds should not generate invalid SQL IN (...) with no values");
-    Assertions.assertTrue(
-        normalizedSql.isEmpty(), "Null userExternalIds should not generate UPDATE SQL");
+        "Null userIds should not generate invalid SQL IN (...) with no values");
+    Assertions.assertTrue(normalizedSql.isEmpty(), "Null userIds should not generate UPDATE SQL");
   }
 
   @Test
-  void testInsertByExtIdsEmpty() {
+  void testInsertByUserIdsEmpty() {
     ScimUserGroupRelBaseSQLProvider provider = new ScimUserGroupRelBaseSQLProvider();
     String script =
         provider.insertMemberships(
-            "test_metalake", "group-ext-1", Collections.emptyList(), "{}", 1L, 0L);
+            "test_metalake", GROUP_ID, Collections.emptyList(), "{}", 1L, 0L);
 
     SqlSource sqlSource =
         new XMLLanguageDriver().createSqlSource(new Configuration(), script, Map.class);
     Map<String, Object> params = new HashMap<>();
     params.put("metalakeName", "test_metalake");
-    params.put("groupExternalId", "group-ext-1");
-    params.put("userExternalIds", Collections.emptyList());
+    params.put("groupId", GROUP_ID);
+    params.put("userIds", Collections.emptyList());
     params.put("auditInfo", "{}");
     params.put("currentVersion", 1L);
     params.put("lastVersion", 0L);
@@ -110,59 +98,48 @@ class TestScimUserGroupRelBaseSQLProvider {
     BoundSql boundSql = sqlSource.getBoundSql(params);
     String normalizedSql = boundSql.getSql().replaceAll("\\s+", " ").trim();
 
-    Assertions.assertTrue(
-        normalizedSql.isEmpty(), "Empty userExternalIds should not generate INSERT SQL");
+    Assertions.assertTrue(normalizedSql.isEmpty(), "Empty userIds should not generate INSERT SQL");
   }
 
   @Test
-  void testInsertByExtIdsNonEmpty() {
+  void testInsertByUserIdsNonEmpty() {
     ScimUserGroupRelBaseSQLProvider provider = new ScimUserGroupRelBaseSQLProvider();
     String script =
         provider.insertMemberships(
-            "test_metalake", "group-ext-1", Arrays.asList("ext-1", "ext-2"), "{}", 1L, 0L);
+            "test_metalake", GROUP_ID, Arrays.asList(100L, 101L), "{}", 1L, 0L);
 
-    SqlSource sqlSource =
-        new XMLLanguageDriver().createSqlSource(new Configuration(), script, Map.class);
-    Map<String, Object> params = new HashMap<>();
-    params.put("metalakeName", "test_metalake");
-    params.put("groupExternalId", "group-ext-1");
-    params.put("userExternalIds", Arrays.asList("ext-1", "ext-2"));
-    params.put("auditInfo", "{}");
-    params.put("currentVersion", 1L);
-    params.put("lastVersion", 0L);
-
-    BoundSql boundSql = sqlSource.getBoundSql(params);
-    String normalizedSql = boundSql.getSql().replaceAll("\\s+", " ").trim();
-
-    Assertions.assertTrue(normalizedSql.contains("u.external_id IN"));
-    Assertions.assertTrue(normalizedSql.contains("SELECT"));
-    Assertions.assertTrue(normalizedSql.contains("ON DUPLICATE KEY UPDATE"));
+    Assertions.assertTrue(script.contains("u.user_id IN"));
+    Assertions.assertTrue(script.contains("g.group_id = #{groupId}"));
+    Assertions.assertTrue(script.contains("SELECT"));
+    Assertions.assertTrue(script.contains("ON DUPLICATE KEY UPDATE"));
+    Assertions.assertFalse(script.contains("external_id"));
   }
 
   @Test
-  void testPgInsertByExtIdsOnConflict() {
+  void testPgInsertByUserIdsOnConflict() {
     String script =
         new ScimUserGroupRelPostgreSQLProvider()
-            .insertMemberships("test_metalake", "group-ext-1", List.of("ext-1"), "{}", 1L, 0L);
+            .insertMemberships("test_metalake", GROUP_ID, List.of(100L), "{}", 1L, 0L);
 
     Assertions.assertTrue(
         script.contains("ON CONFLICT (metalake_id, user_id, group_id, deleted_at)"));
     Assertions.assertTrue(script.contains("DO UPDATE SET"));
     Assertions.assertTrue(script.contains("EXCLUDED.metalake_id"));
+    Assertions.assertFalse(script.contains("external_id"));
   }
 
   @Test
-  void testSelectMembersJoinsGroupMeta() {
+  void testSelectMembersJoinsUserMeta() {
     String sql =
-        new ScimUserGroupRelBaseSQLProvider()
-            .selectMembersByGroupExternalId("test_metalake", "group-ext-1");
+        new ScimUserGroupRelBaseSQLProvider().selectMembersByGroupId("test_metalake", GROUP_ID);
 
-    Assertions.assertTrue(sql.contains("JOIN group_meta"));
+    Assertions.assertTrue(sql.contains("JOIN user_meta"));
     Assertions.assertTrue(sql.contains("JOIN metalake_meta"));
-    Assertions.assertTrue(sql.contains("u.external_id as externalId"));
+    Assertions.assertTrue(sql.contains("u.user_id as userId"));
     Assertions.assertTrue(sql.contains("u.user_name as userName"));
-    Assertions.assertTrue(sql.contains("g.external_id = #{groupExternalId}"));
+    Assertions.assertTrue(sql.contains("r.group_id = #{groupId}"));
     Assertions.assertTrue(sql.contains("mm.metalake_name = #{metalakeName}"));
+    Assertions.assertFalse(sql.contains("external_id"));
   }
 
   @Test

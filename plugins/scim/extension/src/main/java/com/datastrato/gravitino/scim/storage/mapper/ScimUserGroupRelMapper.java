@@ -23,9 +23,9 @@ public interface ScimUserGroupRelMapper {
 
   @SelectProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,
-      method = "selectMembersByGroupExternalId")
-  List<ScimGroupMemberPO> selectMembersByGroupExternalId(
-      @Param("metalakeName") String metalakeName, @Param("groupExternalId") String groupExternalId);
+      method = "selectMembersByGroupId")
+  List<ScimGroupMemberPO> selectMembersByGroupId(
+      @Param("metalakeName") String metalakeName, @Param("groupId") long groupId);
 
   @SelectProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,
@@ -34,51 +34,52 @@ public interface ScimUserGroupRelMapper {
       @Param("username") String username, @Param("metalakeName") String metalakeName);
 
   /**
-   * Inserts group memberships by resolving SCIM ids from {@code group_meta} and {@code user_meta}.
+   * Inserts group memberships by resolving Gravitino ids from {@code group_meta} and {@code
+   * user_meta}.
    *
-   * <p>{@code userExternalIds} must be non-empty; callers should skip this method when there are no
-   * members to add.
+   * <p>{@code userIds} must be non-empty; callers should skip this method when there are no members
+   * to add.
    *
    * @return number of membership rows affected
    */
   @InsertProvider(type = ScimUserGroupRelSQLProviderFactory.class, method = "insertMemberships")
   int insertMemberships(
       @Param("metalakeName") String metalakeName,
-      @Param("groupExternalId") String groupExternalId,
-      @Param("userExternalIds") List<String> userExternalIds,
+      @Param("groupId") long groupId,
+      @Param("userIds") List<Long> userIds,
       @Param("auditInfo") String auditInfo,
       @Param("currentVersion") Long currentVersion,
       @Param("lastVersion") Long lastVersion);
 
   /**
-   * Soft-deletes all active memberships for a user identified by SCIM {@code externalId}.
+   * Soft-deletes all active memberships for a user identified by Gravitino user id.
    *
    * @param metalakeName target metalake name
-   * @param userExternalId SCIM user {@code externalId}
+   * @param userId Gravitino user id
    */
   @UpdateProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,
-      method = "softDeleteMembersByUserExternalId")
-  void softDeleteMembersByUserExternalId(
-      @Param("metalakeName") String metalakeName, @Param("userExternalId") String userExternalId);
+      method = "softDeleteMembersByUserId")
+  void softDeleteMembersByUserId(
+      @Param("metalakeName") String metalakeName, @Param("userId") long userId);
 
   /**
-   * Soft-deletes group memberships for users identified by SCIM {@code externalId}s.
+   * Soft-deletes group memberships for users identified by Gravitino user ids.
    *
-   * <p>{@code userExternalIds} must be non-empty; callers should skip this method when there are no
-   * members to remove.
+   * <p>{@code userIds} must be non-empty; callers should skip this method when there are no members
+   * to remove.
    *
    * @param metalakeName target metalake name
-   * @param groupExternalId SCIM group {@code externalId}
-   * @param userExternalIds SCIM member ids from PATCH {@code members[].value}
+   * @param groupId Gravitino group id
+   * @param userIds Gravitino user ids from PATCH {@code members[].value}
    */
   @UpdateProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,
-      method = "softDeleteMembersByGroupAndUserExternalIds")
-  void softDeleteMembersByGroupAndUserExternalIds(
+      method = "softDeleteMembersByGroupAndUserIds")
+  void softDeleteMembersByGroupAndUserIds(
       @Param("metalakeName") String metalakeName,
-      @Param("groupExternalId") String groupExternalId,
-      @Param("userExternalIds") List<String> userExternalIds);
+      @Param("groupId") long groupId,
+      @Param("userIds") List<Long> userIds);
 
   @UpdateProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,
@@ -86,16 +87,16 @@ public interface ScimUserGroupRelMapper {
   Integer softDeleteMembersByUnavailableMetalake();
 
   /**
-   * Soft-deletes all active memberships for a group identified by SCIM {@code externalId}.
+   * Soft-deletes all active memberships for a group identified by Gravitino group id.
    *
    * @param metalakeName target metalake name
-   * @param groupExternalId SCIM group {@code externalId}
+   * @param groupId Gravitino group id
    */
   @UpdateProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,
-      method = "softDeleteMembersByGroupExternalId")
-  void softDeleteMembersByGroupExternalId(
-      @Param("metalakeName") String metalakeName, @Param("groupExternalId") String groupExternalId);
+      method = "softDeleteMembersByGroupId")
+  void softDeleteMembersByGroupId(
+      @Param("metalakeName") String metalakeName, @Param("groupId") long groupId);
 
   @DeleteProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,

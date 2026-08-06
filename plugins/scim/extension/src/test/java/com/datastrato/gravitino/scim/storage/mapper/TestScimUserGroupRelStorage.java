@@ -34,7 +34,7 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     assertEquals(
         List.of(GROUP_NAME),
         scimUserGroupRelMapper.selectGroupNamesByUsername(USERNAME, METALAKE_NAME));
-    assertEquals(Set.of(externalIdForUser(USER_ID)), memberExternalIdsForGroup(GROUP_ID));
+    assertEquals(Set.of(USER_ID), memberUserIdsForGroup(GROUP_ID));
   }
 
   @ParameterizedTest
@@ -48,16 +48,16 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     insertMembership(USER_ID, GROUP_ID);
     insertMembership(USER_ID + 1, GROUP_ID);
 
-    scimUserGroupRelMapper.softDeleteMembersByGroupAndUserExternalIds(
-        METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID)));
-    assertEquals(Set.of(externalIdForUser(USER_ID + 1)), memberExternalIdsForGroup(GROUP_ID));
+    scimUserGroupRelMapper.softDeleteMembersByGroupAndUserIds(
+        METALAKE_NAME, GROUP_ID, List.of(USER_ID));
+    assertEquals(Set.of(USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
     assertTrue(
         scimUserGroupRelMapper.selectGroupNamesByUsername(USERNAME, METALAKE_NAME).isEmpty());
   }
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testInsertByExtIds(String type) throws IOException {
+  void testInsertByUserIds(String type) throws IOException {
     init(type);
     insertMetalake();
     insertUser(USER_ID, USERNAME);
@@ -67,20 +67,13 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     assertEquals(
         2,
         scimUserGroupRelMapper.insertMemberships(
-            METALAKE_NAME,
-            externalIdForGroup(GROUP_ID),
-            List.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1)),
-            "{}",
-            1L,
-            0L));
-    assertEquals(
-        Set.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1)),
-        memberExternalIdsForGroup(GROUP_ID));
+            METALAKE_NAME, GROUP_ID, List.of(USER_ID, USER_ID + 1), "{}", 1L, 0L));
+    assertEquals(Set.of(USER_ID, USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
   }
 
   @ParameterizedTest
   @MethodSource("storageProvider")
-  void testInsertByExtIdsUpsert(String type) throws IOException {
+  void testInsertByUserIdsUpsert(String type) throws IOException {
     init(type);
     insertMetalake();
     insertUser(USER_ID, USERNAME);
@@ -89,27 +82,13 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     insertMembership(USER_ID, GROUP_ID);
 
     scimUserGroupRelMapper.insertMemberships(
-        METALAKE_NAME,
-        externalIdForGroup(GROUP_ID),
-        List.of(externalIdForUser(USER_ID), "missing-ext", externalIdForUser(USER_ID + 1)),
-        "{}",
-        1L,
-        0L);
+        METALAKE_NAME, GROUP_ID, List.of(USER_ID, 999L, USER_ID + 1), "{}", 1L, 0L);
 
-    assertEquals(
-        Set.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1)),
-        memberExternalIdsForGroup(GROUP_ID));
+    assertEquals(Set.of(USER_ID, USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
 
     scimUserGroupRelMapper.insertMemberships(
-        METALAKE_NAME,
-        externalIdForGroup(GROUP_ID),
-        List.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1)),
-        "{}",
-        1L,
-        0L);
-    assertEquals(
-        Set.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1)),
-        memberExternalIdsForGroup(GROUP_ID));
+        METALAKE_NAME, GROUP_ID, List.of(USER_ID, USER_ID + 1), "{}", 1L, 0L);
+    assertEquals(Set.of(USER_ID, USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
   }
 
   @ParameterizedTest
@@ -123,17 +102,13 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     insertMembership(USER_ID, GROUP_ID);
     insertMembership(USER_ID + 1, GROUP_ID);
 
-    Map<String, ScimGroupMemberPO> membersByExternalId =
-        scimUserGroupRelMapper
-            .selectMembersByGroupExternalId(METALAKE_NAME, externalIdForGroup(GROUP_ID))
-            .stream()
-            .collect(Collectors.toMap(ScimGroupMemberPO::getExternalId, Function.identity()));
+    Map<Long, ScimGroupMemberPO> membersByUserId =
+        scimUserGroupRelMapper.selectMembersByGroupId(METALAKE_NAME, GROUP_ID).stream()
+            .collect(Collectors.toMap(ScimGroupMemberPO::getUserId, Function.identity()));
 
-    assertEquals(
-        Set.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1)),
-        membersByExternalId.keySet());
-    assertEquals(USERNAME, membersByExternalId.get(externalIdForUser(USER_ID)).getUserName());
-    assertEquals("bob", membersByExternalId.get(externalIdForUser(USER_ID + 1)).getUserName());
+    assertEquals(Set.of(USER_ID, USER_ID + 1), membersByUserId.keySet());
+    assertEquals(USERNAME, membersByUserId.get(USER_ID).getUserName());
+    assertEquals("bob", membersByUserId.get(USER_ID + 1).getUserName());
   }
 
   @ParameterizedTest
@@ -168,8 +143,8 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     softDeleteMetalake(deletedMetalakeId);
 
     assertEquals(1, scimUserGroupRelMapper.softDeleteMembersByUnavailableMetalake());
-    assertEquals(Set.of(externalIdForUser(USER_ID)), memberExternalIdsForGroup(GROUP_ID));
-    assertTrue(memberExternalIdsForGroup("deleted_metalake", GROUP_ID + 1).isEmpty());
+    assertEquals(Set.of(USER_ID), memberUserIdsForGroup(GROUP_ID));
+    assertTrue(memberUserIdsForGroup("deleted_metalake", GROUP_ID + 1).isEmpty());
   }
 
   @ParameterizedTest
@@ -181,9 +156,8 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     insertGroup(GROUP_ID, GROUP_NAME);
     insertMembership(USER_ID, GROUP_ID);
 
-    scimUserGroupRelMapper.softDeleteMembersByGroupExternalId(
-        METALAKE_NAME, externalIdForGroup(GROUP_ID));
-    assertTrue(memberExternalIdsForGroup(GROUP_ID).isEmpty());
+    scimUserGroupRelMapper.softDeleteMembersByGroupId(METALAKE_NAME, GROUP_ID);
+    assertTrue(memberUserIdsForGroup(GROUP_ID).isEmpty());
   }
 
   @ParameterizedTest
@@ -195,8 +169,7 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     insertGroup(GROUP_ID, GROUP_NAME);
     insertMembership(USER_ID, GROUP_ID);
 
-    scimUserGroupRelMapper.softDeleteMembersByUserExternalId(
-        METALAKE_NAME, externalIdForUser(USER_ID));
+    scimUserGroupRelMapper.softDeleteMembersByUserId(METALAKE_NAME, USER_ID);
     assertTrue(
         scimUserGroupRelMapper.selectGroupNamesByUsername(USERNAME, METALAKE_NAME).isEmpty());
   }
@@ -210,14 +183,14 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     insertGroup(GROUP_ID, GROUP_NAME);
 
     insertMembership(USER_ID, GROUP_ID);
-    scimUserGroupRelMapper.softDeleteMembersByGroupAndUserExternalIds(
-        METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID)));
-    assertTrue(memberExternalIdsForGroup(GROUP_ID).isEmpty());
+    scimUserGroupRelMapper.softDeleteMembersByGroupAndUserIds(
+        METALAKE_NAME, GROUP_ID, List.of(USER_ID));
+    assertTrue(memberUserIdsForGroup(GROUP_ID).isEmpty());
 
     assertEquals(1, scimUserGroupRelMapper.deleteByLegacyTimeline(Long.MAX_VALUE, 1));
     assertEquals(0, scimUserGroupRelMapper.deleteByLegacyTimeline(Long.MAX_VALUE, 1));
 
     insertMembership(USER_ID, GROUP_ID);
-    assertEquals(Set.of(externalIdForUser(USER_ID)), memberExternalIdsForGroup(GROUP_ID));
+    assertEquals(Set.of(USER_ID), memberUserIdsForGroup(GROUP_ID));
   }
 }

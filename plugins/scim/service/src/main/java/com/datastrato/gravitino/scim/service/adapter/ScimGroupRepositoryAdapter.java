@@ -12,10 +12,11 @@ import com.datastrato.gravitino.scim.service.converter.ScimResourceConverter;
 import com.datastrato.gravitino.scim.service.filter.ScimGroupFilter;
 import com.datastrato.gravitino.scim.service.model.ScimPagedResult;
 import com.datastrato.gravitino.scim.service.web.ScimMetalakeContext;
-import com.google.common.base.Preconditions;
+import com.datastrato.gravitino.scim.storage.po.ScimGroupMemberPO;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -35,10 +36,8 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.Group;
-import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
-import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,17 +86,14 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
 
   @Override
   public ScimGroup create(ScimGroup resource) throws ResourceException {
-    String externalId = resource.getExternalId();
-    if (StringUtils.isBlank(externalId)) {
-      throw new ResourceException(400, "externalId is required on Group create");
-    }
-    String groupName = resolveGroupName(resource.getDisplayName(), externalId);
+    String externalId = normalizeExternalId(resource.getExternalId());
+    String groupName = resolveGroupName(resource.getDisplayName());
     try {
       String metalake = ScimMetalakeContext.getMetalake();
       Group group = dispatcher.addGroup(metalake, groupName, externalId);
       List<GroupMembership> members = resource.getMembers();
       if (members != null && !members.isEmpty()) {
-        replaceGroupMembers(metalake, group.externalId(), members);
+        replaceGroupMembers(metalake, group.id(), members);
       }
       return toScimGroup(group);
     } catch (GroupAlreadyExistsException e) {
@@ -115,16 +111,17 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       Set<AttributeReference> excludedAttributes)
       throws ResourceException {
     String metalake = ScimMetalakeContext.getMetalake();
+    long groupId = parseResourceId(id);
     Group group;
     try {
-      group = getGroupByExternalId(metalake, id);
+      group = dispatcher.getGroupById(metalake, groupId);
     } catch (NoSuchGroupException e) {
       throw new ResourceException(404, "Group not found: " + id);
     }
 
     validateImmutableGroupIdentity(group, id, resource);
     validateImmutableDisplayName(group, resource.getDisplayName());
-    replaceGroupMembers(metalake, group.externalId(), resource.getMembers());
+    replaceGroupMembers(metalake, group.id(), resource.getMembers());
     return toScimGroup(group);
   }
 
@@ -138,7 +135,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       throws ResourceException {
     Group group;
     try {
-      group = getGroupByExternalId(ScimMetalakeContext.getMetalake(), id);
+      group = dispatcher.getGroupById(ScimMetalakeContext.getMetalake(), parseResourceId(id));
     } catch (NoSuchGroupException e) {
       throw new ResourceException(404, "Group not found: " + id);
     }
@@ -147,13 +144,13 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       List<GroupMembership> members = ScimPatchSupport.parseGroupMembers(operation);
       switch (operation.getOperation()) {
         case ADD:
-          addGroupMembers(ScimMetalakeContext.getMetalake(), group.externalId(), members);
+          addGroupMembers(ScimMetalakeContext.getMetalake(), group.id(), members);
           break;
         case REMOVE:
-          removeGroupMembers(ScimMetalakeContext.getMetalake(), group.externalId(), members);
+          removeGroupMembers(ScimMetalakeContext.getMetalake(), group.id(), members);
           break;
         case REPLACE:
-          replaceGroupMembers(ScimMetalakeContext.getMetalake(), group.externalId(), members);
+          replaceGroupMembers(ScimMetalakeContext.getMetalake(), group.id(), members);
           break;
         default:
           throw new ResourceException(
@@ -166,7 +163,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   @Override
   public ScimGroup get(String id) throws ResourceException {
     try {
-      Group group = getGroupByExternalId(ScimMetalakeContext.getMetalake(), id);
+      Group group = dispatcher.getGroupById(ScimMetalakeContext.getMetalake(), parseResourceId(id));
       return toScimGroup(group);
     } catch (NoSuchGroupException e) {
       throw new ResourceException(404, "Group not found: " + id);
@@ -190,7 +187,8 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
 
   @Override
   public void delete(String id) throws ResourceException {
-    boolean deleted = deleteGroupByExternalId(ScimMetalakeContext.getMetalake(), id);
+    boolean deleted =
+        dispatcher.removeGroupById(ScimMetalakeContext.getMetalake(), parseResourceId(id));
     if (!deleted) {
       throw new ResourceException(404, "Group not found: " + id);
     }
@@ -201,71 +199,48 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     return List.of();
   }
 
-  private Group getGroupByExternalId(String metalake, String externalId)
-      throws NoSuchGroupException {
-    validateExternalId(externalId);
-    return dispatcher.getGroupByExternalId(metalake, externalId);
-  }
-
-  private boolean deleteGroupByExternalId(String metalake, String externalId) {
-    validateExternalId(externalId);
-    return dispatcher.removeGroupByExternalId(metalake, externalId);
-  }
-
-  private void addGroupMembers(
-      String metalake, String groupExternalId, List<GroupMembership> members)
+  private void addGroupMembers(String metalake, long groupId, List<GroupMembership> members)
       throws ResourceException {
-    List<String> userExternalIds = extractMemberExternalIds(members);
-    if (userExternalIds.isEmpty()) {
+    List<Long> userIds = extractMemberUserIds(members);
+    if (userIds.isEmpty()) {
       return;
     }
     try {
-      membershipManager.addUsersToGroup(metalake, groupExternalId, userExternalIds);
+      membershipManager.addUsersToGroup(metalake, groupId, userIds);
     } catch (IOException e) {
-      throw new ResourceException(500, "Failed to add users to group " + groupExternalId, e);
+      throw new ResourceException(500, "Failed to add users to group " + groupId, e);
     }
   }
 
-  private void removeGroupMembers(
-      String metalake, String groupExternalId, List<GroupMembership> members) {
-    List<String> userExternalIds = extractMemberExternalIds(members);
-    if (userExternalIds.isEmpty()) {
+  private void removeGroupMembers(String metalake, long groupId, List<GroupMembership> members) {
+    List<Long> userIds = extractMemberUserIds(members);
+    if (userIds.isEmpty()) {
       return;
     }
-    membershipManager.removeUsersFromGroup(metalake, groupExternalId, userExternalIds);
+    membershipManager.removeUsersFromGroup(metalake, groupId, userIds);
   }
 
-  private void replaceGroupMembers(
-      String metalake, String groupExternalId, List<GroupMembership> members)
+  private void replaceGroupMembers(String metalake, long groupId, List<GroupMembership> members)
       throws ResourceException {
-    List<String> userExternalIds = extractMemberExternalIds(members);
+    List<Long> userIds = extractMemberUserIds(members);
     try {
-      membershipManager.replaceUsersInGroup(metalake, groupExternalId, userExternalIds);
+      membershipManager.replaceUsersInGroup(metalake, groupId, userIds);
     } catch (IOException e) {
-      throw new ResourceException(500, "Failed to replace users in group " + groupExternalId, e);
+      throw new ResourceException(500, "Failed to replace users in group " + groupId, e);
     }
   }
 
-  private List<String> listMemberExternalIds(String metalake, String groupExternalId) {
-    List<String> externalIds = new ArrayList<>();
-    for (String username : membershipManager.listUsernamesForGroup(metalake, groupExternalId)) {
-      try {
-        User user = dispatcher.getUser(metalake, username);
-        if (StringUtils.isNotBlank(user.externalId())) {
-          externalIds.add(user.externalId());
-        } else {
-          LOG.warn(
-              "Skipping group member {} without externalId in group {}", username, groupExternalId);
-        }
-      } catch (NoSuchUserException ignored) {
-        LOG.warn(
-            "Skipping missing group member {} while listing members for group {}",
-            username,
-            groupExternalId);
+  private List<String> listMemberScimIds(String metalake, long groupId) {
+    List<String> memberIds = new ArrayList<>();
+    for (ScimGroupMemberPO member : membershipManager.listMembersForGroup(metalake, groupId)) {
+      if (member.getUserId() == null) {
+        LOG.warn("Skipping group member without userId in group {}", groupId);
+        continue;
       }
+      memberIds.add(String.valueOf(member.getUserId()));
     }
-    externalIds.sort(String::compareTo);
-    return externalIds;
+    memberIds.sort(String::compareTo);
+    return memberIds;
   }
 
   /**
@@ -288,7 +263,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   private Optional<Group> lookupGroup(String metalake, ScimGroupFilter criteria) {
     try {
       if (criteria.externalId().isPresent()) {
-        return Optional.of(getGroupByExternalId(metalake, criteria.externalId().get()));
+        return Optional.of(dispatcher.getGroupByExternalId(metalake, criteria.externalId().get()));
       }
       if (criteria.displayName().isPresent()) {
         return Optional.of(dispatcher.getGroup(metalake, criteria.displayName().get()));
@@ -304,31 +279,40 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       return false;
     }
     if (criteria.externalId().isPresent()
-        && group.externalId() != null
-        && !criteria.externalId().get().equals(group.externalId())) {
+        && !Objects.equals(criteria.externalId().get(), group.externalId())) {
       return false;
     }
     return true;
   }
 
-  private static List<String> extractMemberExternalIds(List<GroupMembership> members) {
+  private static List<Long> extractMemberUserIds(List<GroupMembership> members) {
     if (members == null || members.isEmpty()) {
       return List.of();
     }
-    return members.stream()
-        .map(GroupMembership::getValue)
-        .filter(StringUtils::isNotBlank)
-        .collect(Collectors.toList());
+    List<Long> userIds = new ArrayList<>();
+    for (GroupMembership membership : members) {
+      if (StringUtils.isBlank(membership.getValue())) {
+        continue;
+      }
+      try {
+        userIds.add(Long.parseLong(membership.getValue()));
+      } catch (NumberFormatException e) {
+        LOG.warn("Skipping invalid SCIM member value {}", membership.getValue());
+      }
+    }
+    return userIds;
   }
 
-  private String resolveGroupName(String rawDisplayName, String externalId) {
-    return StringUtils.isBlank(rawDisplayName)
-        ? externalId
-        : ScimNameMappers.mapGroupName(scimConfig.groupMapper(), rawDisplayName);
+  private String resolveGroupName(String rawDisplayName) throws ResourceException {
+    if (StringUtils.isBlank(rawDisplayName)) {
+      throw new ResourceException(400, "displayName is required on Group create");
+    }
+    return ScimNameMappers.mapGroupName(scimConfig.groupMapper(), rawDisplayName);
   }
 
   /**
-   * Rejects PUT attempts to change group identity. Gravitino treats {@code externalId} as stable.
+   * Rejects PUT attempts to change group identity. Gravitino treats SCIM {@code id} as the
+   * immutable Gravitino-assigned id.
    */
   private static void validateImmutableGroupIdentity(Group group, String pathId, ScimGroup resource)
       throws ResourceException {
@@ -336,7 +320,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       throw new ResourceException(400, "Group id is immutable");
     }
     if (StringUtils.isNotBlank(resource.getExternalId())
-        && !resource.getExternalId().equals(group.externalId())) {
+        && !Objects.equals(resource.getExternalId(), group.externalId())) {
       throw new ResourceException(400, "Group externalId is immutable");
     }
   }
@@ -351,19 +335,26 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     if (StringUtils.isBlank(rawDisplayName)) {
       return;
     }
-    String resolvedName = resolveGroupName(rawDisplayName, group.externalId());
+    String resolvedName = ScimNameMappers.mapGroupName(scimConfig.groupMapper(), rawDisplayName);
     if (!resolvedName.equals(group.name())) {
       throw new ResourceException(400, "Group displayName is immutable");
     }
   }
 
   private ScimGroup toScimGroup(Group group) {
-    List<String> memberExternalIds =
-        listMemberExternalIds(ScimMetalakeContext.getMetalake(), group.externalId());
-    return ScimResourceConverter.toScimGroup(group, memberExternalIds);
+    List<String> memberIds = listMemberScimIds(ScimMetalakeContext.getMetalake(), group.id());
+    return ScimResourceConverter.toScimGroup(group, memberIds);
   }
 
-  private static void validateExternalId(String externalId) {
-    Preconditions.checkArgument(!StringUtils.isBlank(externalId), "externalId is required");
+  private static String normalizeExternalId(String externalId) {
+    return StringUtils.isBlank(externalId) ? null : externalId;
+  }
+
+  private static long parseResourceId(String id) throws ResourceException {
+    try {
+      return Long.parseLong(id);
+    } catch (NumberFormatException e) {
+      throw new ResourceException(404, "Group not found: " + id);
+    }
   }
 }

@@ -5,6 +5,7 @@
 
 package com.datastrato.gravitino.scim.storage.mapper.provider.base;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -15,26 +16,29 @@ class TestScimUserGroupRelSoftDeleteSQLProvider {
   private static final String MILLISECOND_TIMESTAMP_COMPONENT =
       "EXTRACT(MICROSECOND FROM CURRENT_TIMESTAMP(3)) / 1000";
 
+  private static final long GROUP_ID = 200L;
+  private static final long USER_ID = 100L;
+
   @Test
-  void testUserExtIdMs() {
+  void testUserIdMs() {
     String sql =
-        new ScimUserGroupRelBaseSQLProvider()
-            .softDeleteMembersByUserExternalId("test_metalake", "user-ext-1");
+        new ScimUserGroupRelBaseSQLProvider().softDeleteMembersByUserId("test_metalake", USER_ID);
 
     assertUsesMillisecondTimestamp(sql);
     assertTrue(sql.contains("mm.metalake_name = #{metalakeName}"));
-    assertTrue(sql.contains("u.external_id = #{userExternalId}"));
+    assertTrue(sql.contains("r.user_id = #{userId}"));
+    assertFalse(sql.contains("external_id"));
   }
 
   @Test
-  void testGroupExtIdMs() {
+  void testGroupIdMs() {
     String sql =
-        new ScimUserGroupRelBaseSQLProvider()
-            .softDeleteMembersByGroupExternalId("test_metalake", "group-ext-1");
+        new ScimUserGroupRelBaseSQLProvider().softDeleteMembersByGroupId("test_metalake", GROUP_ID);
 
     assertUsesMillisecondTimestamp(sql);
     assertTrue(sql.contains("mm.metalake_name = #{metalakeName}"));
-    assertTrue(sql.contains("g.external_id = #{groupExternalId}"));
+    assertTrue(sql.contains("r.group_id = #{groupId}"));
+    assertFalse(sql.contains("external_id"));
   }
 
   @Test
@@ -51,12 +55,12 @@ class TestScimUserGroupRelSoftDeleteSQLProvider {
   void testGroupUsersMs() {
     String sql =
         new ScimUserGroupRelBaseSQLProvider()
-            .softDeleteMembersByGroupAndUserExternalIds(
-                "test_metalake", "group-ext-1", List.of("user-ext-1"));
+            .softDeleteMembersByGroupAndUserIds("test_metalake", GROUP_ID, List.of(USER_ID));
 
     assertUsesMillisecondTimestamp(sql);
-    assertTrue(sql.contains("g.external_id = #{groupExternalId}"));
-    assertTrue(sql.contains("u.external_id IN"));
+    assertTrue(sql.contains("r.group_id = #{groupId}"));
+    assertTrue(sql.contains("r.user_id IN"));
+    assertFalse(sql.contains("external_id"));
   }
 
   private static void assertUsesMillisecondTimestamp(String sql) {

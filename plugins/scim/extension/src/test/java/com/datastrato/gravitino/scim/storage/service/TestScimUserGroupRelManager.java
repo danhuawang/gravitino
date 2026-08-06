@@ -8,7 +8,9 @@ package com.datastrato.gravitino.scim.storage.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.datastrato.gravitino.scim.storage.po.ScimGroupMemberPO;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -26,16 +28,14 @@ class TestScimUserGroupRelManager extends AbstractScimUserGroupRelManagerTest {
     insertGroup(GROUP_ID, GROUP_NAME);
 
     runManagerCall(
-        () ->
-            manager.addUsersToGroup(
-                METALAKE_NAME,
-                externalIdForGroup(GROUP_ID),
-                List.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1))));
+        () -> manager.addUsersToGroup(METALAKE_NAME, GROUP_ID, List.of(USER_ID, USER_ID + 1)));
 
     assertEquals(List.of(GROUP_NAME), manager.listGroupNamesForUser(METALAKE_NAME, USERNAME));
     assertEquals(
-        List.of(USERNAME, "bob"),
-        manager.listUsernamesForGroup(METALAKE_NAME, externalIdForGroup(GROUP_ID)));
+        List.of("bob", USERNAME),
+        manager.listMembersForGroup(METALAKE_NAME, GROUP_ID).stream()
+            .map(ScimGroupMemberPO::getUserName)
+            .collect(Collectors.toList()));
   }
 
   @ParameterizedTest
@@ -47,18 +47,16 @@ class TestScimUserGroupRelManager extends AbstractScimUserGroupRelManagerTest {
     insertUser(USER_ID + 1, "bob");
     insertGroup(GROUP_ID, GROUP_NAME);
     runManagerCall(
-        () ->
-            manager.addUsersToGroup(
-                METALAKE_NAME,
-                externalIdForGroup(GROUP_ID),
-                List.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1))));
+        () -> manager.addUsersToGroup(METALAKE_NAME, GROUP_ID, List.of(USER_ID, USER_ID + 1)));
 
-    manager.removeUsersFromGroup(
-        METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID)));
+    manager.removeUsersFromGroup(METALAKE_NAME, GROUP_ID, List.of(USER_ID));
 
     assertTrue(manager.listGroupNamesForUser(METALAKE_NAME, USERNAME).isEmpty());
     assertEquals(
-        List.of("bob"), manager.listUsernamesForGroup(METALAKE_NAME, externalIdForGroup(GROUP_ID)));
+        List.of("bob"),
+        manager.listMembersForGroup(METALAKE_NAME, GROUP_ID).stream()
+            .map(ScimGroupMemberPO::getUserName)
+            .collect(Collectors.toList()));
   }
 
   @ParameterizedTest
@@ -69,20 +67,16 @@ class TestScimUserGroupRelManager extends AbstractScimUserGroupRelManagerTest {
     insertUser(USER_ID, USERNAME);
     insertUser(USER_ID + 1, "bob");
     insertGroup(GROUP_ID, GROUP_NAME);
-    runManagerCall(
-        () ->
-            manager.addUsersToGroup(
-                METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID))));
+    runManagerCall(() -> manager.addUsersToGroup(METALAKE_NAME, GROUP_ID, List.of(USER_ID)));
 
     runManagerCall(
-        () ->
-            manager.replaceUsersInGroup(
-                METALAKE_NAME,
-                externalIdForGroup(GROUP_ID),
-                List.of(externalIdForUser(USER_ID + 1))));
+        () -> manager.replaceUsersInGroup(METALAKE_NAME, GROUP_ID, List.of(USER_ID + 1)));
 
     assertEquals(
-        List.of("bob"), manager.listUsernamesForGroup(METALAKE_NAME, externalIdForGroup(GROUP_ID)));
+        List.of("bob"),
+        manager.listMembersForGroup(METALAKE_NAME, GROUP_ID).stream()
+            .map(ScimGroupMemberPO::getUserName)
+            .collect(Collectors.toList()));
     assertTrue(manager.listGroupNamesForUser(METALAKE_NAME, USERNAME).isEmpty());
   }
 
@@ -93,10 +87,7 @@ class TestScimUserGroupRelManager extends AbstractScimUserGroupRelManagerTest {
     insertMetalakeForManager();
     insertUser(USER_ID, USERNAME);
 
-    runManagerCall(
-        () ->
-            manager.addUsersToGroup(
-                METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID))));
+    runManagerCall(() -> manager.addUsersToGroup(METALAKE_NAME, GROUP_ID, List.of(USER_ID)));
 
     assertTrue(manager.listGroupNamesForUser(METALAKE_NAME, USERNAME).isEmpty());
   }

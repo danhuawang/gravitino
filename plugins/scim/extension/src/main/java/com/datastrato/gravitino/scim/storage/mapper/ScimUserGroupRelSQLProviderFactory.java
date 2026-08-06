@@ -33,10 +33,9 @@ public class ScimUserGroupRelSQLProviderFactory {
 
   private ScimUserGroupRelSQLProviderFactory() {}
 
-  public static String selectMembersByGroupExternalId(
-      @Param("metalakeName") String metalakeName,
-      @Param("groupExternalId") String groupExternalId) {
-    return currentProvider().selectMembersByGroupExternalId(metalakeName, groupExternalId);
+  public static String selectMembersByGroupId(
+      @Param("metalakeName") String metalakeName, @Param("groupId") long groupId) {
+    return currentProvider().selectMembersByGroupId(metalakeName, groupId);
   }
 
   public static String selectGroupNamesByUsername(
@@ -46,37 +45,34 @@ public class ScimUserGroupRelSQLProviderFactory {
 
   public static String insertMemberships(
       @Param("metalakeName") String metalakeName,
-      @Param("groupExternalId") String groupExternalId,
-      @Param("userExternalIds") List<String> userExternalIds,
+      @Param("groupId") long groupId,
+      @Param("userIds") List<Long> userIds,
       @Param("auditInfo") String auditInfo,
       @Param("currentVersion") Long currentVersion,
       @Param("lastVersion") Long lastVersion) {
     return currentProvider()
-        .insertMemberships(
-            metalakeName, groupExternalId, userExternalIds, auditInfo, currentVersion, lastVersion);
+        .insertMemberships(metalakeName, groupId, userIds, auditInfo, currentVersion, lastVersion);
   }
 
-  public static String softDeleteMembersByUserExternalId(
-      @Param("metalakeName") String metalakeName, @Param("userExternalId") String userExternalId) {
-    return currentProvider().softDeleteMembersByUserExternalId(metalakeName, userExternalId);
+  public static String softDeleteMembersByUserId(
+      @Param("metalakeName") String metalakeName, @Param("userId") long userId) {
+    return currentProvider().softDeleteMembersByUserId(metalakeName, userId);
   }
 
-  public static String softDeleteMembersByGroupAndUserExternalIds(
+  public static String softDeleteMembersByGroupAndUserIds(
       @Param("metalakeName") String metalakeName,
-      @Param("groupExternalId") String groupExternalId,
-      @Param("userExternalIds") List<String> userExternalIds) {
-    return currentProvider()
-        .softDeleteMembersByGroupAndUserExternalIds(metalakeName, groupExternalId, userExternalIds);
+      @Param("groupId") long groupId,
+      @Param("userIds") List<Long> userIds) {
+    return currentProvider().softDeleteMembersByGroupAndUserIds(metalakeName, groupId, userIds);
   }
 
   public static String softDeleteMembersByUnavailableMetalake() {
     return currentProvider().softDeleteMembersByUnavailableMetalake();
   }
 
-  public static String softDeleteMembersByGroupExternalId(
-      @Param("metalakeName") String metalakeName,
-      @Param("groupExternalId") String groupExternalId) {
-    return currentProvider().softDeleteMembersByGroupExternalId(metalakeName, groupExternalId);
+  public static String softDeleteMembersByGroupId(
+      @Param("metalakeName") String metalakeName, @Param("groupId") long groupId) {
+    return currentProvider().softDeleteMembersByGroupId(metalakeName, groupId);
   }
 
   public static String deleteByLegacyTimeline(

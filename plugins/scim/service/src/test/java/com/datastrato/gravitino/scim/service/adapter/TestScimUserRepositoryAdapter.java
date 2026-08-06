@@ -6,8 +6,11 @@
 package com.datastrato.gravitino.scim.service.adapter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -27,6 +30,7 @@ import org.apache.directory.scim.spec.resources.ScimUser;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.User;
+import org.apache.gravitino.authorization.UserChange;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.junit.jupiter.api.AfterEach;
@@ -36,6 +40,7 @@ import org.junit.jupiter.api.Test;
 class TestScimUserRepositoryAdapter {
 
   private static final String METALAKE = "test_metalake";
+  private static final long USER_ID = 1L;
 
   private AccessControlDispatcher dispatcher;
   private ScimUserRepositoryAdapter adapter;
@@ -55,28 +60,42 @@ class TestScimUserRepositoryAdapter {
   }
 
   @Test
-  void testCreateNoExtId() {
-    assertThrows(ResourceException.class, () -> adapter.create(new ScimUser()));
+  void testCreateNoUserName() {
+    ResourceException exception =
+        assertThrows(ResourceException.class, () -> adapter.create(new ScimUser()));
+    assertEquals(400, exception.getStatus());
+  }
+
+  @Test
+  void testCreateWithoutExternalId() throws Exception {
+    User created = ScimServiceTestEntities.user(USER_ID, "alice", null, true);
+    when(dispatcher.addUser(METALAKE, "alice", null, true)).thenReturn(created);
+
+    ScimUser result = adapter.create(new ScimUser().setUserName("alice"));
+    assertEquals("1", result.getId());
+    assertNull(result.getExternalId());
+    verify(dispatcher).addUser(METALAKE, "alice", null, true);
   }
 
   @Test
   void testCreateAdd() throws Exception {
-    User created = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
+    User created = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
     when(dispatcher.addUser(METALAKE, "alice", "ext-1", true)).thenReturn(created);
 
     ScimUser result = adapter.create(new ScimUser().setExternalId("ext-1").setUserName("alice"));
-    assertEquals("ext-1", result.getId());
+    assertEquals("1", result.getId());
+    assertEquals("ext-1", result.getExternalId());
     verify(dispatcher).addUser(METALAKE, "alice", "ext-1", true);
   }
 
   @Test
   void testCreateAddInactive() throws Exception {
-    User created = ScimServiceTestEntities.user(1L, "alice", "ext-1", false);
+    User created = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", false);
     when(dispatcher.addUser(METALAKE, "alice", "ext-1", false)).thenReturn(created);
 
     ScimUser result =
         adapter.create(new ScimUser().setExternalId("ext-1").setUserName("alice").setActive(false));
-    assertEquals("ext-1", result.getId());
+    assertEquals("1", result.getId());
     assertEquals(Boolean.FALSE, result.getActive());
     verify(dispatcher).addUser(METALAKE, "alice", "ext-1", false);
   }
@@ -96,147 +115,145 @@ class TestScimUserRepositoryAdapter {
 
   @Test
   void testPatchActive() throws Exception {
-    User disabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", false);
-    when(dispatcher.disableUser(METALAKE, "ext-1")).thenReturn(disabled);
+    User disabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", false);
+    when(dispatcher.alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(false)))
+        .thenReturn(disabled);
 
     PatchOperation operation = new PatchOperation();
     operation.setOperation(PatchOperation.Type.REPLACE);
     operation.setValue(Boolean.FALSE);
-    ScimUser patched = adapter.patch("ext-1", null, List.of(operation), null, null);
+    ScimUser patched = adapter.patch("1", null, List.of(operation), null, null);
     assertEquals(Boolean.FALSE, patched.getActive());
+    verify(dispatcher).alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(false));
   }
 
   @Test
   void testPatchActivePath() throws Exception {
-    User enabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    when(dispatcher.enableUser(METALAKE, "ext-1")).thenReturn(enabled);
+    User enabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(true)))
+        .thenReturn(enabled);
 
     PatchOperation operation = new PatchOperation();
     operation.setOperation(PatchOperation.Type.REPLACE);
     operation.setPath(PatchOperationPath.fromString("active"));
     operation.setValue(Boolean.TRUE);
-    ScimUser patched = adapter.patch("ext-1", null, List.of(operation), null, null);
+    ScimUser patched = adapter.patch("1", null, List.of(operation), null, null);
     assertEquals(Boolean.TRUE, patched.getActive());
+    verify(dispatcher).alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(true));
   }
 
   @Test
   void testPatchActivePathStr() throws Exception {
-    User disabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", false);
-    when(dispatcher.disableUser(METALAKE, "ext-1")).thenReturn(disabled);
+    User disabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", false);
+    when(dispatcher.alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(false)))
+        .thenReturn(disabled);
 
     PatchOperation operation = new PatchOperation();
     operation.setOperation(PatchOperation.Type.REPLACE);
     operation.setPath(PatchOperationPath.fromString("active"));
     operation.setValue("false");
-    ScimUser patched = adapter.patch("ext-1", null, List.of(operation), null, null);
+    ScimUser patched = adapter.patch("1", null, List.of(operation), null, null);
     assertEquals(Boolean.FALSE, patched.getActive());
+    verify(dispatcher).alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(false));
   }
 
   @Test
   void testUpdateDisable() throws Exception {
-    User enabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    User disabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", false);
-    when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(enabled);
-    when(dispatcher.disableUser(METALAKE, "ext-1")).thenReturn(disabled);
+    User enabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    User disabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", false);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(enabled);
+    when(dispatcher.alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(false)))
+        .thenReturn(disabled);
 
     ScimUser updated =
         adapter.update(
-            "ext-1",
+            "1",
             null,
-            new ScimUser()
-                .setId("ext-1")
-                .setExternalId("ext-1")
-                .setUserName("alice")
-                .setActive(false),
+            new ScimUser().setId("1").setExternalId("ext-1").setUserName("alice").setActive(false),
             null,
             null);
 
     assertEquals(Boolean.FALSE, updated.getActive());
-    verify(dispatcher).disableUser(METALAKE, "ext-1");
-    verify(dispatcher, never()).enableUser(any(), any());
+    verify(dispatcher).alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(false));
+    verify(dispatcher, never())
+        .alterUserById(eq(METALAKE), eq(USER_ID), eq(UserChange.updateEnabled(true)));
   }
 
   @Test
   void testUpdateEnable() throws Exception {
-    User disabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", false);
-    User enabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(disabled);
-    when(dispatcher.enableUser(METALAKE, "ext-1")).thenReturn(enabled);
+    User disabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", false);
+    User enabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(disabled);
+    when(dispatcher.alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(true)))
+        .thenReturn(enabled);
 
     ScimUser updated =
-        adapter.update(
-            "ext-1", null, new ScimUser().setUserName("alice").setActive(true), null, null);
+        adapter.update("1", null, new ScimUser().setUserName("alice").setActive(true), null, null);
 
     assertEquals(Boolean.TRUE, updated.getActive());
-    verify(dispatcher).enableUser(METALAKE, "ext-1");
+    verify(dispatcher).alterUserById(METALAKE, USER_ID, UserChange.updateEnabled(true));
   }
 
   @Test
   void testUpdateSameActive() throws Exception {
-    User enabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(enabled);
+    User enabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(enabled);
 
     ScimUser updated =
-        adapter.update(
-            "ext-1", null, new ScimUser().setUserName("alice").setActive(true), null, null);
+        adapter.update("1", null, new ScimUser().setUserName("alice").setActive(true), null, null);
 
     assertEquals(Boolean.TRUE, updated.getActive());
-    verify(dispatcher, never()).enableUser(any(), any());
-    verify(dispatcher, never()).disableUser(any(), any());
+    verify(dispatcher, never()).alterUserById(anyString(), anyLong(), any());
   }
 
   @Test
   void testUpdateNoActive() throws Exception {
-    User enabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(enabled);
+    User enabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(enabled);
 
-    ScimUser updated =
-        adapter.update("ext-1", null, new ScimUser().setUserName("alice"), null, null);
+    ScimUser updated = adapter.update("1", null, new ScimUser().setUserName("alice"), null, null);
 
     assertEquals(Boolean.TRUE, updated.getActive());
-    verify(dispatcher, never()).enableUser(any(), any());
-    verify(dispatcher, never()).disableUser(any(), any());
+    verify(dispatcher, never()).alterUserById(anyString(), anyLong(), any());
   }
 
   @Test
   void testUpdateNoUserName() throws Exception {
-    User enabled = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(enabled);
+    User enabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(enabled);
 
-    ScimUser updated = adapter.update("ext-1", null, new ScimUser().setActive(true), null, null);
+    ScimUser updated = adapter.update("1", null, new ScimUser().setActive(true), null, null);
 
     assertEquals("alice", updated.getUserName());
-    verify(dispatcher, never()).enableUser(any(), any());
-    verify(dispatcher, never()).disableUser(any(), any());
+    verify(dispatcher, never()).alterUserById(anyString(), anyLong(), any());
   }
 
   @Test
   void testUpdateRename400() throws Exception {
-    User user = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(user);
+    User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(user);
 
     ResourceException exception =
         assertThrows(
             ResourceException.class,
             () ->
                 adapter.update(
-                    "ext-1", null, new ScimUser().setUserName("bob").setActive(true), null, null));
+                    "1", null, new ScimUser().setUserName("bob").setActive(true), null, null));
     assertEquals(400, exception.getStatus());
-    verify(dispatcher, never()).enableUser(any(), any());
-    verify(dispatcher, never()).disableUser(any(), any());
+    verify(dispatcher, never()).alterUserById(anyString(), anyLong(), any());
   }
 
   @Test
   void testUpdateExtId400() throws Exception {
-    User user = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(user);
+    User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(user);
 
     ResourceException exception =
         assertThrows(
             ResourceException.class,
             () ->
                 adapter.update(
-                    "ext-1",
+                    "1",
                     null,
                     new ScimUser().setExternalId("other-ext").setUserName("alice").setActive(true),
                     null,
@@ -246,15 +263,15 @@ class TestScimUserRepositoryAdapter {
 
   @Test
   void testUpdateId400() throws Exception {
-    User user = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
-    when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(user);
+    User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(user);
 
     ResourceException exception =
         assertThrows(
             ResourceException.class,
             () ->
                 adapter.update(
-                    "ext-1",
+                    "1",
                     null,
                     new ScimUser().setId("other-id").setUserName("alice").setActive(true),
                     null,
@@ -264,34 +281,33 @@ class TestScimUserRepositoryAdapter {
 
   @Test
   void testUpdate404() {
-    when(dispatcher.getUserByExternalId(METALAKE, "missing"))
-        .thenThrow(new NoSuchUserException("missing"));
+    when(dispatcher.getUserById(METALAKE, 999L)).thenThrow(new NoSuchUserException("999"));
 
     ResourceException exception =
         assertThrows(
             ResourceException.class,
-            () -> adapter.update("missing", null, new ScimUser().setUserName("alice"), null, null));
+            () -> adapter.update("999", null, new ScimUser().setUserName("alice"), null, null));
     assertEquals(404, exception.getStatus());
   }
 
   @Test
   void testDelete() throws Exception {
-    when(dispatcher.removeUserByExternalId(METALAKE, "ext-1")).thenReturn(true);
-    adapter.delete("ext-1");
-    verify(dispatcher).removeUserByExternalId(eq(METALAKE), eq("ext-1"));
+    when(dispatcher.removeUserById(METALAKE, USER_ID)).thenReturn(true);
+    adapter.delete("1");
+    verify(dispatcher).removeUserById(eq(METALAKE), eq(USER_ID));
   }
 
   @Test
   void testDelete404() {
-    when(dispatcher.removeUserByExternalId(METALAKE, "missing")).thenReturn(false);
+    when(dispatcher.removeUserById(METALAKE, 999L)).thenReturn(false);
     ResourceException exception =
-        assertThrows(ResourceException.class, () -> adapter.delete("missing"));
+        assertThrows(ResourceException.class, () -> adapter.delete("999"));
     assertEquals(404, exception.getStatus());
   }
 
   @Test
   void testFindAndMismatch() throws Exception {
-    User user = ScimServiceTestEntities.user(1L, "bob", "ext-1", true);
+    User user = ScimServiceTestEntities.user(USER_ID, "bob", "ext-1", true);
     when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(user);
 
     var response =
@@ -306,7 +322,7 @@ class TestScimUserRepositoryAdapter {
 
   @Test
   void testFindByUserName() throws Exception {
-    User user = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
+    User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
     when(dispatcher.getUser(METALAKE, "alice")).thenReturn(user);
 
     var response =
@@ -316,11 +332,12 @@ class TestScimUserRepositoryAdapter {
             null);
     assertEquals(1, response.getTotalResults());
     assertEquals("alice", response.getResources().iterator().next().getUserName());
+    assertEquals("1", response.getResources().iterator().next().getId());
   }
 
   @Test
   void testFindByExtId() throws Exception {
-    User user = ScimServiceTestEntities.user(1L, "alice", "ext-1", true);
+    User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
     when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(user);
 
     var response =
@@ -329,14 +346,14 @@ class TestScimUserRepositoryAdapter {
             new PageRequest().setStartIndex(1).setCount(10),
             null);
     assertEquals(1, response.getTotalResults());
-    assertEquals("ext-1", response.getResources().iterator().next().getId());
+    assertEquals("1", response.getResources().iterator().next().getId());
+    assertEquals("ext-1", response.getResources().iterator().next().getExternalId());
   }
 
   @Test
   void testGet404() throws Exception {
-    when(dispatcher.getUserByExternalId(eq(METALAKE), eq("missing")))
-        .thenThrow(new NoSuchUserException("missing"));
-    assertThrows(ResourceException.class, () -> adapter.get("missing"));
+    when(dispatcher.getUserById(eq(METALAKE), eq(999L))).thenThrow(new NoSuchUserException("999"));
+    assertThrows(ResourceException.class, () -> adapter.get("999"));
   }
 
   @Test

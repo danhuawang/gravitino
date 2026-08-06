@@ -24,6 +24,6 @@ import lombok.ToString;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder(setterPrefix = "with")
 public class ScimGroupMemberPO {
-  private String externalId;
+  private Long userId;
   private String userName;
 }

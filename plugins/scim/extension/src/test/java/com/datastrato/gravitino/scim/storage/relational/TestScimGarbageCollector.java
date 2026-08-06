@@ -89,25 +89,12 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
     insertMetalake();
     insertUserAndGroup();
     scimUserGroupRelMapper()
-        .insertMemberships(
-            METALAKE_NAME,
-            externalIdForGroup(GROUP_ID),
-            List.of(externalIdForUser(USER_ID)),
-            "{}",
-            1L,
-            0L);
+        .insertMemberships(METALAKE_NAME, GROUP_ID, List.of(USER_ID), "{}", 1L, 0L);
     scimUserGroupRelMapper()
-        .softDeleteMembersByGroupAndUserExternalIds(
-            METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID)));
+        .softDeleteMembersByGroupAndUserIds(METALAKE_NAME, GROUP_ID, List.of(USER_ID));
     updateLegacyDeletedAt(System.currentTimeMillis() - 700_000L);
     scimUserGroupRelMapper()
-        .insertMemberships(
-            METALAKE_NAME,
-            externalIdForGroup(GROUP_ID),
-            List.of(externalIdForUser(USER_ID)),
-            "{}",
-            1L,
-            0L);
+        .insertMemberships(METALAKE_NAME, GROUP_ID, List.of(USER_ID), "{}", 1L, 0L);
 
     getConfig().set(STORE_DELETE_AFTER_TIME, 600_000L);
     closeSession();
@@ -121,10 +108,7 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
 
     reopenSession();
     assertEquals(
-        1,
-        scimUserGroupRelMapper()
-            .selectMembersByGroupExternalId(METALAKE_NAME, externalIdForGroup(GROUP_ID))
-            .size());
+        1, scimUserGroupRelMapper().selectMembersByGroupId(METALAKE_NAME, GROUP_ID).size());
   }
 
   @ParameterizedTest
@@ -232,24 +216,12 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
     insertMetalake();
     insertUserAndGroup();
     scimUserGroupRelMapper()
-        .insertMemberships(
-            METALAKE_NAME,
-            externalIdForGroup(GROUP_ID),
-            List.of(externalIdForUser(USER_ID)),
-            "{}",
-            1L,
-            0L);
+        .insertMemberships(METALAKE_NAME, GROUP_ID, List.of(USER_ID), "{}", 1L, 0L);
 
     insertMetalake(deletedMetalakeId, "deleted_metalake");
     insertUserAndGroup(deletedMetalakeId, USER_ID + 1, "bob", GROUP_ID + 1, "orphan-group");
     scimUserGroupRelMapper()
-        .insertMemberships(
-            "deleted_metalake",
-            externalIdForGroup(GROUP_ID + 1),
-            List.of(externalIdForUser(USER_ID + 1)),
-            "{}",
-            1L,
-            0L);
+        .insertMemberships("deleted_metalake", GROUP_ID + 1, List.of(USER_ID + 1), "{}", 1L, 0L);
     softDeleteMetalake(deletedMetalakeId);
 
     closeSession();
@@ -263,15 +235,10 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
 
     reopenSession();
     assertEquals(
-        1,
-        scimUserGroupRelMapper()
-            .selectMembersByGroupExternalId(METALAKE_NAME, externalIdForGroup(GROUP_ID))
-            .size());
+        1, scimUserGroupRelMapper().selectMembersByGroupId(METALAKE_NAME, GROUP_ID).size());
     assertEquals(
         0,
-        scimUserGroupRelMapper()
-            .selectMembersByGroupExternalId("deleted_metalake", externalIdForGroup(GROUP_ID + 1))
-            .size());
+        scimUserGroupRelMapper().selectMembersByGroupId("deleted_metalake", GROUP_ID + 1).size());
   }
 
   private ScimTokenMetaMapper scimTokenMetaMapper() {

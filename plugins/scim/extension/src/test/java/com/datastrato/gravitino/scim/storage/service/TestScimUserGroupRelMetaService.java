@@ -33,9 +33,7 @@ class TestScimUserGroupRelMetaService extends AbstractScimUserGroupRelMetaServic
 
     assertEquals(
         List.of(GROUP_NAME), metaService.listGroupNamesByUsername(USERNAME, METALAKE_NAME));
-    assertEquals(
-        Set.of(externalIdForUser(USER_ID), externalIdForUser(USER_ID + 1)),
-        memberExternalIdsForGroup(GROUP_ID));
+    assertEquals(Set.of(USER_ID, USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
   }
 
   @ParameterizedTest
@@ -49,20 +47,14 @@ class TestScimUserGroupRelMetaService extends AbstractScimUserGroupRelMetaServic
 
     runServiceCall(
         () ->
-            metaService.insertMemberships(
-                METALAKE_NAME,
-                externalIdForGroup(GROUP_ID),
-                List.of(externalIdForUser(USER_ID)),
-                "{}",
-                1L,
-                0L));
-    assertEquals(Set.of(externalIdForUser(USER_ID)), memberExternalIdsForGroup(GROUP_ID));
+            metaService.insertMemberships(METALAKE_NAME, GROUP_ID, List.of(USER_ID), "{}", 1L, 0L));
+    assertEquals(Set.of(USER_ID), memberUserIdsForGroup(GROUP_ID));
 
     runServiceCall(
         () ->
-            metaService.softDeleteMembersByGroupAndUserExternalIds(
-                METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID))));
-    assertTrue(memberExternalIdsForGroup(GROUP_ID).isEmpty());
+            metaService.softDeleteMembersByGroupAndUserIds(
+                METALAKE_NAME, GROUP_ID, List.of(USER_ID)));
+    assertTrue(memberUserIdsForGroup(GROUP_ID).isEmpty());
   }
 
   @ParameterizedTest
@@ -75,10 +67,7 @@ class TestScimUserGroupRelMetaService extends AbstractScimUserGroupRelMetaServic
     insertMembership(USER_ID, GROUP_ID);
     ScimUserGroupRelMetaService metaService = ScimUserGroupRelMetaService.getInstance();
 
-    runServiceCall(
-        () ->
-            metaService.softDeleteMembersByUserExternalId(
-                METALAKE_NAME, externalIdForUser(USER_ID)));
+    runServiceCall(() -> metaService.softDeleteMembersByUserId(METALAKE_NAME, USER_ID));
     assertTrue(metaService.listGroupNamesByUsername(USERNAME, METALAKE_NAME).isEmpty());
   }
 
@@ -95,15 +84,10 @@ class TestScimUserGroupRelMetaService extends AbstractScimUserGroupRelMetaServic
 
     runServiceCall(
         () ->
-            metaService.replaceMembersByGroupExternalId(
-                METALAKE_NAME,
-                externalIdForGroup(GROUP_ID),
-                List.of(externalIdForUser(USER_ID + 1)),
-                "{}",
-                1L,
-                0L));
+            metaService.replaceMembersByGroupId(
+                METALAKE_NAME, GROUP_ID, List.of(USER_ID + 1), "{}", 1L, 0L));
 
-    assertEquals(Set.of(externalIdForUser(USER_ID + 1)), memberExternalIdsForGroup(GROUP_ID));
+    assertEquals(Set.of(USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
   }
 
   @ParameterizedTest
@@ -114,14 +98,14 @@ class TestScimUserGroupRelMetaService extends AbstractScimUserGroupRelMetaServic
     insertUser(USER_ID, USERNAME);
     insertGroup(GROUP_ID, GROUP_NAME);
     insertMembership(USER_ID, GROUP_ID);
-    scimUserGroupRelMapper.softDeleteMembersByGroupAndUserExternalIds(
-        METALAKE_NAME, externalIdForGroup(GROUP_ID), List.of(externalIdForUser(USER_ID)));
+    scimUserGroupRelMapper.softDeleteMembersByGroupAndUserIds(
+        METALAKE_NAME, GROUP_ID, List.of(USER_ID));
     insertMembership(USER_ID, GROUP_ID);
     ScimUserGroupRelMetaService metaService = ScimUserGroupRelMetaService.getInstance();
 
     closeSession();
     assertEquals(1, metaService.deleteScimUserGroupRelMetasByLegacyTimeline(Long.MAX_VALUE, 1));
     refreshSession();
-    assertEquals(Set.of(externalIdForUser(USER_ID)), memberExternalIdsForGroup(GROUP_ID));
+    assertEquals(Set.of(USER_ID), memberUserIdsForGroup(GROUP_ID));
   }
 }

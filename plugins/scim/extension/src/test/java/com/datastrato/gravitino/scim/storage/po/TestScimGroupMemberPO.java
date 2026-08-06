@@ -13,17 +13,11 @@ class TestScimGroupMemberPO {
   @Test
   void testBuilderAndEquality() {
     ScimGroupMemberPO member =
-        ScimGroupMemberPO.builder()
-            .withExternalId("756b18d2-023a-4fa8-845e-9ac8b524100f")
-            .withUserName("alice@corp.com")
-            .build();
+        ScimGroupMemberPO.builder().withUserId(100L).withUserName("alice@corp.com").build();
     ScimGroupMemberPO sameMember =
-        ScimGroupMemberPO.builder()
-            .withExternalId("756b18d2-023a-4fa8-845e-9ac8b524100f")
-            .withUserName("alice@corp.com")
-            .build();
+        ScimGroupMemberPO.builder().withUserId(100L).withUserName("alice@corp.com").build();
 
-    Assertions.assertEquals("756b18d2-023a-4fa8-845e-9ac8b524100f", member.getExternalId());
+    Assertions.assertEquals(100L, member.getUserId());
     Assertions.assertEquals("alice@corp.com", member.getUserName());
     Assertions.assertEquals(member, sameMember);
   }

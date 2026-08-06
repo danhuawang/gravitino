@@ -15,7 +15,6 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.storage.relational.utils.POConverters;
@@ -69,19 +68,15 @@ public class ScimUserGroupRelManager implements Closeable {
   }
 
   /**
-   * Lists active usernames for a group in the given metalake.
+   * Lists active members for a group in the given metalake.
    *
    * @param metalakeName target metalake name
-   * @param groupExternalId SCIM group {@code externalId}
-   * @return usernames sorted alphabetically
+   * @param groupId Gravitino group id
+   * @return active members sorted by username
    */
-  public List<String> listUsernamesForGroup(String metalakeName, String groupExternalId) {
-    validateGroupExternalId(groupExternalId);
-    return USER_GROUP_REL_META_SERVICE
-        .listMembersByGroupExternalId(metalakeName, groupExternalId)
-        .stream()
-        .map(ScimGroupMemberPO::getUserName)
-        .sorted()
+  public List<ScimGroupMemberPO> listMembersForGroup(String metalakeName, long groupId) {
+    return USER_GROUP_REL_META_SERVICE.listMembersByGroupId(metalakeName, groupId).stream()
+        .sorted((left, right) -> left.getUserName().compareTo(right.getUserName()))
         .collect(Collectors.toList());
   }
 
@@ -89,15 +84,13 @@ public class ScimUserGroupRelManager implements Closeable {
    * Adds users to a group without removing existing members.
    *
    * @param metalakeName target metalake name
-   * @param groupExternalId SCIM group {@code externalId}
-   * @param userExternalIds SCIM member ids from PATCH {@code members[].value}
+   * @param groupId Gravitino group id
+   * @param userIds Gravitino user ids from PATCH {@code members[].value}
    * @throws IOException if persistence fails
    */
-  public void addUsersToGroup(
-      String metalakeName, String groupExternalId, List<String> userExternalIds)
+  public void addUsersToGroup(String metalakeName, long groupId, List<Long> userIds)
       throws IOException {
-    validateGroupExternalId(groupExternalId);
-    if (userExternalIds == null || userExternalIds.isEmpty()) {
+    if (userIds == null || userIds.isEmpty()) {
       return;
     }
 
@@ -108,8 +101,8 @@ public class ScimUserGroupRelManager implements Closeable {
             .build();
     USER_GROUP_REL_META_SERVICE.insertMemberships(
         metalakeName,
-        groupExternalId,
-        userExternalIds,
+        groupId,
+        userIds,
         ScimPOConverters.serializeAuditInfo(auditInfo),
         POConverters.INIT_VERSION,
         POConverters.INIT_VERSION);
@@ -119,41 +112,36 @@ public class ScimUserGroupRelManager implements Closeable {
    * Removes users from a group.
    *
    * @param metalakeName target metalake name
-   * @param groupExternalId SCIM group {@code externalId}
-   * @param userExternalIds SCIM member ids from PATCH {@code members[].value}
+   * @param groupId Gravitino group id
+   * @param userIds Gravitino user ids from PATCH {@code members[].value}
    */
-  public void removeUsersFromGroup(
-      String metalakeName, String groupExternalId, List<String> userExternalIds) {
-    validateGroupExternalId(groupExternalId);
-    if (userExternalIds == null || userExternalIds.isEmpty()) {
+  public void removeUsersFromGroup(String metalakeName, long groupId, List<Long> userIds) {
+    if (userIds == null || userIds.isEmpty()) {
       return;
     }
 
-    USER_GROUP_REL_META_SERVICE.softDeleteMembersByGroupAndUserExternalIds(
-        metalakeName, groupExternalId, userExternalIds);
+    USER_GROUP_REL_META_SERVICE.softDeleteMembersByGroupAndUserIds(metalakeName, groupId, userIds);
   }
 
   /**
    * Replaces the full membership set for a group.
    *
    * @param metalakeName target metalake name
-   * @param groupExternalId SCIM group {@code externalId}
-   * @param userExternalIds SCIM member ids from PATCH Replace
+   * @param groupId Gravitino group id
+   * @param userIds Gravitino user ids from PATCH Replace
    * @throws IOException if persistence fails
    */
-  public void replaceUsersInGroup(
-      String metalakeName, String groupExternalId, List<String> userExternalIds)
+  public void replaceUsersInGroup(String metalakeName, long groupId, List<Long> userIds)
       throws IOException {
-    validateGroupExternalId(groupExternalId);
     AuditInfo auditInfo =
         AuditInfo.builder()
             .withCreator(PrincipalUtils.getCurrentPrincipal().getName())
             .withCreateTime(Instant.now())
             .build();
-    USER_GROUP_REL_META_SERVICE.replaceMembersByGroupExternalId(
+    USER_GROUP_REL_META_SERVICE.replaceMembersByGroupId(
         metalakeName,
-        groupExternalId,
-        userExternalIds == null ? List.of() : userExternalIds,
+        groupId,
+        userIds == null ? List.of() : userIds,
         ScimPOConverters.serializeAuditInfo(auditInfo),
         POConverters.INIT_VERSION,
         POConverters.INIT_VERSION);
@@ -162,10 +150,5 @@ public class ScimUserGroupRelManager implements Closeable {
   @Override
   public void close() throws IOException {
     relationalStorage.close();
-  }
-
-  private static void validateGroupExternalId(String groupExternalId) {
-    Preconditions.checkArgument(
-        StringUtils.isNotBlank(groupExternalId), "groupExternalId is required");
   }
 }
