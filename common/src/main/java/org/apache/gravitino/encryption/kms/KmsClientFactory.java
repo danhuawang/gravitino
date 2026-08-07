@@ -40,14 +40,17 @@ public interface KmsClientFactory {
    *
    * <p>Provider credentials are private implementation details of the returned client. They must
    * not be exposed as Gravitino credentials or key properties. The caller owns the returned client
-   * and must close it. This method validates configuration and constructs a reusable client without
-   * contacting the configured KMS; network and authentication failures are reported by client
-   * operations.
+   * and must close it. This method validates configuration, may resolve locally supplied
+   * credentials, and constructs a reusable client without contacting the configured KMS. Local
+   * credential-resolution failures may be reported during creation; remote network and
+   * authentication failures are reported by client operations.
    *
    * @param source logical name of the configured KMS instance
    * @param properties provider-specific configuration
    * @return the configured client
    * @throws IllegalArgumentException if the source or configuration is invalid
+   * @throws KmsAuthenticationException if a locally supplied configured credential cannot be
+   *     resolved during initialization
    */
   KmsClient create(String source, Map<String, String> properties);
 }

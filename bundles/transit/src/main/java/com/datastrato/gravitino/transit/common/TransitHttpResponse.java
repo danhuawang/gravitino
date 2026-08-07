@@ -6,8 +6,8 @@ package com.datastrato.gravitino.transit.common;
 
 import java.util.Arrays;
 
-/** Immutable internal response returned by the shared Transit connection. */
-final class TransitHttpResponse {
+/** Immutable bounded response returned to typed Transit capability layers. */
+public final class TransitHttpResponse {
 
   private final int statusCode;
   private final byte[] body;
@@ -22,7 +22,7 @@ final class TransitHttpResponse {
    *
    * @return HTTP status code
    */
-  int statusCode() {
+  public int statusCode() {
     return statusCode;
   }
 
@@ -31,7 +31,7 @@ final class TransitHttpResponse {
    *
    * @return response body bytes
    */
-  byte[] body() {
+  public byte[] body() {
     return Arrays.copyOf(body, body.length);
   }
 }
