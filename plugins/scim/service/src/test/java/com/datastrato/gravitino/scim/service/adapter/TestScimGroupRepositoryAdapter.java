@@ -34,6 +34,7 @@ import org.apache.directory.scim.spec.resources.ScimGroup;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.Group;
+import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.junit.jupiter.api.AfterEach;
@@ -56,6 +57,7 @@ class TestScimGroupRepositoryAdapter {
     scimConfig = new ScimConfig(Map.of(), new Config() {});
     dispatcher = mock(AccessControlDispatcher.class);
     membershipManager = mock(ScimUserGroupRelManager.class);
+    when(dispatcher.listGroups(METALAKE)).thenReturn(new Group[0]);
     adapter = new ScimGroupRepositoryAdapter(dispatcher, membershipManager, scimConfig);
     ScimMetalakeContext.setMetalake(METALAKE);
   }
@@ -98,6 +100,23 @@ class TestScimGroupRepositoryAdapter {
     assertEquals(409, exception.getStatus());
     assertEquals(
         "Group already exists: displayName=engineers, externalId=ext-g1", exception.getMessage());
+  }
+
+  @Test
+  void testCreateConflictIgnoreCase409() throws Exception {
+    Group existing = ScimServiceTestEntities.group(GROUP_ID, "engineers", "ext-g1");
+    when(dispatcher.listGroups(METALAKE)).thenReturn(new Group[] {existing});
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () ->
+                adapter.create(
+                    new ScimGroup().setExternalId("ext-g2").setDisplayName("Engineers")));
+    assertEquals(409, exception.getStatus());
+    assertEquals(
+        "Group already exists: displayName=Engineers, externalId=ext-g2", exception.getMessage());
+    verify(dispatcher, never()).addGroup(anyString(), anyString(), anyString());
   }
 
   @Test
@@ -173,6 +192,155 @@ class TestScimGroupRepositoryAdapter {
   }
 
   @Test
+  void testPatchMembersRemoveByValueFilter() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REMOVE);
+    operation.setPath(PatchOperationPath.fromString("members[value eq \"3\"]"));
+
+    ScimGroup patched = adapter.patch("2", null, List.of(operation), null, null);
+    assertEquals("2", patched.getId());
+    verify(membershipManager)
+        .removeUsersFromGroup(eq(METALAKE), eq(GROUP_ID), eq(List.of(USER_ID)));
+  }
+
+  @Test
+  void testPatchMembersReplaceByValueFilter() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+    when(membershipManager.replaceMemberUserInGroup(METALAKE, GROUP_ID, USER_ID, 4L))
+        .thenReturn(true);
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setPath(PatchOperationPath.fromString("members[value eq \"3\"]"));
+    operation.setValue(new GroupMembership().setValue("4"));
+
+    ScimGroup patched = adapter.patch("2", null, List.of(operation), null, null);
+    assertEquals("2", patched.getId());
+    verify(membershipManager).replaceMemberUserInGroup(METALAKE, GROUP_ID, USER_ID, 4L);
+    verify(membershipManager, never()).replaceUsersInGroup(anyString(), anyLong(), any());
+  }
+
+  @Test
+  void testPatchMembersReplaceByValueFilterMissing404() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+    when(membershipManager.replaceMemberUserInGroup(METALAKE, GROUP_ID, USER_ID, 4L))
+        .thenReturn(false);
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setPath(PatchOperationPath.fromString("members[value eq \"3\"]"));
+    operation.setValue(Map.of("value", "4"));
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () -> adapter.patch("2", null, List.of(operation), null, null));
+    assertEquals(404, exception.getStatus());
+  }
+
+  @Test
+  void testPatchReplaceExternalId() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    Group updated = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-2");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+    when(dispatcher.alterGroupById(eq(METALAKE), eq(GROUP_ID), any())).thenReturn(updated);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("externalId", "group-2"));
+
+    ScimGroup patched = adapter.patch("2", null, List.of(operation), null, null);
+    assertEquals("group-2", patched.getExternalId());
+    verify(dispatcher).alterGroupById(eq(METALAKE), eq(GROUP_ID), any());
+  }
+
+  @Test
+  void testPatchReplaceExternalIdByPath() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    Group updated = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-2");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+    when(dispatcher.alterGroupById(eq(METALAKE), eq(GROUP_ID), any())).thenReturn(updated);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setPath(PatchOperationPath.fromString("externalId"));
+    operation.setValue("group-2");
+
+    ScimGroup patched = adapter.patch("2", null, List.of(operation), null, null);
+    assertEquals("group-2", patched.getExternalId());
+    verify(dispatcher).alterGroupById(eq(METALAKE), eq(GROUP_ID), any());
+  }
+
+  @Test
+  void testPatchUnchangedExternalIdSkipsAlter() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("externalId", "group-1"));
+
+    ScimGroup patched = adapter.patch("2", null, List.of(operation), null, null);
+    assertEquals("group-1", patched.getExternalId());
+    verify(dispatcher, never()).alterGroupById(anyString(), anyLong(), any());
+  }
+
+  @Test
+  void testPatchRenameDisplayName400() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("displayName", "renamed"));
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () -> adapter.patch("2", null, List.of(operation), null, null));
+    assertEquals(400, exception.getStatus());
+    assertEquals("Group displayName is immutable", exception.getMessage());
+  }
+
+  @Test
+  void testPatchDisplayNameCaseOnlyNoOp() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("displayName", "Engineering"));
+
+    ScimGroup patched = adapter.patch("2", null, List.of(operation), null, null);
+    assertEquals("engineering", patched.getDisplayName());
+  }
+
+  @Test
+  void testFindByDisplayNameIgnoreCaseMiss() throws Exception {
+    Group group = ScimServiceTestEntities.group(1L, "Engineers", "ext-g1");
+    when(dispatcher.getGroup(METALAKE, "ops")).thenThrow(new NoSuchGroupException("ops"));
+    when(dispatcher.listGroups(METALAKE)).thenReturn(new Group[] {group});
+
+    var response =
+        adapter.find(
+            Filter.decode("displayName eq \"ops\""),
+            new PageRequest().setStartIndex(1).setCount(10),
+            null);
+    assertEquals(0, response.getTotalResults());
+  }
+
+  @Test
   void testPatchMembersReplace() throws Exception {
     Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
     when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
@@ -196,11 +364,31 @@ class TestScimGroupRepositoryAdapter {
 
     PatchOperation operation = new PatchOperation();
     operation.setOperation(PatchOperation.Type.REPLACE);
-    operation.setPath(PatchOperationPath.fromString("displayName"));
+    operation.setPath(PatchOperationPath.fromString("roles"));
     operation.setValue("other");
 
-    assertThrows(
-        ResourceException.class, () -> adapter.patch("2", null, List.of(operation), null, null));
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () -> adapter.patch("2", null, List.of(operation), null, null));
+    assertEquals(400, exception.getStatus());
+  }
+
+  @Test
+  void testFindByDisplayNameIgnoreCase() throws Exception {
+    Group group = ScimServiceTestEntities.group(1L, "Engineers", "ext-g1");
+    when(dispatcher.getGroup(METALAKE, "engineers"))
+        .thenThrow(new NoSuchGroupException("engineers"));
+    when(dispatcher.listGroups(METALAKE)).thenReturn(new Group[] {group});
+    when(membershipManager.listMembersForGroup(METALAKE, 1L)).thenReturn(List.of());
+
+    var response =
+        adapter.find(
+            Filter.decode("displayName eq \"engineers\""),
+            new PageRequest().setStartIndex(1).setCount(10),
+            null);
+    assertEquals(1, response.getTotalResults());
+    assertEquals("Engineers", response.getResources().iterator().next().getDisplayName());
   }
 
   @Test
@@ -262,6 +450,24 @@ class TestScimGroupRepositoryAdapter {
             "2",
             null,
             new ScimGroup().setDisplayName("engineering").setMembers(List.of()),
+            null,
+            null);
+
+    assertEquals("engineering", updated.getDisplayName());
+    verify(membershipManager).replaceUsersInGroup(eq(METALAKE), eq(GROUP_ID), eq(List.of()));
+  }
+
+  @Test
+  void testUpdateDisplayNameCaseOnlyNoOp() throws Exception {
+    Group group = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-1");
+    when(dispatcher.getGroupById(METALAKE, GROUP_ID)).thenReturn(group);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    ScimGroup updated =
+        adapter.update(
+            "2",
+            null,
+            new ScimGroup().setDisplayName("Engineering").setMembers(List.of()),
             null,
             null);
 
@@ -421,9 +627,29 @@ class TestScimGroupRepositoryAdapter {
 
   @Test
   void testFindEmpty() throws Exception {
+    when(dispatcher.listGroups(METALAKE, 0, 10)).thenReturn(new PagedResult<>(0, List.of()));
     var response = adapter.find(null, new PageRequest().setStartIndex(1).setCount(10), null);
     assertEquals(0, response.getTotalResults());
     assertEquals(0, response.getResources().size());
+    verify(dispatcher).listGroups(METALAKE, 0, 10);
+  }
+
+  @Test
+  void testFindUnfilteredPaged() throws Exception {
+    Group engineers = ScimServiceTestEntities.group(GROUP_ID, "engineers", "ext-g1");
+    Group ops = ScimServiceTestEntities.group(4L, "ops", "ext-g2");
+    when(dispatcher.listGroups(METALAKE, 0, 10))
+        .thenReturn(new PagedResult<>(2, List.of(engineers, ops)));
+    when(membershipManager.listMembersForGroup(anyString(), anyLong())).thenReturn(List.of());
+
+    var response = adapter.find(null, new PageRequest().setStartIndex(1).setCount(10), null);
+
+    assertEquals(2, response.getTotalResults());
+    assertEquals(2, response.getResources().size());
+    var groups = response.getResources().toArray(new ScimGroup[0]);
+    assertEquals("engineers", groups[0].getDisplayName());
+    assertEquals("ops", groups[1].getDisplayName());
+    verify(dispatcher).listGroups(METALAKE, 0, 10);
   }
 
   @Test

@@ -147,6 +147,36 @@ public class ScimUserGroupRelManager implements Closeable {
         POConverters.INIT_VERSION);
   }
 
+  /**
+   * Replaces one membership entry's user id (A → B) when B exists in {@code user_meta}.
+   *
+   * @param metalakeName target metalake name
+   * @param groupId Gravitino group id
+   * @param oldUserId current member user id from {@code members[value eq "..."]}
+   * @param newUserId replacement user id from the PATCH value
+   * @return {@code true} when the membership row was updated
+   * @throws IOException if persistence fails
+   */
+  public boolean replaceMemberUserInGroup(
+      String metalakeName, long groupId, long oldUserId, long newUserId) throws IOException {
+    if (oldUserId == newUserId) {
+      return true;
+    }
+    AuditInfo auditInfo =
+        AuditInfo.builder()
+            .withCreator(PrincipalUtils.getCurrentPrincipal().getName())
+            .withCreateTime(Instant.now())
+            .build();
+    return USER_GROUP_REL_META_SERVICE.updateMemberUserId(
+        metalakeName,
+        groupId,
+        oldUserId,
+        newUserId,
+        ScimPOConverters.serializeAuditInfo(auditInfo),
+        POConverters.INIT_VERSION,
+        POConverters.INIT_VERSION);
+  }
+
   @Override
   public void close() throws IOException {
     relationalStorage.close();

@@ -205,6 +205,51 @@ public class ScimUserGroupRelMetaService {
   }
 
   /**
+   * Replaces one group membership row's user id when the replacement user exists.
+   *
+   * @param metalakeName target metalake name
+   * @param groupId Gravitino group id
+   * @param oldUserId current member user id
+   * @param newUserId replacement user id that must exist in {@code user_meta}
+   * @param auditInfo serialized audit metadata
+   * @param currentVersion current version
+   * @param lastVersion last version
+   * @return {@code true} when one row was updated
+   * @throws IOException if persistence fails
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "updateMemberUserId")
+  public boolean updateMemberUserId(
+      String metalakeName,
+      long groupId,
+      long oldUserId,
+      long newUserId,
+      String auditInfo,
+      Long currentVersion,
+      Long lastVersion)
+      throws IOException {
+    try {
+      Integer updated =
+          SessionUtils.doWithCommitAndFetchResult(
+              ScimUserGroupRelMapper.class,
+              mapper ->
+                  mapper.updateMemberUserId(
+                      metalakeName,
+                      groupId,
+                      oldUserId,
+                      newUserId,
+                      auditInfo,
+                      currentVersion,
+                      lastVersion));
+      return updated != null && updated > 0;
+    } catch (RuntimeException re) {
+      ScimExceptionUtils.checkSQLException(re, "membership", String.valueOf(groupId));
+      throw re;
+    }
+  }
+
+  /**
    * Physically deletes soft-deleted membership rows older than the legacy timeline.
    *
    * @param legacyTimeline delete rows with {@code deleted_at} before this timestamp

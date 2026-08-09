@@ -30,6 +30,7 @@ import org.apache.directory.scim.spec.resources.ScimUser;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
+import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.authorization.UserChange;
 import org.apache.gravitino.exceptions.NoSuchUserException;
@@ -73,6 +74,11 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     String userName = resolveUserName(resource.getUserName());
     try {
       String metalake = ScimMetalakeContext.getMetalake();
+      // userName is caseExact=false; treat case-only variants as the same unique name.
+      if (findUserIgnoreCase(metalake, userName).isPresent()) {
+        throw new ResourceException(
+            409, "User already exists: userName=" + userName + ", externalId=" + externalId);
+      }
       User user = dispatcher.addUser(metalake, userName, externalId, resolveEnabled(resource));
       return ScimResourceConverter.toScimUser(user);
     } catch (UserAlreadyExistsException e) {
@@ -144,7 +150,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     ScimUserFilter criteria = ScimUserFilter.convert(filter, scimConfig);
     ScimRepositoryPagination.PageBounds page =
         ScimRepositoryPagination.normalizePage(pageRequest.getStartIndex(), pageRequest.getCount());
-    ScimPagedResult<User> result = findUsers(ScimMetalakeContext.getMetalake(), criteria);
+    ScimPagedResult<User> result = findUsers(ScimMetalakeContext.getMetalake(), criteria, page);
     List<ScimUser> resources =
         result.items().stream().map(ScimResourceConverter::toScimUser).collect(Collectors.toList());
     return new FilterResponse<>(
@@ -168,15 +174,18 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   }
 
   /**
-   * Resolves a filtered SCIM list query.
+   * Resolves a SCIM User list/filter query.
    *
-   * <p>Gravitino core exposes point lookups only ({@code getUserByExternalId} / {@code getUser});
-   * there is no paginated user-list API yet. Supported {@code eq} / {@code and} filters therefore
-   * map to at most one user via a primary-key lookup plus optional cross-field validation.
+   * <p>Unfiltered queries use JDBC-backed {@code listUsers(metalake, offset, limit)}. Supported
+   * {@code eq} / {@code and} filters map to at most one user via a primary-key lookup plus optional
+   * cross-field validation. {@code userName} matching is case-insensitive per SCIM string
+   * comparison for caseExact=false attributes.
    */
-  private ScimPagedResult<User> findUsers(String metalake, ScimUserFilter criteria) {
+  private ScimPagedResult<User> findUsers(
+      String metalake, ScimUserFilter criteria, ScimRepositoryPagination.PageBounds page) {
     if (!criteria.hasPredicates()) {
-      return new ScimPagedResult<>(0, List.of());
+      PagedResult<User> pageResult = dispatcher.listUsers(metalake, page.offset(), page.limit());
+      return new ScimPagedResult<>(pageResult.totalCount(), pageResult.items());
     }
     return lookupUser(metalake, criteria)
         .filter(user -> matchesFilter(user, criteria))
@@ -189,14 +198,29 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       if (criteria.externalId().isPresent()) {
         return Optional.of(dispatcher.getUserByExternalId(metalake, criteria.externalId().get()));
       }
-      return Optional.of(dispatcher.getUser(metalake, criteria.userName().orElseThrow()));
+      String userName = criteria.userName().orElseThrow();
+      try {
+        return Optional.of(dispatcher.getUser(metalake, userName));
+      } catch (NoSuchUserException ignored) {
+        return findUserIgnoreCase(metalake, userName);
+      }
     } catch (NoSuchUserException ignored) {
       return Optional.empty();
     }
   }
 
+  private Optional<User> findUserIgnoreCase(String metalake, String userName) {
+    for (User user : dispatcher.listUsers(metalake)) {
+      if (userName.equalsIgnoreCase(user.name())) {
+        return Optional.of(user);
+      }
+    }
+    return Optional.empty();
+  }
+
   private static boolean matchesFilter(User user, ScimUserFilter criteria) {
-    if (criteria.userName().isPresent() && !criteria.userName().get().equals(user.name())) {
+    if (criteria.userName().isPresent()
+        && !criteria.userName().get().equalsIgnoreCase(user.name())) {
       return false;
     }
     if (criteria.externalId().isPresent()
@@ -232,14 +256,14 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
    * Rejects userName renames. Gravitino user names cannot be changed after create.
    *
    * <p>Blank userName is treated as unchanged so clients that only replace {@code active} still
-   * work.
+   * work. {@code userName} is SCIM {@code caseExact=false}; case-only differences are a no-op.
    */
   private void validateImmutableUserName(User user, String rawUserName) throws ResourceException {
     if (StringUtils.isBlank(rawUserName)) {
       return;
     }
     String resolvedName = ScimNameMappers.mapUserName(scimConfig.userMapper(), rawUserName);
-    if (!resolvedName.equals(user.name())) {
+    if (!resolvedName.equalsIgnoreCase(user.name())) {
       throw new ResourceException(400, "User userName is immutable");
     }
   }

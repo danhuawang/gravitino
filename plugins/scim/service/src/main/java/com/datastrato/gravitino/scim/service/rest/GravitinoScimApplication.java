@@ -26,6 +26,7 @@ import org.apache.directory.scim.server.rest.ScimJacksonXmlBindJsonProvider;
 import org.apache.directory.scim.server.rest.ScimpleFeature;
 import org.apache.directory.scim.spec.resources.ScimGroup;
 import org.apache.directory.scim.spec.resources.ScimUser;
+import org.apache.directory.scim.spec.schema.Schema;
 import org.apache.directory.scim.spec.schema.ServiceProviderConfiguration;
 import org.apache.gravitino.Config;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
@@ -47,6 +48,8 @@ public final class GravitinoScimApplication {
     SchemaRegistry schemaRegistry = new SchemaRegistry();
     schemaRegistry.addSchema(ScimUser.class, Collections.emptyList());
     schemaRegistry.addSchema(ScimGroup.class, Collections.emptyList());
+    // SCIMple ScimResource.id omits caseExact (defaults false); RFC 7643 requires true.
+    markCommonIdCaseExact(schemaRegistry);
 
     RepositoryRegistry repositoryRegistry = new RepositoryRegistry(schemaRegistry);
     try {
@@ -100,5 +103,22 @@ public final class GravitinoScimApplication {
     configuration.setBulkMaxOperations(0);
     configuration.setBulkMaxPayloadSize(0);
     return configuration;
+  }
+
+  /**
+   * Sets common attribute {@code id} to {@code caseExact=true} on registered User/Group schemas.
+   *
+   * <p>Apache SCIMple annotates {@code ScimResource.id} without {@code caseExact}, so reflection
+   * emits {@code false}. RFC 7643 Section 3.1 defines {@code id} as case-exact.
+   *
+   * @param schemaRegistry registry after User/Group schemas are registered
+   */
+  static void markCommonIdCaseExact(SchemaRegistry schemaRegistry) {
+    for (Schema schema : schemaRegistry.getAllSchemas()) {
+      Schema.Attribute id = schema.getAttribute("id");
+      if (id != null) {
+        id.setCaseExact(true);
+      }
+    }
   }
 }

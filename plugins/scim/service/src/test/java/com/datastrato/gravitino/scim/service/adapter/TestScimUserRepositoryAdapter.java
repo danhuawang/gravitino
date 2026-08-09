@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -29,6 +30,7 @@ import org.apache.directory.scim.spec.patch.PatchOperationPath;
 import org.apache.directory.scim.spec.resources.ScimUser;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
+import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.authorization.UserChange;
 import org.apache.gravitino.exceptions.NoSuchUserException;
@@ -50,6 +52,7 @@ class TestScimUserRepositoryAdapter {
   void setUp() {
     scimConfig = new ScimConfig(Map.of(), new Config() {});
     dispatcher = mock(AccessControlDispatcher.class);
+    when(dispatcher.listUsers(METALAKE)).thenReturn(new User[0]);
     adapter = new ScimUserRepositoryAdapter(dispatcher, scimConfig);
     ScimMetalakeContext.setMetalake(METALAKE);
   }
@@ -111,6 +114,20 @@ class TestScimUserRepositoryAdapter {
             () -> adapter.create(new ScimUser().setExternalId("ext-1").setUserName("alice")));
     assertEquals(409, exception.getStatus());
     assertEquals("User already exists: userName=alice, externalId=ext-1", exception.getMessage());
+  }
+
+  @Test
+  void testCreateConflictIgnoreCase409() throws Exception {
+    User existing = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.listUsers(METALAKE)).thenReturn(new User[] {existing});
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () -> adapter.create(new ScimUser().setExternalId("ext-2").setUserName("Alice")));
+    assertEquals(409, exception.getStatus());
+    assertEquals("User already exists: userName=Alice, externalId=ext-2", exception.getMessage());
+    verify(dispatcher, never()).addUser(anyString(), anyString(), anyString(), anyBoolean());
   }
 
   @Test
@@ -244,6 +261,18 @@ class TestScimUserRepositoryAdapter {
   }
 
   @Test
+  void testUpdateUserNameCaseOnlyNoOp() throws Exception {
+    User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(user);
+
+    ScimUser updated =
+        adapter.update("1", null, new ScimUser().setUserName("Alice").setActive(true), null, null);
+
+    assertEquals("alice", updated.getUserName());
+    verify(dispatcher, never()).alterUserById(anyString(), anyLong(), any());
+  }
+
+  @Test
   void testUpdateExtId400() throws Exception {
     User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
     when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(user);
@@ -336,6 +365,23 @@ class TestScimUserRepositoryAdapter {
   }
 
   @Test
+  void testFindByUserNameIgnoreCase() throws Exception {
+    User user = ScimServiceTestEntities.user(USER_ID, "alice@example.com", "ext-1", true);
+    when(dispatcher.getUser(METALAKE, "ALICE@EXAMPLE.COM"))
+        .thenThrow(new NoSuchUserException("ALICE@EXAMPLE.COM"));
+    when(dispatcher.listUsers(METALAKE)).thenReturn(new User[] {user});
+
+    var response =
+        adapter.find(
+            org.apache.directory.scim.spec.filter.Filter.decode(
+                "userName eq \"ALICE@EXAMPLE.COM\""),
+            new PageRequest().setStartIndex(1).setCount(10),
+            null);
+    assertEquals(1, response.getTotalResults());
+    assertEquals("alice@example.com", response.getResources().iterator().next().getUserName());
+  }
+
+  @Test
   void testFindByExtId() throws Exception {
     User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
     when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(user);
@@ -358,8 +404,27 @@ class TestScimUserRepositoryAdapter {
 
   @Test
   void testFindEmpty() throws Exception {
+    when(dispatcher.listUsers(METALAKE, 0, 10)).thenReturn(new PagedResult<>(0, List.of()));
     var response = adapter.find(null, new PageRequest().setStartIndex(1).setCount(10), null);
     assertEquals(0, response.getTotalResults());
     assertEquals(0, response.getResources().size());
+    verify(dispatcher).listUsers(METALAKE, 0, 10);
+  }
+
+  @Test
+  void testFindUnfilteredPaged() throws Exception {
+    User alice = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    User bob = ScimServiceTestEntities.user(2L, "bob", "ext-2", true);
+    when(dispatcher.listUsers(METALAKE, 0, 10))
+        .thenReturn(new PagedResult<>(2, List.of(alice, bob)));
+
+    var response = adapter.find(null, new PageRequest().setStartIndex(1).setCount(10), null);
+
+    assertEquals(2, response.getTotalResults());
+    assertEquals(2, response.getResources().size());
+    var users = response.getResources().toArray(new ScimUser[0]);
+    assertEquals("alice", users[0].getUserName());
+    assertEquals("bob", users[1].getUserName());
+    verify(dispatcher).listUsers(METALAKE, 0, 10);
   }
 }

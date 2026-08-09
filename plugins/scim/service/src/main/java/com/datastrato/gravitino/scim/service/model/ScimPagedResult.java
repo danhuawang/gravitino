@@ -12,7 +12,7 @@ import lombok.Getter;
 import lombok.ToString;
 import lombok.experimental.Accessors;
 
-/** Push-only SCIM filter query result for repository adapters. */
+/** SCIM list/filter query result for repository adapters. */
 @Getter
 @ToString
 @EqualsAndHashCode

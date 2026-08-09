@@ -123,6 +123,39 @@ public class ScimUserGroupRelPostgreSQLProvider extends ScimUserGroupRelBaseSQLP
   }
 
   @Override
+  public String updateMemberUserId(
+      @Param("metalakeName") String metalakeName,
+      @Param("groupId") long groupId,
+      @Param("oldUserId") long oldUserId,
+      @Param("newUserId") long newUserId,
+      @Param("auditInfo") String auditInfo,
+      @Param("currentVersion") Long currentVersion,
+      @Param("lastVersion") Long lastVersion) {
+    return "UPDATE "
+        + SCIM_USER_GROUP_REL_TABLE_NAME
+        + " r SET user_id = #{newUserId}, audit_info = #{auditInfo},"
+        + " current_version = #{currentVersion}, last_version = #{lastVersion}"
+        + " FROM "
+        + TABLE_NAME
+        + " mm INNER JOIN "
+        + USER_TABLE_NAME
+        + " u_new ON u_new.metalake_id = mm.metalake_id AND u_new.user_id = #{newUserId}"
+        + " AND u_new.deleted_at = 0"
+        + " WHERE r.metalake_id = mm.metalake_id"
+        + " AND mm.metalake_name = #{metalakeName}"
+        + " AND mm.deleted_at = 0"
+        + " AND r.deleted_at = 0"
+        + " AND r.group_id = #{groupId}"
+        + " AND r.user_id = #{oldUserId}"
+        + " AND NOT EXISTS ("
+        + " SELECT 1 FROM "
+        + SCIM_USER_GROUP_REL_TABLE_NAME
+        + " r2 WHERE r2.metalake_id = r.metalake_id AND r2.group_id = r.group_id"
+        + " AND r2.user_id = #{newUserId} AND r2.deleted_at = 0"
+        + " )";
+  }
+
+  @Override
   public String deleteByLegacyTimeline(
       @Param("legacyTimeline") Long legacyTimeline, @Param("limit") int limit) {
     return "DELETE FROM "

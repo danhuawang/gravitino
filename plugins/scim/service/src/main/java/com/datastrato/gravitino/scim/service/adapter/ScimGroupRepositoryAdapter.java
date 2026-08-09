@@ -36,6 +36,8 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.Group;
+import org.apache.gravitino.authorization.GroupChange;
+import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.slf4j.Logger;
@@ -90,6 +92,11 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     String groupName = resolveGroupName(resource.getDisplayName());
     try {
       String metalake = ScimMetalakeContext.getMetalake();
+      // displayName is caseExact=false; treat case-only variants as the same unique name.
+      if (findGroupIgnoreCase(metalake, groupName).isPresent()) {
+        throw new ResourceException(
+            409, "Group already exists: displayName=" + groupName + ", externalId=" + externalId);
+      }
       Group group = dispatcher.addGroup(metalake, groupName, externalId);
       List<GroupMembership> members = resource.getMembers();
       if (members != null && !members.isEmpty()) {
@@ -140,21 +147,31 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       throw new ResourceException(404, "Group not found: " + id);
     }
 
+    String metalake = ScimMetalakeContext.getMetalake();
     for (PatchOperation operation : patchOperations) {
-      List<GroupMembership> members = ScimPatchSupport.parseGroupMembers(operation);
-      switch (operation.getOperation()) {
-        case ADD:
-          addGroupMembers(ScimMetalakeContext.getMetalake(), group.id(), members);
-          break;
-        case REMOVE:
-          removeGroupMembers(ScimMetalakeContext.getMetalake(), group.id(), members);
-          break;
-        case REPLACE:
-          replaceGroupMembers(ScimMetalakeContext.getMetalake(), group.id(), members);
-          break;
-        default:
-          throw new ResourceException(
-              400, "Unsupported PATCH operation: " + operation.getOperation());
+      for (ScimPatchSupport.GroupPatchOperation parsed :
+          ScimPatchSupport.parseGroupPatches(operation)) {
+        switch (parsed.kind()) {
+          case MEMBERS:
+            applyMembersPatch(
+                metalake,
+                group.id(),
+                operation.getOperation(),
+                parsed.members(),
+                parsed.membersFromPathFilter(),
+                parsed.replacementMembers());
+            break;
+          case EXTERNAL_ID:
+            group =
+                applyExternalIdPatch(
+                    metalake, group, operation.getOperation(), parsed.externalId());
+            break;
+          case DISPLAY_NAME:
+            applyDisplayNamePatch(group, operation.getOperation(), parsed.displayName());
+            break;
+          default:
+            throw new ResourceException(400, "Unsupported Group PATCH kind: " + parsed.kind());
+        }
       }
     }
     return toScimGroup(group);
@@ -176,7 +193,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     ScimGroupFilter criteria = ScimGroupFilter.convert(filter, scimConfig);
     ScimRepositoryPagination.PageBounds page =
         ScimRepositoryPagination.normalizePage(pageRequest.getStartIndex(), pageRequest.getCount());
-    ScimPagedResult<Group> result = findGroups(ScimMetalakeContext.getMetalake(), criteria);
+    ScimPagedResult<Group> result = findGroups(ScimMetalakeContext.getMetalake(), criteria, page);
     List<ScimGroup> resources =
         result.items().stream().map(this::toScimGroup).collect(Collectors.toList());
     return new FilterResponse<>(
@@ -197,6 +214,105 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   @Override
   public List<Class<? extends ScimExtension>> getExtensionList() {
     return List.of();
+  }
+
+  private void applyMembersPatch(
+      String metalake,
+      long groupId,
+      PatchOperation.Type type,
+      List<GroupMembership> members,
+      boolean fromPathFilter,
+      List<GroupMembership> replacementMembers)
+      throws ResourceException {
+    switch (type) {
+      case ADD:
+        addGroupMembers(metalake, groupId, members);
+        break;
+      case REMOVE:
+        removeGroupMembers(metalake, groupId, members);
+        break;
+      case REPLACE:
+        if (fromPathFilter) {
+          replaceFilteredMember(metalake, groupId, members, replacementMembers);
+        } else {
+          replaceGroupMembers(metalake, groupId, members);
+        }
+        break;
+      default:
+        throw new ResourceException(400, "Unsupported PATCH operation: " + type);
+    }
+  }
+
+  private void replaceFilteredMember(
+      String metalake,
+      long groupId,
+      List<GroupMembership> matchedMembers,
+      List<GroupMembership> replacementMembers)
+      throws ResourceException {
+    List<Long> oldUserIds = extractMemberUserIds(matchedMembers);
+    List<Long> newUserIds = extractMemberUserIds(replacementMembers);
+    if (oldUserIds.size() != 1) {
+      throw new ResourceException(
+          400, "members[value eq ...] REPLACE requires exactly one matched member");
+    }
+    if (newUserIds.size() != 1) {
+      throw new ResourceException(
+          400, "members[value eq ...] REPLACE requires a single replacement member value");
+    }
+    long oldUserId = oldUserIds.get(0);
+    long newUserId = newUserIds.get(0);
+    if (oldUserId == newUserId) {
+      return;
+    }
+    try {
+      boolean updated =
+          membershipManager.replaceMemberUserInGroup(metalake, groupId, oldUserId, newUserId);
+      if (!updated) {
+        throw new ResourceException(
+            404,
+            "Unable to replace group member "
+                + oldUserId
+                + " with "
+                + newUserId
+                + ": old member missing, replacement user missing, or replacement already in group");
+      }
+    } catch (IOException e) {
+      throw new ResourceException(
+          500, "Failed to replace member " + oldUserId + " in group " + groupId, e);
+    }
+  }
+
+  private Group applyExternalIdPatch(
+      String metalake, Group group, PatchOperation.Type type, String externalId)
+      throws ResourceException {
+    if (type != PatchOperation.Type.REPLACE && type != PatchOperation.Type.ADD) {
+      throw new ResourceException(400, "Group externalId PATCH supports add/replace only");
+    }
+    String normalized = normalizeExternalId(externalId);
+    if (Objects.equals(normalized, group.externalId())) {
+      return group;
+    }
+    try {
+      return dispatcher.alterGroupById(
+          metalake, group.id(), GroupChange.updateExternalId(normalized));
+    } catch (NoSuchGroupException e) {
+      throw new ResourceException(404, "Group not found: " + group.id(), e);
+    }
+  }
+
+  private void applyDisplayNamePatch(Group group, PatchOperation.Type type, String displayName)
+      throws ResourceException {
+    if (type != PatchOperation.Type.REPLACE && type != PatchOperation.Type.ADD) {
+      throw new ResourceException(400, "Group displayName PATCH supports add/replace only");
+    }
+    if (StringUtils.isBlank(displayName)) {
+      throw new ResourceException(400, "displayName PATCH value must be a non-blank string");
+    }
+    String resolvedName = ScimNameMappers.mapGroupName(scimConfig.groupMapper(), displayName);
+    // displayName is caseExact=false; case-only differences are a no-op, not a rename.
+    if (!resolvedName.equalsIgnoreCase(group.name())) {
+      throw new ResourceException(400, "Group displayName is immutable");
+    }
   }
 
   private void addGroupMembers(String metalake, long groupId, List<GroupMembership> members)
@@ -244,15 +360,18 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   }
 
   /**
-   * Resolves a filtered SCIM list query.
+   * Resolves a SCIM Group list/filter query.
    *
-   * <p>Gravitino core exposes point lookups only ({@code getGroupByExternalId} / {@code getGroup});
-   * there is no paginated group-list API yet. Supported {@code eq} / {@code and} filters therefore
-   * map to at most one group via a primary-key lookup plus optional cross-field validation.
+   * <p>Unfiltered queries use JDBC-backed {@code listGroups(metalake, offset, limit)}. Supported
+   * {@code eq} / {@code and} filters map to at most one group via a primary-key lookup plus
+   * optional cross-field validation. {@code displayName} matching is case-insensitive per SCIM
+   * string comparison for caseExact=false attributes.
    */
-  private ScimPagedResult<Group> findGroups(String metalake, ScimGroupFilter criteria) {
+  private ScimPagedResult<Group> findGroups(
+      String metalake, ScimGroupFilter criteria, ScimRepositoryPagination.PageBounds page) {
     if (!criteria.hasPredicates()) {
-      return new ScimPagedResult<>(0, List.of());
+      PagedResult<Group> pageResult = dispatcher.listGroups(metalake, page.offset(), page.limit());
+      return new ScimPagedResult<>(pageResult.totalCount(), pageResult.items());
     }
     return lookupGroup(metalake, criteria)
         .filter(group -> matchesFilter(group, criteria))
@@ -266,7 +385,12 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
         return Optional.of(dispatcher.getGroupByExternalId(metalake, criteria.externalId().get()));
       }
       if (criteria.displayName().isPresent()) {
-        return Optional.of(dispatcher.getGroup(metalake, criteria.displayName().get()));
+        String displayName = criteria.displayName().get();
+        try {
+          return Optional.of(dispatcher.getGroup(metalake, displayName));
+        } catch (NoSuchGroupException ignored) {
+          return findGroupIgnoreCase(metalake, displayName);
+        }
       }
     } catch (NoSuchGroupException ignored) {
       return Optional.empty();
@@ -274,8 +398,18 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     return Optional.empty();
   }
 
+  private Optional<Group> findGroupIgnoreCase(String metalake, String displayName) {
+    for (Group group : dispatcher.listGroups(metalake)) {
+      if (displayName.equalsIgnoreCase(group.name())) {
+        return Optional.of(group);
+      }
+    }
+    return Optional.empty();
+  }
+
   private static boolean matchesFilter(Group group, ScimGroupFilter criteria) {
-    if (criteria.displayName().isPresent() && !criteria.displayName().get().equals(group.name())) {
+    if (criteria.displayName().isPresent()
+        && !criteria.displayName().get().equalsIgnoreCase(group.name())) {
       return false;
     }
     if (criteria.externalId().isPresent()
@@ -329,6 +463,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
    * Rejects displayName renames. Gravitino group names cannot be changed after create.
    *
    * <p>Blank displayName is treated as unchanged so clients that only replace members still work.
+   * Group {@code displayName} is SCIM {@code caseExact=false}; case-only differences are a no-op.
    */
   private void validateImmutableDisplayName(Group group, String rawDisplayName)
       throws ResourceException {
@@ -336,7 +471,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       return;
     }
     String resolvedName = ScimNameMappers.mapGroupName(scimConfig.groupMapper(), rawDisplayName);
-    if (!resolvedName.equals(group.name())) {
+    if (!resolvedName.equalsIgnoreCase(group.name())) {
       throw new ResourceException(400, "Group displayName is immutable");
     }
   }

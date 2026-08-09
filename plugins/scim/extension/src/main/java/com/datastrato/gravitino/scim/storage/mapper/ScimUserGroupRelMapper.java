@@ -98,6 +98,24 @@ public interface ScimUserGroupRelMapper {
   void softDeleteMembersByGroupId(
       @Param("metalakeName") String metalakeName, @Param("groupId") long groupId);
 
+  /**
+   * Updates one active membership row from {@code oldUserId} to {@code newUserId}.
+   *
+   * <p>Requires {@code newUserId} to exist in {@code user_meta}. Returns {@code 0} when the old
+   * member is missing, the replacement user is missing, or the replacement is already a member.
+   *
+   * @return number of membership rows updated
+   */
+  @UpdateProvider(type = ScimUserGroupRelSQLProviderFactory.class, method = "updateMemberUserId")
+  int updateMemberUserId(
+      @Param("metalakeName") String metalakeName,
+      @Param("groupId") long groupId,
+      @Param("oldUserId") long oldUserId,
+      @Param("newUserId") long newUserId,
+      @Param("auditInfo") String auditInfo,
+      @Param("currentVersion") Long currentVersion,
+      @Param("lastVersion") Long lastVersion);
+
   @DeleteProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,
       method = "deleteByLegacyTimeline")

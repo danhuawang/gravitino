@@ -221,6 +221,52 @@ public class ScimUserGroupRelBaseSQLProvider {
         + " )";
   }
 
+  /**
+   * Replaces one active membership row's user id (A → B) when B exists in {@code user_meta}.
+   *
+   * <p>The {@code INNER JOIN} to {@code user_meta} ensures {@code newUserId} exists. {@code NOT
+   * EXISTS} skips the update when B is already an active member of the same group.
+   *
+   * @param metalakeName target metalake name
+   * @param groupId Gravitino group id
+   * @param oldUserId current member user id from the SCIM path filter
+   * @param newUserId replacement user id from the PATCH value
+   * @param auditInfo serialized audit metadata
+   * @param currentVersion relation current version
+   * @param lastVersion relation last version
+   * @return SQL statement
+   */
+  public String updateMemberUserId(
+      @Param("metalakeName") String metalakeName,
+      @Param("groupId") long groupId,
+      @Param("oldUserId") long oldUserId,
+      @Param("newUserId") long newUserId,
+      @Param("auditInfo") String auditInfo,
+      @Param("currentVersion") Long currentVersion,
+      @Param("lastVersion") Long lastVersion) {
+    return "UPDATE "
+        + SCIM_USER_GROUP_REL_TABLE_NAME
+        + " r INNER JOIN "
+        + TABLE_NAME
+        + " mm ON r.metalake_id = mm.metalake_id AND mm.deleted_at = 0"
+        + " AND mm.metalake_name = #{metalakeName}"
+        + " INNER JOIN "
+        + USER_TABLE_NAME
+        + " u_new ON u_new.metalake_id = mm.metalake_id AND u_new.user_id = #{newUserId}"
+        + " AND u_new.deleted_at = 0"
+        + " SET r.user_id = #{newUserId}, r.audit_info = #{auditInfo},"
+        + " r.current_version = #{currentVersion}, r.last_version = #{lastVersion}"
+        + " WHERE r.deleted_at = 0"
+        + " AND r.group_id = #{groupId}"
+        + " AND r.user_id = #{oldUserId}"
+        + " AND NOT EXISTS ("
+        + " SELECT 1 FROM "
+        + SCIM_USER_GROUP_REL_TABLE_NAME
+        + " r2 WHERE r2.metalake_id = r.metalake_id AND r2.group_id = r.group_id"
+        + " AND r2.user_id = #{newUserId} AND r2.deleted_at = 0"
+        + " )";
+  }
+
   public String deleteByLegacyTimeline(
       @Param("legacyTimeline") Long legacyTimeline, @Param("limit") int limit) {
     return "DELETE FROM "

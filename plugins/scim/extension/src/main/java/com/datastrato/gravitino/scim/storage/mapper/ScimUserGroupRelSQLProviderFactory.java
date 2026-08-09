@@ -75,6 +75,19 @@ public class ScimUserGroupRelSQLProviderFactory {
     return currentProvider().softDeleteMembersByGroupId(metalakeName, groupId);
   }
 
+  public static String updateMemberUserId(
+      @Param("metalakeName") String metalakeName,
+      @Param("groupId") long groupId,
+      @Param("oldUserId") long oldUserId,
+      @Param("newUserId") long newUserId,
+      @Param("auditInfo") String auditInfo,
+      @Param("currentVersion") Long currentVersion,
+      @Param("lastVersion") Long lastVersion) {
+    return currentProvider()
+        .updateMemberUserId(
+            metalakeName, groupId, oldUserId, newUserId, auditInfo, currentVersion, lastVersion);
+  }
+
   public static String deleteByLegacyTimeline(
       @Param("legacyTimeline") Long legacyTimeline, @Param("limit") int limit) {
     return currentProvider().deleteByLegacyTimeline(legacyTimeline, limit);

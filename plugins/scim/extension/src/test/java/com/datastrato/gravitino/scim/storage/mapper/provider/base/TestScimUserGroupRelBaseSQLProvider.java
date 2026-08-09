@@ -164,4 +164,29 @@ class TestScimUserGroupRelBaseSQLProvider {
     Assertions.assertTrue(sql.contains("m.deleted_at = 0"));
     Assertions.assertTrue(sql.contains("r.deleted_at = 0"));
   }
+
+  @Test
+  void testUpdateMemberUserIdJoinsUserMeta() {
+    String sql =
+        new ScimUserGroupRelBaseSQLProvider()
+            .updateMemberUserId("test_metalake", GROUP_ID, 100L, 101L, "{}", 1L, 0L);
+
+    Assertions.assertTrue(sql.contains("INNER JOIN user_meta"));
+    Assertions.assertTrue(sql.contains("u_new.user_id = #{newUserId}"));
+    Assertions.assertTrue(sql.contains("r.user_id = #{oldUserId}"));
+    Assertions.assertTrue(sql.contains("SET r.user_id = #{newUserId}"));
+    Assertions.assertTrue(sql.contains("NOT EXISTS"));
+  }
+
+  @Test
+  void testPgUpdateMemberUserIdUsesFromClause() {
+    String sql =
+        new ScimUserGroupRelPostgreSQLProvider()
+            .updateMemberUserId("test_metalake", GROUP_ID, 100L, 101L, "{}", 1L, 0L);
+
+    Assertions.assertTrue(sql.contains(" FROM metalake_meta"));
+    Assertions.assertTrue(sql.contains("u_new.user_id = #{newUserId}"));
+    Assertions.assertTrue(sql.contains("SET user_id = #{newUserId}"));
+    Assertions.assertTrue(sql.contains("NOT EXISTS"));
+  }
 }
