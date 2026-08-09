@@ -20,6 +20,7 @@ import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.GroupChange;
+import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.RoleChange;
@@ -114,6 +115,17 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   @Override
+  public PagedResult<User> listUsers(String metalake, int offset, int limit)
+      throws NoSuchMetalakeException {
+    return accessControlDispatcher.listUsers(metalake, offset, limit);
+  }
+
+  @Override
+  public long countUsers(String metalake) throws NoSuchMetalakeException {
+    return accessControlDispatcher.countUsers(metalake);
+  }
+
+  @Override
   public String[] listUserNames(String metalake) throws NoSuchMetalakeException {
     return accessControlDispatcher.listUserNames(metalake);
   }
@@ -173,6 +185,16 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   @Override
   public Group[] listGroups(String metalake) {
     return accessControlDispatcher.listGroups(metalake);
+  }
+
+  @Override
+  public PagedResult<Group> listGroups(String metalake, int offset, int limit) {
+    return accessControlDispatcher.listGroups(metalake, offset, limit);
+  }
+
+  @Override
+  public long countGroups(String metalake) {
+    return accessControlDispatcher.countGroups(metalake);
   }
 
   @Override
