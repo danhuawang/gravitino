@@ -113,6 +113,14 @@ public class TestSqlServerTypeConverter {
   @Test
   void testNvarcharToGravitino() {
     JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("nvarchar");
+    bean.setColumnSize(50);
+    Assertions.assertEquals(Types.VarCharType.of(50), converter.toGravitino(bean));
+  }
+
+  @Test
+  void testNvarcharMaxToGravitino() {
+    JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("nvarchar");
+    bean.setColumnSize(Integer.MAX_VALUE);
     Assertions.assertEquals(Types.StringType.get(), converter.toGravitino(bean));
   }
 
@@ -156,11 +164,9 @@ public class TestSqlServerTypeConverter {
   }
 
   @Test
-  void testDatetimeToExternalType() {
+  void testDatetimeToTimestampType() {
     JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("datetime");
-    Type result = converter.toGravitino(bean);
-    Assertions.assertInstanceOf(Types.ExternalType.class, result);
-    Assertions.assertEquals("datetime", ((Types.ExternalType) result).catalogString());
+    Assertions.assertEquals(Types.TimestampType.withoutTimeZone(3), converter.toGravitino(bean));
   }
 
   @Test

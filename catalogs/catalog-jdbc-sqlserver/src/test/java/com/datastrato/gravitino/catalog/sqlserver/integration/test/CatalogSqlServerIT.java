@@ -34,7 +34,6 @@ import org.apache.gravitino.integration.test.container.ContainerSuite;
 import org.apache.gravitino.integration.test.container.SqlServerContainer;
 import org.apache.gravitino.integration.test.util.BaseIT;
 import org.apache.gravitino.integration.test.util.GravitinoITUtils;
-import org.apache.gravitino.integration.test.util.ITUtils;
 import org.apache.gravitino.integration.test.util.TestDatabaseName;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Table;
@@ -162,6 +161,15 @@ public class CatalogSqlServerIT extends BaseIT {
     return new Column[] {col1, col2, col3};
   }
 
+  private void assertColumnExactly(Column expected, Column actual) {
+    Assertions.assertEquals(expected.name(), actual.name());
+    Assertions.assertEquals(expected.dataType(), actual.dataType());
+    Assertions.assertEquals(expected.nullable(), actual.nullable());
+    Assertions.assertEquals(expected.comment(), actual.comment());
+    Assertions.assertEquals(expected.autoIncrement(), actual.autoIncrement());
+    Assertions.assertEquals(expected.defaultValue(), actual.defaultValue());
+  }
+
   // ==================== Schema CRUD Tests ====================
 
   @Test
@@ -280,7 +288,7 @@ public class CatalogSqlServerIT extends BaseIT {
     Assertions.assertEquals(tableComment, loaded.comment());
     Assertions.assertEquals(columns.length, loaded.columns().length);
     for (int i = 0; i < columns.length; i++) {
-      ITUtils.assertColumn(columns[i], loaded.columns()[i]);
+      assertColumnExactly(columns[i], loaded.columns()[i]);
     }
   }
 
@@ -691,6 +699,8 @@ public class CatalogSqlServerIT extends BaseIT {
               + "] ("
               + "[col_money] money NULL, "
               + "[col_datetime] datetime NULL, "
+              + "[col_nvarchar] nvarchar(50) NULL, "
+              + "[col_nvarchar_max] nvarchar(max) NULL, "
               + "[col_xml] xml NULL"
               + ")");
     } catch (SQLException e) {
@@ -698,10 +708,19 @@ public class CatalogSqlServerIT extends BaseIT {
     }
 
     Table loaded = catalog.asTableCatalog().loadTable(NameIdentifier.of(schemaName, extTableName));
-    Assertions.assertEquals(3, loaded.columns().length);
+    Assertions.assertEquals(5, loaded.columns().length);
     Assertions.assertEquals(Types.ExternalType.of("money"), loaded.columns()[0].dataType());
-    Assertions.assertEquals(Types.ExternalType.of("datetime"), loaded.columns()[1].dataType());
-    Assertions.assertEquals(Types.ExternalType.of("xml"), loaded.columns()[2].dataType());
+    Assertions.assertEquals(Types.TimestampType.withoutTimeZone(3), loaded.columns()[1].dataType());
+    Assertions.assertEquals(Types.VarCharType.of(50), loaded.columns()[2].dataType());
+    Assertions.assertEquals(Types.StringType.get(), loaded.columns()[3].dataType());
+    Assertions.assertEquals(Types.ExternalType.of("xml"), loaded.columns()[4].dataType());
+    Arrays.stream(loaded.columns())
+        .forEach(
+            column ->
+                Assertions.assertEquals(
+                    Column.DEFAULT_VALUE_NOT_SET,
+                    column.defaultValue(),
+                    "Unexpected default for " + column.name()));
   }
 
   // ==================== Exception Mapping Tests ====================

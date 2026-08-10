@@ -24,7 +24,7 @@ public class TestSqlServerColumnDefaultValueConverter {
   void testNullDefaultValueNullable() {
     JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean("int");
     Expression result = converter.toGravitino(type, null, false, true);
-    Assertions.assertEquals(Literals.NULL, result);
+    Assertions.assertEquals(DEFAULT_VALUE_NOT_SET, result);
   }
 
   @Test
@@ -46,6 +46,14 @@ public class TestSqlServerColumnDefaultValueConverter {
     JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean("nvarchar");
     Expression result = converter.toGravitino(type, "('hello')", false, false);
     Assertions.assertEquals(Literals.stringLiteral("hello"), result);
+  }
+
+  @Test
+  void testBoundedNvarcharLiteral() {
+    JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean("nvarchar");
+    type.setColumnSize(50);
+    Expression result = converter.toGravitino(type, "('hello')", false, false);
+    Assertions.assertEquals(Literals.varcharLiteral(50, "hello"), result);
   }
 
   @Test

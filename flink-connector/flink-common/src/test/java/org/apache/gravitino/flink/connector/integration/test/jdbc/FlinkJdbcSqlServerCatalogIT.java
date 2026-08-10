@@ -113,7 +113,8 @@ public abstract class FlinkJdbcSqlServerCatalogIT extends FlinkCommonIT {
 
   @Override
   protected boolean defaultValueWithNullLiterals() {
-    return true;
+    // SQL Server distinguishes a missing DEFAULT constraint from an explicit DEFAULT NULL.
+    return false;
   }
 
   @BeforeAll

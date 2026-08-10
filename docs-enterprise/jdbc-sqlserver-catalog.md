@@ -118,7 +118,7 @@ Please refer to [Manage Relational Metadata Using Gravitino](./manage-relational
 
 ### Table column types
 
-All type mappings are strictly one-to-one to ensure deterministic round-trip behavior.
+The catalog preserves canonical Gravitino write mappings and normalizes compatible source types when loading existing SQL Server tables.
 
 #### Supported one-to-one mappings
 
@@ -142,6 +142,8 @@ All type mappings are strictly one-to-one to ensure deterministic round-trip beh
 | `Binary`       | `varbinary(max)`   |                                       |
 | `UUID`         | `uniqueidentifier` |                                       |
 
+When loading source tables, SQL Server `datetime` maps to `Timestamp(3)`, bounded `nvarchar(n)` maps to `VarChar(n)`, and `nvarchar(max)` maps to `String`.
+
 #### Types mapped to ExternalType
 
 SQL Server types not in the table above are mapped to Gravitino **[External Type](./manage-relational-metadata-using-gravitino.md#external-type)** on read. Users can use `ExternalType("typename")` when creating tables through Gravitino, and the converter emits the type name as-is.
@@ -149,7 +151,6 @@ SQL Server types not in the table above are mapped to Gravitino **[External Type
 | SQL Server Type            | Gravitino Type                      |
 |----------------------------|-------------------------------------|
 | `numeric(p,s)`             | `ExternalType("numeric(p,s)")`      |
-| `datetime`                 | `ExternalType("datetime")`          |
 | `smalldatetime`            | `ExternalType("smalldatetime")`     |
 | `datetimeoffset(p)`        | `ExternalType("datetimeoffset(p)")` |
 | `nchar(n)`                 | `ExternalType("nchar(n)")`          |
@@ -168,7 +169,7 @@ SQL Server types not in the table above are mapped to Gravitino **[External Type
 :::info
 SQL Server doesn't support Gravitino `Timestamp_tz` (timestamp with time zone). Use `ExternalType("datetimeoffset(p)")` instead.
 
-`nvarchar` (any length, including `nvarchar(max)`) maps to `StringType` as a strict one-to-one pair. When creating tables, `StringType` produces `nvarchar(max)`. This ensures `nvarchar` columns are usable in Gravitino for federation and predicate pushdown, rather than being opaque `ExternalType` values.
+Bounded `nvarchar(n)` preserves its length as `VarChar(n)`. `nvarchar(max)` and an unknown-length `nvarchar` map to `String`; when creating tables, `String` produces `nvarchar(max)`.
 :::
 
 ### Table column auto-increment
@@ -185,6 +186,7 @@ SQL Server doesn't support Gravitino `Timestamp_tz` (timestamp with time zone). 
 - Supports numeric, string, and boolean literals.
 - SQL Server `bit` type uses `1`/`0` for boolean defaults (not `'true'`/`'false'`).
 - SQL Server wraps default values in parentheses (e.g., `((0))`, `('hello')`). The converter strips these automatically.
+- A nullable column without a default constraint has no Gravitino default value. Only an explicit `DEFAULT NULL` constraint maps to a null literal default.
 
 ### Table properties
 
