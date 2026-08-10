@@ -11,6 +11,8 @@ import static com.datastrato.gravitino.catalog.oracle.OracleTablePropertiesMetad
 import static org.apache.gravitino.catalog.jdbc.JdbcTablePropertiesMetadata.COMMENT_KEY;
 import static org.apache.gravitino.rel.Column.DEFAULT_VALUE_NOT_SET;
 
+import com.datastrato.gravitino.catalog.oracle.converter.OracleColumnDefaultValueConverter;
+import com.datastrato.gravitino.catalog.oracle.converter.OracleTypeConverter;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -34,10 +36,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.catalog.jdbc.JdbcColumn;
 import org.apache.gravitino.catalog.jdbc.JdbcTable;
+import org.apache.gravitino.catalog.jdbc.converter.JdbcColumnDefaultValueConverter;
+import org.apache.gravitino.catalog.jdbc.converter.JdbcExceptionConverter;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcTypeConverter;
 import org.apache.gravitino.catalog.jdbc.operation.JdbcTableOperations;
 import org.apache.gravitino.catalog.jdbc.utils.JdbcConnectorUtils;
@@ -66,6 +71,7 @@ import org.apache.gravitino.rel.types.Types;
 /** Table operations for Oracle. */
 public class OracleTableOperations extends JdbcTableOperations {
 
+  private static final int ORACLE_NATIVE_BOOLEAN_MIN_VERSION = 23;
   private static final int MAX_RANGE_EXPRESSIONS_PER_QUERY = 100;
   private static final int MAX_RANGE_EXPRESSION_QUERY_LENGTH = 30_000;
   private static final String EVALUATE_RANGE_EXPRESSIONS_SQL_PREFIX = "SELECT ";
@@ -79,6 +85,7 @@ public class OracleTableOperations extends JdbcTableOperations {
   // comments live in ALL_COL_COMMENTS and must be fetched explicitly (see issue #855).
   private static final String GET_COLUMN_COMMENTS_SQL =
       "SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS WHERE OWNER = ? AND TABLE_NAME = ?";
+  private static final String BOOLEAN_COMMENT_MARKER = "__GRAVITINO_BOOLEAN__\n";
   private static final String GET_INDEXES_SQL =
       "SELECT ac.CONSTRAINT_NAME, ac.CONSTRAINT_TYPE, acc.COLUMN_NAME, acc.POSITION "
           + "FROM ALL_CONSTRAINTS ac JOIN ALL_CONS_COLUMNS acc "
@@ -98,6 +105,39 @@ public class OracleTableOperations extends JdbcTableOperations {
   private static final String GET_RANGE_PARTITIONS_SQL =
       "SELECT PARTITION_NAME, HIGH_VALUE FROM ALL_TAB_PARTITIONS "
           + "WHERE TABLE_OWNER = ? AND TABLE_NAME = ? ORDER BY PARTITION_POSITION";
+
+  private boolean nativeBooleanSupported;
+
+  /**
+   * Initializes Oracle table operations and selects the version-appropriate boolean mapping.
+   *
+   * @param dataSource JDBC data source
+   * @param exceptionMapper JDBC exception converter
+   * @param jdbcTypeConverter JDBC type converter
+   * @param jdbcColumnDefaultValueConverter JDBC column default value converter
+   * @param conf catalog configuration
+   */
+  @Override
+  public void initialize(
+      DataSource dataSource,
+      JdbcExceptionConverter exceptionMapper,
+      JdbcTypeConverter jdbcTypeConverter,
+      JdbcColumnDefaultValueConverter jdbcColumnDefaultValueConverter,
+      Map<String, String> conf) {
+    super.initialize(
+        dataSource, exceptionMapper, jdbcTypeConverter, jdbcColumnDefaultValueConverter, conf);
+
+    try (Connection connection = dataSource.getConnection()) {
+      nativeBooleanSupported =
+          connection.getMetaData().getDatabaseMajorVersion() >= ORACLE_NATIVE_BOOLEAN_MIN_VERSION;
+    } catch (SQLException e) {
+      throw exceptionMapper.toGravitinoException(e);
+    }
+
+    ((OracleTypeConverter) jdbcTypeConverter).setNativeBooleanSupported(nativeBooleanSupported);
+    ((OracleColumnDefaultValueConverter) jdbcColumnDefaultValueConverter)
+        .setNativeBooleanSupported(nativeBooleanSupported);
+  }
 
   @Override
   protected String generateCreateTableSql(
@@ -329,12 +369,22 @@ public class OracleTableOperations extends JdbcTableOperations {
     Column[] corrected = columns.clone();
     for (int i = 0; i < corrected.length; i++) {
       Column column = corrected[i];
-      String comment = columnComments.get(column.name());
-      if (StringUtils.isNotBlank(comment) && !comment.equals(column.comment())) {
+      if (!columnComments.containsKey(column.name())) {
+        continue;
+      }
+      String storedComment = columnComments.get(column.name());
+      boolean hasBooleanMarker = isEmulatedBooleanComment(storedComment);
+      String comment = hasBooleanMarker ? userColumnComment(storedComment) : storedComment;
+      Type dataType =
+          hasBooleanMarker && column.dataType() instanceof Types.ByteType
+              ? Types.BooleanType.get()
+              : column.dataType();
+      if (!Objects.equals(dataType, column.dataType())
+          || !Objects.equals(comment, column.comment())) {
         corrected[i] =
             JdbcColumn.builder()
                 .withName(column.name())
-                .withType(column.dataType())
+                .withType(dataType)
                 .withComment(comment)
                 .withNullable(column.nullable())
                 .withAutoIncrement(column.autoIncrement())
@@ -964,13 +1014,14 @@ public class OracleTableOperations extends JdbcTableOperations {
     }
 
     for (JdbcColumn column : columns) {
-      if (StringUtils.isNotBlank(column.comment())) {
+      String storedComment = storedColumnComment(column.dataType(), column.comment());
+      if (StringUtils.isNotBlank(storedComment)) {
         String columnCommentSql =
             String.format(
                 "COMMENT ON COLUMN %s.%s IS '%s'",
                 OracleIdentifierUtil.quote(tableName),
                 OracleIdentifierUtil.quote(column.name()),
-                escapeSqlComment(column.comment()));
+                escapeSqlComment(storedComment));
         JdbcConnectorUtils.executeUpdate(connection, columnCommentSql);
       }
     }
@@ -978,6 +1029,22 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   private static String escapeSqlComment(String value) {
     return value.replace("'", "''");
+  }
+
+  private String storedColumnComment(Type dataType, String comment) {
+    if (!nativeBooleanSupported && dataType instanceof Types.BooleanType) {
+      return BOOLEAN_COMMENT_MARKER + StringUtils.defaultString(comment);
+    }
+    return comment;
+  }
+
+  private static boolean isEmulatedBooleanComment(String comment) {
+    return comment != null && comment.startsWith(BOOLEAN_COMMENT_MARKER);
+  }
+
+  private static String userColumnComment(String storedComment) {
+    String comment = storedComment.substring(BOOLEAN_COMMENT_MARKER.length());
+    return StringUtils.isEmpty(comment) ? null : comment;
   }
 
   private List<String> generateAlterTableSqlList(
@@ -990,10 +1057,11 @@ public class OracleTableOperations extends JdbcTableOperations {
       if (change instanceof TableChange.AddColumn) {
         TableChange.AddColumn addColumn = (TableChange.AddColumn) change;
         sqlList.add(generateAddColumnSql(qualifiedTableName, addColumn));
-        if (StringUtils.isNotBlank(addColumn.getComment())) {
+        String storedComment = storedColumnComment(addColumn.getDataType(), addColumn.getComment());
+        if (StringUtils.isNotBlank(storedComment)) {
           sqlList.add(
               generateUpdateColumnCommentSql(
-                  qualifiedTableName, addColumn.getFieldName(), addColumn.getComment()));
+                  qualifiedTableName, addColumn.getFieldName(), storedComment));
         }
       } else if (change instanceof TableChange.UpdateColumnType) {
         TableChange.UpdateColumnType updateColumnType = (TableChange.UpdateColumnType) change;
@@ -1004,6 +1072,19 @@ public class OracleTableOperations extends JdbcTableOperations {
                 null,
                 null,
                 updateColumnType.getNewDataType()));
+        if (!nativeBooleanSupported) {
+          lazyLoadTable = getOrCreateTable(databaseName, tableName, lazyLoadTable);
+          JdbcColumn oldColumn =
+              getJdbcColumnFromTable(lazyLoadTable, updateColumnType.fieldName()[0]);
+          if (oldColumn.dataType() instanceof Types.BooleanType
+              || updateColumnType.getNewDataType() instanceof Types.BooleanType) {
+            sqlList.add(
+                generateUpdateColumnCommentSql(
+                    qualifiedTableName,
+                    updateColumnType.fieldName(),
+                    storedColumnComment(updateColumnType.getNewDataType(), oldColumn.comment())));
+          }
+        }
       } else if (change instanceof TableChange.UpdateColumnDefaultValue) {
         TableChange.UpdateColumnDefaultValue updateDefault =
             (TableChange.UpdateColumnDefaultValue) change;
@@ -1027,11 +1108,16 @@ public class OracleTableOperations extends JdbcTableOperations {
       } else if (change instanceof TableChange.UpdateColumnComment) {
         TableChange.UpdateColumnComment updateColumnComment =
             (TableChange.UpdateColumnComment) change;
+        String storedComment = updateColumnComment.getNewComment();
+        if (!nativeBooleanSupported) {
+          lazyLoadTable = getOrCreateTable(databaseName, tableName, lazyLoadTable);
+          JdbcColumn column =
+              getJdbcColumnFromTable(lazyLoadTable, updateColumnComment.fieldName()[0]);
+          storedComment = storedColumnComment(column.dataType(), storedComment);
+        }
         sqlList.add(
             generateUpdateColumnCommentSql(
-                qualifiedTableName,
-                updateColumnComment.fieldName(),
-                updateColumnComment.getNewComment()));
+                qualifiedTableName, updateColumnComment.fieldName(), storedComment));
       } else if (change instanceof TableChange.DeleteColumn) {
         TableChange.DeleteColumn deleteColumn = (TableChange.DeleteColumn) change;
         if (Boolean.TRUE.equals(deleteColumn.getIfExists())) {

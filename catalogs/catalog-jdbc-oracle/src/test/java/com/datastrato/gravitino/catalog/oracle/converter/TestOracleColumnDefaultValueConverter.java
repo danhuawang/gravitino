@@ -115,4 +115,24 @@ public class TestOracleColumnDefaultValueConverter {
     Assertions.assertEquals(
         "RAW_SQL()", converter.fromGravitino(UnparsedExpression.of("RAW_SQL()")));
   }
+
+  @Test
+  void testNativeBooleanConversion() {
+    OracleColumnDefaultValueConverter nativeBooleanConverter =
+        new OracleColumnDefaultValueConverter();
+    nativeBooleanConverter.setNativeBooleanSupported(true);
+    Assertions.assertEquals(
+        "TRUE", nativeBooleanConverter.fromGravitino(Literals.booleanLiteral(true)));
+    Assertions.assertEquals(
+        "FALSE", nativeBooleanConverter.fromGravitino(Literals.booleanLiteral(false)));
+
+    JdbcTypeConverter.JdbcTypeBean type =
+        new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.BOOLEAN);
+    Assertions.assertEquals(
+        Literals.booleanLiteral(true),
+        nativeBooleanConverter.toGravitino(type, "TRUE", false, true));
+    Assertions.assertEquals(
+        Literals.booleanLiteral(false),
+        nativeBooleanConverter.toGravitino(type, "FALSE", false, true));
+  }
 }

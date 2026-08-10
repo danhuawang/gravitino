@@ -126,7 +126,7 @@ public class BaseIT {
       ImmutableMap.of(
           "mysql", Pattern.compile("mysql-connector-java-([\\d.]+)\\.jar"),
           "postgresql", Pattern.compile("postgresql-([\\d.]+)\\.jar"),
-          "oracle", Pattern.compile("ojdbc8-([\\d.]+)\\.jar"),
+          "oracle", Pattern.compile("ojdbc(?:8|11)-([\\d.]+)\\.jar"),
           "clickhouse", Pattern.compile("clickhouse-jdbc-([\\d.]+)(-all)?\\.jar"),
           "sqlite", Pattern.compile("sqlite-jdbc-([\\d.]+)\\.jar"));
 
@@ -607,13 +607,13 @@ public class BaseIT {
         expectedVersion);
 
     for (String directory : directories) {
-      cleanConflictingDrivers(directory, driverType, expectedVersion);
+      cleanConflictingDrivers(directory, driverType, expectedFileName);
     }
   }
 
   /** Clean conflicting drivers in the specified directory */
-  private static void cleanConflictingDrivers(
-      String directory, String driverType, String expectedVersion) throws IOException {
+  static void cleanConflictingDrivers(String directory, String driverType, String expectedFileName)
+      throws IOException {
     Path dirPath = Paths.get(directory);
     if (!Files.exists(dirPath)) {
       return;
@@ -629,14 +629,10 @@ public class BaseIT {
     for (File file : files) {
       if (file.isFile()) {
         String fileName = file.getName();
-        String version = extractVersion(fileName);
         String type = getDriverType(fileName);
 
-        // If it's the same type of driver but different version, mark as conflict
-        if (type != null
-            && type.equals(driverType)
-            && version != null
-            && !version.equals(expectedVersion)) {
+        // Different artifacts of the same driver type conflict even when their versions match.
+        if (type != null && type.equals(driverType) && !fileName.equals(expectedFileName)) {
           conflictingFiles.add(fileName);
         }
       }

@@ -27,11 +27,11 @@ public class TestOracleTypeConverter {
     decimal.setScale(2);
     Assertions.assertEquals(Types.DecimalType.of(20, 2), CONVERTER.toGravitino(decimal));
 
-    JdbcTypeConverter.JdbcTypeBean booleanNumber =
+    JdbcTypeConverter.JdbcTypeBean singleDigitNumber =
         new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.NUMBER);
-    booleanNumber.setColumnSize(1);
-    booleanNumber.setScale(0);
-    Assertions.assertEquals(Types.BooleanType.get(), CONVERTER.toGravitino(booleanNumber));
+    singleDigitNumber.setColumnSize(1);
+    singleDigitNumber.setScale(0);
+    Assertions.assertEquals(Types.ByteType.get(), CONVERTER.toGravitino(singleDigitNumber));
 
     JdbcTypeConverter.JdbcTypeBean longNumber =
         new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.NUMBER);
@@ -42,6 +42,16 @@ public class TestOracleTypeConverter {
     JdbcTypeConverter.JdbcTypeBean unspecified =
         new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.NUMBER);
     Assertions.assertEquals(Types.ExternalType.of("NUMBER"), CONVERTER.toGravitino(unspecified));
+
+    JdbcTypeConverter.JdbcTypeBean unconstrained =
+        new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.NUMBER);
+    unconstrained.setColumnSize(0);
+    unconstrained.setScale(-127);
+    Assertions.assertEquals(Types.DecimalType.of(38, 0), CONVERTER.toGravitino(unconstrained));
+
+    JdbcTypeConverter.JdbcTypeBean nativeBoolean =
+        new JdbcTypeConverter.JdbcTypeBean(OracleTypeConverter.BOOLEAN);
+    Assertions.assertEquals(Types.BooleanType.get(), CONVERTER.toGravitino(nativeBoolean));
   }
 
   @Test
@@ -118,5 +128,12 @@ public class TestOracleTypeConverter {
             UnsupportedOperationException.class,
             () -> CONVERTER.fromGravitino(Types.DateType.get()));
     Assertions.assertTrue(exception.getMessage().contains("DateType"));
+
+    try {
+      CONVERTER.setNativeBooleanSupported(true);
+      Assertions.assertEquals("BOOLEAN", CONVERTER.fromGravitino(Types.BooleanType.get()));
+    } finally {
+      CONVERTER.setNativeBooleanSupported(false);
+    }
   }
 }

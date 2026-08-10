@@ -20,7 +20,7 @@ Gravitino saves some system information in table and column comments, like `(Fro
 :::
 
 :::caution
-The Oracle catalog targets **Oracle 11g Release 2 (11.2.x)**. Oracle 12c+ may also work but is not tested. Because Oracle 11g has no Identity Columns, the catalog does **not** support auto-increment.
+The Oracle catalog targets **Oracle 11g Release 2 (11.2.x)** and is also tested with Oracle Database Free 23c. Because Oracle 11g has no Identity Columns, the catalog does **not** support auto-increment.
 :::
 
 ## Case sensitivity
@@ -78,8 +78,8 @@ Besides the [common catalog properties](../docs/gravitino-server-config.md#apach
 | `jdbc.pool.max-size`    | The maximum number of connections in the pool.                                                                                                                   | `10`          | No       | 1.3.0         |
 | `jdbc.pool.max-wait-ms` | The maximum duration that the pool will wait for a connection to be returned.                                                                                    | `30000`       | No       | 1.3.0         |
 
-:::caution
-Oracle's JDBC driver is **not** redistributed with Gravitino due to Oracle's license. You must download the Oracle JDBC driver (for example `ojdbc8.jar`) and place it in the `catalogs/jdbc-oracle/libs` directory yourself.
+:::info
+The distribution includes one Java 17-compatible `ojdbc11` driver in `catalogs/jdbc-oracle/libs`. Do not add a second Oracle JDBC driver to that directory because class loading would become order-dependent.
 :::
 
 :::info
@@ -135,7 +135,7 @@ See [Case sensitivity](#case-sensitivity) for how table/column names are folded,
 | `Decimal(p,s)`     | `NUMBER(p,s)`            |
 | `Float`            | `BINARY_FLOAT`           |
 | `Double`           | `BINARY_DOUBLE`          |
-| `Boolean`          | `NUMBER(1)`              |
+| `Boolean`          | `BOOLEAN` on Oracle 23+, otherwise marked `NUMBER(1)` |
 | `String`           | `CLOB`                   |
 | `VarChar(n)`       | `VARCHAR2(n)`            |
 | `FixedChar(n)`     | `CHAR(n)`                |
@@ -150,7 +150,8 @@ When loading an Oracle table, Gravitino converts Oracle types back as follows:
 | `NUMBER(p)` (scale = 0)     | `Byte` (p ≤ 3), `Short` (p ≤ 5), `Integer` (p ≤ 10), `Long` (p ≤ 19), otherwise `Decimal(p,0)`      |
 | `NUMBER(p,s)` (scale > 0)   | `Decimal(p,s)`                                                                                      |
 | `NUMBER(p,s)` (scale < 0)   | `ExternalType("NUMBER(p,s)")`                                                                       |
-| `NUMBER` (no p, no s)       | `ExternalType("NUMBER")`                                                                            |
+| `NUMBER` (no p, no s)       | `Decimal(38,0)`; Oracle JDBC reports this as the sentinel precision `0`, scale `-127`                |
+| `BOOLEAN`                   | `Boolean`                                                                                             |
 | `VARCHAR2(n)` / `VARCHAR(n)`| `VarChar(n)` (or `String` when length is unknown)                                                   |
 | `CHAR(n)`                   | `FixedChar(n)`                                                                                      |
 | `CLOB` / `NCLOB`            | `String`                                                                                            |
@@ -166,6 +167,8 @@ When loading an Oracle table, Gravitino converts Oracle types back as follows:
 Oracle doesn't support Gravitino `Date`, `Time`, `Fixed`, `Struct`, `List`, `Map`, `IntervalDay`, `IntervalYear`, `Union`, `UUID` types.
 Types not listed above are mapped to Gravitino **[External Type](../docs/manage-relational-metadata-using-gravitino.md#external-type)** to keep the original Oracle type name.
 Oracle `FLOAT` is a subtype of `NUMBER`, not the same as Oracle `BINARY_DOUBLE`. The Oracle catalog maps it to Gravitino `Double` for compatibility, but the Oracle and Gravitino types are not strictly equivalent.
+
+A source `NUMBER(1)` is an integer and maps to `Byte`; it is never inferred to be boolean. On Oracle releases before 23, Gravitino records boolean intent in internal column-comment metadata when it emulates `Boolean` with `NUMBER(1)`, and removes that marker from the comment returned through the API.
 :::
 
 :::caution

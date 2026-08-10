@@ -48,12 +48,22 @@ dependencies {
 
 tasks {
   register("runtimeJars", Copy::class) {
+    doFirst {
+      delete(fileTree("build/libs") { include("ojdbc*.jar") })
+    }
     from(configurations.runtimeClasspath)
     into("build/libs")
   }
 
   val copyCatalogLibs by registering(Copy::class) {
     dependsOn("jar", "runtimeJars")
+    doFirst {
+      delete(
+        fileTree("$rootDir/distribution/package/catalogs/jdbc-oracle/libs") {
+          include("ojdbc*.jar")
+        }
+      )
+    }
     from("build/libs") {
       exclude("guava-*.jar")
       exclude("log4j-*.jar")

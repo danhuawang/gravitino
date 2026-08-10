@@ -34,6 +34,17 @@ public class OracleColumnDefaultValueConverter extends JdbcColumnDefaultValueCon
           .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
           .toFormatter();
 
+  private boolean nativeBooleanSupported;
+
+  /**
+   * Configures whether boolean literals should use Oracle's native SQL boolean syntax.
+   *
+   * @param nativeBooleanSupported whether native SQL booleans are supported
+   */
+  public void setNativeBooleanSupported(boolean nativeBooleanSupported) {
+    this.nativeBooleanSupported = nativeBooleanSupported;
+  }
+
   @Override
   public Expression toGravitino(
       JdbcTypeConverter.JdbcTypeBean typeBean,
@@ -73,6 +84,14 @@ public class OracleColumnDefaultValueConverter extends JdbcColumnDefaultValueCon
     }
 
     String typeName = typeBean.getTypeName().toUpperCase(Locale.ROOT);
+    if (OracleTypeConverter.BOOLEAN.equals(typeName)) {
+      if ("TRUE".equalsIgnoreCase(defaultVal)) {
+        return Literals.booleanLiteral(true);
+      }
+      if ("FALSE".equalsIgnoreCase(defaultVal)) {
+        return Literals.booleanLiteral(false);
+      }
+    }
     if ("NUMBER".equals(typeName)
         || "BINARY_FLOAT".equals(typeName)
         || "BINARY_DOUBLE".equals(typeName)
@@ -148,16 +167,19 @@ public class OracleColumnDefaultValueConverter extends JdbcColumnDefaultValueCon
     return "'" + value.replace("'", "''") + "'";
   }
 
-  private static String formatBoolean(Object value) {
+  private String formatBoolean(Object value) {
     if (value instanceof Boolean) {
+      if (nativeBooleanSupported) {
+        return (Boolean) value ? "TRUE" : "FALSE";
+      }
       return (Boolean) value ? "1" : "0";
     }
     String stringValue = value.toString();
     if ("true".equalsIgnoreCase(stringValue)) {
-      return "1";
+      return nativeBooleanSupported ? "TRUE" : "1";
     }
     if ("false".equalsIgnoreCase(stringValue)) {
-      return "0";
+      return nativeBooleanSupported ? "FALSE" : "0";
     }
     try {
       return new BigDecimal(stringValue).stripTrailingZeros().toPlainString();

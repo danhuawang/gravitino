@@ -75,7 +75,7 @@ public class CatalogOracleIT extends BaseIT {
   private static final ContainerSuite containerSuite = ContainerSuite.getInstance();
   private static final String provider = "jdbc-oracle";
   private static final String ORACLE_JDBC_DRIVER_URL =
-      "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc8/23.4.0.24.05/ojdbc8-23.4.0.24.05.jar";
+      "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/23.26.2.0.0/ojdbc11-23.26.2.0.0.jar";
   private static final TestDatabaseName TEST_DB_NAME = TestDatabaseName.ORACLE_CATALOG_ORACLE_IT;
 
   // Oracle identifiers are upper-cased by default; keep these ASCII-safe to satisfy
@@ -422,6 +422,7 @@ public class CatalogOracleIT extends BaseIT {
           // BINARY_FLOAT / BINARY_DOUBLE are the Oracle-native IEEE-754 types.
           Column.of("c_float", Types.FloatType.get(), null, true, false, null),
           Column.of("c_double", Types.DoubleType.get(), null, true, false, null),
+          Column.of("c_boolean", Types.BooleanType.get(), null, true, false, null),
           Column.of("c_varchar", Types.VarCharType.of(200), null, true, false, null),
           Column.of("c_char", Types.FixedCharType.of(10), null, true, false, null),
           Column.of("c_string", Types.StringType.get(), null, true, false, null),
@@ -444,11 +445,28 @@ public class CatalogOracleIT extends BaseIT {
     assertEquals(Types.DecimalType.of(12, 4), loadedByName.get("c_decimal").dataType());
     assertEquals(Types.FloatType.get(), loadedByName.get("c_float").dataType());
     assertEquals(Types.DoubleType.get(), loadedByName.get("c_double").dataType());
+    assertEquals(Types.BooleanType.get(), loadedByName.get("c_boolean").dataType());
     assertEquals(Types.VarCharType.of(200), loadedByName.get("c_varchar").dataType());
     assertEquals(Types.FixedCharType.of(10), loadedByName.get("c_char").dataType());
     assertEquals(Types.StringType.get(), loadedByName.get("c_string").dataType());
     assertEquals(Types.BinaryType.get(), loadedByName.get("c_binary").dataType());
     assertEquals(Types.TimestampType.withoutTimeZone(6), loadedByName.get("c_ts").dataType());
+  }
+
+  @Test
+  void testSourceNumberAndBooleanMetadataMapping() {
+    String name = "IT_SOURCE_NUMBER_TYPES";
+    oracleService.executeQuery(
+        "CREATE TABLE " + name + " (FLAG NUMBER(1), AMOUNT NUMBER, ENABLED BOOLEAN)");
+
+    Table loaded = catalog.asTableCatalog().loadTable(NameIdentifier.of(schemaName, name));
+    Map<String, Column> loadedByName =
+        Arrays.stream(loaded.columns())
+            .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
+
+    assertEquals(Types.ByteType.get(), loadedByName.get("flag").dataType());
+    assertEquals(Types.DecimalType.of(38, 0), loadedByName.get("amount").dataType());
+    assertEquals(Types.BooleanType.get(), loadedByName.get("enabled").dataType());
   }
 
   // ----------------------------------------------------------------------

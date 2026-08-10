@@ -52,7 +52,7 @@ import org.junit.jupiter.api.Test;
 public abstract class SparkJdbcOracleCatalogIT extends SparkCommonIT {
 
   private static final String ORACLE_JDBC_DRIVER_URL =
-      "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc8/23.4.0.24.05/ojdbc8-23.4.0.24.05.jar";
+      "https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/23.26.2.0.0/ojdbc11-23.26.2.0.0.jar";
 
   protected String oracleUrl;
   protected String oracleUsername;

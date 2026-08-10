@@ -29,6 +29,21 @@ public class OracleTypeConverter extends JdbcTypeConverter {
   static final String TIMESTAMP_WITH_TIME_ZONE = "TIMESTAMP WITH TIME ZONE";
   static final String TIMESTAMP_WITH_LOCAL_TIME_ZONE = "TIMESTAMP WITH LOCAL TIME ZONE";
   static final String DATE = "DATE";
+  static final String BOOLEAN = "BOOLEAN";
+
+  private static final int ORACLE_MAX_DECIMAL_PRECISION = 38;
+  private static final int UNCONSTRAINED_NUMBER_SCALE = -127;
+
+  private boolean nativeBooleanSupported;
+
+  /**
+   * Configures whether the connected Oracle database supports the native SQL {@code BOOLEAN} type.
+   *
+   * @param nativeBooleanSupported whether native SQL booleans are supported
+   */
+  public void setNativeBooleanSupported(boolean nativeBooleanSupported) {
+    this.nativeBooleanSupported = nativeBooleanSupported;
+  }
 
   @Override
   public Type toGravitino(JdbcTypeBean typeBean) {
@@ -45,17 +60,20 @@ public class OracleTypeConverter extends JdbcTypeConverter {
         if (precision == null && scale == null) {
           return Types.ExternalType.of(NUMBER);
         }
+        // Oracle JDBC exposes an unconstrained NUMBER as precision=0 and scale=-127. These are
+        // metadata sentinels rather than a valid API decimal declaration.
+        if (safeInt(precision, 0) == 0 && safeInt(scale, 0) == UNCONSTRAINED_NUMBER_SCALE) {
+          return Types.DecimalType.of(ORACLE_MAX_DECIMAL_PRECISION, 0);
+        }
         if (scale != null && scale < 0) {
           return Types.ExternalType.of(
-              String.format("NUMBER(%d,%d)", safeInt(precision, 38), scale));
+              String.format(
+                  "NUMBER(%d,%d)", safeInt(precision, ORACLE_MAX_DECIMAL_PRECISION), scale));
         }
         if (scale != null && scale > 0) {
-          return Types.DecimalType.of(safeInt(precision, 38), scale);
+          return Types.DecimalType.of(safeInt(precision, ORACLE_MAX_DECIMAL_PRECISION), scale);
         }
-        if (safeInt(precision, 38) == 1) {
-          return Types.BooleanType.get();
-        }
-        return mapNumberPrecisionToIntegralType(safeInt(precision, 38));
+        return mapNumberPrecisionToIntegralType(safeInt(precision, ORACLE_MAX_DECIMAL_PRECISION));
       case VARCHAR2:
       case VARCHAR:
         return precision == null ? Types.StringType.get() : Types.VarCharType.of(precision);
@@ -81,6 +99,8 @@ public class OracleTypeConverter extends JdbcTypeConverter {
         return Types.FloatType.get();
       case DATE:
         return Types.TimestampType.withoutTimeZone();
+      case BOOLEAN:
+        return Types.BooleanType.get();
       default:
         return Types.ExternalType.of(typeBean.getTypeName());
     }
@@ -104,7 +124,7 @@ public class OracleTypeConverter extends JdbcTypeConverter {
     } else if (type instanceof Types.DoubleType) {
       return BINARY_DOUBLE;
     } else if (type instanceof Types.BooleanType) {
-      return "NUMBER(1)";
+      return nativeBooleanSupported ? BOOLEAN : "NUMBER(1)";
     } else if (type instanceof Types.StringType) {
       return CLOB;
     } else if (type instanceof Types.VarCharType) {

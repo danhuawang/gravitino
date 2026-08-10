@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -51,6 +52,7 @@ import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.distributions.Distributions;
 import org.apache.gravitino.rel.expressions.literals.Literal;
 import org.apache.gravitino.rel.expressions.literals.Literals;
+import org.apache.gravitino.rel.expressions.sorts.SortOrder;
 import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
@@ -156,13 +158,17 @@ public class TestOracleTableOperations {
     operations = new OracleTableOperationsForTest();
     dataSource = mock(DataSource.class);
     connection = mock(Connection.class);
+    DatabaseMetaData metaData = mock(DatabaseMetaData.class);
     when(dataSource.getConnection()).thenReturn(connection);
+    when(connection.getMetaData()).thenReturn(metaData);
+    when(metaData.getDatabaseMajorVersion()).thenReturn(23);
     operations.initialize(
         dataSource,
         new OracleExceptionConverter(),
         new OracleTypeConverter(),
         new OracleColumnDefaultValueConverter(),
         Collections.emptyMap());
+    clearInvocations(dataSource, connection, metaData);
   }
 
   @Test
@@ -199,6 +205,89 @@ public class TestOracleTableOperations {
     assertTrue(sql.endsWith("TABLESPACE \"USERS\""));
 
     assertEquals("DROP TABLE \"T1\" PURGE", operations.dropSqlForTest("T1"));
+  }
+
+  @Test
+  void testLegacyBooleanIntentRoundTrip() throws Exception {
+    DataSource legacyDataSource = mock(DataSource.class);
+    Connection legacyConnection = mock(Connection.class);
+    DatabaseMetaData legacyMetaData = mock(DatabaseMetaData.class);
+    when(legacyDataSource.getConnection()).thenReturn(legacyConnection);
+    when(legacyConnection.getMetaData()).thenReturn(legacyMetaData);
+    when(legacyMetaData.getDatabaseMajorVersion()).thenReturn(11);
+
+    OracleTableOperationsForTest legacyOperations = new OracleTableOperationsForTest();
+    legacyOperations.initialize(
+        legacyDataSource,
+        new OracleExceptionConverter(),
+        new OracleTypeConverter(),
+        new OracleColumnDefaultValueConverter(),
+        Collections.emptyMap());
+    clearInvocations(legacyDataSource, legacyConnection, legacyMetaData);
+
+    Statement sessionStatement = mock(Statement.class);
+    Statement createStatement = mock(Statement.class);
+    Statement commentStatement = mock(Statement.class);
+    when(legacyConnection.createStatement())
+        .thenReturn(sessionStatement, createStatement, commentStatement);
+    JdbcColumn flag =
+        JdbcColumn.builder()
+            .withName("FLAG")
+            .withType(Types.BooleanType.get())
+            .withComment("active flag")
+            .withNullable(true)
+            .build();
+
+    legacyOperations.create(
+        "APP_USER",
+        "T1",
+        new JdbcColumn[] {flag},
+        null,
+        Map.of(),
+        Transforms.EMPTY_TRANSFORM,
+        Distributions.NONE,
+        Indexes.EMPTY_INDEXES,
+        new SortOrder[0]);
+
+    verify(createStatement).executeUpdate(eq("CREATE TABLE \"T1\" (\"FLAG\" NUMBER(1))"));
+    verify(commentStatement)
+        .executeUpdate(
+            eq("COMMENT ON COLUMN \"T1\".\"FLAG\" IS " + "'__GRAVITINO_BOOLEAN__\nactive flag'"));
+
+    PreparedStatement commentQuery = mock(PreparedStatement.class);
+    ResultSet commentResult = mock(ResultSet.class);
+    when(legacyConnection.getSchema()).thenReturn("APP_USER");
+    when(legacyConnection.prepareStatement(anyString())).thenReturn(commentQuery);
+    when(commentQuery.executeQuery()).thenReturn(commentResult);
+    when(commentResult.next()).thenReturn(true, true, false);
+    when(commentResult.getString("COLUMN_NAME")).thenReturn("FLAG", "SOURCE_FLAG");
+    when(commentResult.getString("COMMENTS"))
+        .thenReturn("__GRAVITINO_BOOLEAN__\nactive flag", "source number flag");
+
+    JdbcTable.Builder builder =
+        JdbcTable.builder()
+            .withName("T1")
+            .withComment("")
+            .withProperties(Map.of())
+            .withColumns(
+                new JdbcColumn[] {
+                  JdbcColumn.builder()
+                      .withName("FLAG")
+                      .withType(Types.ByteType.get())
+                      .withNullable(true)
+                      .build(),
+                  JdbcColumn.builder()
+                      .withName("SOURCE_FLAG")
+                      .withType(Types.ByteType.get())
+                      .withNullable(true)
+                      .build()
+                });
+    legacyOperations.correctJdbcTableFieldsForTest(legacyConnection, "APP_USER", "T1", builder);
+
+    assertEquals(Types.BooleanType.get(), builder.columns()[0].dataType());
+    assertEquals("active flag", builder.columns()[0].comment());
+    assertEquals(Types.ByteType.get(), builder.columns()[1].dataType());
+    assertEquals("source number flag", builder.columns()[1].comment());
   }
 
   @Test
