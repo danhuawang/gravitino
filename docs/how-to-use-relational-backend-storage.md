@@ -115,16 +115,10 @@ SET search_path TO {schema};
 To move an existing deployment forward, run the
 `upgrade-{old_version}-to-{new_version}-postgresql.sql` scripts in order instead.
 
-<<<<<<< HEAD
-You should **download** the PostgreSQL connector Jar for the corresponding version of PostgreSQL you use
-(You can download it from the [PostgreSQL-driver-jar](https://jdbc.postgresql.org/download/postgresql-42.7.11.jar)),
-which is name like `postgresql-{version}.jar`.
-=======
 **3. Install the driver.** Download the current pgJDBC driver from
 [jdbc.postgresql.org](https://jdbc.postgresql.org/download/) and place `postgresql-{version}.jar`
 in `${GRAVITINO_HOME}/libs/`. Take the latest release rather than pinning an old one; several
 earlier versions carry published CVEs.
->>>>>>> upstream/branch-1.3
 
 **4. Configure the server.** Note the `currentSchema` parameter:
 
@@ -151,13 +145,7 @@ reached its database returns `UP`:
 curl http://{host}:8090/health/ready
 ```
 
-<<<<<<< HEAD
-### Step 5: Start the Server
-
-Please see the above steps in the MySQL section.
-=======
 If the backend is unreachable or slow the endpoint returns 503 with an `entityStore` check in the
 `DOWN` state. See
 [Health Check Endpoints](gravitino-server-config.md#health-check-endpoints) for the response
 format and the probe timeout.
->>>>>>> upstream/branch-1.3
