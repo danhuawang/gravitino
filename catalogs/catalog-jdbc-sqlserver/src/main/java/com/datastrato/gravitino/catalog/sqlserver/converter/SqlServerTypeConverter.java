@@ -25,6 +25,7 @@ public class SqlServerTypeConverter extends JdbcTypeConverter {
   static final String BINARY = "binary";
   static final String VARBINARY = "varbinary";
   static final String UNIQUEIDENTIFIER = "uniqueidentifier";
+  static final String DATETIME = "datetime";
   static final String DATETIME2 = "datetime2";
   static final String TIME_TYPE = "time";
 
@@ -60,6 +61,8 @@ public class SqlServerTypeConverter extends JdbcTypeConverter {
           return Types.TimestampType.withoutTimeZone(typeBean.getDatetimePrecision());
         }
         return Types.TimestampType.withoutTimeZone();
+      case DATETIME:
+        return Types.TimestampType.withoutTimeZone(3);
       case CHAR:
         return Types.FixedCharType.of(typeBean.getColumnSize());
       case VARCHAR:
@@ -69,7 +72,10 @@ public class SqlServerTypeConverter extends JdbcTypeConverter {
         }
         return Types.VarCharType.of(typeBean.getColumnSize());
       case NVARCHAR:
-        return Types.StringType.get();
+        if (typeBean.getColumnSize() == null || typeBean.getColumnSize() == Integer.MAX_VALUE) {
+          return Types.StringType.get();
+        }
+        return Types.VarCharType.of(typeBean.getColumnSize());
       case BINARY:
         return Types.FixedType.of(typeBean.getColumnSize());
       case VARBINARY:

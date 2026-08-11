@@ -80,7 +80,8 @@ public class TestSqlServerTypeConverterProperty {
         Arguments.of("datetime2", null, null, 6, Types.TimestampType.withoutTimeZone(6)),
         Arguments.of("char", 10, null, null, Types.FixedCharType.of(10)),
         Arguments.of("varchar", 255, null, null, Types.VarCharType.of(255)),
-        Arguments.of("nvarchar", null, null, null, Types.StringType.get()),
+        Arguments.of("nvarchar", 50, null, null, Types.VarCharType.of(50)),
+        Arguments.of("nvarchar", Integer.MAX_VALUE, null, null, Types.StringType.get()),
         Arguments.of("binary", 50, null, null, Types.FixedType.of(50)),
         Arguments.of("varbinary", null, null, null, Types.BinaryType.get()),
         Arguments.of("uniqueidentifier", null, null, null, Types.UUIDType.get()));
@@ -112,24 +113,24 @@ public class TestSqlServerTypeConverterProperty {
             "toGravitino(%s) should produce %s but got %s", typeName, expectedType, result));
   }
 
-  /** Property 11: nvarchar maps to StringType and StringType maps back to nvarchar. */
+  /** Provides bounded, max-length, and unknown-length nvarchar variants. */
   static Stream<Arguments> nvarcharVariants() {
     return Stream.of(
-        Arguments.of("nvarchar", 100),
-        Arguments.of("nvarchar", 4000),
-        Arguments.of("nvarchar", null));
+        Arguments.of("nvarchar", 100, Types.VarCharType.of(100)),
+        Arguments.of("nvarchar", 4000, Types.VarCharType.of(4000)),
+        Arguments.of("nvarchar", Integer.MAX_VALUE, Types.StringType.get()),
+        Arguments.of("nvarchar", null, Types.StringType.get()));
   }
 
   @ParameterizedTest
   @MethodSource("nvarcharVariants")
-  void testNvarcharAlwaysMapsToStringType(String typeName, Integer columnSize) {
+  void testNvarcharPreservesLength(String typeName, Integer columnSize, Type expectedType) {
     JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean(typeName);
     if (columnSize != null) {
       bean.setColumnSize(columnSize);
     }
     Type result = converter.toGravitino(bean);
-    Assertions.assertEquals(
-        Types.StringType.get(), result, "nvarchar (any length) should map to StringType");
+    Assertions.assertEquals(expectedType, result);
   }
 
   /** Verify nchar maps to ExternalType. */

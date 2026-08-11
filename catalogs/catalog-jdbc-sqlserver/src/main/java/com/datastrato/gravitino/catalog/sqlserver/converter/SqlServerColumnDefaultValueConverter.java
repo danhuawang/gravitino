@@ -31,7 +31,7 @@ public class SqlServerColumnDefaultValueConverter extends JdbcColumnDefaultValue
       boolean isExpression,
       boolean nullable) {
     if (columnDefaultValue == null) {
-      return nullable ? Literals.NULL : DEFAULT_VALUE_NOT_SET;
+      return DEFAULT_VALUE_NOT_SET;
     }
 
     // SQL Server generated/computed columns should be returned as unparsed expressions
@@ -127,7 +127,10 @@ public class SqlServerColumnDefaultValueConverter extends JdbcColumnDefaultValue
         }
         // Unescape SQL Server doubled single quotes: '' -> '
         strVal = strVal.replace("''", "'");
-        if (JdbcTypeConverter.VARCHAR.equals(typeName)) {
+        if (JdbcTypeConverter.VARCHAR.equals(typeName)
+            || (SqlServerTypeConverter.NVARCHAR.equals(typeName)
+                && type.getColumnSize() != null
+                && type.getColumnSize() != Integer.MAX_VALUE)) {
           return Literals.varcharLiteral(type.getColumnSize(), strVal);
         }
         if (SqlServerTypeConverter.CHAR.equals(typeName)) {
