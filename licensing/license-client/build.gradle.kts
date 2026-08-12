@@ -50,12 +50,31 @@ dependencies {
 //     https://raw.githubusercontent.com/datastrato/enterprise-license-keys/main/test/gravitino-master.pub
 //   GITHUB_TOKEN           — PAT or GitHub App token with read access to the key repo
 //                            (auto-injected in GitHub Actions)
-// For local development, tests use in-memory key pairs (TestKeyPairUtil) and do not need this key.
+// For local development, leave these unset (tests use in-memory keys via TestKeyPairUtil).
+// In GitHub Actions, empty values fail fast with guidance to open the PR from this repo
+// (fork pull_request workflows receive secrets as empty strings, not unset).
 tasks.register("downloadPublicKey") {
   doLast {
     val keyUrl = System.getenv("LICENSE_PUBLIC_KEY_URL")
     val githubToken = System.getenv("GITHUB_TOKEN")
-    if (keyUrl == null || githubToken == null) {
+    if (keyUrl.isNullOrEmpty() || githubToken.isNullOrEmpty()) {
+      // GitHub Actions resolves unavailable secrets to "" (not unset). That happens for
+      // pull_request workflows from forks, which never receive repository secrets.
+      if (System.getenv("GITHUB_ACTIONS") == "true") {
+        throw GradleException(
+          """
+          License public key is missing: LICENSE_PUBLIC_KEY_URL and/or GITHUB_TOKEN is empty or unset.
+
+          Primary recommendation: open this pull request from a branch in
+          datastrato/gravitino-enterprise (not from a fork). GitHub Actions does not
+          expose repository secrets to pull_request workflows from forks, so
+          ENTERPRISE_TEST_PUBLIC_KEY_URI resolves to an empty string and the build
+          cannot download the enterprise license public key.
+
+          For local development, leave these variables unset to skip this task.
+          """.trimIndent()
+        )
+      }
       logger.lifecycle(
         "LICENSE_PUBLIC_KEY_URL or GITHUB_TOKEN not set — skipping public key download (local dev)"
       )
