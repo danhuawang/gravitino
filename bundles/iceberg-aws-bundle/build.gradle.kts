@@ -32,10 +32,14 @@ dependencies {
   implementation(libs.iceberg.aws.bundle)
   // Include Gravitino AWS credential providers (S3SecretKeyProvider, etc.) for credential vending
   implementation(project(":bundles:aws"))
+
+  testImplementation(libs.junit.jupiter.api)
+  testRuntimeOnly(libs.junit.jupiter.engine)
 }
 
 tasks.withType(ShadowJar::class.java) {
   isZip64 = true
+  includeEmptyDirs = false
   configurations = listOf(project.configurations.runtimeClasspath.get())
   archiveClassifier.set("")
 
@@ -56,10 +60,36 @@ tasks.withType(ShadowJar::class.java) {
   exclude("log4j2.xml")
   exclude("log4j2.component.properties")
 
+  // Enterprise :bundles:aws pulls Jackson (OAuthClientCredentialsTokenSource). Relocate it so
+  // the bundle remains self-contained without exposing com.fasterxml.jackson on the server
+  // classpath (same approach as apache/gravitino#12358 for Aliyun).
+  relocate(
+    "com.fasterxml.jackson",
+    "org.apache.gravitino.iceberg.aws.shaded.com.fasterxml.jackson"
+  )
+
+  // POM metadata is not relocated by shadow and would still advertise the original
+  // Jackson coordinates.
+  exclude("META-INF/maven/com.fasterxml.jackson.core/**")
+  exclude("META-INF/maven/com.fasterxml.jackson.datatype/**")
+  exclude("META-INF/maven/com.fasterxml.jackson.module/**")
+  exclude("META-INF/maven/com.fasterxml.jackson/**")
+
   mergeServiceFiles()
 }
 
 tasks.jar {
   dependsOn(tasks.named("shadowJar"))
   archiveClassifier.set("empty")
+}
+
+tasks.test {
+  val shadowJar = tasks.named<ShadowJar>("shadowJar")
+  dependsOn(shadowJar)
+  doFirst {
+    systemProperty(
+      "shadowJarPath",
+      shadowJar.get().archiveFile.get().asFile.absolutePath
+    )
+  }
 }
