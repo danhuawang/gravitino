@@ -56,8 +56,8 @@ See [Identifier naming rules](#identifier-naming-rules) for the separate charact
 - Supports loading and listing Oracle schemas (users). Creating or dropping a schema is **not** supported in the current version.
 - Supports DDL operations for Oracle tables.
 - Supports table index (`PRIMARY_KEY` and `UNIQUE_KEY`).
-- Supports [column default value](../docs/manage-relational-metadata-using-gravitino.md#table-column-default-value).
-- Does **not** support [auto-increment](../docs/manage-relational-metadata-using-gravitino.md#table-column-auto-increment) (Oracle 11g has no Identity Columns).
+- Supports column default value.
+- Does **not** support auto-increment (Oracle 11g has no Identity Columns).
 - Supports Oracle single-level partitioning (`RANGE`, `LIST`, `HASH`).
 
 ### Catalog properties
@@ -88,7 +88,7 @@ In Oracle, **a schema is a user**. One Gravitino schema corresponds to one Oracl
 
 ### Catalog operations
 
-Please refer to [Manage Relational Metadata Using Gravitino](../docs/manage-relational-metadata-using-gravitino.md#catalog-operations) for more details.
+Please refer to [Manage Catalogs and Schemas](../docs/manage-catalogs-and-schemas.md#catalog-operations) for more details.
 
 ## Schema
 
@@ -108,7 +108,7 @@ Please refer to [Manage Relational Metadata Using Gravitino](../docs/manage-rela
 
 ### Schema operations
 
-Please refer to [Manage Relational Metadata Using Gravitino](../docs/manage-relational-metadata-using-gravitino.md#schema-operations) for more details.
+Please refer to [Manage Catalogs and Schemas](../docs/manage-catalogs-and-schemas.md#schema-operations) for more details.
 
 ## Table
 
@@ -117,7 +117,7 @@ Please refer to [Manage Relational Metadata Using Gravitino](../docs/manage-rela
 - A Gravitino table corresponds to one Oracle table.
 - Supports creating, loading, listing, and dropping Oracle tables.
 - Supports `PRIMARY_KEY` and `UNIQUE_KEY` indexes.
-- Supports [column default value](../docs/manage-relational-metadata-using-gravitino.md#table-column-default-value), including common Oracle functions like `SYSDATE`, `SYSTIMESTAMP`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, `SYS_GUID()`.
+- Supports column default value, including common Oracle functions like `SYSDATE`, `SYSTIMESTAMP`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, `SYS_GUID()`.
 - Supports Oracle partitioning: single-level `RANGE`, `LIST`, `HASH` (composite partitions are not supported).
 - **Does not support** auto-increment (Oracle 11g has no Identity Columns).
 - **Does not support** `UpdateColumnPosition` (Oracle cannot reorder columns).
@@ -165,7 +165,7 @@ When loading an Oracle table, Gravitino converts Oracle types back as follows:
 
 :::info
 Oracle doesn't support Gravitino `Date`, `Time`, `Fixed`, `Struct`, `List`, `Map`, `IntervalDay`, `IntervalYear`, `Union`, `UUID` types.
-Types not listed above are mapped to Gravitino **[External Type](../docs/manage-relational-metadata-using-gravitino.md#external-type)** to keep the original Oracle type name.
+Types not listed above are mapped to Gravitino **External Type** to keep the original Oracle type name.
 Oracle `FLOAT` is a subtype of `NUMBER`, not the same as Oracle `BINARY_DOUBLE`. The Oracle catalog maps it to Gravitino `Double` for compatibility, but the Oracle and Gravitino types are not strictly equivalent.
 
 A source `NUMBER(1)` is an integer and maps to `Byte`; it is never inferred to be boolean. On Oracle releases before 23, Gravitino records boolean intent in internal column-comment metadata when it emulates `Boolean` with `NUMBER(1)`, and removes that marker from the comment returned through the API.

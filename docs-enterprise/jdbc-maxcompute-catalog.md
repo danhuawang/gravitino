@@ -38,7 +38,7 @@ Before using the MaxCompute catalog, you must:
 - Supports metadata management of MaxCompute schemas and tables.
 - Supports DDL operations for MaxCompute schemas and tables.
 - Supports partitioned tables (up to 6 partition levels).
-- Supports [column default value](./manage-relational-metadata-using-gravitino.md#table-column-default-value).
+- Supports column default value.
 
 ### Catalog properties
 
@@ -82,7 +82,7 @@ The `odpsNamespaceSchema=true` parameter is **required** for the three-layer nam
 
 ### Catalog operations
 
-Please refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metadata-using-gravitino.md#catalog-operations) for more details.
+Please refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#catalog-operations) for more details.
 
 ## Schema
 
@@ -103,7 +103,7 @@ MaxCompute does not support schema comments or custom properties. Attempting to 
 
 ### Schema operations
 
-Please refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metadata-using-gravitino.md#schema-operations) for more details.
+Please refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#schema-operations) for more details.
 
 ## Table
 
@@ -112,7 +112,7 @@ Please refer to [Manage Relational Metadata Using Gravitino](./manage-relational
 - Gravitino's table concept corresponds to the MaxCompute table.
 - Supports internal tables (managed tables).
 - Supports partitioned tables (up to 6 partition levels).
-- Supports [column default value](./manage-relational-metadata-using-gravitino.md#table-column-default-value).
+- Supports column default value.
 
 ### Table column types
 
@@ -138,7 +138,7 @@ Please refer to [Manage Relational Metadata Using Gravitino](./manage-relational
 
 :::info
 MaxCompute doesn't support Gravitino `Time` `UUID` `Fixed` `Timestamp_tz` `ListType` `MapType` `StructType` `UnionType` type.
-Complex types (`ARRAY`, `MAP`, `STRUCT`, `JSON`) are mapped to Gravitino's **[External Type](./manage-relational-metadata-using-gravitino.md#external-type)** that represents an unresolvable data type since 1.2.0.
+Complex types (`ARRAY`, `MAP`, `STRUCT`, `JSON`) are mapped to Gravitino's **External Type** that represents an unresolvable data type since 1.2.0.
 :::
 
 :::note
