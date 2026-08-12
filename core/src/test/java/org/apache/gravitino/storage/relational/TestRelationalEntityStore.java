@@ -31,6 +31,8 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityAlreadyExistsException;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.SupportsRelationOperations;
+import org.apache.gravitino.cache.Coherence;
+import org.apache.gravitino.cache.EntityCache;
 import org.apache.gravitino.cache.NoOpsCache;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.junit.jupiter.api.Assertions;
@@ -110,16 +112,8 @@ public class TestRelationalEntityStore {
 
     Mockito.doAnswer(
             invocation -> {
-              Mockito.verify(cache, Mockito.never())
-                  .invalidate(
-                      src,
-                      Entity.EntityType.TABLE,
-                      SupportsRelationOperations.Type.TAG_METADATA_OBJECT_REL);
-              Mockito.verify(cache, Mockito.never())
-                  .invalidate(
-                      dst,
-                      Entity.EntityType.TAG,
-                      SupportsRelationOperations.Type.TAG_METADATA_OBJECT_REL);
+              Mockito.verify(cache, Mockito.never()).invalidate(src, Entity.EntityType.TABLE);
+              Mockito.verify(cache, Mockito.never()).invalidate(dst, Entity.EntityType.TAG);
               return null;
             })
         .when(backend)
@@ -149,9 +143,7 @@ public class TestRelationalEntityStore {
             dst,
             Entity.EntityType.TAG,
             true);
-    inOrder
-        .verify(cache)
-        .invalidate(src, Entity.EntityType.TABLE);
+    inOrder.verify(cache).invalidate(src, Entity.EntityType.TABLE);
     inOrder.verify(cache).invalidate(dst, Entity.EntityType.TAG);
   }
 
@@ -170,12 +162,9 @@ public class TestRelationalEntityStore {
 
     Mockito.doAnswer(
             invocation -> {
-              Mockito.verify(cache, Mockito.never())
-                  .invalidate(src, Entity.EntityType.TABLE);
-              Mockito.verify(cache, Mockito.never())
-                  .invalidate(destToAdd, destinationType);
-              Mockito.verify(cache, Mockito.never())
-                  .invalidate(destToRemove, destinationType);
+              Mockito.verify(cache, Mockito.never()).invalidate(src, Entity.EntityType.TABLE);
+              Mockito.verify(cache, Mockito.never()).invalidate(destToAdd, destinationType);
+              Mockito.verify(cache, Mockito.never()).invalidate(destToRemove, destinationType);
               return List.of();
             })
         .when(backend)
@@ -193,5 +182,49 @@ public class TestRelationalEntityStore {
     inOrder.verify(cache).invalidate(src, Entity.EntityType.TABLE);
     inOrder.verify(cache).invalidate(destToAdd, destinationType);
     inOrder.verify(cache).invalidate(destToRemove, destinationType);
+  }
+
+  @Test
+  void testLocalPerNodeCacheRegistersChangeLogListener() throws IllegalAccessException {
+    EntityChangeLogPoller poller = givenCacheWithCoherence(Coherence.LOCAL_PER_NODE);
+
+    store.registerCacheChangeLogListener();
+
+    EntityCacheChangeLogListener listener =
+        (EntityCacheChangeLogListener)
+            FieldUtils.readField(store, "entityCacheChangeLogListener", true);
+    Assertions.assertNotNull(listener);
+    Mockito.verify(poller).registerListener(listener);
+  }
+
+  @Test
+  void testSharedCacheDoesNotRegisterChangeLogListener() throws IllegalAccessException {
+    EntityChangeLogPoller poller = givenCacheWithCoherence(Coherence.SHARED);
+
+    store.registerCacheChangeLogListener();
+
+    Assertions.assertNull(FieldUtils.readField(store, "entityCacheChangeLogListener", true));
+    Mockito.verify(poller, Mockito.never()).registerListener(Mockito.any());
+  }
+
+  @Test
+  void testCacheDisabledDoesNotRegisterChangeLogListener() throws IllegalAccessException {
+    EntityChangeLogPoller poller = givenCacheWithCoherence(Coherence.NONE);
+
+    store.registerCacheChangeLogListener();
+
+    Assertions.assertNull(FieldUtils.readField(store, "entityCacheChangeLogListener", true));
+    Mockito.verify(poller, Mockito.never()).registerListener(Mockito.any());
+  }
+
+  private EntityChangeLogPoller givenCacheWithCoherence(Coherence coherence)
+      throws IllegalAccessException {
+    EntityCache cache = Mockito.mock(EntityCache.class);
+    Mockito.when(cache.coherence()).thenReturn(coherence);
+    EntityChangeLogPoller poller = Mockito.mock(EntityChangeLogPoller.class);
+
+    FieldUtils.writeField(store, "cache", cache, true);
+    FieldUtils.writeField(store, "entityChangeLogPoller", poller, true);
+    return poller;
   }
 }
