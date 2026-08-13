@@ -30,8 +30,10 @@ final class ScimAuditInfos {
   static final String INFO_ID = "id";
   static final String INFO_EXTERNAL_ID = "externalId";
   static final String INFO_STATUS = "status";
+  static final String INFO_SOURCE = "source";
 
   static final String RESOURCE_USER = "User";
+  static final String SOURCE_SCIM = "scim";
   static final String STATUS_SUCCESS = "SUCCESS";
   static final String STATUS_FAILURE = "FAILURE";
   static final String STATUS_UNPROCESSED = "UNPROCESSED";
@@ -42,6 +44,7 @@ final class ScimAuditInfos {
       String resourceType, String resourceId, String externalId, String status) {
     ImmutableMap.Builder<String, String> builder =
         ImmutableMap.<String, String>builder()
+            .put(INFO_SOURCE, SOURCE_SCIM)
             .put(INFO_RESOURCE_TYPE, resourceType)
             .put(INFO_STATUS, status);
     if (StringUtils.isNotBlank(resourceId)) {

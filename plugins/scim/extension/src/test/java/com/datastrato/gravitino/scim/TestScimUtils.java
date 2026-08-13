@@ -19,4 +19,12 @@ class TestScimUtils {
     assertNull(ScimUtils.blankToNull("   "));
     assertEquals("id", ScimUtils.blankToNull("id"));
   }
+
+  @Test
+  void testBlankToUnknown() {
+    assertEquals("unknown", ScimUtils.blankToUnknown(null));
+    assertEquals("unknown", ScimUtils.blankToUnknown(""));
+    assertEquals("unknown", ScimUtils.blankToUnknown("   "));
+    assertEquals("alice", ScimUtils.blankToUnknown("alice"));
+  }
 }

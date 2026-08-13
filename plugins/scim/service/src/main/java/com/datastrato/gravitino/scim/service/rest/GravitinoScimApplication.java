@@ -8,6 +8,7 @@ package com.datastrato.gravitino.scim.service.rest;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.adapter.ScimGroupRepositoryAdapter;
 import com.datastrato.gravitino.scim.service.adapter.ScimUserRepositoryAdapter;
+import com.datastrato.gravitino.scim.service.listener.ScimUserEventDispatcher;
 import com.fasterxml.jackson.jakarta.rs.json.JacksonJsonProvider;
 import java.util.Collections;
 import org.apache.directory.scim.core.repository.InvalidRepositoryException;
@@ -28,6 +29,7 @@ import org.apache.directory.scim.spec.resources.ScimGroup;
 import org.apache.directory.scim.spec.resources.ScimUser;
 import org.apache.directory.scim.spec.schema.Schema;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.GravitinoEnv;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 
@@ -55,7 +57,10 @@ public final class GravitinoScimApplication {
     RepositoryRegistry repositoryRegistry = new RepositoryRegistry(schemaRegistry);
     try {
       repositoryRegistry.registerRepository(
-          ScimUser.class, new ScimUserRepositoryAdapter(gravitinoConfig, scimConfig));
+          ScimUser.class,
+          new ScimUserEventDispatcher(
+              GravitinoEnv.getInstance().eventBus(),
+              new ScimUserRepositoryAdapter(gravitinoConfig, scimConfig)));
       repositoryRegistry.registerRepository(
           ScimGroup.class, new ScimGroupRepositoryAdapter(gravitinoConfig, scimConfig));
     } catch (InvalidRepositoryException e) {

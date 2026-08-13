@@ -37,7 +37,13 @@ import org.apache.gravitino.authorization.UserChange;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 
-/** SCIMple repository adapter for User provisioning backed by Gravitino core APIs. */
+/**
+ * SCIMple repository adapter for User provisioning backed by Gravitino core APIs.
+ *
+ * <p>Uses {@link GravitinoEnv#internalAccessControlDispatcher()} so SCIM User operations do not
+ * emit core access-control audit events. SCIM-level audit is owned by {@code
+ * ScimUserEventDispatcher}.
+ */
 public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
 
   private final AccessControlDispatcher dispatcher;
@@ -50,13 +56,13 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
    * @param scimConfig SCIM mapper configuration
    */
   public ScimUserRepositoryAdapter(Config gravitinoConfig, ScimConfig scimConfig) {
-    this(GravitinoEnv.getInstance().accessControlDispatcher(), scimConfig);
+    this(GravitinoEnv.getInstance().internalAccessControlDispatcher(), scimConfig);
   }
 
   /**
    * Creates an adapter with explicit dispatcher dependency.
    *
-   * @param dispatcher access control dispatcher
+   * @param dispatcher access control dispatcher that must not emit user-facing audit events
    * @param scimConfig SCIM mapper configuration
    */
   ScimUserRepositoryAdapter(AccessControlDispatcher dispatcher, ScimConfig scimConfig) {
