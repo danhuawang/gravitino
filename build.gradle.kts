@@ -756,7 +756,8 @@ val datastratoLicenseCheckIncludes = listOf(
   "catalogs/catalog-jdbc-bigquery/**/*",
   "catalogs/catalog-jdbc-maxcompute/**/*",
   "catalogs/catalog-jdbc-sqlserver/**/*",
-  "bundles/transit/**",
+  "bundles/vault-compatible/transit/**",
+  "bundles/vault/**",
   "licensing/**",
   "scripts/enterprise/**",
   "plugins/scim/**",
@@ -1365,7 +1366,7 @@ tasks {
         it.name != "integration-test" &&
         it.name != "docs" &&
         it.name != "docs-enterprise" &&
-        it.parent?.name != "bundles" &&
+        !it.path.startsWith(":bundles:") &&
         it.parent?.name != "maintenance" &&
         it.parent?.name != "test" &&
         it.name != "license-tools" &&
@@ -1421,7 +1422,7 @@ tasks {
         it.name != "hadoop-common" &&
         it.name != "web" &&
         it.name != "web-v2" &&
-        it.parent?.name != "bundles" &&
+        !it.path.startsWith(":bundles:") &&
         it.parent?.name != "plugins" &&
         it.parent?.name != "scim" &&
         it.parent?.name != "maintenance" &&
