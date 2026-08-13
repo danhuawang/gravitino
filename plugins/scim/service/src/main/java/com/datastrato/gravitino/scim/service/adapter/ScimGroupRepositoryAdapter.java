@@ -375,8 +375,17 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     }
     return lookupGroup(metalake, criteria)
         .filter(group -> matchesFilter(group, criteria))
-        .map(group -> new ScimPagedResult<>(1, List.of(group)))
+        .map(group -> singleMatchResult(group, page))
         .orElseGet(() -> new ScimPagedResult<>(0, List.of()));
+  }
+
+  /** One filter match, respecting {@code count=0} (empty page, totalResults still 1). */
+  private static ScimPagedResult<Group> singleMatchResult(
+      Group group, ScimRepositoryPagination.PageBounds page) {
+    if (page.limit() == 0) {
+      return new ScimPagedResult<>(1, List.of());
+    }
+    return new ScimPagedResult<>(1, List.of(group));
   }
 
   private Optional<Group> lookupGroup(String metalake, ScimGroupFilter criteria) {

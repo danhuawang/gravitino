@@ -18,6 +18,7 @@ import javax.ws.rs.core.FeatureContext;
 import javax.ws.rs.ext.Provider;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.auxiliary.AuxiliaryServiceManager;
 import org.apache.gravitino.server.authentication.OAuthConfig;
@@ -71,9 +72,10 @@ public class ScimTokenRESTFeature implements Feature {
    * {@code gravitino.auxService.names}.
    *
    * <p>Requires {@code gravitino.authenticator.oauth.principalMapper} to be {@link
-   * ScimOAuthPrincipalMapper#PRINCIPAL_MAPPER_CLASS_NAME}, {@code groupsFields} to be empty, and
-   * {@code gravitino.server.webserver.customFilters} to include {@link
-   * ScimOAuthRequestPathFilter#FILTER_CLASS_NAME}.
+   * ScimOAuthPrincipalMapper#PRINCIPAL_MAPPER_CLASS_NAME}, {@code groupsFields} to be empty, {@code
+   * gravitino.server.webserver.customFilters} to include {@link
+   * ScimOAuthRequestPathFilter#FILTER_CLASS_NAME}, and {@code gravitino.authorization.enable} to be
+   * {@code true}.
    *
    * @param config the server configuration
    */
@@ -116,6 +118,18 @@ public class ScimTokenRESTFeature implements Feature {
           ScimOAuthRequestPathFilter.FILTER_CLASS_NAME);
       System.exit(1);
     }
+    if (!isAuthorizationEnabled(config)) {
+      LOG.error(
+          "gravitino.server.rest.extensionPackages includes the SCIM token admin plugin ({}) but "
+              + "gravitino.authorization.enable is not true. Set gravitino.authorization.enable=true "
+              + "so SCIM token admin APIs can enforce metalake ownership checks.",
+          SCIM_TOKEN_REST_EXTENSION_PACKAGE);
+      System.exit(1);
+    }
+  }
+
+  private static boolean isAuthorizationEnabled(Config config) {
+    return Boolean.TRUE.equals(config.get(Configs.ENABLE_AUTHORIZATION));
   }
 
   private static boolean isScimContextFilterConfigured(Config config) {

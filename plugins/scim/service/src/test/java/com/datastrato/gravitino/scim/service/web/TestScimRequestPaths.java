@@ -58,4 +58,12 @@ class TestScimRequestPaths {
     when(request.getPathInfo()).thenReturn("/v2/metalakes/ml1/Users");
     assertEquals("/scim/v2/metalakes/ml1/Users", ScimRequestPaths.resolveRequestPath(request));
   }
+
+  @Test
+  void testRequestBaseUriUsesSchemeAndAuthority() {
+    HttpServletRequest request = mock(HttpServletRequest.class);
+    when(request.getRequestURL())
+        .thenReturn(new StringBuffer("http://localhost:9201/scim/v2/metalakes/ml1/Users/1"));
+    assertEquals("http://localhost:9201", ScimRequestPaths.requestBaseUri(request));
+  }
 }

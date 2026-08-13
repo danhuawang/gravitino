@@ -51,6 +51,8 @@ dependencies {
       libs.jersey3.container.servlet,
       libs.jersey3.hk2,
       libs.jakarta.ws.rs3.api,
+      // Needed to compile subclasses of SCIMple *ResourceImpl (@ApplicationScoped on superclass).
+      libs.jakarta.cdi.api,
       libs.jackson.jakarta.rs.json.provider,
       libs.metrics.jersey2
     )
@@ -93,7 +95,11 @@ dependencies {
     libs.scim.spec.schema,
     libs.scim.spec.protocol,
     libs.jakarta.servlet6.api,
-    libs.jakarta.ws.rs3.api
+    libs.jakarta.ws.rs3.api,
+    libs.jakarta.cdi.api,
+    // RuntimeDelegate for jakarta.ws.rs.core.Response in unit tests.
+    libs.jersey3.common,
+    libs.jersey3.server
   )
     .forEach { testImplementation(it) }
 

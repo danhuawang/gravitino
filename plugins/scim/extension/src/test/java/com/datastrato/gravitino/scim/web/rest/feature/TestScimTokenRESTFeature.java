@@ -16,6 +16,7 @@ import com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter;
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Configs;
 import org.apache.gravitino.auxiliary.AuxiliaryServiceManager;
 import org.apache.gravitino.server.authentication.OAuthConfig;
 import org.apache.gravitino.server.web.JettyServerConfig;
@@ -40,7 +41,9 @@ class TestScimTokenRESTFeature {
         "",
         JettyServerConfig.GRAVITINO_SERVER_CONFIG_PREFIX
             + JettyServerConfig.CUSTOM_FILTERS.getKey(),
-        ScimOAuthRequestPathFilter.FILTER_CLASS_NAME);
+        ScimOAuthRequestPathFilter.FILTER_CLASS_NAME,
+        Configs.ENABLE_AUTHORIZATION.getKey(),
+        "true");
   }
 
   @Test
@@ -133,6 +136,34 @@ class TestScimTokenRESTFeature {
                 ScimOAuthPrincipalMapper.PRINCIPAL_MAPPER_CLASS_NAME,
                 OAuthConfig.GROUPS_FIELDS.getKey(),
                 ""));
+
+    SystemExitException exception =
+        assertThrows(
+            SystemExitException.class,
+            () ->
+                SystemExitTestHelper.runWithExitGuard(
+                    () -> ScimTokenRESTFeature.validateConfiguration(config)));
+
+    assertEquals(1, exception.status());
+  }
+
+  @Test
+  void testRejectAuthorizationDisabled() {
+    Config config =
+        config(
+            ImmutableMap.of(
+                AuxiliaryServiceManager.GRAVITINO_AUX_SERVICE_PREFIX
+                    + AuxiliaryServiceManager.AUX_SERVICE_NAMES,
+                "scim",
+                OAuthConfig.PRINCIPAL_MAPPER.getKey(),
+                ScimOAuthPrincipalMapper.PRINCIPAL_MAPPER_CLASS_NAME,
+                OAuthConfig.GROUPS_FIELDS.getKey(),
+                "",
+                JettyServerConfig.GRAVITINO_SERVER_CONFIG_PREFIX
+                    + JettyServerConfig.CUSTOM_FILTERS.getKey(),
+                ScimOAuthRequestPathFilter.FILTER_CLASS_NAME,
+                Configs.ENABLE_AUTHORIZATION.getKey(),
+                "false"));
 
     SystemExitException exception =
         assertThrows(

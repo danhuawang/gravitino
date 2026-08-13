@@ -189,8 +189,17 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     }
     return lookupUser(metalake, criteria)
         .filter(user -> matchesFilter(user, criteria))
-        .map(user -> new ScimPagedResult<>(1, List.of(user)))
+        .map(user -> singleMatchResult(user, page))
         .orElseGet(() -> new ScimPagedResult<>(0, List.of()));
+  }
+
+  /** One filter match, respecting {@code count=0} (empty page, totalResults still 1). */
+  private static ScimPagedResult<User> singleMatchResult(
+      User user, ScimRepositoryPagination.PageBounds page) {
+    if (page.limit() == 0) {
+      return new ScimPagedResult<>(1, List.of());
+    }
+    return new ScimPagedResult<>(1, List.of(user));
   }
 
   private Optional<User> lookupUser(String metalake, ScimUserFilter criteria) {

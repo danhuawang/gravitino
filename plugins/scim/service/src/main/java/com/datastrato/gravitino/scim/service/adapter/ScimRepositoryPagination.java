@@ -14,7 +14,15 @@ public final class ScimRepositoryPagination {
   private ScimRepositoryPagination() {}
 
   /**
-   * Normalizes SCIM pagination parameters.
+   * Normalizes SCIM pagination parameters per RFC 7644 Section 3.4.2.4.
+   *
+   * <ul>
+   *   <li>{@code startIndex} less than 1 is treated as 1
+   *   <li>{@code count} unspecified uses {@link #MAX_PAGE_SIZE}
+   *   <li>{@code count} zero or negative is treated as 0 (return no resources, only {@code
+   *       totalResults})
+   *   <li>positive {@code count} is capped at {@link #MAX_PAGE_SIZE}
+   * </ul>
    *
    * @param startIndex SCIM start index (1-based)
    * @param count requested page size
@@ -22,9 +30,26 @@ public final class ScimRepositoryPagination {
    */
   public static PageBounds normalizePage(Integer startIndex, Integer count) {
     int normalizedStartIndex = startIndex == null || startIndex < 1 ? 1 : startIndex;
-    int limit = count == null || count < 1 ? MAX_PAGE_SIZE : Math.min(count, MAX_PAGE_SIZE);
+    int limit = normalizeCount(count);
     int offset = normalizedStartIndex - 1;
     return new PageBounds(offset, limit, normalizedStartIndex);
+  }
+
+  /**
+   * Normalizes the SCIM {@code count} query parameter.
+   *
+   * @param count requested page size, or {@code null} when omitted
+   * @return page size to apply (0 means return no resources)
+   */
+  private static int normalizeCount(Integer count) {
+    if (count == null) {
+      return MAX_PAGE_SIZE;
+    }
+    if (count < 1) {
+      // RFC 7644: negative count SHALL be interpreted as 0; 0 returns no Resources.
+      return 0;
+    }
+    return Math.min(count, MAX_PAGE_SIZE);
   }
 
   /** Normalized SCIM pagination bounds. */
