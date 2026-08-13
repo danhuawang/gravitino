@@ -1152,7 +1152,7 @@ tasks {
       val directory = File("distribution/package/data")
       directory.mkdirs()
 
-      // bundles/transit is an internal source dependency, never a deployable artifact.
+      // bundles/vault-compatible/transit is an internal source dependency, never a deployable artifact.
       val forbiddenTransitArtifacts =
         fileTree(distributionPackageDir).matching {
           include("**/${rootProject.name.lowercase()}-transit-*.jar")
