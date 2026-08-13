@@ -5,6 +5,7 @@
 
 package com.datastrato.gravitino.scim.service.adapter;
 
+import com.datastrato.gravitino.scim.ScimUtils;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.basic.mapper.ScimNameMappers;
 import com.datastrato.gravitino.scim.service.converter.ScimResourceConverter;
@@ -70,7 +71,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
 
   @Override
   public ScimUser create(ScimUser resource) throws ResourceException {
-    String externalId = normalizeExternalId(resource.getExternalId());
+    String externalId = ScimUtils.blankToNull(resource.getExternalId());
     String userName = resolveUserName(resource.getUserName());
     try {
       String metalake = ScimMetalakeContext.getMetalake();
@@ -306,10 +307,6 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   private static boolean resolveEnabled(ScimUser resource) {
     Boolean active = resource.getActive();
     return active == null || active;
-  }
-
-  private static String normalizeExternalId(String externalId) {
-    return StringUtils.isBlank(externalId) ? null : externalId;
   }
 
   private static long parseResourceId(String id) throws ResourceException {

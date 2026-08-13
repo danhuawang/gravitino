@@ -6,6 +6,7 @@
 package com.datastrato.gravitino.scim.service;
 
 import com.datastrato.gravitino.scim.ScimTokenManager;
+import com.datastrato.gravitino.scim.model.ScimToken;
 import com.datastrato.gravitino.scim.service.web.ScimHttpResponses;
 import com.datastrato.gravitino.scim.service.web.ScimRequestPaths;
 import com.google.common.base.Strings;
@@ -17,10 +18,12 @@ import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import org.apache.gravitino.UserPrincipal;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.exceptions.TokenExpiredException;
 import org.apache.gravitino.exceptions.UnauthorizedException;
+import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,8 +85,15 @@ public class ScimBearerAuthFilter implements Filter {
     }
 
     try {
-      tokenManager.authenticateBearerToken(bearerToken, metalakeName);
-      chain.doFilter(request, response);
+      ScimToken token = tokenManager.authenticateBearerToken(bearerToken, metalakeName);
+      UserPrincipal principal = new UserPrincipal(token.getTokenName());
+      httpRequest.setAttribute(AuthConstants.AUTHENTICATED_PRINCIPAL_ATTRIBUTE_NAME, principal);
+      PrincipalUtils.doAs(
+          principal,
+          () -> {
+            chain.doFilter(request, response);
+            return null;
+          });
     } catch (NotFoundException e) {
       ScimHttpResponses.writeError(httpResponse, HttpServletResponse.SC_NOT_FOUND, e.getMessage());
     } catch (TokenExpiredException e) {
@@ -95,6 +105,8 @@ public class ScimBearerAuthFilter implements Filter {
       LOG.warn("Unexpected SCIM bearer authentication failure", e);
       ScimHttpResponses.writeError(
           httpResponse, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
+    } catch (Exception e) {
+      throw new ServletException(e);
     }
   }
 

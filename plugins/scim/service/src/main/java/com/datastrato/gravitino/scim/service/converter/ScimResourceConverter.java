@@ -5,6 +5,7 @@
 
 package com.datastrato.gravitino.scim.service.converter;
 
+import com.datastrato.gravitino.scim.ScimUtils;
 import com.datastrato.gravitino.scim.service.web.ScimMetalakeContext;
 import com.datastrato.gravitino.scim.service.web.ScimRequestPaths;
 import com.google.common.collect.ImmutableSet;
@@ -13,7 +14,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.directory.scim.spec.resources.GroupMembership;
 import org.apache.directory.scim.spec.resources.ScimGroup;
 import org.apache.directory.scim.spec.resources.ScimResource;
@@ -50,7 +50,7 @@ public final class ScimResourceConverter {
     ScimUser scimUser = new ScimUser();
     scimUser.setSchemas(ImmutableSet.of(USER_SCHEMA));
     scimUser.setId(String.valueOf(user.id()));
-    scimUser.setExternalId(blankToNull(user.externalId()));
+    scimUser.setExternalId(ScimUtils.blankToNull(user.externalId()));
     scimUser.setUserName(user.name());
     // Keycloak SCIM client calls displayName.get() after create; keep it non-empty.
     scimUser.setDisplayName(user.name());
@@ -76,7 +76,7 @@ public final class ScimResourceConverter {
     ScimGroup scimGroup = new ScimGroup();
     scimGroup.setSchemas(ImmutableSet.of(GROUP_SCHEMA));
     scimGroup.setId(String.valueOf(group.id()));
-    scimGroup.setExternalId(blankToNull(group.externalId()));
+    scimGroup.setExternalId(ScimUtils.blankToNull(group.externalId()));
     scimGroup.setDisplayName(group.name());
     scimGroup.setMembers(
         memberIds.stream()
@@ -138,9 +138,5 @@ public final class ScimResourceConverter {
 
   private static LocalDateTime toUtcLocalDateTime(Instant instant) {
     return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
-  }
-
-  private static String blankToNull(String value) {
-    return StringUtils.isBlank(value) ? null : value;
   }
 }

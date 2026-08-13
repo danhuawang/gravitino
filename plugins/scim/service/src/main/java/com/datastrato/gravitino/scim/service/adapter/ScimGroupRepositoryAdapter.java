@@ -6,6 +6,7 @@
 package com.datastrato.gravitino.scim.service.adapter;
 
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
+import com.datastrato.gravitino.scim.ScimUtils;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.basic.mapper.ScimNameMappers;
 import com.datastrato.gravitino.scim.service.converter.ScimResourceConverter;
@@ -88,7 +89,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
 
   @Override
   public ScimGroup create(ScimGroup resource) throws ResourceException {
-    String externalId = normalizeExternalId(resource.getExternalId());
+    String externalId = ScimUtils.blankToNull(resource.getExternalId());
     String groupName = resolveGroupName(resource.getDisplayName());
     try {
       String metalake = ScimMetalakeContext.getMetalake();
@@ -288,7 +289,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     if (type != PatchOperation.Type.REPLACE && type != PatchOperation.Type.ADD) {
       throw new ResourceException(400, "Group externalId PATCH supports add/replace only");
     }
-    String normalized = normalizeExternalId(externalId);
+    String normalized = ScimUtils.blankToNull(externalId);
     if (Objects.equals(normalized, group.externalId())) {
       return group;
     }
@@ -488,10 +489,6 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   private ScimGroup toScimGroup(Group group) {
     List<String> memberIds = listMemberScimIds(ScimMetalakeContext.getMetalake(), group.id());
     return ScimResourceConverter.toScimGroup(group, memberIds);
-  }
-
-  private static String normalizeExternalId(String externalId) {
-    return StringUtils.isBlank(externalId) ? null : externalId;
   }
 
   private static long parseResourceId(String id) throws ResourceException {

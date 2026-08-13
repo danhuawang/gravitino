@@ -13,6 +13,7 @@ import com.datastrato.gravitino.scim.service.web.ScimMetrics;
 import com.datastrato.gravitino.scim.service.web.ScimRequestPaths;
 import java.util.Map;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.listener.api.event.EventSource;
 import org.apache.gravitino.metrics.MetricsSystem;
 import org.apache.gravitino.server.web.JettyServerConfig;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -56,8 +57,14 @@ public final class ScimRESTServiceImpl {
       metricsSystem.register(metricsSource);
     }
 
+    // Same audit path as Iceberg REST: EventBus → AuditLogManager → gravitino.audit.
+    // EventSource stays GRAVITINO_SERVER (SCIM runs as an auxiliary listener on this process).
     jettyServer.addFilter(
-        new ScimHttpAuditFilter(new ScimHealthCheckPathMatcher()), ScimRequestPaths.SCIM_SPEC);
+        new ScimHttpAuditFilter(
+            GravitinoEnv.getInstance().eventBus(),
+            EventSource.GRAVITINO_SERVER,
+            new ScimHealthCheckPathMatcher()),
+        ScimRequestPaths.SCIM_SPEC);
     jettyServer.addFilter(new ScimBearerAuthFilter(), ScimRequestPaths.SCIM_SPEC);
     jettyServer.addFilter(new ScimURLScopeResolver(), ScimRequestPaths.SCIM_SPEC);
     jettyServer.addServlet(new ServletContainer(resourceConfig), ScimRequestPaths.SCIM_SPEC);

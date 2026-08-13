@@ -222,8 +222,9 @@ public class ScimTokenManager implements Closeable {
    *
    * @param bearerToken full bearer token value from the {@code Authorization} header
    * @param metalakeName metalake name parsed from the SCIM request path
+   * @return authenticated token metadata used as the request principal identity
    */
-  public void authenticateBearerToken(String bearerToken, String metalakeName) {
+  public ScimToken authenticateBearerToken(String bearerToken, String metalakeName) {
     if (!ScimTokenGenerator.hasValidPrefix(bearerToken)) {
       throw new UnauthorizedException("Invalid SCIM bearer token");
     }
@@ -247,6 +248,7 @@ public class ScimTokenManager implements Closeable {
     if (token.getMetalakeId() != urlMetalakeId) {
       throw new UnauthorizedException("Invalid SCIM bearer token");
     }
+    return token;
   }
 
   @Override

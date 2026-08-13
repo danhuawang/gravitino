@@ -1,0 +1,22 @@
+/*
+ * Copyright 2026 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
+ */
+
+package com.datastrato.gravitino.scim;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+import org.junit.jupiter.api.Test;
+
+class TestScimUtils {
+
+  @Test
+  void testBlankToNull() {
+    assertNull(ScimUtils.blankToNull(null));
+    assertNull(ScimUtils.blankToNull(""));
+    assertNull(ScimUtils.blankToNull("   "));
+    assertEquals("id", ScimUtils.blankToNull("id"));
+  }
+}
