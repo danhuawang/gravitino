@@ -15,7 +15,7 @@ dependencies {
   implementation(project(":common")) {
     exclude(group = "*")
   }
-  implementation(project(":bundles:transit")) {
+  implementation(project(":bundles:vault-compatible:transit")) {
     isTransitive = false
   }
   implementation(libs.httpclient5)
