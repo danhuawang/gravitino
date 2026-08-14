@@ -96,6 +96,7 @@ public final class ScimHttpAuditFilter implements Filter {
         new StatusCapturingResponseWrapper((HttpServletResponse) response);
     Throwable chainException = null;
     try {
+      RequestContext.setRemoteAddress(resolveClientAddress(httpRequest));
       chain.doFilter(httpRequest, wrappedResponse);
     } catch (Throwable t) {
       chainException = t;
@@ -125,7 +126,7 @@ public final class ScimHttpAuditFilter implements Filter {
             httpRequest.getRequestURI(),
             e);
       } finally {
-        RequestContext.resetOperationFailureFired();
+        RequestContext.clear();
       }
     }
 

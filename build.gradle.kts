@@ -758,7 +758,9 @@ val datastratoLicenseCheckIncludes = listOf(
   "catalogs/catalog-jdbc-sqlserver/**/*",
   "licensing/**",
   "scripts/enterprise/**",
-  "plugins/scim/**"
+  "plugins/scim/**",
+  "core/src/main/java/org/apache/gravitino/listener/api/event/scim/**",
+  "core/src/test/java/org/apache/gravitino/listener/api/event/scim/**"
 )
 
 val printRatFailures by tasks.registering {

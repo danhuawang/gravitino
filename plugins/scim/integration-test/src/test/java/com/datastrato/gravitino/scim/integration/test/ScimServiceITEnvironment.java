@@ -52,7 +52,20 @@ final class ScimServiceITEnvironment implements AutoCloseable {
    * @return started environment
    */
   static ScimServiceITEnvironment start() throws Exception {
+    return start(Map.of());
+  }
+
+  /**
+   * Starts embedded Gravitino and the SCIM auxiliary listener with extra server config overrides.
+   *
+   * @param extraConfigs additional MiniGravitino config entries (merged before start)
+   * @return started environment
+   */
+  static ScimServiceITEnvironment start(Map<String, String> extraConfigs) throws Exception {
     ScimServiceITEnvironment environment = new ScimServiceITEnvironment();
+    if (extraConfigs != null) {
+      environment.customConfigs.putAll(extraConfigs);
+    }
     environment.doStart();
     return environment;
   }

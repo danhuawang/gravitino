@@ -6,9 +6,15 @@
 package com.datastrato.gravitino.scim.service.listener;
 
 import com.datastrato.gravitino.scim.ScimUtils;
+import com.datastrato.gravitino.scim.service.adapter.ScimPatchSupport;
 import com.datastrato.gravitino.scim.service.web.ScimMetalakeContext;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.directory.scim.core.repository.InvalidRepositoryException;
 import org.apache.directory.scim.core.repository.Repository;
 import org.apache.directory.scim.spec.exception.ResourceException;
@@ -18,6 +24,7 @@ import org.apache.directory.scim.spec.filter.PageRequest;
 import org.apache.directory.scim.spec.filter.SortRequest;
 import org.apache.directory.scim.spec.filter.attribute.AttributeReference;
 import org.apache.directory.scim.spec.patch.PatchOperation;
+import org.apache.directory.scim.spec.resources.GroupMembership;
 import org.apache.directory.scim.spec.resources.ScimExtension;
 import org.apache.directory.scim.spec.resources.ScimGroup;
 import org.apache.gravitino.listener.EventBus;
@@ -106,6 +113,8 @@ public class ScimGroupEventDispatcher implements Repository<ScimGroup> {
     String groupName =
         ScimUtils.blankToUnknown(resource == null ? null : resource.getDisplayName());
     String externalId = ScimUtils.blankToNull(resource == null ? null : resource.getExternalId());
+    ScimGroup existing = findGroupById(id);
+    Set<String> beforeMembers = memberIds(existing);
 
     eventBus.dispatchEvent(
         new ScimAlterGroupPreEvent(initiator, metalake, groupName, id, externalId));
@@ -118,7 +127,8 @@ public class ScimGroupEventDispatcher implements Repository<ScimGroup> {
               metalake,
               ScimUtils.blankToUnknown(updated.getDisplayName()),
               updated.getId(),
-              ScimUtils.blankToNull(updated.getExternalId())));
+              ScimUtils.blankToNull(updated.getExternalId()),
+              membershipExtras(beforeMembers, memberIds(updated), "put")));
       return updated;
     } catch (Exception e) {
       eventBus.dispatchEvent(
@@ -137,9 +147,15 @@ public class ScimGroupEventDispatcher implements Repository<ScimGroup> {
       throws ResourceException {
     String initiator = PrincipalUtils.getCurrentUserName();
     String metalake = ScimMetalakeContext.getMetalake();
-    String groupName = ScimUtils.blankToUnknown(null);
+    ScimGroup existing = findGroupById(id);
+    String groupName =
+        ScimUtils.blankToUnknown(existing == null ? null : existing.getDisplayName());
+    String externalId = ScimUtils.blankToNull(existing == null ? null : existing.getExternalId());
+    Set<String> beforeMembers = memberIds(existing);
+    String changeSummary = summarizeGroupPatch(patchOperations);
 
-    eventBus.dispatchEvent(new ScimAlterGroupPreEvent(initiator, metalake, groupName, id, null));
+    eventBus.dispatchEvent(
+        new ScimAlterGroupPreEvent(initiator, metalake, groupName, id, externalId));
     try {
       ScimGroup patched =
           repository.patch(id, version, patchOperations, includedAttributes, excludedAttributes);
@@ -149,11 +165,12 @@ public class ScimGroupEventDispatcher implements Repository<ScimGroup> {
               metalake,
               ScimUtils.blankToUnknown(patched.getDisplayName()),
               patched.getId(),
-              ScimUtils.blankToNull(patched.getExternalId())));
+              ScimUtils.blankToNull(patched.getExternalId()),
+              membershipExtras(beforeMembers, memberIds(patched), changeSummary)));
       return patched;
     } catch (Exception e) {
       eventBus.dispatchEvent(
-          new ScimAlterGroupFailureEvent(initiator, metalake, e, groupName, id, null));
+          new ScimAlterGroupFailureEvent(initiator, metalake, e, groupName, id, externalId));
       throw e;
     }
   }
@@ -210,15 +227,20 @@ public class ScimGroupEventDispatcher implements Repository<ScimGroup> {
   public void delete(String id) throws ResourceException {
     String initiator = PrincipalUtils.getCurrentUserName();
     String metalake = ScimMetalakeContext.getMetalake();
-    String groupName = ScimUtils.blankToUnknown(null);
+    ScimGroup existing = findGroupById(id);
+    String groupName =
+        ScimUtils.blankToUnknown(existing == null ? null : existing.getDisplayName());
+    String externalId = ScimUtils.blankToNull(existing == null ? null : existing.getExternalId());
 
-    eventBus.dispatchEvent(new ScimRemoveGroupPreEvent(initiator, metalake, groupName, id, null));
+    eventBus.dispatchEvent(
+        new ScimRemoveGroupPreEvent(initiator, metalake, groupName, id, externalId));
     try {
       repository.delete(id);
-      eventBus.dispatchEvent(new ScimRemoveGroupEvent(initiator, metalake, groupName, id, null));
+      eventBus.dispatchEvent(
+          new ScimRemoveGroupEvent(initiator, metalake, groupName, id, externalId));
     } catch (Exception e) {
       eventBus.dispatchEvent(
-          new ScimRemoveGroupFailureEvent(initiator, metalake, e, groupName, id, null));
+          new ScimRemoveGroupFailureEvent(initiator, metalake, e, groupName, id, externalId));
       throw e;
     }
   }
@@ -226,5 +248,79 @@ public class ScimGroupEventDispatcher implements Repository<ScimGroup> {
   @Override
   public List<Class<? extends ScimExtension>> getExtensionList() throws InvalidRepositoryException {
     return repository.getExtensionList();
+  }
+
+  /** Returns the group for audit context, or {@code null} if lookup fails. */
+  private ScimGroup findGroupById(String id) {
+    try {
+      return repository.get(id);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private static Set<String> memberIds(ScimGroup group) {
+    Set<String> ids = new LinkedHashSet<>();
+    if (group == null || group.getMembers() == null) {
+      return ids;
+    }
+    for (GroupMembership membership : group.getMembers()) {
+      if (membership != null && StringUtils.isNotBlank(membership.getValue())) {
+        ids.add(membership.getValue());
+      }
+    }
+    return ids;
+  }
+
+  private static Map<String, String> membershipExtras(
+      Set<String> before, Set<String> after, String changes) {
+    Map<String, String> extras = new LinkedHashMap<>();
+    if (StringUtils.isNotBlank(changes)) {
+      extras.put("changes", changes);
+    }
+    Set<String> added = new LinkedHashSet<>(after);
+    added.removeAll(before);
+    Set<String> removed = new LinkedHashSet<>(before);
+    removed.removeAll(after);
+    if (!added.isEmpty()) {
+      extras.put("membersAdded", String.join(",", added));
+    }
+    if (!removed.isEmpty()) {
+      extras.put("membersRemoved", String.join(",", removed));
+    }
+    return extras.isEmpty() ? null : extras;
+  }
+
+  private static String summarizeGroupPatch(List<PatchOperation> patchOperations) {
+    if (patchOperations == null || patchOperations.isEmpty()) {
+      return "patch";
+    }
+    List<String> parts = new java.util.ArrayList<>();
+    for (PatchOperation operation : patchOperations) {
+      try {
+        for (ScimPatchSupport.GroupPatchOperation parsed :
+            ScimPatchSupport.parseGroupPatches(operation)) {
+          switch (parsed.kind()) {
+            case MEMBERS:
+              parts.add("members");
+              break;
+            case EXTERNAL_ID:
+              parts.add("externalId");
+              break;
+            case DISPLAY_NAME:
+              parts.add("displayName");
+              break;
+            default:
+              break;
+          }
+        }
+      } catch (ResourceException ignored) {
+        parts.add("patch");
+      }
+    }
+    if (parts.isEmpty()) {
+      return "patch";
+    }
+    return parts.stream().distinct().collect(Collectors.joining(";"));
   }
 }

@@ -92,6 +92,7 @@ class TestScimUserEventDispatcher {
     EventBus eventBus = mock(EventBus.class);
     ScimUserEventDispatcher scimDispatcher = new ScimUserEventDispatcher(eventBus, repository);
 
+    when(repository.get("1")).thenReturn(scimUser("1", "alice", "ext-1"));
     scimDispatcher.delete("1");
 
     ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
@@ -104,8 +105,12 @@ class TestScimUserEventDispatcher {
     assertEquals(OperationType.REMOVE_USER, preEvent.operationType());
     assertEquals(OperationType.REMOVE_USER, successEvent.operationType());
     assertEquals("1", preEvent.resourceId());
-    assertEquals("unknown", preEvent.userName());
+    assertEquals("alice", preEvent.userName());
+    assertEquals("ext-1", preEvent.externalId());
     assertEquals("1", successEvent.resourceId());
+    assertEquals("alice", successEvent.userName());
+    assertEquals("ext-1", successEvent.externalId());
+    verify(repository).get("1");
     verify(repository).delete("1");
   }
 
@@ -207,7 +212,8 @@ class TestScimUserEventDispatcher {
     assertEquals(OperationType.LIST_USERS_PAGED, successEvent.operationType());
     assertEquals(1, preEvent.startIndex());
     assertEquals(10, preEvent.count());
-    assertEquals(1, successEvent.resultCount());
+    assertEquals(1, successEvent.pageSize());
+    assertEquals("1", successEvent.customInfo().get("count"));
     assertEquals(1L, successEvent.totalCount());
   }
 

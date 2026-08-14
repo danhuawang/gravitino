@@ -92,6 +92,7 @@ class TestScimGroupEventDispatcher {
     EventBus eventBus = mock(EventBus.class);
     ScimGroupEventDispatcher scimDispatcher = new ScimGroupEventDispatcher(eventBus, repository);
 
+    when(repository.get("1")).thenReturn(scimGroup("1", "engineering", "ext-1"));
     scimDispatcher.delete("1");
 
     ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
@@ -104,8 +105,12 @@ class TestScimGroupEventDispatcher {
     assertEquals(OperationType.REMOVE_GROUP, preEvent.operationType());
     assertEquals(OperationType.REMOVE_GROUP, successEvent.operationType());
     assertEquals("1", preEvent.resourceId());
-    assertEquals("unknown", preEvent.groupName());
+    assertEquals("engineering", preEvent.groupName());
+    assertEquals("ext-1", preEvent.externalId());
     assertEquals("1", successEvent.resourceId());
+    assertEquals("engineering", successEvent.groupName());
+    assertEquals("ext-1", successEvent.externalId());
+    verify(repository).get("1");
     verify(repository).delete("1");
   }
 
@@ -207,7 +212,8 @@ class TestScimGroupEventDispatcher {
     assertEquals(OperationType.LIST_GROUPS_PAGED, successEvent.operationType());
     assertEquals(1, preEvent.startIndex());
     assertEquals(10, preEvent.count());
-    assertEquals(1, successEvent.resultCount());
+    assertEquals(1, successEvent.pageSize());
+    assertEquals("1", successEvent.customInfo().get("count"));
     assertEquals(1L, successEvent.totalCount());
   }
 

@@ -763,7 +763,10 @@ class TestScimGroupRepositoryAdapter {
   @Test
   void testDeleteThroughInternalDispatcherDoesNotEmitCoreGroupEvents() throws Exception {
     AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    Group existing = ScimServiceTestEntities.group(GROUP_ID, "engineering", "ext-1");
+    when(manager.getGroupById(METALAKE, GROUP_ID)).thenReturn(existing);
     when(manager.removeGroupById(METALAKE, GROUP_ID)).thenReturn(true);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
 
     EventBus eventBus = mock(EventBus.class);
     ScimGroupEventDispatcher scimDispatcher = newInternalChainedDispatcher(eventBus, manager);
@@ -775,9 +778,11 @@ class TestScimGroupRepositoryAdapter {
     List<BaseEvent> events = captor.getAllValues();
     assertInstanceOf(ScimRemoveGroupPreEvent.class, events.get(0));
     assertInstanceOf(ScimRemoveGroupEvent.class, events.get(1));
+    assertEquals("engineering", ((ScimRemoveGroupEvent) events.get(1)).groupName());
     assertTrue(events.stream().noneMatch(GetGroupByIdEvent.class::isInstance));
     assertTrue(events.stream().noneMatch(RemoveGroupEvent.class::isInstance));
-    verify(manager, never()).getGroupById(anyString(), anyLong());
+    // Preload for SCIM audit naming uses getGroupById on the internal dispatcher (no core events).
+    verify(manager).getGroupById(METALAKE, GROUP_ID);
   }
 
   private ScimGroupEventDispatcher newInternalChainedDispatcher(

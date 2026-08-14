@@ -6,8 +6,12 @@
 package com.datastrato.gravitino.scim.service.listener;
 
 import com.datastrato.gravitino.scim.ScimUtils;
+import com.datastrato.gravitino.scim.service.adapter.ScimPatchSupport;
 import com.datastrato.gravitino.scim.service.web.ScimMetalakeContext;
+import com.google.common.collect.ImmutableMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.directory.scim.core.repository.InvalidRepositoryException;
 import org.apache.directory.scim.core.repository.Repository;
@@ -104,6 +108,7 @@ public class ScimUserEventDispatcher implements Repository<ScimUser> {
     String metalake = ScimMetalakeContext.getMetalake();
     String userName = ScimUtils.blankToUnknown(resource == null ? null : resource.getUserName());
     String externalId = ScimUtils.blankToNull(resource == null ? null : resource.getExternalId());
+    Map<String, String> changes = ImmutableMap.of("changes", "put");
 
     eventBus.dispatchEvent(
         new ScimAlterUserPreEvent(initiator, metalake, userName, id, externalId));
@@ -116,7 +121,8 @@ public class ScimUserEventDispatcher implements Repository<ScimUser> {
               metalake,
               ScimUtils.blankToUnknown(updated.getUserName()),
               updated.getId(),
-              ScimUtils.blankToNull(updated.getExternalId())));
+              ScimUtils.blankToNull(updated.getExternalId()),
+              changes));
       return updated;
     } catch (Exception e) {
       eventBus.dispatchEvent(
@@ -135,9 +141,13 @@ public class ScimUserEventDispatcher implements Repository<ScimUser> {
       throws ResourceException {
     String initiator = PrincipalUtils.getCurrentUserName();
     String metalake = ScimMetalakeContext.getMetalake();
-    String userName = ScimUtils.blankToUnknown(null);
+    ScimUser existing = findUserById(id);
+    String userName = ScimUtils.blankToUnknown(existing == null ? null : existing.getUserName());
+    String externalId = ScimUtils.blankToNull(existing == null ? null : existing.getExternalId());
+    Map<String, String> changes = summarizeUserPatch(patchOperations);
 
-    eventBus.dispatchEvent(new ScimAlterUserPreEvent(initiator, metalake, userName, id, null));
+    eventBus.dispatchEvent(
+        new ScimAlterUserPreEvent(initiator, metalake, userName, id, externalId));
     try {
       ScimUser patched =
           repository.patch(id, version, patchOperations, includedAttributes, excludedAttributes);
@@ -147,11 +157,12 @@ public class ScimUserEventDispatcher implements Repository<ScimUser> {
               metalake,
               ScimUtils.blankToUnknown(patched.getUserName()),
               patched.getId(),
-              ScimUtils.blankToNull(patched.getExternalId())));
+              ScimUtils.blankToNull(patched.getExternalId()),
+              changes));
       return patched;
     } catch (Exception e) {
       eventBus.dispatchEvent(
-          new ScimAlterUserFailureEvent(initiator, metalake, e, userName, id, null));
+          new ScimAlterUserFailureEvent(initiator, metalake, e, userName, id, externalId));
       throw e;
     }
   }
@@ -208,15 +219,19 @@ public class ScimUserEventDispatcher implements Repository<ScimUser> {
   public void delete(String id) throws ResourceException {
     String initiator = PrincipalUtils.getCurrentUserName();
     String metalake = ScimMetalakeContext.getMetalake();
-    String userName = ScimUtils.blankToUnknown(null);
+    ScimUser existing = findUserById(id);
+    String userName = ScimUtils.blankToUnknown(existing == null ? null : existing.getUserName());
+    String externalId = ScimUtils.blankToNull(existing == null ? null : existing.getExternalId());
 
-    eventBus.dispatchEvent(new ScimRemoveUserPreEvent(initiator, metalake, userName, id, null));
+    eventBus.dispatchEvent(
+        new ScimRemoveUserPreEvent(initiator, metalake, userName, id, externalId));
     try {
       repository.delete(id);
-      eventBus.dispatchEvent(new ScimRemoveUserEvent(initiator, metalake, userName, id, null));
+      eventBus.dispatchEvent(
+          new ScimRemoveUserEvent(initiator, metalake, userName, id, externalId));
     } catch (Exception e) {
       eventBus.dispatchEvent(
-          new ScimRemoveUserFailureEvent(initiator, metalake, e, userName, id, null));
+          new ScimRemoveUserFailureEvent(initiator, metalake, e, userName, id, externalId));
       throw e;
     }
   }
@@ -224,5 +239,29 @@ public class ScimUserEventDispatcher implements Repository<ScimUser> {
   @Override
   public List<Class<? extends ScimExtension>> getExtensionList() throws InvalidRepositoryException {
     return repository.getExtensionList();
+  }
+
+  /** Returns the user for audit context, or {@code null} if lookup fails. */
+  private ScimUser findUserById(String id) {
+    try {
+      return repository.get(id);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private static Map<String, String> summarizeUserPatch(List<PatchOperation> patchOperations) {
+    if (patchOperations == null || patchOperations.isEmpty()) {
+      return ImmutableMap.of("changes", "patch");
+    }
+    try {
+      Optional<Boolean> active = ScimPatchSupport.parseUserActive(patchOperations);
+      if (active.isPresent()) {
+        return ImmutableMap.of("changes", "active=" + active.get());
+      }
+    } catch (ResourceException ignored) {
+      // Non-active or unsupported patch body: fall through.
+    }
+    return ImmutableMap.of("changes", "patch");
   }
 }

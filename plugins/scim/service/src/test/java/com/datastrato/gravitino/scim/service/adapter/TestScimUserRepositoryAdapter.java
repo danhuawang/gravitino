@@ -518,6 +518,8 @@ class TestScimUserRepositoryAdapter {
   @Test
   void testDeleteThroughInternalDispatcherDoesNotEmitCoreUserEvents() throws Exception {
     AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    User existing = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(manager.getUserById(METALAKE, USER_ID)).thenReturn(existing);
     when(manager.removeUserById(METALAKE, USER_ID)).thenReturn(true);
 
     EventBus eventBus = mock(EventBus.class);
@@ -530,9 +532,11 @@ class TestScimUserRepositoryAdapter {
     List<BaseEvent> events = captor.getAllValues();
     assertInstanceOf(ScimRemoveUserPreEvent.class, events.get(0));
     assertInstanceOf(ScimRemoveUserEvent.class, events.get(1));
+    assertEquals("alice", ((ScimRemoveUserEvent) events.get(1)).userName());
     assertTrue(events.stream().noneMatch(GetUserByIdEvent.class::isInstance));
     assertTrue(events.stream().noneMatch(RemoveUserEvent.class::isInstance));
-    verify(manager, never()).getUserById(anyString(), anyLong());
+    // Preload for SCIM audit naming uses getUserById on the internal dispatcher (no core events).
+    verify(manager).getUserById(METALAKE, USER_ID);
   }
 
   private ScimUserEventDispatcher newInternalChainedDispatcher(

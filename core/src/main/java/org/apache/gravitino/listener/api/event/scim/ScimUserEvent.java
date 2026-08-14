@@ -1,24 +1,11 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Copyright 2026 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
  */
 
 package org.apache.gravitino.listener.api.event.scim;
 
+import com.google.common.collect.ImmutableMap;
 import java.util.Map;
 import javax.annotation.Nullable;
 import org.apache.gravitino.NameIdentifier;
@@ -33,15 +20,26 @@ public abstract class ScimUserEvent extends Event {
 
   @Nullable private final String resourceId;
   @Nullable private final String externalId;
+  @Nullable private final Map<String, String> extraInfo;
 
   protected ScimUserEvent(
       String initiator,
       NameIdentifier identifier,
       @Nullable String resourceId,
       @Nullable String externalId) {
+    this(initiator, identifier, resourceId, externalId, null);
+  }
+
+  protected ScimUserEvent(
+      String initiator,
+      NameIdentifier identifier,
+      @Nullable String resourceId,
+      @Nullable String externalId,
+      @Nullable Map<String, String> extraInfo) {
     super(initiator, identifier);
     this.resourceId = resourceId;
     this.externalId = externalId;
+    this.extraInfo = extraInfo == null ? null : ImmutableMap.copyOf(extraInfo);
   }
 
   @Override
@@ -55,9 +53,14 @@ public abstract class ScimUserEvent extends Event {
   }
 
   @Override
+  public String remoteAddress() {
+    String address = super.remoteAddress();
+    return "unknown".equals(address) ? "" : address;
+  }
+
+  @Override
   public Map<String, String> customInfo() {
-    return ScimAuditInfos.of(
-        ScimAuditInfos.RESOURCE_USER, resourceId, externalId, ScimAuditInfos.STATUS_SUCCESS);
+    return ScimAuditInfos.of(ScimAuditInfos.RESOURCE_USER, resourceId, externalId, extraInfo);
   }
 
   /** Returns the SCIM / Gravitino resource id, or null when unknown. */
