@@ -27,7 +27,7 @@ Gravitino saves some system information in table comments, like `(From Gravitino
 - Supports metadata management of SQL Server (2008, 2016, 2017, 2019, 2022).
 - Supports DDL operation for SQL Server schemas and tables.
 - Supports table index.
-- Supports [column default value](./manage-relational-metadata-using-gravitino.md#table-column-default-value) and [auto-increment](./manage-relational-metadata-using-gravitino.md#table-column-auto-increment) (`IDENTITY`).
+- Supports column default value and auto-increment (`IDENTITY`).
 - Supports table and column comments via SQL Server extended properties (`MS_Description`).
 
 ### Catalog properties
@@ -81,7 +81,7 @@ jdbc:sqlserver://host:1433;databaseName=mydb;encrypt=false
 
 ### Catalog operations
 
-Please refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metadata-using-gravitino.md#catalog-operations) for more details.
+Please refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#catalog-operations) for more details.
 
 ## Schema
 
@@ -103,7 +103,7 @@ The built-in `dbo` schema is always visible in `listSchemas`. System schemas (`g
 
 ### Schema operations
 
-Please refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metadata-using-gravitino.md#schema-operations) for more details.
+Please refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#schema-operations) for more details.
 
 ## Table
 
@@ -112,7 +112,7 @@ Please refer to [Manage Relational Metadata Using Gravitino](./manage-relational
 - The Gravitino table corresponds to the SQL Server table.
 - Supports DDL operation for SQL Server tables.
 - Supports index.
-- Supports [column default value](./manage-relational-metadata-using-gravitino.md#table-column-default-value) and [auto-increment](./manage-relational-metadata-using-gravitino.md#table-column-auto-increment) (`IDENTITY(1,1)`).
+- Supports column default value and auto-increment (`IDENTITY(1,1)`).
 - Supports table and column comments via SQL Server extended properties (`sp_addextendedproperty` / `sp_updateextendedproperty`).
 - Doesn't support table property settings.
 
@@ -146,7 +146,7 @@ When loading source tables, SQL Server `datetime` maps to `Timestamp(3)`, bounde
 
 #### Types mapped to ExternalType
 
-SQL Server types not in the table above are mapped to Gravitino **[External Type](./manage-relational-metadata-using-gravitino.md#external-type)** on read. Users can use `ExternalType("typename")` when creating tables through Gravitino, and the converter emits the type name as-is.
+SQL Server types not in the table above are mapped to Gravitino **External Type** on read. Users can use `ExternalType("typename")` when creating tables through Gravitino, and the converter emits the type name as-is.
 
 | SQL Server Type            | Gravitino Type                      |
 |----------------------------|-------------------------------------|

@@ -40,7 +40,7 @@ The recommended driver version is 1.6.5.1001 or later. Make sure to exclude Jack
 - Supports metadata management of Google BigQuery.
 - Supports DDL operations for BigQuery datasets and tables.
 - Supports table partitioning and clustering.
-- Supports [column default value](./manage-relational-metadata-using-gravitino.md#table-column-default-value).
+- Supports column default value.
 
 ### Catalog properties
 
@@ -79,7 +79,7 @@ These arguments disable the default security restrictions on HTTP authentication
 
 ### Catalog operations
 
-Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metadata-using-gravitino.md#catalog-operations) for more details.
+Refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#catalog-operations) for more details.
 
 ## Schema
 
@@ -109,7 +109,7 @@ Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metada
 
 ### Schema operations
 
-Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metadata-using-gravitino.md#schema-operations) for more details.
+Refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#schema-operations) for more details.
 
 ## Table
 
@@ -118,7 +118,7 @@ Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metada
 - Gravitino's table concept corresponds to the BigQuery table.
 - Supports DDL operations for BigQuery tables.
 - Supports table partitioning and clustering.
-- Supports [column default value](./manage-relational-metadata-using-gravitino.md#table-column-default-value).
+- Supports column default value.
 
 ### Table column types
 
@@ -152,7 +152,7 @@ Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metada
 
 :::info
 BigQuery doesn't support Gravitino `Fixed` `IntervalDay` `IntervalYear` `Union` `UUID` type.
-Meanwhile, the data types other than listed above are mapped to Gravitino **[External Type](./manage-relational-metadata-using-gravitino.md#external-type)** that represents an unresolvable data type.
+Meanwhile, the data types other than listed above are mapped to Gravitino **External Type** that represents an unresolvable data type.
 
 **Note on BIGNUMERIC**: BigQuery's BIGNUMERIC type supports precision of approximately 76.8 digits (the 77th digit is partial), which exceeds Gravitino's DecimalType maximum precision of 38. To avoid precision loss, BIGNUMERIC is mapped to ExternalType and preserved as-is. Use the API with ExternalType or UnparsedType to work with BIGNUMERIC columns.
 

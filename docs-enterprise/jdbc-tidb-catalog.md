@@ -28,7 +28,7 @@ Gravitino saves some system information in schema and table comment, like `(From
 - Supports metadata management of TiDB (6.5.x and above) via the `jdbc-mysql` provider.
 - Supports DDL operation for TiDB databases and tables.
 - Supports table index.
-- Supports [column default value](./manage-relational-metadata-using-gravitino.md#table-column-default-value) and [auto-increment](./manage-relational-metadata-using-gravitino.md#table-column-auto-increment).
+- Supports column default value and auto-increment.
 - Supports managing TiDB table features through table properties, like using `engine` to set the storage engine (accepted by TiDB syntax but ignored at the storage layer).
 
 ### Catalog properties
@@ -117,7 +117,7 @@ gravitino_client.create_catalog(
 
 ### Catalog operations
 
-Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metadata-using-gravitino.md#catalog-operations) for more details.
+Refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#catalog-operations) for more details.
 
 ## Schema
 
@@ -134,7 +134,7 @@ Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metada
 
 ### Schema operations
 
-Refer to [Manage Relational Metadata Using Gravitino](./manage-relational-metadata-using-gravitino.md#schema-operations) for more details.
+Refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#schema-operations) for more details.
 
 :::info
 When listing schemas, TiDB system databases such as `METRICS_SCHEMA` and `test` will appear alongside user-created schemas. These are TiDB built-in databases and can be safely ignored.
@@ -147,7 +147,7 @@ When listing schemas, TiDB system databases such as `METRICS_SCHEMA` and `test` 
 - Gravitino's table concept corresponds to the TiDB table.
 - Supports DDL operation for TiDB tables.
 - Supports index.
-- Supports [column default value](./manage-relational-metadata-using-gravitino.md#table-column-default-value) and [auto-increment](./manage-relational-metadata-using-gravitino.md#table-column-auto-increment).
+- Supports column default value and auto-increment.
 - Supports managing TiDB table features through table properties, like using `engine` to set the storage engine property.
 
 ### Table column types
@@ -179,7 +179,7 @@ Since TiDB is compatible with the MySQL protocol, the type mapping is the same a
 
 :::info
 TiDB doesn't support Gravitino `Fixed` `Struct` `List` `Map` `IntervalDay` `IntervalYear` `Union` `UUID` type.
-Meanwhile, the data types other than listed above are mapped to Gravitino **[External Type](./manage-relational-metadata-using-gravitino.md#external-type)** that represents an unresolvable data type since 0.6.0-incubating.
+Meanwhile, the data types other than listed above are mapped to Gravitino **External Type** that represents an unresolvable data type since 0.6.0-incubating.
 :::
 
 ### Table column auto-increment
