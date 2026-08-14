@@ -13,18 +13,15 @@ import org.apache.directory.scim.core.repository.RepositoryRegistry;
 import org.apache.directory.scim.core.schema.SchemaRegistry;
 import org.apache.directory.scim.server.configuration.ServerConfiguration;
 import org.apache.directory.scim.server.rest.EtagGenerator;
-import org.apache.directory.scim.server.rest.GroupResourceImpl;
 import org.apache.directory.scim.server.rest.ResourceTypesResourceImpl;
 import org.apache.directory.scim.server.rest.SchemaResourceImpl;
 import org.apache.directory.scim.server.rest.ServiceProviderConfigResourceImpl;
-import org.apache.directory.scim.server.rest.UserResourceImpl;
 
 /**
  * JAX-RS sub-resource locator for metalake-scoped SCIM 2.0 endpoints.
  *
- * <p>Mounts SCIMple {@code UserResourceImpl} / {@code GroupResourceImpl} and discovery resources
- * under {@code /scim/v2/metalakes/{metalake}} instead of registering {@code ScimResourceHelper}
- * top-level {@code /Users} routes.
+ * <p>Mounts Gravitino User/Group resources (SCIMple-based, with corrected single-resource {@code
+ * Location}) and discovery resources under {@code /scim/v2/metalakes/{metalake}}.
  */
 @Path("v2/metalakes/{metalake}")
 public class ScimMetalakeResource {
@@ -56,14 +53,16 @@ public class ScimMetalakeResource {
 
   /** Returns the Users sub-resource. */
   @Path("Users")
-  public UserResourceImpl users() {
-    return resourceContext.initResource(new UserResourceImpl(schemaRegistry, repositoryRegistry));
+  public GravitinoUserResourceImpl users() {
+    return resourceContext.initResource(
+        new GravitinoUserResourceImpl(schemaRegistry, repositoryRegistry));
   }
 
   /** Returns the Groups sub-resource. */
   @Path("Groups")
-  public GroupResourceImpl groups() {
-    return resourceContext.initResource(new GroupResourceImpl(schemaRegistry, repositoryRegistry));
+  public GravitinoGroupResourceImpl groups() {
+    return resourceContext.initResource(
+        new GravitinoGroupResourceImpl(schemaRegistry, repositoryRegistry));
   }
 
   /** Returns the ServiceProviderConfig sub-resource. */

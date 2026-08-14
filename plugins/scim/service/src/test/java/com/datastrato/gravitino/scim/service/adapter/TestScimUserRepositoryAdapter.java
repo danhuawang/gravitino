@@ -6,8 +6,10 @@
 package com.datastrato.gravitino.scim.service.adapter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -15,11 +17,13 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.ScimServiceTestEntities;
+import com.datastrato.gravitino.scim.service.listener.ScimUserEventDispatcher;
 import com.datastrato.gravitino.scim.service.web.ScimMetalakeContext;
 import java.util.List;
 import java.util.Map;
@@ -35,9 +39,23 @@ import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.authorization.UserChange;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
+import org.apache.gravitino.listener.AccessControlEventDispatcher;
+import org.apache.gravitino.listener.EventBus;
+import org.apache.gravitino.listener.api.event.AddUserEvent;
+import org.apache.gravitino.listener.api.event.AlterUserEvent;
+import org.apache.gravitino.listener.api.event.BaseEvent;
+import org.apache.gravitino.listener.api.event.GetUserByIdEvent;
+import org.apache.gravitino.listener.api.event.RemoveUserEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimAddUserEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimAddUserPreEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimAlterUserEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimAlterUserPreEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimRemoveUserEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimRemoveUserPreEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class TestScimUserRepositoryAdapter {
 
@@ -426,5 +444,107 @@ class TestScimUserRepositoryAdapter {
     assertEquals("alice", users[0].getUserName());
     assertEquals("bob", users[1].getUserName());
     verify(dispatcher).listUsers(METALAKE, 0, 10);
+  }
+
+  @Test
+  void testCreateThroughInternalDispatcherDoesNotEmitCoreUserEvents() throws Exception {
+    AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    when(manager.listUsers(METALAKE)).thenReturn(new User[0]);
+    User created = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(manager.addUser(METALAKE, "alice", "ext-1", true)).thenReturn(created);
+
+    EventBus eventBus = mock(EventBus.class);
+    ScimUserEventDispatcher scimDispatcher = newInternalChainedDispatcher(eventBus, manager);
+
+    ScimUser result =
+        scimDispatcher.create(new ScimUser().setUserName("alice").setExternalId("ext-1"));
+    assertEquals("1", result.getId());
+
+    ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
+    verify(eventBus, times(2)).dispatchEvent(captor.capture());
+    List<BaseEvent> events = captor.getAllValues();
+    assertInstanceOf(ScimAddUserPreEvent.class, events.get(0));
+    assertInstanceOf(ScimAddUserEvent.class, events.get(1));
+    assertTrue(events.stream().noneMatch(AddUserEvent.class::isInstance));
+  }
+
+  @Test
+  void testCreateThroughAuditedDispatcherEmitsCoreUserEvents() throws Exception {
+    AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    when(manager.listUsers(METALAKE)).thenReturn(new User[0]);
+    User created = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    when(manager.addUser(METALAKE, "alice", "ext-1", true)).thenReturn(created);
+
+    EventBus eventBus = mock(EventBus.class);
+    ScimUserEventDispatcher scimDispatcher = newAuditedChainedDispatcher(eventBus, manager);
+
+    scimDispatcher.create(new ScimUser().setUserName("alice").setExternalId("ext-1"));
+
+    ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
+    verify(eventBus, org.mockito.Mockito.atLeastOnce()).dispatchEvent(captor.capture());
+    assertTrue(captor.getAllValues().stream().anyMatch(AddUserEvent.class::isInstance));
+    assertTrue(captor.getAllValues().stream().anyMatch(ScimAddUserEvent.class::isInstance));
+  }
+
+  @Test
+  void testUpdateThroughInternalDispatcherDoesNotEmitCoreUserEvents() throws Exception {
+    AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    User enabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
+    User disabled = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", false);
+    when(manager.getUserById(METALAKE, USER_ID)).thenReturn(enabled);
+    when(manager.alterUserById(anyString(), anyLong(), any())).thenReturn(disabled);
+
+    EventBus eventBus = mock(EventBus.class);
+    ScimUserEventDispatcher scimDispatcher = newInternalChainedDispatcher(eventBus, manager);
+
+    ScimUser result =
+        scimDispatcher.update(
+            "1",
+            null,
+            new ScimUser().setId("1").setExternalId("ext-1").setUserName("alice").setActive(false),
+            null,
+            null);
+    assertEquals(Boolean.FALSE, result.getActive());
+
+    ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
+    verify(eventBus, times(2)).dispatchEvent(captor.capture());
+    List<BaseEvent> events = captor.getAllValues();
+    assertInstanceOf(ScimAlterUserPreEvent.class, events.get(0));
+    assertInstanceOf(ScimAlterUserEvent.class, events.get(1));
+    assertTrue(events.stream().noneMatch(GetUserByIdEvent.class::isInstance));
+    assertTrue(events.stream().noneMatch(AlterUserEvent.class::isInstance));
+  }
+
+  @Test
+  void testDeleteThroughInternalDispatcherDoesNotEmitCoreUserEvents() throws Exception {
+    AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    when(manager.removeUserById(METALAKE, USER_ID)).thenReturn(true);
+
+    EventBus eventBus = mock(EventBus.class);
+    ScimUserEventDispatcher scimDispatcher = newInternalChainedDispatcher(eventBus, manager);
+
+    scimDispatcher.delete("1");
+
+    ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
+    verify(eventBus, times(2)).dispatchEvent(captor.capture());
+    List<BaseEvent> events = captor.getAllValues();
+    assertInstanceOf(ScimRemoveUserPreEvent.class, events.get(0));
+    assertInstanceOf(ScimRemoveUserEvent.class, events.get(1));
+    assertTrue(events.stream().noneMatch(GetUserByIdEvent.class::isInstance));
+    assertTrue(events.stream().noneMatch(RemoveUserEvent.class::isInstance));
+    verify(manager, never()).getUserById(anyString(), anyLong());
+  }
+
+  private ScimUserEventDispatcher newInternalChainedDispatcher(
+      EventBus eventBus, AccessControlDispatcher manager) {
+    return new ScimUserEventDispatcher(
+        eventBus, new ScimUserRepositoryAdapter(manager, scimConfig));
+  }
+
+  private ScimUserEventDispatcher newAuditedChainedDispatcher(
+      EventBus eventBus, AccessControlDispatcher manager) {
+    AccessControlDispatcher audited = new AccessControlEventDispatcher(eventBus, manager);
+    return new ScimUserEventDispatcher(
+        eventBus, new ScimUserRepositoryAdapter(audited, scimConfig));
   }
 }

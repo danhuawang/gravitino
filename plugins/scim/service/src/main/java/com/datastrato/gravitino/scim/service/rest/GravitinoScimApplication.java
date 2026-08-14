@@ -8,6 +8,8 @@ package com.datastrato.gravitino.scim.service.rest;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.adapter.ScimGroupRepositoryAdapter;
 import com.datastrato.gravitino.scim.service.adapter.ScimUserRepositoryAdapter;
+import com.datastrato.gravitino.scim.service.listener.ScimGroupEventDispatcher;
+import com.datastrato.gravitino.scim.service.listener.ScimUserEventDispatcher;
 import com.fasterxml.jackson.jakarta.rs.json.JacksonJsonProvider;
 import java.util.Collections;
 import org.apache.directory.scim.core.repository.InvalidRepositoryException;
@@ -27,8 +29,8 @@ import org.apache.directory.scim.server.rest.ScimpleFeature;
 import org.apache.directory.scim.spec.resources.ScimGroup;
 import org.apache.directory.scim.spec.resources.ScimUser;
 import org.apache.directory.scim.spec.schema.Schema;
-import org.apache.directory.scim.spec.schema.ServiceProviderConfiguration;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.GravitinoEnv;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 
@@ -50,18 +52,26 @@ public final class GravitinoScimApplication {
     schemaRegistry.addSchema(ScimGroup.class, Collections.emptyList());
     // SCIMple ScimResource.id omits caseExact (defaults false); RFC 7643 requires true.
     markCommonIdCaseExact(schemaRegistry);
+    // Advertise only attributes Gravitino synchronizes (design §8.3 /Schemas).
+    ScimSchemaSupport.retainSupportedAttributes(schemaRegistry);
 
     RepositoryRegistry repositoryRegistry = new RepositoryRegistry(schemaRegistry);
     try {
       repositoryRegistry.registerRepository(
-          ScimUser.class, new ScimUserRepositoryAdapter(gravitinoConfig, scimConfig));
+          ScimUser.class,
+          new ScimUserEventDispatcher(
+              GravitinoEnv.getInstance().eventBus(),
+              new ScimUserRepositoryAdapter(gravitinoConfig, scimConfig)));
       repositoryRegistry.registerRepository(
-          ScimGroup.class, new ScimGroupRepositoryAdapter(gravitinoConfig, scimConfig));
+          ScimGroup.class,
+          new ScimGroupEventDispatcher(
+              GravitinoEnv.getInstance().eventBus(),
+              new ScimGroupRepositoryAdapter(gravitinoConfig, scimConfig)));
     } catch (InvalidRepositoryException e) {
       throw new IllegalStateException("Failed to register SCIM repository adapters", e);
     }
 
-    ServerConfiguration serverConfiguration = createServerConfiguration();
+    ServerConfiguration serverConfiguration = ScimServerConfigurations.create();
 
     ResourceConfig resourceConfig = new ResourceConfig();
     resourceConfig.register(ScimpleFeature.class);
@@ -89,20 +99,6 @@ public final class GravitinoScimApplication {
         });
 
     return resourceConfig;
-  }
-
-  private static ServerConfiguration createServerConfiguration() {
-    ServerConfiguration configuration =
-        new ServerConfiguration()
-            .setId("gravitino-scim")
-            .setDocumentationUri("https://github.com/datastrato/gravitino-enterprise")
-            .addAuthenticationSchema(
-                ServiceProviderConfiguration.AuthenticationSchema.oauthBearer())
-            .setSupportsFilter(true)
-            .setSupportsSort(false);
-    configuration.setBulkMaxOperations(0);
-    configuration.setBulkMaxPayloadSize(0);
-    return configuration;
   }
 
   /**

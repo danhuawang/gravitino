@@ -6,6 +6,7 @@
 package com.datastrato.gravitino.scim.service.adapter;
 
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
+import com.datastrato.gravitino.scim.ScimUtils;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.basic.mapper.ScimNameMappers;
 import com.datastrato.gravitino.scim.service.converter.ScimResourceConverter;
@@ -43,7 +44,13 @@ import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** SCIMple repository adapter for Group provisioning backed by Gravitino core APIs. */
+/**
+ * SCIMple repository adapter for Group provisioning backed by Gravitino core APIs.
+ *
+ * <p>Uses {@link GravitinoEnv#internalAccessControlDispatcher()} so SCIM Group operations do not
+ * emit core access-control audit events. SCIM-level audit is owned by {@code
+ * ScimGroupEventDispatcher}.
+ */
 public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
 
   private static final Logger LOG = LoggerFactory.getLogger(ScimGroupRepositoryAdapter.class);
@@ -60,7 +67,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
    */
   public ScimGroupRepositoryAdapter(Config gravitinoConfig, ScimConfig scimConfig) {
     this(
-        GravitinoEnv.getInstance().accessControlDispatcher(),
+        GravitinoEnv.getInstance().internalAccessControlDispatcher(),
         ScimUserGroupRelManager.getInstance(),
         scimConfig);
   }
@@ -68,7 +75,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   /**
    * Creates an adapter with explicit dispatcher and membership dependencies.
    *
-   * @param dispatcher access control dispatcher
+   * @param dispatcher access control dispatcher that must not emit user-facing audit events
    * @param membershipManager user-group membership manager
    * @param scimConfig SCIM mapper configuration
    */
@@ -88,7 +95,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
 
   @Override
   public ScimGroup create(ScimGroup resource) throws ResourceException {
-    String externalId = normalizeExternalId(resource.getExternalId());
+    String externalId = ScimUtils.blankToNull(resource.getExternalId());
     String groupName = resolveGroupName(resource.getDisplayName());
     try {
       String metalake = ScimMetalakeContext.getMetalake();
@@ -288,7 +295,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     if (type != PatchOperation.Type.REPLACE && type != PatchOperation.Type.ADD) {
       throw new ResourceException(400, "Group externalId PATCH supports add/replace only");
     }
-    String normalized = normalizeExternalId(externalId);
+    String normalized = ScimUtils.blankToNull(externalId);
     if (Objects.equals(normalized, group.externalId())) {
       return group;
     }
@@ -375,8 +382,17 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
     }
     return lookupGroup(metalake, criteria)
         .filter(group -> matchesFilter(group, criteria))
-        .map(group -> new ScimPagedResult<>(1, List.of(group)))
+        .map(group -> singleMatchResult(group, page))
         .orElseGet(() -> new ScimPagedResult<>(0, List.of()));
+  }
+
+  /** One filter match, respecting {@code count=0} (empty page, totalResults still 1). */
+  private static ScimPagedResult<Group> singleMatchResult(
+      Group group, ScimRepositoryPagination.PageBounds page) {
+    if (page.limit() == 0) {
+      return new ScimPagedResult<>(1, List.of());
+    }
+    return new ScimPagedResult<>(1, List.of(group));
   }
 
   private Optional<Group> lookupGroup(String metalake, ScimGroupFilter criteria) {
@@ -479,10 +495,6 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   private ScimGroup toScimGroup(Group group) {
     List<String> memberIds = listMemberScimIds(ScimMetalakeContext.getMetalake(), group.id());
     return ScimResourceConverter.toScimGroup(group, memberIds);
-  }
-
-  private static String normalizeExternalId(String externalId) {
-    return StringUtils.isBlank(externalId) ? null : externalId;
   }
 
   private static long parseResourceId(String id) throws ResourceException {

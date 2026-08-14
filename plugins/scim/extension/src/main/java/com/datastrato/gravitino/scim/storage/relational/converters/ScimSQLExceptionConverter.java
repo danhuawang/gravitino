@@ -78,8 +78,13 @@ public final class ScimSQLExceptionConverter {
   }
 
   private IOException toIOException(SQLException sqlException) {
+    String sqlMessage = sqlException.getMessage();
     if (jdbcType == JdbcType.H2) {
-      return new IOException("error code: " + sqlException.getErrorCode(), sqlException);
+      String detail =
+          sqlMessage == null || sqlMessage.isBlank()
+              ? "error code: " + sqlException.getErrorCode()
+              : "error code: " + sqlException.getErrorCode() + ", " + sqlMessage;
+      return new IOException(detail, sqlException);
     }
     return new IOException(sqlException);
   }

@@ -5,21 +5,41 @@
 
 package com.datastrato.gravitino.scim.service.model;
 
+import java.util.Collections;
 import java.util.List;
-import lombok.AllArgsConstructor;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.ToString;
-import lombok.experimental.Accessors;
 
 /** SCIM list/filter query result for repository adapters. */
-@Getter
-@ToString
-@EqualsAndHashCode
-@AllArgsConstructor
-@Accessors(fluent = true)
 public final class ScimPagedResult<T> {
 
   private final long totalCount;
   private final List<T> items;
+
+  /**
+   * Creates a paginated SCIM query result.
+   *
+   * @param totalCount The total number of matching items.
+   * @param items The items in the current page.
+   */
+  public ScimPagedResult(long totalCount, List<T> items) {
+    this.totalCount = totalCount;
+    this.items = items != null ? items : Collections.emptyList();
+  }
+
+  /**
+   * Returns the total number of matching items.
+   *
+   * @return The total count.
+   */
+  public long totalCount() {
+    return totalCount;
+  }
+
+  /**
+   * Returns the items in the current page.
+   *
+   * @return The page items.
+   */
+  public List<T> items() {
+    return items;
+  }
 }

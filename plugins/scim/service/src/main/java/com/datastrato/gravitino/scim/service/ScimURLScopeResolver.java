@@ -47,6 +47,7 @@ public class ScimURLScopeResolver implements Filter {
     try {
       MetalakeMetaService.getInstance().getMetalakeIdByName(metalakeName);
       ScimMetalakeContext.setMetalake(metalakeName);
+      ScimMetalakeContext.setRequestBaseUri(ScimRequestPaths.requestBaseUri(httpRequest));
       chain.doFilter(request, response);
     } catch (NotFoundException e) {
       ScimHttpResponses.writeError(httpResponse, HttpServletResponse.SC_NOT_FOUND, e.getMessage());

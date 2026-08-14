@@ -6,6 +6,7 @@
 package com.datastrato.gravitino.scim.service.web;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.net.URI;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,6 +39,20 @@ public final class ScimRequestPaths {
   public static String resolveRequestPath(HttpServletRequest request) {
     return StringUtils.removeEnd(StringUtils.defaultString(request.getServletPath()), "/")
         + StringUtils.defaultString(request.getPathInfo());
+  }
+
+  /**
+   * Returns the request origin ({@code scheme://host[:port]}) for absolute SCIM locations.
+   *
+   * <p>Matches the host used by JAX-RS {@code UriInfo} when building the HTTP {@code Location}
+   * header, so {@code meta.location} can use the same absolute URI shape.
+   *
+   * @param request incoming HTTP request
+   * @return origin without a path, for example {@code http://localhost:9201}
+   */
+  public static String requestBaseUri(HttpServletRequest request) {
+    URI requestUri = URI.create(request.getRequestURL().toString());
+    return requestUri.getScheme() + "://" + requestUri.getAuthority();
   }
 
   /**

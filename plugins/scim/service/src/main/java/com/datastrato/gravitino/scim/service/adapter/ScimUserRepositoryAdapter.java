@@ -5,6 +5,7 @@
 
 package com.datastrato.gravitino.scim.service.adapter;
 
+import com.datastrato.gravitino.scim.ScimUtils;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.basic.mapper.ScimNameMappers;
 import com.datastrato.gravitino.scim.service.converter.ScimResourceConverter;
@@ -36,7 +37,13 @@ import org.apache.gravitino.authorization.UserChange;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 
-/** SCIMple repository adapter for User provisioning backed by Gravitino core APIs. */
+/**
+ * SCIMple repository adapter for User provisioning backed by Gravitino core APIs.
+ *
+ * <p>Uses {@link GravitinoEnv#internalAccessControlDispatcher()} so SCIM User operations do not
+ * emit core access-control audit events. SCIM-level audit is owned by {@code
+ * ScimUserEventDispatcher}.
+ */
 public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
 
   private final AccessControlDispatcher dispatcher;
@@ -49,13 +56,13 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
    * @param scimConfig SCIM mapper configuration
    */
   public ScimUserRepositoryAdapter(Config gravitinoConfig, ScimConfig scimConfig) {
-    this(GravitinoEnv.getInstance().accessControlDispatcher(), scimConfig);
+    this(GravitinoEnv.getInstance().internalAccessControlDispatcher(), scimConfig);
   }
 
   /**
    * Creates an adapter with explicit dispatcher dependency.
    *
-   * @param dispatcher access control dispatcher
+   * @param dispatcher access control dispatcher that must not emit user-facing audit events
    * @param scimConfig SCIM mapper configuration
    */
   ScimUserRepositoryAdapter(AccessControlDispatcher dispatcher, ScimConfig scimConfig) {
@@ -70,7 +77,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
 
   @Override
   public ScimUser create(ScimUser resource) throws ResourceException {
-    String externalId = normalizeExternalId(resource.getExternalId());
+    String externalId = ScimUtils.blankToNull(resource.getExternalId());
     String userName = resolveUserName(resource.getUserName());
     try {
       String metalake = ScimMetalakeContext.getMetalake();
@@ -189,8 +196,17 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     }
     return lookupUser(metalake, criteria)
         .filter(user -> matchesFilter(user, criteria))
-        .map(user -> new ScimPagedResult<>(1, List.of(user)))
+        .map(user -> singleMatchResult(user, page))
         .orElseGet(() -> new ScimPagedResult<>(0, List.of()));
+  }
+
+  /** One filter match, respecting {@code count=0} (empty page, totalResults still 1). */
+  private static ScimPagedResult<User> singleMatchResult(
+      User user, ScimRepositoryPagination.PageBounds page) {
+    if (page.limit() == 0) {
+      return new ScimPagedResult<>(1, List.of());
+    }
+    return new ScimPagedResult<>(1, List.of(user));
   }
 
   private Optional<User> lookupUser(String metalake, ScimUserFilter criteria) {
@@ -297,10 +313,6 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   private static boolean resolveEnabled(ScimUser resource) {
     Boolean active = resource.getActive();
     return active == null || active;
-  }
-
-  private static String normalizeExternalId(String externalId) {
-    return StringUtils.isBlank(externalId) ? null : externalId;
   }
 
   private static long parseResourceId(String id) throws ResourceException {

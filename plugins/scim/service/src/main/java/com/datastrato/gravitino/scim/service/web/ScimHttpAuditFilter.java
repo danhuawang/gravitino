@@ -18,30 +18,51 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
 import java.io.IOException;
 import java.security.Principal;
+import java.util.Optional;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.auth.AuthConstants;
+import org.apache.gravitino.listener.EventBus;
+import org.apache.gravitino.listener.api.event.EventSource;
+import org.apache.gravitino.listener.api.event.server.HttpRequestFailureEvent;
+import org.apache.gravitino.utils.RequestContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Jakarta Servlet filter that logs 4xx/5xx responses on the SCIM auxiliary listener.
+ * Jakarta Servlet filter that dispatches {@link HttpRequestFailureEvent} for SCIM HTTP 4xx/5xx
+ * responses through the shared {@link EventBus}, matching the main server / Iceberg REST audit path
+ * ({@code EventBus} → audit listener → {@code gravitino.audit} / {@code gravitino_audit.log}).
  *
- * <p>Uses structured SLF4J logging because a dedicated {@code EventSource} for SCIM lives outside
- * this module.
+ * <p>Successful SCIM User operations are audited by operation-layer events emitted from {@code
+ * ScimUserEventDispatcher} when SCIMple invokes repository methods. This filter only covers
+ * HTTP-layer failures (auth rejection, malformed requests, unexpected 5xx) that never reach an
+ * operation dispatcher.
+ *
+ * <p>Cannot reuse {@code org.apache.gravitino.server.web.HttpAuditFilter} directly because the SCIM
+ * auxiliary listener runs on Jetty 11 / Jakarta Servlet, while that filter is compiled against
+ * {@code javax.servlet}.
  */
 public final class ScimHttpAuditFilter implements Filter {
 
   private static final Logger LOG = LoggerFactory.getLogger(ScimHttpAuditFilter.class);
   private static final String X_FORWARDED_FOR = "X-Forwarded-For";
 
+  private final Optional<EventBus> eventBus;
+  private final EventSource eventSource;
   private final ScimHealthCheckPathMatcher healthCheckMatcher;
 
   /**
    * Constructs a SCIM HTTP audit filter.
    *
+   * @param eventBus event bus used to dispatch {@link HttpRequestFailureEvent}s; may be {@code
+   *     null}, in which case the filter is a pass-through
+   * @param eventSource identifies which server produced the event
    * @param healthCheckMatcher determines which paths are health probes and should be skipped
    */
-  public ScimHttpAuditFilter(ScimHealthCheckPathMatcher healthCheckMatcher) {
+  public ScimHttpAuditFilter(
+      EventBus eventBus, EventSource eventSource, ScimHealthCheckPathMatcher healthCheckMatcher) {
+    this.eventBus = Optional.ofNullable(eventBus);
+    this.eventSource = eventSource;
     this.healthCheckMatcher = healthCheckMatcher;
   }
 
@@ -51,7 +72,7 @@ public final class ScimHttpAuditFilter implements Filter {
   @Override
   public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
       throws IOException, ServletException {
-    if (!(request instanceof HttpServletRequest httpRequest)) {
+    if (eventBus.isEmpty() || !(request instanceof HttpServletRequest httpRequest)) {
       chain.doFilter(request, response);
       return;
     }
@@ -61,8 +82,13 @@ public final class ScimHttpAuditFilter implements Filter {
       return;
     }
 
+    RequestContext.resetOperationFailureFired();
     if (healthCheckMatcher.isHealthCheckPath(httpRequest.getRequestURI())) {
-      chain.doFilter(request, response);
+      try {
+        chain.doFilter(request, response);
+      } finally {
+        RequestContext.resetOperationFailureFired();
+      }
       return;
     }
 
@@ -77,15 +103,29 @@ public final class ScimHttpAuditFilter implements Filter {
         wrappedResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
       }
     } finally {
-      int status = wrappedResponse.getCapturedStatus();
-      if (status >= 400) {
-        LOG.warn(
-            "SCIM HTTP request failed: user={} client={} {} {} status={}",
-            resolveUser(httpRequest),
-            resolveClientAddress(httpRequest),
+      try {
+        if (!RequestContext.isOperationFailureFired()) {
+          int status = wrappedResponse.getCapturedStatus();
+          if (status >= 400) {
+            HttpRequestFailureEvent event =
+                new HttpRequestFailureEvent(
+                    resolveUser(httpRequest),
+                    resolveClientAddress(httpRequest),
+                    httpRequest.getMethod(),
+                    httpRequest.getRequestURI(),
+                    status,
+                    eventSource);
+            eventBus.get().dispatchEvent(event);
+          }
+        }
+      } catch (Exception e) {
+        LOG.error(
+            "Failed to dispatch SCIM HTTP audit event for {} {}",
             httpRequest.getMethod(),
             httpRequest.getRequestURI(),
-            status);
+            e);
+      } finally {
+        RequestContext.resetOperationFailureFired();
       }
     }
 
@@ -115,6 +155,10 @@ public final class ScimHttpAuditFilter implements Filter {
   }
 
   private static String resolveClientAddress(HttpServletRequest request) {
+    String contextAddress = RequestContext.getRemoteAddress();
+    if (contextAddress != null) {
+      return contextAddress;
+    }
     String xForwardedFor = request.getHeader(X_FORWARDED_FOR);
     if (StringUtils.isNotBlank(xForwardedFor)) {
       return xForwardedFor.split(",")[0].trim();

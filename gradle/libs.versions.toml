@@ -182,6 +182,7 @@ jersey3 = "3.1.5"
 jakarta-servlet6 = "6.0.0"
 jakarta-ws-rs3 = "3.1.0"
 jakarta-inject = "2.0.1"
+jakarta-cdi = "4.0.1"
 
 [libraries]
 aspectj-aspectjrt = { group = "org.aspectj", name = "aspectjrt", version.ref = "aspectj" }
@@ -381,6 +382,7 @@ jersey3-hk2 = { group = "org.glassfish.jersey.inject", name = "jersey-hk2", vers
 jakarta-servlet6-api = { group = "jakarta.servlet", name = "jakarta.servlet-api", version.ref = "jakarta-servlet6" }
 jakarta-ws-rs3-api = { group = "jakarta.ws.rs", name = "jakarta.ws.rs-api", version.ref = "jakarta-ws-rs3" }
 jakarta-inject-api = { group = "jakarta.inject", name = "jakarta.inject-api", version.ref = "jakarta-inject" }
+jakarta-cdi-api = { group = "jakarta.enterprise", name = "jakarta.enterprise.cdi-api", version.ref = "jakarta-cdi" }
 jackson-jakarta-rs-json-provider = { group = "com.fasterxml.jackson.jakarta.rs", name = "jackson-jakarta-rs-json-provider", version.ref = "jackson" }
 mail = { group = "javax.mail", name = "mail", version.ref = "mail" }
 rome = { group = "rome", name = "rome", version.ref = "rome" }
