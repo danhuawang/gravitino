@@ -33,6 +33,7 @@ final class ScimAuditInfos {
   static final String INFO_SOURCE = "source";
 
   static final String RESOURCE_USER = "User";
+  static final String RESOURCE_GROUP = "Group";
   static final String SOURCE_SCIM = "scim";
   static final String STATUS_SUCCESS = "SUCCESS";
   static final String STATUS_FAILURE = "FAILURE";
