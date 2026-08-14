@@ -6,20 +6,24 @@
 package com.datastrato.gravitino.scim.service.adapter;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.ScimServiceTestEntities;
+import com.datastrato.gravitino.scim.service.listener.ScimGroupEventDispatcher;
 import com.datastrato.gravitino.scim.service.web.ScimMetalakeContext;
 import com.datastrato.gravitino.scim.storage.po.ScimGroupMemberPO;
 import java.util.List;
@@ -37,9 +41,23 @@ import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
+import org.apache.gravitino.listener.AccessControlEventDispatcher;
+import org.apache.gravitino.listener.EventBus;
+import org.apache.gravitino.listener.api.event.AddGroupEvent;
+import org.apache.gravitino.listener.api.event.AlterGroupEvent;
+import org.apache.gravitino.listener.api.event.BaseEvent;
+import org.apache.gravitino.listener.api.event.GetGroupByIdEvent;
+import org.apache.gravitino.listener.api.event.RemoveGroupEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimAddGroupEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimAddGroupPreEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimAlterGroupEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimAlterGroupPreEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimRemoveGroupEvent;
+import org.apache.gravitino.listener.api.event.scim.ScimRemoveGroupPreEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class TestScimGroupRepositoryAdapter {
 
@@ -670,5 +688,108 @@ class TestScimGroupRepositoryAdapter {
     ScimGroup result = adapter.get("1");
     assertEquals(1, result.getMembers().size());
     assertEquals("1", result.getMembers().get(0).getValue());
+  }
+
+  @Test
+  void testCreateThroughInternalDispatcherDoesNotEmitCoreGroupEvents() throws Exception {
+    AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    when(manager.listGroups(METALAKE)).thenReturn(new Group[0]);
+    Group created = ScimServiceTestEntities.group(GROUP_ID, "engineering", "ext-1");
+    when(manager.addGroup(METALAKE, "engineering", "ext-1")).thenReturn(created);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    EventBus eventBus = mock(EventBus.class);
+    ScimGroupEventDispatcher scimDispatcher = newInternalChainedDispatcher(eventBus, manager);
+
+    ScimGroup result =
+        scimDispatcher.create(new ScimGroup().setDisplayName("engineering").setExternalId("ext-1"));
+    assertEquals("2", result.getId());
+
+    ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
+    verify(eventBus, times(2)).dispatchEvent(captor.capture());
+    List<BaseEvent> events = captor.getAllValues();
+    assertInstanceOf(ScimAddGroupPreEvent.class, events.get(0));
+    assertInstanceOf(ScimAddGroupEvent.class, events.get(1));
+    assertTrue(events.stream().noneMatch(AddGroupEvent.class::isInstance));
+  }
+
+  @Test
+  void testCreateThroughAuditedDispatcherEmitsCoreGroupEvents() throws Exception {
+    AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    when(manager.listGroups(METALAKE)).thenReturn(new Group[0]);
+    Group created = ScimServiceTestEntities.group(GROUP_ID, "engineering", "ext-1");
+    when(manager.addGroup(METALAKE, "engineering", "ext-1")).thenReturn(created);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    EventBus eventBus = mock(EventBus.class);
+    ScimGroupEventDispatcher scimDispatcher = newAuditedChainedDispatcher(eventBus, manager);
+
+    scimDispatcher.create(new ScimGroup().setDisplayName("engineering").setExternalId("ext-1"));
+
+    ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
+    verify(eventBus, org.mockito.Mockito.atLeastOnce()).dispatchEvent(captor.capture());
+    assertTrue(captor.getAllValues().stream().anyMatch(AddGroupEvent.class::isInstance));
+    assertTrue(captor.getAllValues().stream().anyMatch(ScimAddGroupEvent.class::isInstance));
+  }
+
+  @Test
+  void testUpdateThroughInternalDispatcherDoesNotEmitCoreGroupEvents() throws Exception {
+    AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    Group existing = ScimServiceTestEntities.group(GROUP_ID, "engineering", "ext-1");
+    when(manager.getGroupById(METALAKE, GROUP_ID)).thenReturn(existing);
+    when(membershipManager.listMembersForGroup(METALAKE, GROUP_ID)).thenReturn(List.of());
+
+    EventBus eventBus = mock(EventBus.class);
+    ScimGroupEventDispatcher scimDispatcher = newInternalChainedDispatcher(eventBus, manager);
+
+    ScimGroup result =
+        scimDispatcher.update(
+            "2",
+            null,
+            new ScimGroup().setId("2").setExternalId("ext-1").setDisplayName("engineering"),
+            null,
+            null);
+    assertEquals("engineering", result.getDisplayName());
+
+    ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
+    verify(eventBus, times(2)).dispatchEvent(captor.capture());
+    List<BaseEvent> events = captor.getAllValues();
+    assertInstanceOf(ScimAlterGroupPreEvent.class, events.get(0));
+    assertInstanceOf(ScimAlterGroupEvent.class, events.get(1));
+    assertTrue(events.stream().noneMatch(GetGroupByIdEvent.class::isInstance));
+    assertTrue(events.stream().noneMatch(AlterGroupEvent.class::isInstance));
+  }
+
+  @Test
+  void testDeleteThroughInternalDispatcherDoesNotEmitCoreGroupEvents() throws Exception {
+    AccessControlDispatcher manager = mock(AccessControlDispatcher.class);
+    when(manager.removeGroupById(METALAKE, GROUP_ID)).thenReturn(true);
+
+    EventBus eventBus = mock(EventBus.class);
+    ScimGroupEventDispatcher scimDispatcher = newInternalChainedDispatcher(eventBus, manager);
+
+    scimDispatcher.delete("2");
+
+    ArgumentCaptor<BaseEvent> captor = ArgumentCaptor.forClass(BaseEvent.class);
+    verify(eventBus, times(2)).dispatchEvent(captor.capture());
+    List<BaseEvent> events = captor.getAllValues();
+    assertInstanceOf(ScimRemoveGroupPreEvent.class, events.get(0));
+    assertInstanceOf(ScimRemoveGroupEvent.class, events.get(1));
+    assertTrue(events.stream().noneMatch(GetGroupByIdEvent.class::isInstance));
+    assertTrue(events.stream().noneMatch(RemoveGroupEvent.class::isInstance));
+    verify(manager, never()).getGroupById(anyString(), anyLong());
+  }
+
+  private ScimGroupEventDispatcher newInternalChainedDispatcher(
+      EventBus eventBus, AccessControlDispatcher manager) {
+    return new ScimGroupEventDispatcher(
+        eventBus, new ScimGroupRepositoryAdapter(manager, membershipManager, scimConfig));
+  }
+
+  private ScimGroupEventDispatcher newAuditedChainedDispatcher(
+      EventBus eventBus, AccessControlDispatcher manager) {
+    AccessControlDispatcher audited = new AccessControlEventDispatcher(eventBus, manager);
+    return new ScimGroupEventDispatcher(
+        eventBus, new ScimGroupRepositoryAdapter(audited, membershipManager, scimConfig));
   }
 }

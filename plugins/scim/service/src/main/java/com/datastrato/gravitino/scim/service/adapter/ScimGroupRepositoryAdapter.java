@@ -44,7 +44,13 @@ import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** SCIMple repository adapter for Group provisioning backed by Gravitino core APIs. */
+/**
+ * SCIMple repository adapter for Group provisioning backed by Gravitino core APIs.
+ *
+ * <p>Uses {@link GravitinoEnv#internalAccessControlDispatcher()} so SCIM Group operations do not
+ * emit core access-control audit events. SCIM-level audit is owned by {@code
+ * ScimGroupEventDispatcher}.
+ */
 public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
 
   private static final Logger LOG = LoggerFactory.getLogger(ScimGroupRepositoryAdapter.class);
@@ -61,7 +67,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
    */
   public ScimGroupRepositoryAdapter(Config gravitinoConfig, ScimConfig scimConfig) {
     this(
-        GravitinoEnv.getInstance().accessControlDispatcher(),
+        GravitinoEnv.getInstance().internalAccessControlDispatcher(),
         ScimUserGroupRelManager.getInstance(),
         scimConfig);
   }
@@ -69,7 +75,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   /**
    * Creates an adapter with explicit dispatcher and membership dependencies.
    *
-   * @param dispatcher access control dispatcher
+   * @param dispatcher access control dispatcher that must not emit user-facing audit events
    * @param membershipManager user-group membership manager
    * @param scimConfig SCIM mapper configuration
    */

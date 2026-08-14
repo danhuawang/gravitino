@@ -8,6 +8,7 @@ package com.datastrato.gravitino.scim.service.rest;
 import com.datastrato.gravitino.scim.service.ScimConfig;
 import com.datastrato.gravitino.scim.service.adapter.ScimGroupRepositoryAdapter;
 import com.datastrato.gravitino.scim.service.adapter.ScimUserRepositoryAdapter;
+import com.datastrato.gravitino.scim.service.listener.ScimGroupEventDispatcher;
 import com.datastrato.gravitino.scim.service.listener.ScimUserEventDispatcher;
 import com.fasterxml.jackson.jakarta.rs.json.JacksonJsonProvider;
 import java.util.Collections;
@@ -62,7 +63,10 @@ public final class GravitinoScimApplication {
               GravitinoEnv.getInstance().eventBus(),
               new ScimUserRepositoryAdapter(gravitinoConfig, scimConfig)));
       repositoryRegistry.registerRepository(
-          ScimGroup.class, new ScimGroupRepositoryAdapter(gravitinoConfig, scimConfig));
+          ScimGroup.class,
+          new ScimGroupEventDispatcher(
+              GravitinoEnv.getInstance().eventBus(),
+              new ScimGroupRepositoryAdapter(gravitinoConfig, scimConfig)));
     } catch (InvalidRepositoryException e) {
       throw new IllegalStateException("Failed to register SCIM repository adapters", e);
     }
