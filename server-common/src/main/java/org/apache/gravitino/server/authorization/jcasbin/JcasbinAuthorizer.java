@@ -122,10 +122,9 @@ public class JcasbinAuthorizer implements GravitinoAuthorizer {
    */
   private static final int POLICY_SUBJECT_FIELD_INDEX = 0;
 
-<<<<<<< HEAD
   /** Field index of {@code act} (the privilege) in a jcasbin {@code p} policy row. */
   private static final int POLICY_ACTION_FIELD_INDEX = 3;
-=======
+
   /**
    * How long to wait before retrying a role whose last policy load was incomplete, i.e. at least
    * one of its securable objects could not be resolved to a metadata id. Such a role is
@@ -155,7 +154,6 @@ public class JcasbinAuthorizer implements GravitinoAuthorizer {
    * call.
    */
   private final ReentrantLock rolePolicyLock = new ReentrantLock();
->>>>>>> upstream/branch-1.3
 
   /** Jcasbin enforcer is used for metadata authorization. */
   private Enforcer allowEnforcer;
