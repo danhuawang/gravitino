@@ -12,6 +12,7 @@ import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
+import com.datastrato.gravitino.dto.responses.CatalogListResponse;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
 import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
@@ -22,7 +23,9 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import javax.inject.Inject;
@@ -61,7 +64,6 @@ import org.apache.gravitino.dto.rel.RepresentationDTO;
 import org.apache.gravitino.dto.rel.SQLRepresentationDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.rel.ViewDTO;
-import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
@@ -177,7 +179,9 @@ public class EntityOperations {
         // list sub-schemas only under the given parentSchema
         try {
           return listSchemas(
-              Namespace.of(namespace.level(0), namespace.level(1), parentSchema), resultLimit);
+              Namespace.of(namespace.level(0), namespace.level(1), parentSchema),
+              catalogType,
+              resultLimit);
         } catch (Exception e) {
           return ExceptionHandlers.handleSchemaException(
               OperationType.LIST, "", namespace.toString(), e);
@@ -209,7 +213,7 @@ public class EntityOperations {
       case 2:
         // list schemas
         try {
-          return listSchemas(namespace, resultLimit);
+          return listSchemas(namespace, catalogType, resultLimit);
         } catch (Exception e) {
           return ExceptionHandlers.handleSchemaException(
               OperationType.LIST, "", namespace.toString(), e);
@@ -276,35 +280,33 @@ public class EntityOperations {
             Entity.EntityType.CATALOG,
             catalogs,
             catalog -> NameIdentifierUtil.ofCatalog(namespace.level(0), catalog.name()));
-    CatalogDTO[] catalogDTOs =
+    Catalog[] selectedCatalogs =
         Arrays.stream(catalogs)
             .filter(catalog -> catalogType == null || catalog.type() == catalogType)
-            .map(DTOConverters::toDTO)
-            .sorted(Comparator.comparing(CatalogDTO::name))
+            .sorted(Comparator.comparing(Catalog::name))
             .limit(resultLimit)
-            .toArray(CatalogDTO[]::new);
+            .toArray(Catalog[]::new);
+    CatalogDTO[] catalogDTOs =
+        Arrays.stream(selectedCatalogs).map(DTOConverters::toDTO).toArray(CatalogDTO[]::new);
 
-    Response response = Utils.ok(new CatalogListResponse(catalogDTOs));
+    Map<String, Long> directChildCounts =
+        listCatalogDirectChildCounts(namespace.level(0), selectedCatalogs);
+    Response response = Utils.ok(new CatalogListResponse(catalogDTOs, directChildCounts));
     LOG.info("List {} catalog entities under namespace: {}", catalogDTOs.length, namespace);
     return response;
   }
 
-  private Response listSchemas(Namespace namespace, int resultLimit) {
+  private Response listSchemas(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
     SchemaDTO[] schemaDTOs = listSchemaDTOs(namespace, resultLimit);
-    Response response = Utils.ok(new SchemaListResponse(schemaDTOs));
+    Map<String, Long> directChildCounts =
+        listSchemaDirectChildCounts(namespace, catalogType, schemaDTOs);
+    Response response = Utils.ok(new SchemaListResponse(schemaDTOs, directChildCounts));
     LOG.info("List {} schema entities under namespace: {}", schemaDTOs.length, namespace);
     return response;
   }
 
   private SchemaDTO[] listSchemaDTOs(Namespace namespace, int resultLimit) {
-    NameIdentifier[] schemaIdents = schemaDispatcher.listSchemas(namespace);
-    schemaIdents =
-        filterByExpression(
-            namespace.level(0),
-            AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.SCHEMA,
-            schemaIdents,
-            schemaIdent -> schemaIdent);
+    NameIdentifier[] schemaIdents = listVisibleSchemaIdentifiers(namespace);
     // Schema entities are stored flat under the catalog namespace, even for parentSchema listings.
     Namespace schemaEntityNs = Namespace.of(namespace.level(0), namespace.level(1));
     List<SchemaEntity> schemaEntities = schemaDispatcher.listEntities(schemaEntityNs);
@@ -325,13 +327,7 @@ public class EntityOperations {
   }
 
   private Response listTables(Namespace namespace, String parentSchema, int resultLimit) {
-    NameIdentifier[] tableIdents = tableDispatcher.listTables(namespace);
-    tableIdents =
-        filterByNameIdentifier(
-            namespace.level(0),
-            AuthorizationExpressionConstants.FILTER_TABLE_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.TABLE,
-            tableIdents);
+    NameIdentifier[] tableIdents = listVisibleTableIdentifiers(namespace);
     List<TableEntity> tableEntities;
     try {
       tableEntities = tableDispatcher.listEntities(namespace);
@@ -385,13 +381,7 @@ public class EntityOperations {
   }
 
   private Response listTopics(Namespace namespace, int resultLimit) {
-    NameIdentifier[] topicIdents = topicDispatcher.listTopics(namespace);
-    topicIdents =
-        filterByNameIdentifier(
-            namespace.level(0),
-            AuthorizationExpressionConstants.FILTER_TOPICS_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.TOPIC,
-            topicIdents);
+    NameIdentifier[] topicIdents = listVisibleTopicIdentifiers(namespace);
     List<TopicEntity> topicEntities;
     try {
       topicEntities = topicDispatcher.listEntities(namespace);
@@ -428,20 +418,7 @@ public class EntityOperations {
 
   private Response listFilesets(Namespace namespace, int resultLimit) {
     // since fileset is managed by Gravitino, we can directly list them from store
-    List<FilesetEntity> filesetEntities = filesetDispatcher.listEntities(namespace);
-    filesetEntities =
-        Arrays.asList(
-            filterByExpression(
-                namespace.level(0),
-                AuthorizationExpressionConstants.FILTER_FILESET_AUTHORIZATION_EXPRESSION,
-                Entity.EntityType.FILESET,
-                filesetEntities.toArray(new FilesetEntity[0]),
-                fileset ->
-                    NameIdentifierUtil.ofFileset(
-                        namespace.level(0),
-                        namespace.level(1),
-                        namespace.level(2),
-                        fileset.name())));
+    List<FilesetEntity> filesetEntities = listVisibleFilesetEntities(namespace);
     FilesetDTO[] filesetDTOs =
         filesetEntities.stream()
             .sorted(Comparator.comparing(FilesetEntity::name))
@@ -466,17 +443,7 @@ public class EntityOperations {
 
   private Response listModels(Namespace namespace, int resultLimit) {
     // since model is managed by Gravitino, we can directly list them from store
-    List<ModelEntity> modelEntities = modelDispatcher.listEntities(namespace);
-    modelEntities =
-        Arrays.asList(
-            filterByExpression(
-                namespace.level(0),
-                AuthorizationExpressionConstants.FILTER_MODEL_AUTHORIZATION_EXPRESSION,
-                Entity.EntityType.MODEL,
-                modelEntities.toArray(new ModelEntity[0]),
-                model ->
-                    NameIdentifierUtil.ofModel(
-                        namespace.level(0), namespace.level(1), namespace.level(2), model.name())));
+    List<ModelEntity> modelEntities = listVisibleModelEntities(namespace);
     ModelDTO[] modelDTOs =
         modelEntities.stream()
             .sorted(Comparator.comparing(ModelEntity::name))
@@ -500,17 +467,7 @@ public class EntityOperations {
 
   private FunctionDTO[] listFunctionDTOs(Namespace namespace, int resultLimit) {
     try {
-      org.apache.gravitino.function.Function[] functions =
-          functionDispatcher.listFunctionInfos(namespace);
-      functions =
-          filterByExpression(
-              namespace.level(0),
-              AuthorizationExpressionConstants.FILTER_FUNCTION_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.FUNCTION,
-              functions,
-              function ->
-                  NameIdentifierUtil.ofFunction(
-                      namespace.level(0), namespace.level(1), namespace.level(2), function.name()));
+      org.apache.gravitino.function.Function[] functions = listVisibleFunctions(namespace);
       return Arrays.stream(functions)
           .sorted(Comparator.comparing(org.apache.gravitino.function.Function::name))
           .limit(resultLimit)
@@ -524,13 +481,7 @@ public class EntityOperations {
 
   private ViewDTO[] listViewDTOs(Namespace namespace, int resultLimit) {
     try {
-      NameIdentifier[] viewIdents = viewDispatcher.listViews(namespace);
-      viewIdents =
-          filterByNameIdentifier(
-              namespace.level(0),
-              AuthorizationExpressionConstants.FILTER_VIEW_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.VIEW,
-              viewIdents);
+      NameIdentifier[] viewIdents = listVisibleViewIdentifiers(namespace);
       List<ViewEntity> viewEntities;
       try {
         viewEntities = viewDispatcher.listEntities(namespace);
@@ -580,6 +531,180 @@ public class EntityOperations {
           .withDefaultValue(null)
           .build()
     };
+  }
+
+  private Map<String, Long> listCatalogDirectChildCounts(String metalake, Catalog[] catalogs) {
+    Map<String, Long> directChildCounts = new LinkedHashMap<>();
+    for (Catalog catalog : catalogs) {
+      Namespace catalogNamespace = Namespace.of(metalake, catalog.name());
+      try {
+        long count = listVisibleSchemaIdentifiers(catalogNamespace).length;
+        directChildCounts.put(catalog.name(), count);
+      } catch (Exception e) {
+        LOG.warn("Failed to count direct child schemas under catalog: {}", catalog.name(), e);
+      }
+    }
+    return directChildCounts;
+  }
+
+  private Map<String, Long> listSchemaDirectChildCounts(
+      Namespace namespace, Catalog.Type catalogType, SchemaDTO[] schemas) {
+    Map<String, Long> directChildCounts = new LinkedHashMap<>();
+    if (schemas.length == 0) {
+      return directChildCounts;
+    }
+
+    Namespace catalogNamespace = Namespace.of(namespace.level(0), namespace.level(1));
+    boolean supportsHierarchicalSchema;
+    try {
+      supportsHierarchicalSchema = schemaDispatcher.supportsHierarchicalSchema(catalogNamespace);
+    } catch (Exception e) {
+      LOG.warn(
+          "Failed to determine hierarchical schema support under catalog: {}", catalogNamespace, e);
+      return directChildCounts;
+    }
+
+    for (SchemaDTO schema : schemas) {
+      Namespace schemaNamespace =
+          Namespace.of(namespace.level(0), namespace.level(1), schema.name());
+      try {
+        directChildCounts.put(
+            schema.name(),
+            countVisibleSchemaDirectChildren(
+                schemaNamespace, catalogType, supportsHierarchicalSchema));
+      } catch (Exception e) {
+        LOG.warn("Failed to count direct child entities under schema: {}", schema.name(), e);
+      }
+    }
+    return directChildCounts;
+  }
+
+  private long countVisibleSchemaDirectChildren(
+      Namespace namespace, Catalog.Type catalogType, boolean supportsHierarchicalSchema) {
+    long count = countVisibleDirectSubSchemas(namespace, supportsHierarchicalSchema);
+    switch (catalogType) {
+      case RELATIONAL:
+        return count
+            + listVisibleTableIdentifiers(namespace).length
+            + countVisibleFunctions(namespace)
+            + countVisibleViews(namespace);
+      case MESSAGING:
+        return count
+            + listVisibleTopicIdentifiers(namespace).length
+            + countVisibleFunctions(namespace);
+      case FILESET:
+        return count
+            + listVisibleFilesetEntities(namespace).size()
+            + countVisibleFunctions(namespace);
+      case MODEL:
+        return count
+            + listVisibleModelEntities(namespace).size()
+            + countVisibleFunctions(namespace);
+      default:
+        throw new IllegalArgumentException("Unsupported catalog type: " + catalogType);
+    }
+  }
+
+  private long countVisibleDirectSubSchemas(
+      Namespace namespace, boolean supportsHierarchicalSchema) {
+    if (!supportsHierarchicalSchema) {
+      return 0;
+    }
+    return listVisibleSchemaIdentifiers(namespace).length;
+  }
+
+  private long countVisibleFunctions(Namespace namespace) {
+    try {
+      return listVisibleFunctions(namespace).length;
+    } catch (UnsupportedOperationException e) {
+      LOG.warn("Failed to count functions under namespace: {}", namespace, e);
+      return 0;
+    }
+  }
+
+  private long countVisibleViews(Namespace namespace) {
+    try {
+      return listVisibleViewIdentifiers(namespace).length;
+    } catch (UnsupportedOperationException e) {
+      LOG.warn("Failed to count views under namespace: {}", namespace, e);
+      return 0;
+    }
+  }
+
+  private NameIdentifier[] listVisibleSchemaIdentifiers(Namespace namespace) {
+    NameIdentifier[] schemaIdents = schemaDispatcher.listSchemas(namespace);
+    return filterByExpression(
+        namespace.level(0),
+        AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.SCHEMA,
+        schemaIdents,
+        schemaIdent -> schemaIdent);
+  }
+
+  private NameIdentifier[] listVisibleTableIdentifiers(Namespace namespace) {
+    NameIdentifier[] tableIdents = tableDispatcher.listTables(namespace);
+    return filterByNameIdentifier(
+        namespace.level(0),
+        AuthorizationExpressionConstants.FILTER_TABLE_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.TABLE,
+        tableIdents);
+  }
+
+  private NameIdentifier[] listVisibleTopicIdentifiers(Namespace namespace) {
+    NameIdentifier[] topicIdents = topicDispatcher.listTopics(namespace);
+    return filterByNameIdentifier(
+        namespace.level(0),
+        AuthorizationExpressionConstants.FILTER_TOPICS_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.TOPIC,
+        topicIdents);
+  }
+
+  private NameIdentifier[] listVisibleViewIdentifiers(Namespace namespace) {
+    NameIdentifier[] viewIdents = viewDispatcher.listViews(namespace);
+    return filterByNameIdentifier(
+        namespace.level(0),
+        AuthorizationExpressionConstants.FILTER_VIEW_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.VIEW,
+        viewIdents);
+  }
+
+  private org.apache.gravitino.function.Function[] listVisibleFunctions(Namespace namespace) {
+    org.apache.gravitino.function.Function[] functions =
+        functionDispatcher.listFunctionInfos(namespace);
+    return filterByExpression(
+        namespace.level(0),
+        AuthorizationExpressionConstants.FILTER_FUNCTION_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.FUNCTION,
+        functions,
+        function ->
+            NameIdentifierUtil.ofFunction(
+                namespace.level(0), namespace.level(1), namespace.level(2), function.name()));
+  }
+
+  private List<FilesetEntity> listVisibleFilesetEntities(Namespace namespace) {
+    List<FilesetEntity> filesetEntities = filesetDispatcher.listEntities(namespace);
+    return Arrays.asList(
+        filterByExpression(
+            namespace.level(0),
+            AuthorizationExpressionConstants.FILTER_FILESET_AUTHORIZATION_EXPRESSION,
+            Entity.EntityType.FILESET,
+            filesetEntities.toArray(new FilesetEntity[0]),
+            fileset ->
+                NameIdentifierUtil.ofFileset(
+                    namespace.level(0), namespace.level(1), namespace.level(2), fileset.name())));
+  }
+
+  private List<ModelEntity> listVisibleModelEntities(Namespace namespace) {
+    List<ModelEntity> modelEntities = modelDispatcher.listEntities(namespace);
+    return Arrays.asList(
+        filterByExpression(
+            namespace.level(0),
+            AuthorizationExpressionConstants.FILTER_MODEL_AUTHORIZATION_EXPRESSION,
+            Entity.EntityType.MODEL,
+            modelEntities.toArray(new ModelEntity[0]),
+            model ->
+                NameIdentifierUtil.ofModel(
+                    namespace.level(0), namespace.level(1), namespace.level(2), model.name())));
   }
 
   private NameIdentifier[] filterByNameIdentifier(

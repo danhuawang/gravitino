@@ -18,6 +18,17 @@ public class DatastratoSchemaHookDispatcher extends SchemaHookDispatcher
     this.dispatcher = dispatcher;
   }
 
+  /**
+   * Returns whether the catalog identified by the namespace supports hierarchical schemas.
+   *
+   * @param namespace A namespace within the catalog.
+   * @return {@code true} if the catalog supports hierarchical schemas, otherwise {@code false}.
+   */
+  @Override
+  public boolean supportsHierarchicalSchema(Namespace namespace) {
+    return dispatcher.supportsHierarchicalSchema(namespace);
+  }
+
   @Override
   public List<SchemaEntity> listEntities(Namespace namespace) {
     return dispatcher.listEntities(namespace);

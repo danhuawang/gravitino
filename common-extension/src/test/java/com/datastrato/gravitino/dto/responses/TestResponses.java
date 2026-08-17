@@ -10,7 +10,9 @@ import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.dto.AuditDTO;
+import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
@@ -31,6 +33,33 @@ import org.junit.jupiter.api.Test;
 public class TestResponses {
 
   @Test
+  public void testCatalogListResponse() throws JsonProcessingException {
+    CatalogDTO catalog =
+        CatalogDTO.builder()
+            .withName("catalog1")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("provider")
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    CatalogDTO[] catalogs = new CatalogDTO[] {catalog};
+    Map<String, Long> directChildCounts = ImmutableMap.of("catalog1", 2L);
+    CatalogListResponse response = new CatalogListResponse(catalogs, directChildCounts);
+    Assertions.assertDoesNotThrow(response::validate);
+
+    String serJson = JsonUtils.objectMapper().writeValueAsString(response);
+    CatalogListResponse deserialized =
+        JsonUtils.objectMapper().readValue(serJson, CatalogListResponse.class);
+    Assertions.assertEquals(response, deserialized);
+    Assertions.assertArrayEquals(catalogs, deserialized.getCatalogs());
+    Assertions.assertEquals(directChildCounts, deserialized.getDirectChildCounts());
+
+    CatalogListResponse illegalResp = new CatalogListResponse();
+    Exception exception =
+        Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
+    Assertions.assertEquals("\"catalogs\" cannot be null", exception.getMessage());
+  }
+
+  @Test
   public void testSchemaListResponse() throws JsonProcessingException {
     SchemaDTO schema1 =
         SchemaDTO.builder()
@@ -41,7 +70,8 @@ public class TestResponses {
     SchemaDTO schema2 =
         SchemaDTO.builder().withName("schema2").withAudit(AuditDTO.builder().build()).build();
     SchemaDTO[] schemas = new SchemaDTO[] {schema1, schema2};
-    SchemaListResponse response = new SchemaListResponse(schemas);
+    Map<String, Long> directChildCounts = ImmutableMap.of("schema1", 3L, "schema2", 0L);
+    SchemaListResponse response = new SchemaListResponse(schemas, directChildCounts);
     Assertions.assertDoesNotThrow(response::validate);
 
     String serJson = JsonUtils.objectMapper().writeValueAsString(response);
@@ -49,6 +79,7 @@ public class TestResponses {
         JsonUtils.objectMapper().readValue(serJson, SchemaListResponse.class);
     Assertions.assertEquals(response, deserialized);
     Assertions.assertArrayEquals(schemas, deserialized.getSchemas());
+    Assertions.assertEquals(directChildCounts, deserialized.getDirectChildCounts());
 
     SchemaListResponse illegalResp = new SchemaListResponse();
     Exception exception =

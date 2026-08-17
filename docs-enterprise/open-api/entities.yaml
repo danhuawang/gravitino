@@ -91,6 +91,15 @@ components:
           description: A list of catalog objects
           items:
             $ref: "../../docs/open-api/catalogs.yaml#/components/schemas/Catalog"
+        directChildCounts:
+          type: object
+          description: |
+            The visible direct schema count keyed by catalog name. A missing key means that the
+            count could not be retrieved.
+          additionalProperties:
+            type: integer
+            format: int64
+            minimum: 0
 
     SchemaListResponse:
       type: object
@@ -106,6 +115,15 @@ components:
           description: A list of schema objects
           items:
             $ref: "../../docs/open-api/schemas.yaml#/components/schemas/Schema"
+        directChildCounts:
+          type: object
+          description: |
+            The visible direct entity count keyed by schema name. A missing key means that the
+            count could not be retrieved.
+          additionalProperties:
+            type: integer
+            format: int64
+            minimum: 0
 
     TableListResponse:
       type: object

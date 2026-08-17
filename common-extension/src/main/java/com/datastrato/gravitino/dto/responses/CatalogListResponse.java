@@ -13,49 +13,46 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.gravitino.dto.SchemaDTO;
+import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
-/** Represents a response for a list of schemas with their information. */
+/** Represents a response for catalogs and their visible direct child counts. */
 @Getter
 @ToString
 @EqualsAndHashCode(callSuper = true)
-public class SchemaListResponse extends BaseResponse {
+public class CatalogListResponse extends BaseResponse {
 
-  @JsonProperty("schemas")
-  private final SchemaDTO[] schemas;
+  @JsonProperty("catalogs")
+  private final CatalogDTO[] catalogs;
 
   @JsonProperty("directChildCounts")
   private final Map<String, Long> directChildCounts;
 
   /**
-   * Creates a new SchemaListResponse.
+   * Creates a new CatalogListResponse.
    *
-   * @param schemas The list of schemas.
-   * @param directChildCounts The visible direct entity count keyed by schema name.
+   * @param catalogs The list of catalogs.
+   * @param directChildCounts The visible direct schema count keyed by catalog name.
    */
-  public SchemaListResponse(SchemaDTO[] schemas, Map<String, Long> directChildCounts) {
+  public CatalogListResponse(CatalogDTO[] catalogs, Map<String, Long> directChildCounts) {
     super(0);
-    this.schemas = schemas;
+    this.catalogs = catalogs;
     this.directChildCounts = ImmutableMap.copyOf(directChildCounts);
   }
 
   /**
-   * Creates a new SchemaListResponse.
+   * Creates a new CatalogListResponse without direct child counts.
    *
-   * @param schemas The list of schemas.
+   * @param catalogs The list of catalogs.
    */
-  public SchemaListResponse(SchemaDTO[] schemas) {
-    this(schemas, ImmutableMap.of());
+  public CatalogListResponse(CatalogDTO[] catalogs) {
+    this(catalogs, ImmutableMap.of());
   }
 
-  /**
-   * This is the constructor that is used by Jackson deserializer to create an instance of
-   * SchemaListResponse.
-   */
-  public SchemaListResponse() {
+  /** Default constructor for Jackson deserialization. */
+  public CatalogListResponse() {
     super();
-    this.schemas = null;
+    this.catalogs = null;
     this.directChildCounts = null;
   }
 
@@ -63,9 +60,18 @@ public class SchemaListResponse extends BaseResponse {
   public void validate() throws IllegalArgumentException {
     super.validate();
 
-    Preconditions.checkArgument(schemas != null, "\"schemas\" cannot be null");
-    Arrays.stream(schemas)
-        .forEach(schema -> Preconditions.checkArgument(schema != null, "schema cannot be null"));
+    Preconditions.checkArgument(catalogs != null, "\"catalogs\" cannot be null");
+    Arrays.stream(catalogs)
+        .forEach(
+            catalog -> {
+              Preconditions.checkArgument(catalog != null, "catalog cannot be null");
+              Preconditions.checkArgument(
+                  StringUtils.isNotBlank(catalog.name()), "catalog name cannot be blank");
+            });
+    validateDirectChildCounts();
+  }
+
+  private void validateDirectChildCounts() {
     Preconditions.checkArgument(directChildCounts != null, "\"directChildCounts\" cannot be null");
     directChildCounts.forEach(
         (name, count) -> {

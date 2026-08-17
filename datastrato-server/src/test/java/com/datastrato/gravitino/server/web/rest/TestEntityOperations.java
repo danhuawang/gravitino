@@ -27,6 +27,7 @@ import com.datastrato.gravitino.catalog.DatastratoSchemaOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
+import com.datastrato.gravitino.dto.responses.CatalogListResponse;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
 import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
@@ -73,7 +74,6 @@ import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.rel.ViewDTO;
-import org.apache.gravitino.dto.responses.CatalogListResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
@@ -299,6 +299,10 @@ public class TestEntityOperations extends JerseyTest {
     Catalog[] mockedCatalogs = {catalog1, catalog2};
     when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
         .thenReturn(mockedCatalogs);
+    when(schemaDispatcher.listSchemas(Namespace.of("testMetalake", "relCatalog1")))
+        .thenReturn(new NameIdentifier[0]);
+    when(schemaDispatcher.listSchemas(Namespace.of("testMetalake", "relCatalog2")))
+        .thenReturn(new NameIdentifier[0]);
 
     Response resp =
         target("/web/entities")
@@ -316,6 +320,9 @@ public class TestEntityOperations extends JerseyTest {
     CatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
     Assertions.assertEquals(2, catalogDTOs.length);
     assertCatalogs(catalogDTOs);
+    Assertions.assertEquals(
+        ImmutableMap.of("relCatalog1", 0L, "relCatalog2", 0L),
+        catalogResponse.getDirectChildCounts());
 
     // test list all catalogs
     when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
@@ -596,6 +603,180 @@ public class TestEntityOperations extends JerseyTest {
   }
 
   @Test
+  public void testListDirectChildCounts() {
+    String metalake = "testMetalake";
+    String catalog = "relCatalog";
+    Namespace metalakeNs = Namespace.of(metalake);
+    Namespace catalogNs = Namespace.of(metalake, catalog);
+    Namespace schema1Ns = Namespace.of(metalake, catalog, "schema1");
+    Namespace schema2Ns = Namespace.of(metalake, catalog, "schema2");
+
+    TestCatalog testCatalog = buildCatalog(metalake, catalog);
+    when(catalogDispatcher.listCatalogsInfo(metalakeNs)).thenReturn(new Catalog[] {testCatalog});
+
+    NameIdentifier schema1 = NameIdentifier.of(catalogNs, "schema1");
+    NameIdentifier schema2 = NameIdentifier.of(catalogNs, "schema2");
+    NameIdentifier[] schemas = new NameIdentifier[] {schema1, schema2};
+    when(schemaDispatcher.listSchemas(catalogNs)).thenReturn(schemas);
+    when(schemaDispatcher.listEntities(catalogNs)).thenReturn(buildSchemaEntity(schemas));
+    when(schemaDispatcher.supportsHierarchicalSchema(catalogNs)).thenReturn(true);
+
+    NameIdentifier childSchema = NameIdentifier.of(catalogNs, "schema1:child");
+    when(schemaDispatcher.listSchemas(schema1Ns)).thenReturn(new NameIdentifier[] {childSchema});
+    when(schemaDispatcher.listSchemas(schema2Ns)).thenReturn(new NameIdentifier[0]);
+
+    NameIdentifier table1 = NameIdentifier.of(schema1Ns, "table1");
+    NameIdentifier table2 = NameIdentifier.of(schema1Ns, "table2");
+    when(tableDispatcher.listTables(schema1Ns)).thenReturn(new NameIdentifier[] {table1, table2});
+    when(tableDispatcher.listTables(schema2Ns)).thenReturn(new NameIdentifier[0]);
+    when(functionDispatcher.listFunctionInfos(schema1Ns)).thenReturn(buildFunctionInfos(schema1Ns));
+    when(functionDispatcher.listFunctionInfos(schema2Ns))
+        .thenThrow(new UnsupportedOperationException("Functions are not supported"));
+
+    NameIdentifier view = NameIdentifier.of(schema1Ns, "view1");
+    when(viewDispatcher.listViews(schema1Ns)).thenReturn(new NameIdentifier[] {view});
+    when(viewDispatcher.listViews(schema2Ns))
+        .thenThrow(new UnsupportedOperationException("Views are not supported"));
+
+    Response catalogResponse =
+        target("/web/entities")
+            .queryParam("namespace", metalake)
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), catalogResponse.getStatus());
+    CatalogListResponse catalogListResponse = catalogResponse.readEntity(CatalogListResponse.class);
+    Assertions.assertEquals(
+        ImmutableMap.of(catalog, 2L), catalogListResponse.getDirectChildCounts());
+
+    Response schemaResponse =
+        target("/web/entities")
+            .queryParam("namespace", metalake + "." + catalog)
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), schemaResponse.getStatus());
+    SchemaListResponse schemaListResponse = schemaResponse.readEntity(SchemaListResponse.class);
+    Assertions.assertEquals(
+        ImmutableMap.of("schema1", 5L, "schema2", 0L), schemaListResponse.getDirectChildCounts());
+
+    Response limitedSchemaResponse =
+        target("/web/entities")
+            .queryParam("namespace", metalake + "." + catalog)
+            .queryParam("catalogType", "relational")
+            .queryParam("resultLimit", 1)
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), limitedSchemaResponse.getStatus());
+    SchemaListResponse limitedSchemaListResponse =
+        limitedSchemaResponse.readEntity(SchemaListResponse.class);
+    Assertions.assertEquals(1, limitedSchemaListResponse.getSchemas().length);
+    Assertions.assertEquals(
+        ImmutableMap.of("schema1", 5L), limitedSchemaListResponse.getDirectChildCounts());
+  }
+
+  @Test
+  public void testListSchemaDirectChildCountsByCatalogType() {
+    String metalake = "testMetalake";
+
+    Namespace messagingCatalogNs = Namespace.of(metalake, "messagingCatalog");
+    Namespace messagingSchemaNs = mockSchemaListing(messagingCatalogNs, "messagingSchema");
+    when(topicDispatcher.listTopics(messagingSchemaNs))
+        .thenReturn(
+            new NameIdentifier[] {
+              NameIdentifier.of(messagingSchemaNs, "topic1"),
+              NameIdentifier.of(messagingSchemaNs, "topic2")
+            });
+    when(functionDispatcher.listFunctionInfos(messagingSchemaNs))
+        .thenReturn(buildFunctionInfos(messagingSchemaNs));
+    Assertions.assertEquals(
+        ImmutableMap.of("messagingSchema", 3L),
+        listSchemas(messagingCatalogNs, "messaging").getDirectChildCounts());
+
+    Namespace filesetCatalogNs = Namespace.of(metalake, "filesetCatalog");
+    Namespace filesetSchemaNs = mockSchemaListing(filesetCatalogNs, "filesetSchema");
+    when(filesetDispatcher.listEntities(filesetSchemaNs))
+        .thenReturn(
+            buildFilesetEntity(
+                new NameIdentifier[] {
+                  NameIdentifier.of(filesetSchemaNs, "fileset1"),
+                  NameIdentifier.of(filesetSchemaNs, "fileset2")
+                }));
+    when(functionDispatcher.listFunctionInfos(filesetSchemaNs))
+        .thenReturn(buildFunctionInfos(filesetSchemaNs));
+    Assertions.assertEquals(
+        ImmutableMap.of("filesetSchema", 3L),
+        listSchemas(filesetCatalogNs, "fileset").getDirectChildCounts());
+
+    Namespace modelCatalogNs = Namespace.of(metalake, "modelCatalog");
+    Namespace modelSchemaNs = mockSchemaListing(modelCatalogNs, "modelSchema");
+    when(modelDispatcher.listEntities(modelSchemaNs))
+        .thenReturn(
+            buildModelEntity(
+                new NameIdentifier[] {
+                  NameIdentifier.of(modelSchemaNs, "model1"),
+                  NameIdentifier.of(modelSchemaNs, "model2")
+                }));
+    when(functionDispatcher.listFunctionInfos(modelSchemaNs))
+        .thenReturn(buildFunctionInfos(modelSchemaNs));
+    Assertions.assertEquals(
+        ImmutableMap.of("modelSchema", 3L),
+        listSchemas(modelCatalogNs, "model").getDirectChildCounts());
+
+    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(messagingSchemaNs);
+    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(filesetSchemaNs);
+    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(modelSchemaNs);
+  }
+
+  @Test
+  public void testListSchemaDirectChildCountUnavailable() {
+    Namespace catalogNamespace = Namespace.of("testMetalake", "relCatalog");
+    Namespace schemaNamespace = mockSchemaListing(catalogNamespace, "relSchema");
+    when(schemaDispatcher.supportsHierarchicalSchema(catalogNamespace))
+        .thenThrow(new IllegalStateException("Capability is unavailable"));
+
+    SchemaListResponse response = listSchemas(catalogNamespace, "relational");
+
+    Assertions.assertTrue(response.getDirectChildCounts().isEmpty());
+    Mockito.verify(tableDispatcher, Mockito.never()).listTables(schemaNamespace);
+  }
+
+  @Test
+  public void testListSchemaDirectChildCountOmitsFailedFunctionAndViewCounts() {
+    Namespace catalogNamespace = Namespace.of("testMetalake", "relCatalog");
+    NameIdentifier functionFailureSchema =
+        NameIdentifier.of(catalogNamespace, "functionFailureSchema");
+    NameIdentifier viewFailureSchema = NameIdentifier.of(catalogNamespace, "viewFailureSchema");
+    NameIdentifier[] schemas = {functionFailureSchema, viewFailureSchema};
+    when(schemaDispatcher.listSchemas(catalogNamespace)).thenReturn(schemas);
+    when(schemaDispatcher.listEntities(catalogNamespace)).thenReturn(buildSchemaEntity(schemas));
+    when(schemaDispatcher.supportsHierarchicalSchema(catalogNamespace)).thenReturn(false);
+
+    Namespace functionFailureNamespace =
+        Namespace.of(
+            catalogNamespace.level(0), catalogNamespace.level(1), functionFailureSchema.name());
+    Namespace viewFailureNamespace =
+        Namespace.of(
+            catalogNamespace.level(0), catalogNamespace.level(1), viewFailureSchema.name());
+    when(tableDispatcher.listTables(functionFailureNamespace)).thenReturn(new NameIdentifier[0]);
+    when(tableDispatcher.listTables(viewFailureNamespace)).thenReturn(new NameIdentifier[0]);
+    when(functionDispatcher.listFunctionInfos(functionFailureNamespace))
+        .thenThrow(new IllegalStateException("Function count is unavailable"));
+    when(viewDispatcher.listViews(functionFailureNamespace)).thenReturn(new NameIdentifier[0]);
+    when(functionDispatcher.listFunctionInfos(viewFailureNamespace)).thenReturn(new Function[0]);
+    when(viewDispatcher.listViews(viewFailureNamespace))
+        .thenThrow(new IllegalStateException("View count is unavailable"));
+
+    SchemaListResponse response = listSchemas(catalogNamespace, "relational");
+
+    Assertions.assertEquals(2, response.getSchemas().length);
+    Assertions.assertTrue(response.getDirectChildCounts().isEmpty());
+  }
+
+  @Test
   public void testListCatalogsWithAuthorizationFilter() throws Throwable {
     Config oldConfig = GravitinoEnv.getInstance().config();
     Config mockConfig = mock(Config.class);
@@ -614,9 +795,12 @@ public class TestEntityOperations extends JerseyTest {
               }
               MetadataObject object = (MetadataObject) metadataObject;
               Privilege.Name privilege = invocation.getArgument(3);
-              return object.type() == MetadataObject.Type.CATALOG
-                  && "relCatalog1".equals(object.name())
-                  && privilege == Privilege.Name.USE_CATALOG;
+              return (object.type() == MetadataObject.Type.CATALOG
+                      && "relCatalog1".equals(object.name())
+                      && privilege == Privilege.Name.USE_CATALOG)
+                  || (object.type() == MetadataObject.Type.SCHEMA
+                      && "schema1".equals(object.name())
+                      && privilege == Privilege.Name.USE_SCHEMA);
             });
     lenient()
         .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
@@ -631,6 +815,13 @@ public class TestEntityOperations extends JerseyTest {
     TestCatalog[] mockedCatalogs = new TestCatalog[] {catalog1, catalog2};
     when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
         .thenReturn(mockedCatalogs);
+    Namespace visibleCatalogNs = Namespace.of("testMetalake", "relCatalog1");
+    when(schemaDispatcher.listSchemas(visibleCatalogNs))
+        .thenReturn(
+            new NameIdentifier[] {
+              NameIdentifier.of(visibleCatalogNs, "schema1"),
+              NameIdentifier.of(visibleCatalogNs, "schema2")
+            });
 
     GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
     GravitinoAuthorizer oldProviderAuthorizer = null;
@@ -666,6 +857,8 @@ public class TestEntityOperations extends JerseyTest {
         CatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
         Assertions.assertEquals(1, catalogDTOs.length);
         Assertions.assertEquals("relCatalog1", catalogDTOs[0].name());
+        Assertions.assertEquals(
+            ImmutableMap.of("relCatalog1", 1L), catalogResponse.getDirectChildCounts());
       }
     } catch (Throwable failure) {
       failureTracker.record(failure);
@@ -719,6 +912,12 @@ public class TestEntityOperations extends JerseyTest {
     NameIdentifier[] schemaIdents = {schemaIdent1, schemaIdent2};
     when(schemaDispatcher.listSchemas(namespace)).thenReturn(schemaIdents);
     when(schemaDispatcher.listEntities(namespace)).thenReturn(buildSchemaEntity(schemaIdents));
+    Namespace visibleSchemaNs = Namespace.of("testMetalake", "relCatalog", "relSchema1");
+    when(schemaDispatcher.listSchemas(visibleSchemaNs)).thenReturn(new NameIdentifier[0]);
+    when(tableDispatcher.listTables(visibleSchemaNs))
+        .thenReturn(new NameIdentifier[] {NameIdentifier.of(visibleSchemaNs, "visibleTable")});
+    when(functionDispatcher.listFunctionInfos(visibleSchemaNs)).thenReturn(new Function[0]);
+    when(viewDispatcher.listViews(visibleSchemaNs)).thenReturn(new NameIdentifier[0]);
 
     GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
     GravitinoAuthorizer oldProviderAuthorizer = null;
@@ -753,6 +952,11 @@ public class TestEntityOperations extends JerseyTest {
         Assertions.assertEquals(0, schemaResp.getCode());
         Assertions.assertEquals(1, schemaResp.getSchemas().length);
         Assertions.assertEquals("relSchema1", schemaResp.getSchemas()[0].name());
+        Assertions.assertEquals(
+            ImmutableMap.of("relSchema1", 1L), schemaResp.getDirectChildCounts());
+        Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(visibleSchemaNs);
+        Mockito.verify(tableDispatcher, Mockito.never())
+            .listTables(Namespace.of("testMetalake", "relCatalog", "relSchema2"));
       }
     } catch (Throwable failure) {
       failureTracker.record(failure);
@@ -1312,6 +1516,27 @@ public class TestEntityOperations extends JerseyTest {
 
   private void restoreMetadataAuthzExecutor(Executor executor) throws IllegalAccessException {
     FieldUtils.writeStaticField(MetadataAuthzHelper.class, "executor", executor, true);
+  }
+
+  private Namespace mockSchemaListing(Namespace catalogNamespace, String schemaName) {
+    NameIdentifier schemaIdentifier = NameIdentifier.of(catalogNamespace, schemaName);
+    when(schemaDispatcher.listSchemas(catalogNamespace))
+        .thenReturn(new NameIdentifier[] {schemaIdentifier});
+    when(schemaDispatcher.listEntities(catalogNamespace))
+        .thenReturn(buildSchemaEntity(new NameIdentifier[] {schemaIdentifier}));
+    return Namespace.of(catalogNamespace.level(0), catalogNamespace.level(1), schemaName);
+  }
+
+  private SchemaListResponse listSchemas(Namespace catalogNamespace, String catalogType) {
+    Response response =
+        target("/web/entities")
+            .queryParam("namespace", catalogNamespace.level(0) + "." + catalogNamespace.level(1))
+            .queryParam("catalogType", catalogType)
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    return response.readEntity(SchemaListResponse.class);
   }
 
   private void assertTables(TableDTO[] tableDTOs) {
