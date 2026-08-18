@@ -130,6 +130,16 @@ logger.search.level=info
 logger.search.appenderRef.search_file.ref=search_file
 logger.search.additivity=false
 
+# Transit bearer credentials must never be emitted by Apache HTTP debug logging.
+logger.vaultTransitHttpHeaders.name = com.datastrato.gravitino.transit.vault.shaded.org.apache.hc.client5.http.headers
+logger.vaultTransitHttpHeaders.level = off
+logger.vaultTransitHttpWire.name = com.datastrato.gravitino.transit.vault.shaded.org.apache.hc.client5.http.wire
+logger.vaultTransitHttpWire.level = off
+logger.openBaoTransitHttpHeaders.name = com.datastrato.gravitino.transit.openbao.shaded.org.apache.hc.client5.http.headers
+logger.openBaoTransitHttpHeaders.level = off
+logger.openBaoTransitHttpWire.name = com.datastrato.gravitino.transit.openbao.shaded.org.apache.hc.client5.http.wire
+logger.openBaoTransitHttpWire.level = off
+
 # Configure root logger
 rootLogger.level = info
 rootLogger.appenderRef.rolling.ref = fileLogger

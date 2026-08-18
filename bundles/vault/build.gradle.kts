@@ -2,10 +2,12 @@
  * Copyright 2026 Datastrato Pvt Ltd.
  * This software is licensed under the Apache License version 2.
  */
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
   `maven-publish`
   id("java")
+  alias(libs.plugins.shadow)
 }
 
 dependencies {
@@ -34,6 +36,42 @@ tasks.test {
     environment("GRAVITINO_TRANSIT_IT_TOKEN", "gravitino-kms-test-root-token")
     environment("GRAVITINO_TRANSIT_IT_INVALID_TOKEN", "invalid-transit-test-token")
   }
+}
+
+tasks.withType(ShadowJar::class.java) {
+  isZip64 = true
+  configurations = listOf(project.configurations.runtimeClasspath.get())
+  archiveClassifier.set("")
+
+  dependencies {
+    exclude(dependency("org.slf4j:slf4j-api"))
+    exclude(project(":api"))
+    exclude(project(":common"))
+  }
+
+  exclude("module-info.class")
+  exclude("META-INF/versions/**/module-info.class")
+
+  val shadeRoot = "com.datastrato.gravitino.transit.vault.shaded"
+  relocate(
+    "com.datastrato.gravitino.transit.common",
+    "$shadeRoot.com.datastrato.gravitino.transit.common"
+  )
+  relocate(
+    "com.datastrato.gravitino.transit.kms",
+    "$shadeRoot.com.datastrato.gravitino.transit.kms"
+  )
+  relocate("com.fasterxml.jackson", "$shadeRoot.com.fasterxml.jackson")
+  relocate("org.apache.commons.codec", "$shadeRoot.org.apache.commons.codec")
+  relocate("org.apache.hc", "$shadeRoot.org.apache.hc")
+  relocate("org.publicsuffix", "$shadeRoot.org.publicsuffix")
+
+  mergeServiceFiles()
+}
+
+tasks.jar {
+  dependsOn(tasks.named("shadowJar"))
+  archiveClassifier.set("empty")
 }
 
 tasks.javadoc {
