@@ -16,6 +16,7 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.Group;
@@ -41,6 +42,7 @@ import org.apache.gravitino.lock.LockType;
 import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.RoleEntity;
+import org.apache.gravitino.storage.relational.service.DatastratoRoleMetaService;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -263,6 +265,20 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   @Override
   public String[] listRoleNames(String metalake) throws NoSuchMetalakeException {
     return accessControlDispatcher.listRoleNames(metalake);
+  }
+
+  /**
+   * Lists roles with their securable objects under a metalake.
+   *
+   * @param metalake The metalake name.
+   * @return The roles with their securable objects.
+   */
+  public Role[] listRolesWithSecurableObjects(String metalake) {
+    Namespace namespace = AuthorizationUtils.ofRoleNamespace(metalake);
+    return DatastratoRoleMetaService.getInstance()
+        .listRolesWithSecurableObjectsByNamespace(namespace)
+        .stream()
+        .toArray(Role[]::new);
   }
 
   @Override

@@ -180,6 +180,42 @@ paths:
                 NoSuchMetadataObjectException:
                   $ref: "#/components/examples/NoSuchMetadataObjectException"
 
+  /web/security/metalakes/{metalake}/objects/roles:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/metalake"
+
+    get:
+      tags:
+        - access control
+      summary: List metadata objects with role privileges
+      operationId: listObjectRolePrivileges
+      description: |
+        Lists metadata objects under a metalake that have role privilege bindings,
+        together with each object's associated roles and privileges.
+      responses:
+        "200":
+          description: Returns metadata objects grouped with their role privileges
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/responses/ObjectRolePrivilegeListResponse"
+              examples:
+                ObjectRolePrivilegeListResponse:
+                  $ref: "#/components/examples/ObjectRolePrivilegeListResponse"
+        "400":
+          $ref: "./openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The specified metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "./metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5xx":
+          $ref: "./openapi.yaml#/components/responses/ServerErrorResponse"
+
 
 components:
 
@@ -247,15 +283,18 @@ components:
             - "METALAKE"
             - "CATALOG"
             - "SCHEMA"
-            - "TABLE"
             - "FILESET"
+            - "TABLE"
+            - "VIEW"
             - "TOPIC"
+            - "COLUMN"
             - "ROLE"
             - "MODEL"
-            - "FUNCTION"
             - "TAG"
             - "POLICY"
+            - "JOB"
             - "JOB_TEMPLATE"
+            - "FUNCTION"
           description: The type of the securable object
         privileges:
           type: array
@@ -305,6 +344,65 @@ components:
           items:
             $ref: "#/components/schemas/SecurableObject"
 
+    MetadataObject:
+      type: object
+      description: A metadata object
+      required:
+        - fullName
+        - type
+      properties:
+        fullName:
+          type: string
+          description: The full name of the metadata object
+        type:
+          type: string
+          description: The type of the metadata object
+          enum:
+            - "METALAKE"
+            - "CATALOG"
+            - "SCHEMA"
+            - "FILESET"
+            - "TABLE"
+            - "VIEW"
+            - "TOPIC"
+            - "COLUMN"
+            - "ROLE"
+            - "MODEL"
+            - "TAG"
+            - "POLICY"
+            - "JOB"
+            - "JOB_TEMPLATE"
+            - "FUNCTION"
+
+    RolePrivilege:
+      type: object
+      required:
+        - role
+        - privileges
+      properties:
+        role:
+          type: string
+          description: The role name
+        privileges:
+          type: array
+          description: The privileges granted to the role
+          items:
+            $ref: "#/components/schemas/Privilege"
+
+    ObjectRolePrivilege:
+      type: object
+      required:
+        - metadataObject
+        - rolePrivileges
+      properties:
+        metadataObject:
+          $ref: "#/components/schemas/MetadataObject"
+        rolePrivileges:
+          type: array
+          description: The role privileges associated with the metadata object
+          items:
+            $ref: "#/components/schemas/RolePrivilege"
+
   responses:
     RoleResponse:
       type: object
@@ -317,6 +415,21 @@ components:
             - 0
         role:
           $ref: "#/components/schemas/Role"
+
+    ObjectRolePrivilegeListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        objectRolePrivileges:
+          type: array
+          description: Metadata objects with their associated role privileges
+          items:
+            $ref: "#/components/schemas/ObjectRolePrivilege"
 
   examples:
     RoleCreateRequest:
@@ -405,6 +518,39 @@ components:
       value: {
         "code": 0,
         "names": [ "user1", "user2" ]
+      }
+
+    ObjectRolePrivilegeListResponse:
+      value: {
+        "code": 0,
+        "objectRolePrivileges": [
+          {
+            "metadataObject": {
+              "fullName": "catalog1.schema1.table1",
+              "type": "TABLE"
+            },
+            "rolePrivileges": [
+              {
+                "role": "role1",
+                "privileges": [
+                  {
+                    "name": "SELECT_TABLE",
+                    "condition": "ALLOW"
+                  }
+                ]
+              },
+              {
+                "role": "role2",
+                "privileges": [
+                  {
+                    "name": "SELECT_TABLE",
+                    "condition": "DENY"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       }
   parameters:
     metadataObjectTypeOfRole:

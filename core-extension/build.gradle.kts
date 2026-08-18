@@ -19,6 +19,7 @@ dependencies {
   implementation(libs.commons.dbcp2)
   implementation(libs.commons.lang3)
   implementation(libs.guava)
+  implementation(libs.mybatis)
   implementation(libs.trino.jdbc)
 
   testImplementation(libs.commons.io)
