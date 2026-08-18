@@ -130,6 +130,7 @@ include(":bundles:aliyun", ":bundles:aliyun-bundle", ":bundles:iceberg-aliyun-bu
 include(":bundles:azure", ":bundles:azure-bundle", ":bundles:iceberg-azure-bundle")
 include(":bundles:vault-compatible:transit")
 include(":bundles:vault")
+include(":bundles:openbao")
 include(":catalogs:hadoop-common")
 include(":lineage")
 include(":mcp-server")

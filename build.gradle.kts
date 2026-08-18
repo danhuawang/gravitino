@@ -758,6 +758,7 @@ val datastratoLicenseCheckIncludes = listOf(
   "catalogs/catalog-jdbc-sqlserver/**/*",
   "bundles/vault-compatible/transit/**",
   "bundles/vault/**",
+  "bundles/openbao/**",
   "licensing/**",
   "scripts/enterprise/**",
   "plugins/scim/**",
