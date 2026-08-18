@@ -4,12 +4,15 @@
  */
 package com.datastrato.gravitino.transit.common;
 
+import com.datastrato.gravitino.transit.kms.TransitKmsClient;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -87,6 +90,35 @@ public final class TransitConnection implements AutoCloseable {
     this.serviceAddress = validateServiceAddress(providerName, serviceAddress, allowInsecureHttp);
     this.bearerToken = TransitClientFactorySupport.validateBearerToken(providerName, bearerToken);
     this.httpClient = httpClient;
+  }
+
+  /**
+   * Creates a typed, non-owning KMS view over this connection.
+   *
+   * @param expectedApi provider KMS API identifier
+   * @param source configured KMS source
+   * @param transitMount Transit secrets-engine mount
+   * @return typed KMS client sharing this connection
+   */
+  public TransitKmsClient kms(String expectedApi, String source, String transitMount) {
+    return new TransitKmsClient(providerName, expectedApi, source, transitMount, this);
+  }
+
+  /**
+   * Executes the bounded, same-origin key-read route used by the typed KMS layer.
+   *
+   * <p>This operation intentionally exposes no arbitrary method, URL, or request path.
+   *
+   * @param transitMount validated Transit secrets-engine mount
+   * @param keyId validated key identifier
+   * @return bounded HTTP response for KMS-specific classification
+   */
+  public TransitHttpResponse readKey(String transitMount, String keyId) {
+    List<String> pathSegments = new ArrayList<>();
+    pathSegments.addAll(Arrays.asList(transitMount.split("/")));
+    pathSegments.add("keys");
+    pathSegments.add(keyId);
+    return get(pathSegments);
   }
 
   TransitHttpResponse get(List<String> pathSegments) {

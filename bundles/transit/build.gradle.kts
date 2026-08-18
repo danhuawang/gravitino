@@ -15,7 +15,10 @@ dependencies {
   implementation(project(":common")) {
     exclude(group = "*")
   }
+  implementation(libs.commons.lang3)
+  implementation(libs.guava)
   implementation(libs.httpclient5)
+  implementation(libs.jackson.databind)
 
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
