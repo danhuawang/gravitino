@@ -1,0 +1,24 @@
+DATASTRATO ENTERPRISE NOTICE
+
+Version: Draft v0.1 for internal review
+Product: Datastrato Enterprise
+Provider: Datastrato Inc.
+
+Datastrato Enterprise
+Copyright Datastrato Inc. All rights reserved.
+
+This product includes software developed by Datastrato Inc.
+
+This product may include or be based on Apache Gravitino, developed by The Apache Software Foundation.
+
+This product may include third-party and open source software components. Third-party and open source license information is provided in THIRD_PARTY_LICENSES.txt.
+
+Apache Gravitino license and notice information is provided in APACHE_GRAVITINO_LICENSE.txt and APACHE_GRAVITINO_NOTICE.txt.
+
+Apache, Apache Gravitino, Apache Iceberg, Apache Spark, Apache Hive, Apache Hadoop, Apache Kafka, Apache Arrow, Apache Ranger, and related Apache project names are trademarks or registered trademarks of The Apache Software Foundation in the United States and other countries.
+
+Red Hat, Red Hat Enterprise Linux, OpenShift, and Universal Base Image are trademarks or registered trademarks of Red Hat, Inc. or its subsidiaries in the United States and other countries. Datastrato Inc. is not affiliated with Red Hat, Inc. unless expressly stated in a separate written agreement or published partner listing.
+
+All other trademarks are the property of their respective owners.
+
+This NOTICE file is provided for attribution and informational purposes. It does not modify the license terms applicable to Datastrato Enterprise or any third-party component.
