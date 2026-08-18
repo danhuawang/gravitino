@@ -400,6 +400,34 @@ class TestScimUserRepositoryAdapter {
   }
 
   @Test
+  void testFindById() throws Exception {
+    User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", false);
+    when(dispatcher.getUserById(METALAKE, USER_ID)).thenReturn(user);
+
+    var response =
+        adapter.find(
+            org.apache.directory.scim.spec.filter.Filter.decode("id eq \"1\""),
+            new PageRequest().setStartIndex(1).setCount(10),
+            null);
+    assertEquals(1, response.getTotalResults());
+    assertEquals("1", response.getResources().iterator().next().getId());
+    assertEquals(Boolean.FALSE, response.getResources().iterator().next().getActive());
+  }
+
+  @Test
+  void testFindByIdMissing() throws Exception {
+    when(dispatcher.getUserById(METALAKE, 999L)).thenThrow(new NoSuchUserException("999"));
+
+    var response =
+        adapter.find(
+            org.apache.directory.scim.spec.filter.Filter.decode("id eq \"999\""),
+            new PageRequest().setStartIndex(1).setCount(10),
+            null);
+    assertEquals(0, response.getTotalResults());
+    assertEquals(0, response.getResources().size());
+  }
+
+  @Test
   void testFindByExtId() throws Exception {
     User user = ScimServiceTestEntities.user(USER_ID, "alice", "ext-1", true);
     when(dispatcher.getUserByExternalId(METALAKE, "ext-1")).thenReturn(user);

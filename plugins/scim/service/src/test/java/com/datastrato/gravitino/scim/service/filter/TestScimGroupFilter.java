@@ -27,6 +27,23 @@ class TestScimGroupFilter {
   }
 
   @Test
+  void testIdEq() throws Exception {
+    ScimGroupFilter criteria = ScimGroupFilter.convert(Filter.decode("id eq \"123\""), scimConfig);
+    assertEquals("123", criteria.id().orElseThrow());
+    assertFalse(criteria.displayName().isPresent());
+    assertFalse(criteria.externalId().isPresent());
+  }
+
+  @Test
+  void testIdAndDisplayName() throws Exception {
+    ScimGroupFilter criteria =
+        ScimGroupFilter.convert(
+            Filter.decode("id eq \"1\" and displayName eq \"engineers\""), scimConfig);
+    assertEquals("1", criteria.id().orElseThrow());
+    assertEquals("engineers", criteria.displayName().orElseThrow());
+  }
+
+  @Test
   void testExternalIdEq() throws Exception {
     ScimGroupFilter criteria =
         ScimGroupFilter.convert(Filter.decode("externalId eq \"ext-g1\""), scimConfig);

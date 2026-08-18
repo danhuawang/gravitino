@@ -27,6 +27,22 @@ class TestScimUserFilter {
   }
 
   @Test
+  void testIdEq() throws Exception {
+    ScimUserFilter criteria = ScimUserFilter.convert(Filter.decode("id eq \"123\""), scimConfig);
+    assertEquals("123", criteria.id().orElseThrow());
+    assertFalse(criteria.userName().isPresent());
+    assertFalse(criteria.externalId().isPresent());
+  }
+
+  @Test
+  void testIdAndUserName() throws Exception {
+    ScimUserFilter criteria =
+        ScimUserFilter.convert(Filter.decode("id eq \"1\" and userName eq \"alice\""), scimConfig);
+    assertEquals("1", criteria.id().orElseThrow());
+    assertEquals("alice", criteria.userName().orElseThrow());
+  }
+
+  @Test
   void testExternalIdEq() throws Exception {
     ScimUserFilter criteria =
         ScimUserFilter.convert(Filter.decode("externalId eq \"abc\""), scimConfig);

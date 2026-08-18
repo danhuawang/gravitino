@@ -171,6 +171,32 @@ class ScimProvisioningRESTApiIT {
     Assertions.assertFalse(
         JsonUtils.objectMapper().readTree(disabled.body()).get("active").asBoolean());
 
+    HttpResponse<String> fetchedDisabled = get(scimPath("/Users/" + userId), bearerToken);
+    assertStatus(200, fetchedDisabled);
+    Assertions.assertFalse(
+        JsonUtils.objectMapper().readTree(fetchedDisabled.body()).get("active").asBoolean(),
+        () -> "GET by id after disable: " + fetchedDisabled.body());
+
+    HttpResponse<String> filteredDisabled =
+        get(
+            scimPath("/Users") + "?filter=" + encodeQuery("userName eq \"" + userName + "\""),
+            bearerToken);
+    assertStatus(200, filteredDisabled);
+    JsonNode filteredDisabledList = JsonUtils.objectMapper().readTree(filteredDisabled.body());
+    Assertions.assertEquals(1, filteredDisabledList.get("totalResults").asInt());
+    Assertions.assertFalse(
+        filteredDisabledList.get("Resources").get(0).get("active").asBoolean(),
+        () -> "GET filter after disable: " + filteredDisabled.body());
+
+    HttpResponse<String> filteredById =
+        get(scimPath("/Users") + "?filter=" + encodeQuery("id eq \"" + userId + "\""), bearerToken);
+    assertStatus(200, filteredById);
+    JsonNode filteredByIdList = JsonUtils.objectMapper().readTree(filteredById.body());
+    Assertions.assertEquals(1, filteredByIdList.get("totalResults").asInt(), filteredById.body());
+    Assertions.assertFalse(
+        filteredByIdList.get("Resources").get(0).get("active").asBoolean(),
+        () -> "GET filter id after disable: " + filteredById.body());
+
     HttpResponse<String> enabled =
         patch(scimPath("/Users/" + userId), patchBody("replace", "active", true), bearerToken);
     assertStatus(200, enabled);
@@ -178,6 +204,75 @@ class ScimProvisioningRESTApiIT {
         JsonUtils.objectMapper().readTree(enabled.body()).get("active").asBoolean());
 
     assertStatus(204, delete(scimPath("/Users/" + userId), bearerToken));
+  }
+
+  @Test
+  void testPatchDisableThenGetByIdAndFilter() throws Exception {
+    String userName = "lilian.streich@sauer.com";
+    Map<String, Object> createBody = new HashMap<>();
+    createBody.put("schemas", new String[] {SCIM_USER_SCHEMA});
+    createBody.put("userName", userName);
+    createBody.put("active", true);
+
+    HttpResponse<String> created = post(scimPath("/Users"), createBody, bearerToken);
+    assertStatus(201, created);
+    JsonNode createdUser = JsonUtils.objectMapper().readTree(created.body());
+    String userId = createdUser.get("id").asText();
+    Assertions.assertTrue(createdUser.get("active").asBoolean());
+
+    HttpResponse<String> disabled =
+        patch(scimPath("/Users/" + userId), patchBody("replace", "active", false), bearerToken);
+    assertStatus(200, disabled);
+    JsonNode disabledUser = JsonUtils.objectMapper().readTree(disabled.body());
+    Assertions.assertFalse(
+        disabledUser.get("active").asBoolean(), () -> "PATCH disable body: " + disabled.body());
+
+    HttpResponse<String> fetched = get(scimPath("/Users/" + userId), bearerToken);
+    assertStatus(200, fetched);
+    JsonNode fetchedUser = JsonUtils.objectMapper().readTree(fetched.body());
+    Assertions.assertFalse(
+        fetchedUser.path("active").asBoolean(true),
+        () -> "Fetch by Id after disable: " + fetched.body());
+
+    HttpResponse<String> filtered =
+        get(
+            scimPath("/Users") + "?filter=" + encodeQuery("userName eq \"" + userName + "\""),
+            bearerToken);
+    assertStatus(200, filtered);
+    JsonNode list = JsonUtils.objectMapper().readTree(filtered.body());
+    Assertions.assertEquals(1, list.get("totalResults").asInt(), () -> filtered.body());
+    Assertions.assertFalse(
+        list.get("Resources").get(0).path("active").asBoolean(true),
+        () -> "Fetch by Filter after disable: " + filtered.body());
+
+    HttpResponse<String> filteredById =
+        get(scimPath("/Users") + "?filter=" + encodeQuery("id eq \"" + userId + "\""), bearerToken);
+    assertStatus(200, filteredById);
+    JsonNode filteredByIdList = JsonUtils.objectMapper().readTree(filteredById.body());
+    Assertions.assertEquals(1, filteredByIdList.get("totalResults").asInt(), filteredById.body());
+    Assertions.assertFalse(
+        filteredByIdList.get("Resources").get(0).path("active").asBoolean(true),
+        () -> "Fetch by id filter after disable: " + filteredById.body());
+
+    assertStatus(204, delete(scimPath("/Users/" + userId), bearerToken));
+  }
+
+  @Test
+  void testDeleteUserThenFilter() throws Exception {
+    String userName = "scim-it-delete-user";
+    Map<String, Object> createBody = new HashMap<>();
+    createBody.put("schemas", new String[] {SCIM_USER_SCHEMA});
+    createBody.put("userName", userName);
+    createBody.put("active", true);
+
+    HttpResponse<String> created = post(scimPath("/Users"), createBody, bearerToken);
+    assertStatus(201, created);
+    String userId = JsonUtils.objectMapper().readTree(created.body()).get("id").asText();
+
+    assertStatus(204, delete(scimPath("/Users/" + userId), bearerToken));
+    assertStatus(404, get(scimPath("/Users/" + userId), bearerToken));
+    assertFilterEmpty("userName eq \"" + userName + "\"");
+    assertFilterEmpty("id eq \"" + userId + "\"");
   }
 
   @Test
@@ -231,6 +326,8 @@ class ScimProvisioningRESTApiIT {
 
     HttpResponse<String> missing = get(scimPath("/Groups/" + groupId), bearerToken);
     assertStatus(404, missing);
+    assertGroupFilterEmpty("displayName eq \"" + displayName + "\"");
+    assertGroupFilterEmpty("id eq \"" + groupId + "\"");
   }
 
   @Test
@@ -324,6 +421,23 @@ class ScimProvisioningRESTApiIT {
     Assertions.assertFalse(createdGroup.hasNonNull("externalId"));
 
     assertStatus(204, delete(scimPath("/Groups/" + groupId), bearerToken));
+  }
+
+  @Test
+  void testDeleteGroupThenFilter() throws Exception {
+    String displayName = "scim-it-delete-group";
+    Map<String, Object> body = new HashMap<>();
+    body.put("schemas", new String[] {SCIM_GROUP_SCHEMA});
+    body.put("displayName", displayName);
+
+    HttpResponse<String> created = post(scimPath("/Groups"), body, bearerToken);
+    assertStatus(201, created);
+    String groupId = JsonUtils.objectMapper().readTree(created.body()).get("id").asText();
+
+    assertStatus(204, delete(scimPath("/Groups/" + groupId), bearerToken));
+    assertStatus(404, get(scimPath("/Groups/" + groupId), bearerToken));
+    assertGroupFilterEmpty("displayName eq \"" + displayName + "\"");
+    assertGroupFilterEmpty("id eq \"" + groupId + "\"");
   }
 
   private static String scimPath(String suffix) {
@@ -427,5 +541,26 @@ class ScimProvisioningRESTApiIT {
   private static void assertStatus(int expected, HttpResponse<String> response) {
     Assertions.assertEquals(
         expected, response.statusCode(), () -> "Unexpected body: " + response.body());
+  }
+
+  private static void assertFilterEmpty(String filter) throws Exception {
+    assertCollectionFilterEmpty("/Users", filter);
+  }
+
+  private static void assertGroupFilterEmpty(String filter) throws Exception {
+    assertCollectionFilterEmpty("/Groups", filter);
+  }
+
+  private static void assertCollectionFilterEmpty(String collection, String filter)
+      throws Exception {
+    HttpResponse<String> response =
+        get(scimPath(collection) + "?filter=" + encodeQuery(filter), bearerToken);
+    assertStatus(200, response);
+    JsonNode list = JsonUtils.objectMapper().readTree(response.body());
+    Assertions.assertEquals(0, list.get("totalResults").asInt(), () -> response.body());
+    JsonNode resources = list.get("Resources");
+    Assertions.assertTrue(
+        resources == null || resources.isNull() || resources.isEmpty(),
+        () -> "Expected no Resources, got: " + response.body());
   }
 }

@@ -1415,6 +1415,22 @@ class TestUserMetaService extends TestJDBCBackend {
   }
 
   @TestTemplate
+  void testIdEnable() throws IOException {
+    UserMetaService svc = userMetaService();
+    UserEntity user = userWithExtId("u-byid", "ext-byid");
+    svc.insertUser(user, false);
+    Assertions.assertFalse(
+        svc.updateUserById(metalakeName, user.id(), enabledUpdater(false)).enabled());
+    Assertions.assertFalse(svc.getUserById(metalakeName, user.id()).enabled());
+    Assertions.assertFalse(queryEnabledByExtId("ext-byid"));
+
+    Assertions.assertTrue(
+        svc.updateUserById(metalakeName, user.id(), enabledUpdater(true)).enabled());
+    Assertions.assertTrue(svc.getUserById(metalakeName, user.id()).enabled());
+    Assertions.assertTrue(queryEnabledByExtId("ext-byid"));
+  }
+
+  @TestTemplate
   void testExtEnable() throws IOException {
     UserMetaService svc = userMetaService();
     svc.insertUser(userWithExtId("u1", "ext-1"), false);

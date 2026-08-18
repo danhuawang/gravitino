@@ -371,8 +371,9 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
    *
    * <p>Unfiltered queries use JDBC-backed {@code listGroups(metalake, offset, limit)}. Supported
    * {@code eq} / {@code and} filters map to at most one group via a primary-key lookup plus
-   * optional cross-field validation. {@code displayName} matching is case-insensitive per SCIM
-   * string comparison for caseExact=false attributes.
+   * optional cross-field validation. {@code id} matching uses the Gravitino-assigned group id.
+   * {@code displayName} matching is case-insensitive per SCIM string comparison for caseExact=false
+   * attributes.
    */
   private ScimPagedResult<Group> findGroups(
       String metalake, ScimGroupFilter criteria, ScimRepositoryPagination.PageBounds page) {
@@ -397,6 +398,9 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
 
   private Optional<Group> lookupGroup(String metalake, ScimGroupFilter criteria) {
     try {
+      if (criteria.id().isPresent()) {
+        return Optional.of(dispatcher.getGroupById(metalake, Long.parseLong(criteria.id().get())));
+      }
       if (criteria.externalId().isPresent()) {
         return Optional.of(dispatcher.getGroupByExternalId(metalake, criteria.externalId().get()));
       }
@@ -408,7 +412,7 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
           return findGroupIgnoreCase(metalake, displayName);
         }
       }
-    } catch (NoSuchGroupException ignored) {
+    } catch (NoSuchGroupException | NumberFormatException ignored) {
       return Optional.empty();
     }
     return Optional.empty();
@@ -424,6 +428,9 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
   }
 
   private static boolean matchesFilter(Group group, ScimGroupFilter criteria) {
+    if (criteria.id().isPresent() && !criteria.id().get().equals(String.valueOf(group.id()))) {
+      return false;
+    }
     if (criteria.displayName().isPresent()
         && !criteria.displayName().get().equalsIgnoreCase(group.name())) {
       return false;

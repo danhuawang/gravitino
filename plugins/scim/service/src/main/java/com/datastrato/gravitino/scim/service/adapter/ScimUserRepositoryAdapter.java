@@ -185,8 +185,9 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
    *
    * <p>Unfiltered queries use JDBC-backed {@code listUsers(metalake, offset, limit)}. Supported
    * {@code eq} / {@code and} filters map to at most one user via a primary-key lookup plus optional
-   * cross-field validation. {@code userName} matching is case-insensitive per SCIM string
-   * comparison for caseExact=false attributes.
+   * cross-field validation. {@code id} matching uses the Gravitino-assigned user id. {@code
+   * userName} matching is case-insensitive per SCIM string comparison for caseExact=false
+   * attributes.
    */
   private ScimPagedResult<User> findUsers(
       String metalake, ScimUserFilter criteria, ScimRepositoryPagination.PageBounds page) {
@@ -211,6 +212,9 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
 
   private Optional<User> lookupUser(String metalake, ScimUserFilter criteria) {
     try {
+      if (criteria.id().isPresent()) {
+        return Optional.of(dispatcher.getUserById(metalake, Long.parseLong(criteria.id().get())));
+      }
       if (criteria.externalId().isPresent()) {
         return Optional.of(dispatcher.getUserByExternalId(metalake, criteria.externalId().get()));
       }
@@ -220,7 +224,7 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       } catch (NoSuchUserException ignored) {
         return findUserIgnoreCase(metalake, userName);
       }
-    } catch (NoSuchUserException ignored) {
+    } catch (NoSuchUserException | NumberFormatException ignored) {
       return Optional.empty();
     }
   }
@@ -235,6 +239,9 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
   }
 
   private static boolean matchesFilter(User user, ScimUserFilter criteria) {
+    if (criteria.id().isPresent() && !criteria.id().get().equals(String.valueOf(user.id()))) {
+      return false;
+    }
     if (criteria.userName().isPresent()
         && !criteria.userName().get().equalsIgnoreCase(user.name())) {
       return false;

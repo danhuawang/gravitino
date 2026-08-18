@@ -598,6 +598,30 @@ class TestScimGroupRepositoryAdapter {
   }
 
   @Test
+  void testFindById() throws Exception {
+    Group group = ScimServiceTestEntities.group(1L, "engineers", "ext-g1");
+    when(dispatcher.getGroupById(METALAKE, 1L)).thenReturn(group);
+    when(membershipManager.listMembersForGroup(METALAKE, 1L)).thenReturn(List.of());
+
+    var response =
+        adapter.find(
+            Filter.decode("id eq \"1\""), new PageRequest().setStartIndex(1).setCount(10), null);
+    assertEquals(1, response.getTotalResults());
+    assertEquals("1", response.getResources().iterator().next().getId());
+  }
+
+  @Test
+  void testFindByIdMissing() throws Exception {
+    when(dispatcher.getGroupById(METALAKE, 999L)).thenThrow(new NoSuchGroupException("999"));
+
+    var response =
+        adapter.find(
+            Filter.decode("id eq \"999\""), new PageRequest().setStartIndex(1).setCount(10), null);
+    assertEquals(0, response.getTotalResults());
+    assertEquals(0, response.getResources().size());
+  }
+
+  @Test
   void testFindByDisplayName() throws Exception {
     Group group = ScimServiceTestEntities.group(1L, "engineers", "ext-g1");
     when(dispatcher.getGroup(METALAKE, "engineers")).thenReturn(group);
