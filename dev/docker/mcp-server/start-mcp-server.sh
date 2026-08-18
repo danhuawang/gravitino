@@ -17,7 +17,5 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-
 cd /opt/mcp-server
-
-uv run mcp_server $@
+uv run mcp_server "$@"

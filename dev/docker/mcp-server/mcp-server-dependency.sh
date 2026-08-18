@@ -23,10 +23,12 @@ mcp_server_dir="$(cd "${mcp_server_dir}">/dev/null; pwd)"
 gravitino_home="$(cd "${mcp_server_dir}/../../..">/dev/null; pwd)"
 
 cd ${gravitino_home}
+
 ./gradlew :mcp-server:clean
 
-# Removed old packages 
+# Remove old packages
 rm -rf "${mcp_server_dir}/packages"
 mkdir -p "${mcp_server_dir}/packages"
 
+# Copy MCP server source to packages
 cp -r ${gravitino_home}/mcp-server ${mcp_server_dir}/packages/mcp-server
