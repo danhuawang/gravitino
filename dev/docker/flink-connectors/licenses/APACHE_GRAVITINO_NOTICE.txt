@@ -1,0 +1,24 @@
+APACHE GRAVITINO NOTICE
+
+Version: Draft v0.1 for internal review
+Component: Apache Gravitino
+Upstream Project: https://gravitino.apache.org/
+Upstream Repository: https://github.com/apache/gravitino
+
+IMPORTANT NOTE
+For final packaging, this file should be replaced with the exact NOTICE file from the Apache Gravitino upstream source distribution for the version bundled in Datastrato Enterprise.
+
+Apache Gravitino
+Copyright 2026 The Apache Software Foundation.
+
+This product includes software developed at The Apache Software Foundation.
+
+The initial code for the Gravitino project was donated to the Apache Software Foundation by Datastrato.
+
+Apache Gravitino upstream NOTICE may also include notices for related Apache projects and third-party components used by Apache Gravitino. The final packaged NOTICE should preserve the applicable upstream NOTICE content for the exact bundled Apache Gravitino version.
+
+Recommended final action:
+Copy the exact upstream Apache Gravitino NOTICE file for the bundled version into this file, or keep the upstream file name as NOTICE and place a direct copy or symbolic link under /licenses.
+
+Reference:
+https://github.com/apache/gravitino/blob/main/NOTICE
