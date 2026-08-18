@@ -20,7 +20,6 @@ dependencies {
   implementation(libs.httpclient5)
   implementation(libs.jackson.databind)
 
-  testImplementation(testFixtures(project(":common")))
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testRuntimeOnly(libs.junit.jupiter.engine)
