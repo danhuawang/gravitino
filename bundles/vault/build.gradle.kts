@@ -22,8 +22,18 @@ dependencies {
   implementation(libs.jackson.databind)
 
   testImplementation(testFixtures(project(":common")))
+  testImplementation(testFixtures(project(":bundles:vault-compatible:transit")))
   testImplementation(libs.junit.jupiter.api)
   testRuntimeOnly(libs.junit.jupiter.engine)
+}
+
+tasks.test {
+  if (project.hasProperty("skipITs")) {
+    exclude("**/integration/test/**")
+  } else {
+    environment("GRAVITINO_TRANSIT_IT_TOKEN", "gravitino-kms-test-root-token")
+    environment("GRAVITINO_TRANSIT_IT_INVALID_TOKEN", "invalid-transit-test-token")
+  }
 }
 
 tasks.javadoc {
