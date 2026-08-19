@@ -242,6 +242,7 @@ main() {
             existVersions=$(get_all_index_template_versions)
             if [[ -n "$existVersions" ]]; then
               echo "Info: Existing index templates found with versions: $existVersions"
+              echo "Info: Run '$0 upgrade <version>' to reconcile or upgrade them."
               exit 1
             fi
 
@@ -265,7 +266,12 @@ main() {
             existVersions=$(get_all_index_template_versions)
 
             if echo "$existVersions" | grep -qx "$VERSION"; then
-              echo "Index version $VERSION already exists, no need to update."
+              # A release may add a template for a new entity type without changing the mappings
+              # of the existing ones, so the requested version can be partially present. The
+              # create script skips the templates that already exist, so running it again only
+              # fills in the missing ones and never rewrites an existing template.
+              echo "Index version $VERSION already exists, reconciling missing entity templates..."
+              bash "$CREATE_SCRIPT" "$VERSION" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"
             else
               echo "Creating index template with version $VERSION..."
               bash "$CREATE_SCRIPT" "$VERSION" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"

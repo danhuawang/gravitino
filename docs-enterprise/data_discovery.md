@@ -345,6 +345,12 @@ gravitino-server$ bin/index.sh init
 # and it will delete the old indexes of the previous version
 gravitino-server$ bin/index.sh upgrade v2
 
+# Upgrading to the version the cluster is already on reconciles the templates instead: a release
+# that adds a new entity type ships an extra template within the same version, and this creates the
+# templates that are missing without touching the ones already in place. Run it after upgrading
+# the server, before restarting it, otherwise startup fails on the missing template.
+gravitino-server$ bin/index.sh upgrade v1
+
 # Rebuild current version of the indexes and run background sync tasks
 gravitino-server$ bin/index.sh rebuild
 
