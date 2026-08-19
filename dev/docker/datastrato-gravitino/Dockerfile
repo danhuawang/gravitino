@@ -17,10 +17,14 @@
 # under the License.
 #
 FROM registry.access.redhat.com/ubi9/openjdk-17:1.24
+
+ARG IMAGE_VERSION=2.0.0-SNAPSHOT
+ARG IMAGE_RELEASE=1
+
 LABEL name="datastrato-enterprise-server" \
       vendor="Datastrato Inc." \
-      version="1.4.0-SNAPSHOT" \
-      release="1.0.0" \
+      version="${IMAGE_VERSION}" \
+      release="${IMAGE_RELEASE}" \
       summary="Datastrato Enterprise Server container image" \
       description="Datastrato Enterprise Server provides enterprise metadata management and data catalog capabilities powered by Apache Gravitino." \
       maintainer="Datastrato Inc."

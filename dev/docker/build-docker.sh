@@ -121,6 +121,9 @@ elif [ "${component_type}" == "lance-rest-server" ]; then
   . ${script_dir}/lance-rest-server/lance-rest-server-dependency.sh
 elif [ "${component_type}" == "datastrato-gravitino" ]; then
   . ${script_dir}/datastrato-gravitino/datastrato-gravitino-dependency.sh
+  if [ -n "${IMAGE_VERSION:-}" ]; then
+    build_args="${build_args} --build-arg IMAGE_VERSION=${IMAGE_VERSION}"
+  fi
 else
   echo "ERROR : ${component_type} is not a valid component type"
   usage
