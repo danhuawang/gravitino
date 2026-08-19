@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino.metrics;
 
+import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.server.ServerConfig;
 import org.slf4j.Logger;
@@ -17,6 +18,7 @@ public class GravitinoMetricsService {
   private final ServerConfig serverConfig;
   private final GravitinoEnv gravitinoEnv;
   private final MetricsCollector metricsCollector;
+  private final IncrementalMetricsWorker incrementalMetricsWorker;
 
   public static void main(String[] args) {
     LOG.info("Starting Gravitino Metrics Server");
@@ -54,11 +56,14 @@ public class GravitinoMetricsService {
     this.serverConfig = config;
     this.gravitinoEnv = GravitinoEnv.getInstance();
     this.metricsCollector = MetricsCollector.getInstance();
+    this.incrementalMetricsWorker =
+        new IncrementalMetricsWorker(metricsCollector, MetricDataService.getInstance());
   }
 
   private void initialize() {
     gravitinoEnv.initializeFullComponents(serverConfig);
     metricsCollector.initialize(serverConfig, gravitinoEnv);
+    incrementalMetricsWorker.initialize(serverConfig);
 
     // no REST API needed for metrics
   }
@@ -68,6 +73,7 @@ public class GravitinoMetricsService {
 
     // start metrics collector after the server is started
     metricsCollector.start();
+    incrementalMetricsWorker.start();
   }
 
   private void join() {
@@ -80,7 +86,8 @@ public class GravitinoMetricsService {
   }
 
   private void stop() {
-    gravitinoEnv.shutdown();
+    incrementalMetricsWorker.close();
     metricsCollector.close();
+    gravitinoEnv.shutdown();
   }
 }

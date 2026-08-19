@@ -125,7 +125,6 @@ public class TestMetricOperations extends JerseyTest {
     Response response =
         target("/web/metrics/metalakes/metalake1")
             .queryParam("metrics", "metric1,metric2")
-            .queryParam("refresh", true)
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

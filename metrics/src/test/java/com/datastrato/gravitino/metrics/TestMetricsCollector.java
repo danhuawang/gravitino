@@ -6,13 +6,22 @@ package com.datastrato.gravitino.metrics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.metrics.config.MetricsConfig;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import java.io.IOException;
 import java.time.Instant;
@@ -77,6 +86,7 @@ class TestMetricsCollector {
 
   @BeforeEach
   public void setUp() throws Exception {
+    MetricsCollector.getInstance().getMetalakeSnapshots().clear();
     serverConfig = mock(ServerConfig.class);
     metalakeDispatcher = mock(MetalakeDispatcher.class);
     catalogManager = mock(CatalogManager.class);
@@ -212,6 +222,106 @@ class TestMetricsCollector {
     }
   }
 
+  @Test
+  void testDisabledCatalogIsExcludedWithoutLoadingItsDispatcher() throws Exception {
+    CatalogEntity disabledCatalog =
+        CatalogEntity.builder()
+            .withId(2L)
+            .withName("disabled_catalog")
+            .withNamespace(NamespaceUtil.ofCatalog(metalakeName))
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("hive")
+            .withProperties(ImmutableMap.of(Catalog.PROPERTY_IN_USE, "false"))
+            .withAuditInfo(
+                AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+            .build();
+    when(store.list(
+            NamespaceUtil.ofCatalog(metalakeName), CatalogEntity.class, Entity.EntityType.CATALOG))
+        .thenReturn(ImmutableList.of(disabledCatalog));
+
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      clearInvocations(catalogManager);
+
+      MetalakeSnapshot snapshot = collector.loadAllDataForMetalake(metalake());
+
+      assertEquals(0, snapshot.getCatalogNodes().size());
+      verify(catalogManager, never()).loadCatalogAndWrap(any());
+    }
+  }
+
+  @Test
+  void testPublishModesWriteCurrentAndHistoryAsConfigured() throws Exception {
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      BaseMetalake metalake = metalake();
+
+      collector.collectAndPublish(metalake, MetricsCollector.PublishMode.CURRENT_ONLY, 1_000L);
+      verify(metricDataService).replaceCurrentMetrics(eq(mockId), anyMap(), eq(1_000L));
+      verify(metricDataService, never())
+          .replaceCurrentAndAppendHistory(eq(mockId), anyMap(), eq(1_000L));
+
+      collector.collectAndPublish(
+          metalake, MetricsCollector.PublishMode.CURRENT_AND_HISTORY, 2_000L);
+      verify(metricDataService).replaceCurrentAndAppendHistory(eq(mockId), anyMap(), eq(2_000L));
+    }
+  }
+
+  @Test
+  void testFailedPublishRestoresPreviousSnapshot() throws Exception {
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      BaseMetalake metalake = metalake();
+
+      collector.collectAndPublish(metalake, MetricsCollector.PublishMode.CURRENT_ONLY, 1_000L);
+      MetalakeSnapshot previous = collector.getMetalakeSnapshots().get(metalakeName);
+      doThrow(new RuntimeException("write failed"))
+          .when(metricDataService)
+          .replaceCurrentMetrics(eq(mockId), anyMap(), eq(2_000L));
+
+      assertThrows(
+          RuntimeException.class,
+          () ->
+              collector.collectAndPublish(
+                  metalake, MetricsCollector.PublishMode.CURRENT_ONLY, 2_000L));
+      assertSame(previous, collector.getMetalakeSnapshots().get(metalakeName));
+    }
+  }
+
+  @Test
+  void testFailedAuthoritativeLoadDoesNotPublishPartialCurrent() throws Exception {
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      BaseMetalake metalake = metalake();
+
+      collector.collectAndPublish(metalake, MetricsCollector.PublishMode.CURRENT_ONLY, 1_000L);
+      MetalakeSnapshot previous = collector.getMetalakeSnapshots().get(metalakeName);
+      when(tableDispatcher.listTables(
+              eq(NamespaceUtil.ofTable(metalakeName, relationalCatalogName, relationalSchemaName))))
+          .thenThrow(new RuntimeException("catalog unavailable"));
+
+      assertThrows(
+          RuntimeException.class,
+          () ->
+              collector.collectAndPublish(
+                  metalake, MetricsCollector.PublishMode.CURRENT_ONLY, 2_000L));
+      verify(metricDataService, never()).replaceCurrentMetrics(eq(mockId), anyMap(), eq(2_000L));
+      assertSame(previous, collector.getMetalakeSnapshots().get(metalakeName));
+    }
+  }
+
   private void mockListCatalogFromStore() throws IOException {
     CatalogEntity catalogEntity =
         CatalogEntity.builder()
@@ -226,6 +336,16 @@ class TestMetricsCollector {
     when(store.list(
             NamespaceUtil.ofCatalog(metalakeName), CatalogEntity.class, Entity.EntityType.CATALOG))
         .thenReturn(ImmutableList.of(catalogEntity));
+  }
+
+  private BaseMetalake metalake() {
+    return BaseMetalake.builder()
+        .withId(mockId)
+        .withName(metalakeName)
+        .withVersion(SchemaVersion.V_0_1)
+        .withAuditInfo(
+            AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+        .build();
   }
 
   private void mockLoadCatalog() throws Exception {

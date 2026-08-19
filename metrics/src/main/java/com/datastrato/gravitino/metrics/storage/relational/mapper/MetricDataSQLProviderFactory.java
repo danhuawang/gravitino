@@ -49,6 +49,27 @@ public class MetricDataSQLProviderFactory {
             metalakeId, userId, metricNames, startTimestamp, endTimestamp);
   }
 
+  /**
+   * Returns the backend-specific current metric query.
+   *
+   * @param metalakeId metalake ID
+   * @param userId persisted user ID
+   * @param metricNames optional metric-name filter
+   * @param startTimestamp inclusive start time
+   * @param endTimestamp inclusive end time
+   * @return current metric query
+   */
+  public static String getCurrentMetricPOsByUserIdMetricNamesAndTimestamp(
+      @Param("metalakeId") long metalakeId,
+      @Param("userId") long userId,
+      @Param("metricNames") String[] metricNames,
+      @Param("startTimestamp") Timestamp startTimestamp,
+      @Param("endTimestamp") Timestamp endTimestamp) {
+    return getProvider()
+        .getCurrentMetricPOsByUserIdMetricNamesAndTimestamp(
+            metalakeId, userId, metricNames, startTimestamp, endTimestamp);
+  }
+
   public static String getTagCountByMetalakeId(@Param("metalakeId") long metalakeId) {
     return getProvider().getTagCountByMetalakeId(metalakeId);
   }
@@ -77,8 +98,125 @@ public class MetricDataSQLProviderFactory {
     return getProvider().insertMetricsData(metalakeId, userId, metrics);
   }
 
+  /**
+   * Returns the backend-specific batch history insert.
+   *
+   * @param metrics history metric rows
+   * @return batch insert statement
+   */
+  public static String insertMetricsDataBatch(@Param("metrics") List<MetricPO> metrics) {
+    return getProvider().insertMetricsDataBatch(metrics);
+  }
+
+  /**
+   * Returns the backend-specific current metric deletion.
+   *
+   * @param metalakeId metalake ID
+   * @return current metric delete statement
+   */
+  public static String deleteCurrentMetrics(@Param("metalakeId") long metalakeId) {
+    return getProvider().deleteCurrentMetrics(metalakeId);
+  }
+
+  /**
+   * Returns the backend-specific current metric insert.
+   *
+   * @param metrics current metric rows
+   * @return batch insert statement
+   */
+  public static String insertCurrentMetrics(@Param("metrics") List<MetricPO> metrics) {
+    return getProvider().insertCurrentMetrics(metrics);
+  }
+
+  /**
+   * Returns the backend-specific atomic dirty-marker upsert.
+   *
+   * @param metalakeId metalake ID
+   * @param eventTime metadata event time
+   * @return dirty-marker upsert statement
+   */
+  public static String markMetalakeDirty(
+      @Param("metalakeId") long metalakeId, @Param("eventTime") Timestamp eventTime) {
+    return getProvider().markMetalakeDirty(metalakeId, eventTime);
+  }
+
+  /**
+   * Returns the backend-specific due dirty-marker query.
+   *
+   * @param quietCutoff inclusive quiet-period cutoff
+   * @param maxDebounceCutoff inclusive maximum-debounce cutoff
+   * @param now current time
+   * @return due dirty-marker query
+   */
+  public static String listDueDirtyMetalakes(
+      @Param("quietCutoff") Timestamp quietCutoff,
+      @Param("maxDebounceCutoff") Timestamp maxDebounceCutoff,
+      @Param("now") Timestamp now) {
+    return getProvider().listDueDirtyMetalakes(quietCutoff, maxDebounceCutoff, now);
+  }
+
+  /**
+   * Returns the backend-specific dirty-marker lookup.
+   *
+   * @param metalakeId metalake ID
+   * @return dirty-marker lookup query
+   */
+  public static String getDirtyMetalake(@Param("metalakeId") long metalakeId) {
+    return getProvider().getDirtyMetalake(metalakeId);
+  }
+
+  /**
+   * Returns the backend-specific dirty-marker compare-and-delete statement.
+   *
+   * @param metalakeId metalake ID
+   * @param revision expected revision
+   * @return compare-and-delete statement
+   */
+  public static String deleteDirtyIfRevision(
+      @Param("metalakeId") long metalakeId, @Param("revision") long revision) {
+    return getProvider().deleteDirtyIfRevision(metalakeId, revision);
+  }
+
+  /**
+   * Returns the backend-specific retry compare-and-update statement.
+   *
+   * @param metalakeId metalake ID
+   * @param revision expected revision
+   * @param retryCount consecutive failure count
+   * @param retryAfter earliest retry time
+   * @param lastError truncated failure message
+   * @return compare-and-update statement
+   */
+  public static String markRetryIfRevision(
+      @Param("metalakeId") long metalakeId,
+      @Param("revision") long revision,
+      @Param("retryCount") int retryCount,
+      @Param("retryAfter") Timestamp retryAfter,
+      @Param("lastError") String lastError) {
+    return getProvider()
+        .markRetryIfRevision(metalakeId, revision, retryCount, retryAfter, lastError);
+  }
+
   public static String cleanInvalidMetrics() {
     return getProvider().cleanInvalidMetrics();
+  }
+
+  /**
+   * Returns the backend-specific invalid current metric cleanup.
+   *
+   * @return invalid current metric cleanup statement
+   */
+  public static String cleanInvalidCurrentMetrics() {
+    return getProvider().cleanInvalidCurrentMetrics();
+  }
+
+  /**
+   * Returns the backend-specific invalid dirty-marker cleanup.
+   *
+   * @return invalid dirty-marker cleanup statement
+   */
+  public static String cleanInvalidDirtyMetrics() {
+    return getProvider().cleanInvalidDirtyMetrics();
   }
 
   public static String cleanMetricsByTimestamp(

@@ -607,6 +607,28 @@ CREATE TABLE IF NOT EXISTS `dashboard_metrics` (
     KEY `idx_ct_da` (`created_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'dashboard metrics';
 
+CREATE TABLE IF NOT EXISTS `dashboard_metric_current` (
+    `metalake_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'metalake id',
+    `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'user id who owns this metric',
+    `metric_name` VARCHAR(64) NOT NULL COMMENT 'metric name',
+    `metric_value` DOUBLE NOT NULL DEFAULT 0.0 COMMENT 'metric value',
+    `updated_time` TIMESTAMP(3) NOT NULL COMMENT 'current snapshot update time',
+    PRIMARY KEY (`metalake_id`, `user_id`, `metric_name`),
+    KEY `idx_dmc_updated_time` (`updated_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'current dashboard metrics';
+
+CREATE TABLE IF NOT EXISTS `dashboard_metric_dirty` (
+    `metalake_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'dirty metalake id',
+    `revision` BIGINT(20) UNSIGNED NOT NULL COMMENT 'monotonic dirty revision',
+    `first_dirty_at` TIMESTAMP(3) NOT NULL COMMENT 'first event time in the current burst',
+    `last_event_at` TIMESTAMP(3) NOT NULL COMMENT 'most recent event time',
+    `retry_count` INT NOT NULL DEFAULT 0 COMMENT 'consecutive recomputation failures',
+    `retry_after` TIMESTAMP(3) NULL COMMENT 'earliest retry time',
+    `last_error` VARCHAR(1024) NULL COMMENT 'most recent truncated error',
+    PRIMARY KEY (`metalake_id`),
+    KEY `idx_dmd_due` (`retry_after`, `last_event_at`, `first_dirty_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'dirty dashboard metric metalakes';
+
 CREATE TABLE IF NOT EXISTS `license_nodes` (
     `node_id`        VARCHAR(64)  NOT NULL COMMENT 'unique node identifier',
     `registered_at`  BIGINT       NOT NULL COMMENT 'epoch millis when node first registered',

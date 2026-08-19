@@ -47,13 +47,6 @@ paths:
           schema:
             type: integer
             format: int64
-        - name: refresh
-          in: query
-          description: Whether to force a refresh and recalculate the metrics, if true, it will block until the refresh is complete.
-          required: false
-          schema:
-            type: boolean
-            default: false
       responses:
         "200":
           description: Returns the metrics for the specified metalake and parameters.

@@ -7,6 +7,8 @@ package com.datastrato.gravitino.metrics.storage.relational.mapper.provider.base
 
 import static com.datastrato.gravitino.metrics.MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ;
 import static com.datastrato.gravitino.metrics.MetricsCollector.MOCK_USER_ID_FOR_METALAKE_OWNER;
+import static com.datastrato.gravitino.metrics.storage.relational.mapper.MetricDataMapper.CURRENT_METRICS_TABLE_NAME;
+import static com.datastrato.gravitino.metrics.storage.relational.mapper.MetricDataMapper.DIRTY_METRICS_TABLE_NAME;
 import static com.datastrato.gravitino.metrics.storage.relational.mapper.MetricDataMapper.METRICS_TABLE_NAME;
 
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
@@ -45,6 +47,41 @@ public class MetricDataBaseSQLProvider {
         + "#{name}"
         + "</foreach>"
         + "</if>"
+        + " ORDER BY dm.metric_name, dm.created_time"
+        + "</script>";
+  }
+
+  /**
+   * Builds the current metric query for MySQL-compatible backends.
+   *
+   * @param metalakeId metalake ID
+   * @param userId persisted user ID
+   * @param metricNames optional metric-name filter
+   * @param startTimestamp inclusive start time
+   * @param endTimestamp inclusive end time
+   * @return current metric query
+   */
+  public String getCurrentMetricPOsByUserIdMetricNamesAndTimestamp(
+      @Param("metalakeId") long metalakeId,
+      @Param("userId") long userId,
+      @Param("metricNames") String[] metricNames,
+      @Param("startTimestamp") Timestamp startTimestamp,
+      @Param("endTimestamp") Timestamp endTimestamp) {
+    return "<script>"
+        + "SELECT metric_name as metricName, updated_time as createdTime, metric_value as metricValue"
+        + " FROM "
+        + CURRENT_METRICS_TABLE_NAME
+        + " dmc WHERE dmc.metalake_id = #{metalakeId}"
+        + " AND dmc.user_id = #{userId}"
+        + " AND dmc.updated_time &gt;= #{startTimestamp, jdbcType=TIMESTAMP}"
+        + " AND dmc.updated_time &lt;= #{endTimestamp, jdbcType=TIMESTAMP}"
+        + " <if test='metricNames != null and metricNames.length > 0'>"
+        + " AND dmc.metric_name IN "
+        + "<foreach item='name' collection='metricNames' open='(' separator=',' close=')'>"
+        + "#{name}"
+        + "</foreach>"
+        + "</if>"
+        + " ORDER BY dmc.metric_name, dmc.updated_time"
         + "</script>";
   }
 
@@ -130,9 +167,172 @@ public class MetricDataBaseSQLProvider {
         + "</script>";
   }
 
-  public String cleanInvalidMetrics() {
+  /**
+   * Builds a batch insert for complete history metric rows.
+   *
+   * @param metrics history metric rows
+   * @return batch insert statement
+   */
+  public String insertMetricsDataBatch(@Param("metrics") List<MetricPO> metrics) {
+    return batchInsertMetrics(METRICS_TABLE_NAME, "created_time");
+  }
+
+  /**
+   * Builds the statement that removes every current metric for one metalake.
+   *
+   * @param metalakeId metalake ID
+   * @return current metric delete statement
+   */
+  public String deleteCurrentMetrics(@Param("metalakeId") long metalakeId) {
+    return "DELETE FROM " + CURRENT_METRICS_TABLE_NAME + " WHERE metalake_id = #{metalakeId}";
+  }
+
+  /**
+   * Builds a batch insert for current metric rows.
+   *
+   * @param metrics current metric rows
+   * @return batch insert statement
+   */
+  public String insertCurrentMetrics(@Param("metrics") List<MetricPO> metrics) {
+    return batchInsertMetrics(CURRENT_METRICS_TABLE_NAME, "updated_time");
+  }
+
+  /**
+   * Builds the MySQL-compatible atomic dirty-marker upsert.
+   *
+   * @param metalakeId metalake ID
+   * @param eventTime metadata event time
+   * @return dirty-marker upsert statement
+   */
+  public String markMetalakeDirty(
+      @Param("metalakeId") long metalakeId, @Param("eventTime") Timestamp eventTime) {
+    return "INSERT INTO "
+        + DIRTY_METRICS_TABLE_NAME
+        + " (metalake_id, revision, first_dirty_at, last_event_at, retry_count, retry_after, last_error)"
+        + " VALUES (#{metalakeId}, 1, #{eventTime, jdbcType=TIMESTAMP},"
+        + " #{eventTime, jdbcType=TIMESTAMP}, 0, NULL, NULL)"
+        + " ON DUPLICATE KEY UPDATE revision = revision + 1,"
+        + " first_dirty_at = LEAST(first_dirty_at, VALUES(first_dirty_at)),"
+        + " last_event_at = GREATEST(last_event_at, VALUES(last_event_at)), retry_count = 0,"
+        + " retry_after = NULL, last_error = NULL";
+  }
+
+  /**
+   * Builds the query for dirty markers whose debounce or retry deadline is due.
+   *
+   * @param quietCutoff inclusive quiet-period cutoff
+   * @param maxDebounceCutoff inclusive maximum-debounce cutoff
+   * @param now current time
+   * @return due dirty-marker query
+   */
+  public String listDueDirtyMetalakes(
+      @Param("quietCutoff") Timestamp quietCutoff,
+      @Param("maxDebounceCutoff") Timestamp maxDebounceCutoff,
+      @Param("now") Timestamp now) {
+    return dirtySelectColumns()
+        + " WHERE (retry_after IS NOT NULL AND retry_after <= #{now, jdbcType=TIMESTAMP})"
+        + " OR (retry_after IS NULL AND (last_event_at <= #{quietCutoff, jdbcType=TIMESTAMP}"
+        + " OR first_dirty_at <= #{maxDebounceCutoff, jdbcType=TIMESTAMP}))"
+        + " ORDER BY first_dirty_at";
+  }
+
+  /**
+   * Builds the lookup for one metalake dirty marker.
+   *
+   * @param metalakeId metalake ID
+   * @return dirty-marker lookup query
+   */
+  public String getDirtyMetalake(@Param("metalakeId") long metalakeId) {
+    return dirtySelectColumns() + " WHERE metalake_id = #{metalakeId}";
+  }
+
+  /**
+   * Builds the compare-and-delete statement for a dirty revision.
+   *
+   * @param metalakeId metalake ID
+   * @param revision expected revision
+   * @return compare-and-delete statement
+   */
+  public String deleteDirtyIfRevision(
+      @Param("metalakeId") long metalakeId, @Param("revision") long revision) {
     return "DELETE FROM "
-        + METRICS_TABLE_NAME
+        + DIRTY_METRICS_TABLE_NAME
+        + " WHERE metalake_id = #{metalakeId} AND revision = #{revision}";
+  }
+
+  /**
+   * Builds the compare-and-update statement for retry state.
+   *
+   * @param metalakeId metalake ID
+   * @param revision expected revision
+   * @param retryCount consecutive failure count
+   * @param retryAfter earliest retry time
+   * @param lastError truncated failure message
+   * @return compare-and-update statement
+   */
+  public String markRetryIfRevision(
+      @Param("metalakeId") long metalakeId,
+      @Param("revision") long revision,
+      @Param("retryCount") int retryCount,
+      @Param("retryAfter") Timestamp retryAfter,
+      @Param("lastError") String lastError) {
+    return "UPDATE "
+        + DIRTY_METRICS_TABLE_NAME
+        + " SET retry_count = #{retryCount}, retry_after = #{retryAfter, jdbcType=TIMESTAMP},"
+        + " last_error = #{lastError, jdbcType=VARCHAR}"
+        + " WHERE metalake_id = #{metalakeId} AND revision = #{revision}";
+  }
+
+  public String cleanInvalidMetrics() {
+    return cleanInvalidMetricsFromTable(METRICS_TABLE_NAME);
+  }
+
+  /**
+   * Builds cleanup SQL for invalid current metrics.
+   *
+   * @return invalid current metric cleanup statement
+   */
+  public String cleanInvalidCurrentMetrics() {
+    return cleanInvalidMetricsFromTable(CURRENT_METRICS_TABLE_NAME);
+  }
+
+  /**
+   * Builds cleanup SQL for dirty markers whose metalake is invalid.
+   *
+   * @return invalid dirty-marker cleanup statement
+   */
+  public String cleanInvalidDirtyMetrics() {
+    return "DELETE FROM "
+        + DIRTY_METRICS_TABLE_NAME
+        + " WHERE metalake_id NOT IN (SELECT metalake_id FROM "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " WHERE deleted_at = 0)";
+  }
+
+  private String batchInsertMetrics(String tableName, String timestampColumn) {
+    return "<script>"
+        + "INSERT INTO "
+        + tableName
+        + " (metalake_id, user_id, metric_name, metric_value, "
+        + timestampColumn
+        + ") VALUES "
+        + "<foreach item='metric' collection='metrics' separator=','>"
+        + "(#{metric.metalakeId}, #{metric.userId}, #{metric.metricName},"
+        + " #{metric.metricValue}, #{metric.createdTime, jdbcType=TIMESTAMP})"
+        + "</foreach>"
+        + "</script>";
+  }
+
+  private String dirtySelectColumns() {
+    return "SELECT metalake_id as metalakeId, revision, first_dirty_at as firstDirtyAt,"
+        + " last_event_at as lastEventAt, retry_count as retryCount,"
+        + " retry_after as retryAfter, last_error as lastError FROM "
+        + DIRTY_METRICS_TABLE_NAME;
+  }
+
+  private String cleanInvalidMetricsFromTable(String tableName) {
+    return "DELETE FROM "
+        + tableName
         + " WHERE metalake_id NOT IN (SELECT metalake_id FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + " WHERE deleted_at = 0) "

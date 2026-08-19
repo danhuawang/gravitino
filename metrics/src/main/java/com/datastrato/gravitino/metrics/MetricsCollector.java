@@ -22,10 +22,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -36,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -44,11 +42,13 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.Getter;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Owner;
@@ -82,11 +82,6 @@ import org.slf4j.LoggerFactory;
 public class MetricsCollector implements Closeable {
   public static final Long MOCK_USER_ID_FOR_DISABLE_AUTHZ = 0L;
   public static final Long MOCK_USER_ID_FOR_METALAKE_OWNER = 1L;
-
-  public static MetricsCollector getInstance() {
-    return INSTANCE;
-  }
-
   private static final MetricsCollector INSTANCE = new MetricsCollector();
   private static final Logger LOG = LoggerFactory.getLogger(MetricsCollector.class);
 
@@ -115,11 +110,15 @@ public class MetricsCollector implements Closeable {
   private Duration retentionPeriod;
   private boolean enableAuthorization;
 
-  @Getter private final Map<String, MetalakeSnapshot> metalakeSnapshots = new HashMap<>();
+  @Getter private final Map<String, MetalakeSnapshot> metalakeSnapshots = new ConcurrentHashMap<>();
 
-  private ZonedDateTime batchDate;
+  private final Map<Long, Object> metalakeLocks = new ConcurrentHashMap<>();
 
   private MetricsCollector() {}
+
+  public static MetricsCollector getInstance() {
+    return INSTANCE;
+  }
 
   public void initialize(ServerConfig serverConfig, GravitinoEnv gravitinoEnv) {
     this.catalogManager = gravitinoEnv.catalogManager();
@@ -181,12 +180,12 @@ public class MetricsCollector implements Closeable {
     this.retentionPeriod = Duration.ofDays(serverConfig.get(MetricsConfig.RETENTION_DAYS_CONFIG));
 
     this.enableAuthorization = serverConfig.get(Configs.ENABLE_AUTHORIZATION);
-    this.batchDate = LocalDate.now().atStartOfDay(ZoneId.systemDefault());
   }
 
   public void start() {
     // execute the metrics collection immediately for the first time
-    scheduledExecutor.execute(this::collectAllMetrics);
+    scheduledExecutor.execute(
+        () -> collectAllMetrics(PublishMode.CURRENT_ONLY, System.currentTimeMillis()));
 
     // schedule the metrics collection to run daily at midnight
     LocalDateTime now = LocalDateTime.now();
@@ -207,15 +206,28 @@ public class MetricsCollector implements Closeable {
     LOG.info("Shutting down metrics collector...");
     if (scheduledExecutor != null) {
       try {
+        scheduledExecutor.shutdown();
+        if (!scheduledExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+          LOG.warn("Metrics scheduler did not terminate within 30 seconds");
+          scheduledExecutor.shutdownNow();
+        }
+      } catch (InterruptedException e) {
         scheduledExecutor.shutdownNow();
-      } catch (Exception e) {
+        Thread.currentThread().interrupt();
+      } catch (RuntimeException e) {
         LOG.error("Failed to shutdown scheduled executor", e);
       }
     }
 
     if (metricsCalculationExecutor != null) {
       try {
+        metricsCalculationExecutor.shutdown();
+        if (!metricsCalculationExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+          metricsCalculationExecutor.shutdownNow();
+        }
+      } catch (InterruptedException e) {
         metricsCalculationExecutor.shutdownNow();
+        Thread.currentThread().interrupt();
       } catch (Exception e) {
         LOG.error("Failed to shutdown metrics calculation executor", e);
       }
@@ -238,28 +250,37 @@ public class MetricsCollector implements Closeable {
     }
   }
 
-  private void collectAllMetrics() {
+  /** Controls whether a collection updates only current data or current and history together. */
+  public enum PublishMode {
+    /** Replaces the current snapshot without adding a historical point. */
+    CURRENT_ONLY,
+
+    /** Replaces current and appends history in one metalake transaction. */
+    CURRENT_AND_HISTORY
+  }
+
+  private void collectAllMetrics(PublishMode publishMode, long runTimestamp) {
     try {
       LOG.info(
-          "[batch: {}] Starting to collect metrics data for all users in all metalakes", batchDate);
+          "[run: {}] Starting to collect metrics data for all users in all metalakes",
+          Instant.ofEpochMilli(runTimestamp));
       List<BaseMetalake> metalakes =
-          store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE);
+          store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE).stream()
+              .filter(MetricsCollector::isMetalakeInUse)
+              .collect(Collectors.toList());
 
       List<CompletableFuture<Void>> futures = new ArrayList<>();
       for (BaseMetalake metalake : metalakes) {
         String metalakeName = metalake.name();
-        metalakeSnapshots.put(metalakeName, loadAllDataForMetalake(metalake));
-
-        // create independent calculation tasks for each metalake
         CompletableFuture<Void> future =
             CompletableFuture.runAsync(
                 () -> {
                   try {
-                    calculateMetricsForMetalake(metalakeName);
+                    collectAndPublish(metalake, publishMode, runTimestamp);
                   } catch (Exception e) {
                     LOG.error(
-                        "[batch: {}] Failed to process metrics for metalake: {}",
-                        batchDate,
+                        "[run: {}] Failed to process metrics for metalake: {}",
+                        Instant.ofEpochMilli(runTimestamp),
                         metalakeName,
                         e);
                   }
@@ -273,12 +294,12 @@ public class MetricsCollector implements Closeable {
       CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
       LOG.info(
-          "[batch: {}] All metrics data collected successfully for all users in all metalakes",
-          batchDate);
+          "[run: {}] Finished collecting metrics data for all users in all metalakes",
+          Instant.ofEpochMilli(runTimestamp));
     } catch (Exception e) {
       LOG.error(
-          "[batch: {}] Failed to collect metrics data for all users in all metalakes",
-          batchDate,
+          "[run: {}] Failed to list metalakes for dashboard metric collection",
+          Instant.ofEpochMilli(runTimestamp),
           e);
     }
   }
@@ -298,41 +319,83 @@ public class MetricsCollector implements Closeable {
     }
   }
 
-  private void calculateMetricsForMetalake(String metalakeName) {
-    LOG.info("[batch: {}] Starting to process metrics for metalake: {}", batchDate, metalakeName);
-
-    try {
-      MetalakeSnapshot metalakeSnapshot = metalakeSnapshots.get(metalakeName);
-      MetricsCalculator calculator = new MetricsCalculator(metalakeSnapshot, categoryToTagNames);
-
-      long metalakeId = metalakeSnapshot.getAssetTreeRoot().getId();
-      if (!enableAuthorization) {
-        List<MetricPO> metrics = calculator.calculateMetricsForDisableAuthz();
-        metricDataService.insertMetrics(metalakeId, MOCK_USER_ID_FOR_DISABLE_AUTHZ, metrics);
-      } else {
-        for (String userName : metalakeSnapshot.getUserNameToUserId().keySet()) {
-          List<MetricPO> metrics =
-              calculator.calculateMetricsForUser(userName, enableAuthorization, false);
-          Long userId = metalakeSnapshot.getUserNameToUserId().get(userName);
-          metricDataService.insertMetrics(metalakeId, userId, metrics);
+  void collectAndPublish(BaseMetalake metalake, PublishMode publishMode, long runTimestamp)
+      throws Exception {
+    synchronized (metalakeLock(metalake.id())) {
+      String metalakeName = metalake.name();
+      MetalakeSnapshot previousSnapshot = metalakeSnapshots.get(metalakeName);
+      try {
+        MetalakeSnapshot snapshot = loadAllDataForMetalake(metalake);
+        metalakeSnapshots.put(metalakeName, snapshot);
+        Map<Long, List<MetricPO>> metricsByUser = calculateMetrics(snapshot);
+        if (publishMode == PublishMode.CURRENT_AND_HISTORY) {
+          metricDataService.replaceCurrentAndAppendHistory(
+              metalake.id(), metricsByUser, runTimestamp);
+        } else {
+          metricDataService.replaceCurrentMetrics(metalake.id(), metricsByUser, runTimestamp);
         }
-        Optional<Owner> owner =
-            metalakeSnapshot.getAssetTreeRoot().getOwners().stream()
-                .filter(o -> o.type().equals(Owner.Type.USER))
-                .filter(o -> metalakeSnapshot.getUserNameToUserId().containsKey(o.name()))
-                .findFirst();
-        if (owner.isPresent()) {
-          String ownerName = owner.get().name();
-          List<MetricPO> metrics =
-              calculator.calculateMetricsForUser(ownerName, enableAuthorization, true);
-          metricDataService.insertMetrics(metalakeId, MOCK_USER_ID_FOR_METALAKE_OWNER, metrics);
+        metalakeSnapshots
+            .entrySet()
+            .removeIf(
+                entry ->
+                    !entry.getKey().equals(metalakeName)
+                        && entry.getValue().getAssetTreeRoot().getId() == metalake.id());
+        LOG.info(
+            "[run: {}] Metrics for metalake {} processed successfully",
+            Instant.ofEpochMilli(runTimestamp),
+            metalakeName);
+      } catch (Exception e) {
+        if (previousSnapshot == null) {
+          metalakeSnapshots.remove(metalakeName);
+        } else {
+          metalakeSnapshots.put(metalakeName, previousSnapshot);
         }
+        throw e;
       }
-
-      LOG.info("[metrics] Metrics for metalake {} processed successfully.", metalakeName);
-    } catch (Exception e) {
-      LOG.error("[metrics] Failed to calculate metrics for metalake: {}", metalakeName, e);
     }
+  }
+
+  CompletableFuture<Void> submitIncremental(Runnable task) {
+    return CompletableFuture.runAsync(task, metricsCalculationExecutor);
+  }
+
+  Object metalakeLock(long metalakeId) {
+    return metalakeLocks.computeIfAbsent(metalakeId, ignored -> new Object());
+  }
+
+  Optional<BaseMetalake> findActiveMetalake(long metalakeId) throws IOException {
+    return store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE).stream()
+        .filter(MetricsCollector::isMetalakeInUse)
+        .filter(metalake -> metalake.id() == metalakeId)
+        .findFirst();
+  }
+
+  private Map<Long, List<MetricPO>> calculateMetrics(MetalakeSnapshot snapshot) {
+    MetricsCalculator calculator = new MetricsCalculator(snapshot, categoryToTagNames);
+    Map<Long, List<MetricPO>> metricsByUser = new HashMap<>();
+    if (!enableAuthorization) {
+      metricsByUser.put(
+          MOCK_USER_ID_FOR_DISABLE_AUTHZ, calculator.calculateMetricsForDisableAuthz());
+      return metricsByUser;
+    }
+
+    snapshot
+        .getUserNameToUserId()
+        .forEach(
+            (userName, userId) ->
+                metricsByUser.put(
+                    userId, calculator.calculateMetricsForUser(userName, true, false)));
+    Optional<Owner> owner =
+        snapshot.getAssetTreeRoot().getOwners().stream()
+            .filter(candidate -> candidate.type().equals(Owner.Type.USER))
+            .filter(candidate -> snapshot.getUserNameToUserId().containsKey(candidate.name()))
+            .findFirst();
+    owner.ifPresent(
+        value ->
+            metricsByUser.put(
+                MOCK_USER_ID_FOR_METALAKE_OWNER,
+                calculator.calculateMetricsForUser(value.name(), true, true)));
+    return metricsByUser;
   }
 
   /**
@@ -361,6 +424,13 @@ public class MetricsCollector implements Closeable {
             CatalogEntity.class,
             Entity.EntityType.CATALOG);
     for (CatalogEntity catalog : catalogs) {
+      if (!isCatalogInUse(catalog)) {
+        LOG.info(
+            "Skipping disabled catalog {} while collecting metrics for metalake {}",
+            catalog.name(),
+            metalake.name());
+        continue;
+      }
       AssetNode catalogNode = getCatalogNode(catalog, root, objectIdToOwners);
 
       root.addChild(catalogNode);
@@ -454,9 +524,20 @@ public class MetricsCollector implements Closeable {
   }
 
   private void collectThenCleanMetrics() {
-    batchDate = batchDate.plusDays(1);
-    collectAllMetrics();
+    collectAllMetrics(PublishMode.CURRENT_AND_HISTORY, System.currentTimeMillis());
     cleanExpiredMetrics();
+  }
+
+  private static boolean isMetalakeInUse(BaseMetalake metalake) {
+    return metalake.properties() == null
+        || Boolean.parseBoolean(
+            metalake.properties().getOrDefault(Metalake.PROPERTY_IN_USE, Boolean.TRUE.toString()));
+  }
+
+  private static boolean isCatalogInUse(CatalogEntity catalog) {
+    return catalog.getProperties() == null
+        || Boolean.parseBoolean(
+            catalog.getProperties().getOrDefault(Catalog.PROPERTY_IN_USE, Boolean.TRUE.toString()));
   }
 
   private Map<Long, Set<Owner>> getObjectIdToOwners(Long metalakeId) {
@@ -624,9 +705,11 @@ public class MetricsCollector implements Closeable {
                   })
               .collect(Collectors.toSet());
     } catch (NoSuchEntityException e) {
+      if (managedTable) {
+        throw e;
+      }
       LOG.warn(
-          "[batch: {}] Schema not found in store when listing tables for namespace: {}, will try dispatcher",
-          batchDate,
+          "Schema not found in store when listing tables for namespace: {}, will try dispatcher",
           nsOfTable,
           e);
     }
@@ -634,22 +717,13 @@ public class MetricsCollector implements Closeable {
     // if the tables are not managed, it means there may be external tables that have not been
     // imported, so we need to use tableDispatcher to get the full tables
     if (!managedTable) {
-      try {
-        Set<AssetNode> tablesFromDispatcher =
-            Arrays.stream(tableDispatcher.listTables(nsOfTable))
-                .map(
-                    table ->
-                        new AssetNode(
-                            -1, table.name(), MetadataObject.Type.TABLE, schemaNode, null))
-                .collect(Collectors.toSet());
-        tableNodes.addAll(tablesFromDispatcher);
-      } catch (Exception e) {
-        LOG.warn(
-            "[batch: {}] Failed to list tables from dispatcher for namespace: {}",
-            batchDate,
-            nsOfTable,
-            e);
-      }
+      Set<AssetNode> tablesFromDispatcher =
+          Arrays.stream(tableDispatcher.listTables(nsOfTable))
+              .map(
+                  table ->
+                      new AssetNode(-1, table.name(), MetadataObject.Type.TABLE, schemaNode, null))
+              .collect(Collectors.toSet());
+      tableNodes.addAll(tablesFromDispatcher);
     }
     return tableNodes;
   }
@@ -660,29 +734,20 @@ public class MetricsCollector implements Closeable {
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException {
-    try {
-      return store.list(nsOfFileset, FilesetEntity.class, Entity.EntityType.FILESET).stream()
-          .map(
-              fileset -> {
-                AssetNode assetNode =
-                    new AssetNode(
-                        fileset.id(),
-                        fileset.name(),
-                        MetadataObject.Type.FILESET,
-                        schemaNode,
-                        objectIdToOwners.get(fileset.id()));
-                assetNodeById.put(assetNode.getId(), assetNode);
-                return assetNode;
-              })
-          .collect(Collectors.toSet());
-    } catch (NoSuchEntityException e) {
-      LOG.warn(
-          "[batch: {}] Schema not found in store when listing filesets for namespace: {}",
-          batchDate,
-          nsOfFileset,
-          e);
-      return new HashSet<>();
-    }
+    return store.list(nsOfFileset, FilesetEntity.class, Entity.EntityType.FILESET).stream()
+        .map(
+            fileset -> {
+              AssetNode assetNode =
+                  new AssetNode(
+                      fileset.id(),
+                      fileset.name(),
+                      MetadataObject.Type.FILESET,
+                      schemaNode,
+                      objectIdToOwners.get(fileset.id()));
+              assetNodeById.put(assetNode.getId(), assetNode);
+              return assetNode;
+            })
+        .collect(Collectors.toSet());
   }
 
   private Set<AssetNode> getTopicNodes(
@@ -710,9 +775,11 @@ public class MetricsCollector implements Closeable {
                   })
               .collect(Collectors.toSet());
     } catch (NoSuchEntityException e) {
+      if (managedTopic) {
+        throw e;
+      }
       LOG.warn(
-          "[batch: {}] Schema not found in store when listing topics for namespace: {}, will try dispatcher",
-          batchDate,
+          "Schema not found in store when listing topics for namespace: {}, will try dispatcher",
           nsOfTopic,
           e);
     }
@@ -720,22 +787,13 @@ public class MetricsCollector implements Closeable {
     // if the topics are not managed, it means there may be external topics that have not been
     // imported, so we need to use topicDispatcher to get the full topics
     if (!managedTopic) {
-      try {
-        Set<AssetNode> topicsFromDispatcher =
-            Arrays.stream(topicDispatcher.listTopics(nsOfTopic))
-                .map(
-                    topic ->
-                        new AssetNode(
-                            -1, topic.name(), MetadataObject.Type.TOPIC, schemaNode, null))
-                .collect(Collectors.toSet());
-        topicNodes.addAll(topicsFromDispatcher);
-      } catch (Exception e) {
-        LOG.warn(
-            "[batch: {}] Failed to list topics from dispatcher for namespace: {}",
-            batchDate,
-            nsOfTopic,
-            e);
-      }
+      Set<AssetNode> topicsFromDispatcher =
+          Arrays.stream(topicDispatcher.listTopics(nsOfTopic))
+              .map(
+                  topic ->
+                      new AssetNode(-1, topic.name(), MetadataObject.Type.TOPIC, schemaNode, null))
+              .collect(Collectors.toSet());
+      topicNodes.addAll(topicsFromDispatcher);
     }
     return topicNodes;
   }
@@ -746,28 +804,19 @@ public class MetricsCollector implements Closeable {
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException {
-    try {
-      return store.list(nsOfModel, ModelEntity.class, Entity.EntityType.MODEL).stream()
-          .map(
-              model -> {
-                AssetNode assetNode =
-                    new AssetNode(
-                        model.id(),
-                        model.name(),
-                        MetadataObject.Type.MODEL,
-                        schemaNode,
-                        objectIdToOwners.get(model.id()));
-                assetNodeById.put(assetNode.getId(), assetNode);
-                return assetNode;
-              })
-          .collect(Collectors.toSet());
-    } catch (NoSuchEntityException e) {
-      LOG.warn(
-          "[batch: {}] Schema not found in store when listing models for namespace: {}",
-          batchDate,
-          nsOfModel,
-          e);
-      return new HashSet<>();
-    }
+    return store.list(nsOfModel, ModelEntity.class, Entity.EntityType.MODEL).stream()
+        .map(
+            model -> {
+              AssetNode assetNode =
+                  new AssetNode(
+                      model.id(),
+                      model.name(),
+                      MetadataObject.Type.MODEL,
+                      schemaNode,
+                      objectIdToOwners.get(model.id()));
+              assetNodeById.put(assetNode.getId(), assetNode);
+              return assetNode;
+            })
+        .collect(Collectors.toSet());
   }
 }

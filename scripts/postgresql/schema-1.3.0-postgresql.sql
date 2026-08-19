@@ -1067,6 +1067,47 @@ COMMENT ON COLUMN dashboard_metrics.metric_name IS 'metric name, such as catalog
 COMMENT ON COLUMN dashboard_metrics.metric_value IS 'metric value';
 COMMENT ON COLUMN dashboard_metrics.created_time IS 'metric created time';
 
+CREATE TABLE IF NOT EXISTS dashboard_metric_current (
+    metalake_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    metric_name VARCHAR(64) NOT NULL,
+    metric_value double precision NOT NULL DEFAULT 0.0,
+    updated_time TIMESTAMP NOT NULL,
+    PRIMARY KEY (metalake_id, user_id, metric_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dmc_updated_time ON dashboard_metric_current (updated_time);
+
+COMMENT ON TABLE dashboard_metric_current IS 'current dashboard metrics';
+COMMENT ON COLUMN dashboard_metric_current.metalake_id IS 'metalake id';
+COMMENT ON COLUMN dashboard_metric_current.user_id IS 'user id who owns this metric';
+COMMENT ON COLUMN dashboard_metric_current.metric_name IS 'metric name';
+COMMENT ON COLUMN dashboard_metric_current.metric_value IS 'metric value';
+COMMENT ON COLUMN dashboard_metric_current.updated_time IS 'current snapshot update time';
+
+CREATE TABLE IF NOT EXISTS dashboard_metric_dirty (
+    metalake_id BIGINT NOT NULL,
+    revision BIGINT NOT NULL,
+    first_dirty_at TIMESTAMP NOT NULL,
+    last_event_at TIMESTAMP NOT NULL,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    retry_after TIMESTAMP NULL,
+    last_error VARCHAR(1024) NULL,
+    PRIMARY KEY (metalake_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dmd_due
+    ON dashboard_metric_dirty (retry_after, last_event_at, first_dirty_at);
+
+COMMENT ON TABLE dashboard_metric_dirty IS 'dirty dashboard metric metalakes';
+COMMENT ON COLUMN dashboard_metric_dirty.metalake_id IS 'dirty metalake id';
+COMMENT ON COLUMN dashboard_metric_dirty.revision IS 'monotonic dirty revision';
+COMMENT ON COLUMN dashboard_metric_dirty.first_dirty_at IS 'first event time in the current burst';
+COMMENT ON COLUMN dashboard_metric_dirty.last_event_at IS 'most recent event time';
+COMMENT ON COLUMN dashboard_metric_dirty.retry_count IS 'consecutive recomputation failures';
+COMMENT ON COLUMN dashboard_metric_dirty.retry_after IS 'earliest retry time';
+COMMENT ON COLUMN dashboard_metric_dirty.last_error IS 'most recent truncated error';
+
 CREATE TABLE IF NOT EXISTS license_nodes (
     node_id        VARCHAR(64)  NOT NULL,
     registered_at  BIGINT       NOT NULL,

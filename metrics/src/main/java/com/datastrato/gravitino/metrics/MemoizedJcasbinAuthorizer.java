@@ -5,16 +5,18 @@
 
 package com.datastrato.gravitino.metrics;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.io.IOUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
@@ -53,20 +55,32 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
 
   private Map<String, MetalakeSnapshot> metalakeSnapshots;
 
-  /**
-   * loadedRoles is used to cache roles that have loaded permissions. When the permissions of a role
-   * are updated, they should be removed from it.
-   */
-  private final Set<Long> loadedRoles = ConcurrentHashMap.newKeySet();
+  /** Roles whose policies have been loaded from the immutable metalake snapshot. */
+  private final Set<Long> loadedRoles = new HashSet<>();
+
+  /** User-to-role relations that have been loaded into both enforcers. */
+  private final Map<Long, Set<Long>> loadedUserRoles = new HashMap<>();
 
   @Override
   public void initialize() {
-    this.allowEnforcer =
-        new SyncedEnforcer(getModel("/jcasbin_model.conf"), new GravitinoAdapter());
+    initialize(
+        new SyncedEnforcer(getModel("/jcasbin_model.conf"), new GravitinoAdapter()),
+        new SyncedEnforcer(getModel("/jcasbin_model.conf"), new GravitinoAdapter()),
+        MetricsCollector.getInstance().getMetalakeSnapshots());
+  }
+
+  @VisibleForTesting
+  void initialize(
+      Enforcer allowEnforcer,
+      Enforcer denyEnforcer,
+      Map<String, MetalakeSnapshot> metalakeSnapshots) {
+    this.allowEnforcer = allowEnforcer;
     this.allowInternalAuthorizer = new InternalAuthorizer(allowEnforcer);
-    this.denyEnforcer = new SyncedEnforcer(getModel("/jcasbin_model.conf"), new GravitinoAdapter());
+    this.denyEnforcer = denyEnforcer;
     this.denyInternalAuthorizer = new InternalAuthorizer(denyEnforcer);
-    this.metalakeSnapshots = MetricsCollector.getInstance().getMetalakeSnapshots();
+    this.metalakeSnapshots = metalakeSnapshots;
+    loadedRoles.clear();
+    loadedUserRoles.clear();
   }
 
   private Model getModel(String modelFilePath) {
@@ -254,19 +268,23 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
     }
   }
 
-  private void loadRolePrivilege(String metalake, Long userId) {
+  private synchronized void loadRolePrivilege(String metalake, Long userId) {
     Set<Long> roleIds = metalakeSnapshots.get(metalake).getUserIdToRoleIds().get(userId);
     if (roleIds == null) {
       return;
     }
+    Set<Long> loadedRoleIds = loadedUserRoles.computeIfAbsent(userId, ignored -> new HashSet<>());
 
     roleIds.forEach(
         roleId -> {
-          allowEnforcer.deleteRole(String.valueOf(roleId));
-          denyEnforcer.deleteRole(String.valueOf(roleId));
           if (!loadedRoles.contains(roleId)) {
             loadPolicyByRoleId(metalake, roleId);
             loadedRoles.add(roleId);
+          }
+          if (!loadedRoleIds.contains(roleId)) {
+            allowEnforcer.addRoleForUser(String.valueOf(userId), String.valueOf(roleId));
+            denyEnforcer.addRoleForUser(String.valueOf(userId), String.valueOf(roleId));
+            loadedRoleIds.add(roleId);
           }
         });
   }

@@ -6,15 +6,21 @@ package com.datastrato.gravitino.metrics.storage.relational.service;
 
 import com.datastrato.gravitino.metrics.MetricsCollector;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
+import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.datastrato.gravitino.metrics.storage.relational.OwnerNameRelPO;
 import com.datastrato.gravitino.metrics.storage.relational.TagNameMetadataObjectRelPO;
 import com.datastrato.gravitino.metrics.storage.relational.mapper.MetricDataMapper;
 import com.datastrato.gravitino.metrics.storage.relational.utils.DatastratoPOConverters;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
@@ -30,11 +36,7 @@ import org.apache.gravitino.storage.relational.utils.SessionUtils;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 
 public class MetricDataService {
-
-  public static MetricDataService getInstance() {
-    return INSTANCE;
-  }
-
+  private static final int INSERT_BATCH_SIZE = 1_000;
   private static final MetricDataService INSTANCE = new MetricDataService();
 
   private boolean enableAuthorization;
@@ -43,6 +45,10 @@ public class MetricDataService {
   private MetricsCollector metricsCollector;
 
   private MetricDataService() {}
+
+  public static MetricDataService getInstance() {
+    return INSTANCE;
+  }
 
   public void initialize(boolean enableAuthorization) {
     this.enableAuthorization = enableAuthorization;
@@ -130,13 +136,17 @@ public class MetricDataService {
     List<MetricPO> metricPOs =
         SessionUtils.getWithoutCommit(
             MetricDataMapper.class,
-            mapper ->
-                mapper.getMetricPOsByUserIdMetricNamesAndTimestamp(
-                    metalakeId,
-                    finalUserId,
-                    metricNames,
-                    new Timestamp(startTimestamp),
-                    new Timestamp(endTimestamp)));
+            mapper -> {
+              Timestamp start = new Timestamp(startTimestamp);
+              Timestamp end = new Timestamp(endTimestamp);
+              List<MetricPO> history =
+                  mapper.getMetricPOsByUserIdMetricNamesAndTimestamp(
+                      metalakeId, finalUserId, metricNames, start, end);
+              List<MetricPO> current =
+                  mapper.getCurrentMetricPOsByUserIdMetricNamesAndTimestamp(
+                      metalakeId, finalUserId, metricNames, start, end);
+              return mergeMetrics(history, current);
+            });
     return DatastratoPOConverters.fromMetricPOs(metricPOs);
   }
 
@@ -153,6 +163,121 @@ public class MetricDataService {
         MetricDataMapper.class, mapper -> mapper.insertMetricsData(metalakeId, userId, metrics));
   }
 
+  /**
+   * Atomically replaces every current metric for one metalake.
+   *
+   * @param metalakeId the metalake ID
+   * @param metricsByUser metrics grouped by persisted user ID
+   * @param updatedTime the shared current snapshot timestamp
+   */
+  public void replaceCurrentMetrics(
+      long metalakeId, Map<Long, List<MetricPO>> metricsByUser, long updatedTime) {
+    List<MetricPO> metrics = flattenMetrics(metalakeId, metricsByUser, updatedTime);
+    SessionUtils.doWithCommit(
+        MetricDataMapper.class,
+        mapper -> {
+          mapper.deleteCurrentMetrics(metalakeId);
+          if (!metrics.isEmpty()) {
+            insertMetricsInBatches(mapper, metrics, false);
+          }
+        });
+  }
+
+  /**
+   * Atomically replaces current metrics and appends the corresponding history snapshot.
+   *
+   * @param metalakeId the metalake ID
+   * @param metricsByUser metrics grouped by persisted user ID
+   * @param runTime the shared timestamp for both current and history rows
+   */
+  public void replaceCurrentAndAppendHistory(
+      long metalakeId, Map<Long, List<MetricPO>> metricsByUser, long runTime) {
+    List<MetricPO> metrics = flattenMetrics(metalakeId, metricsByUser, runTime);
+    SessionUtils.doWithCommit(
+        MetricDataMapper.class,
+        mapper -> {
+          mapper.deleteCurrentMetrics(metalakeId);
+          if (!metrics.isEmpty()) {
+            insertMetricsInBatches(mapper, metrics, false);
+            insertMetricsInBatches(mapper, metrics, true);
+          }
+        });
+  }
+
+  /**
+   * Marks a metalake dirty and resets any pending retry state.
+   *
+   * @param metalakeId the metalake ID
+   * @param eventTime the event timestamp in milliseconds
+   */
+  public void markMetalakeDirty(long metalakeId, long eventTime) {
+    SessionUtils.doWithCommit(
+        MetricDataMapper.class,
+        mapper -> mapper.markMetalakeDirty(metalakeId, new Timestamp(eventTime)));
+  }
+
+  /**
+   * Returns dirty metalakes that are ready for recomputation.
+   *
+   * @param quietCutoff events at or before this time have passed the quiet period
+   * @param maxDebounceCutoff bursts starting at or before this time reached maximum debounce
+   * @param now the current timestamp in milliseconds
+   * @return due dirty markers ordered by their first event time
+   */
+  public List<MetricDirtyPO> listDueDirtyMetalakes(
+      long quietCutoff, long maxDebounceCutoff, long now) {
+    return SessionUtils.getWithoutCommit(
+        MetricDataMapper.class,
+        mapper ->
+            mapper.listDueDirtyMetalakes(
+                new Timestamp(quietCutoff), new Timestamp(maxDebounceCutoff), new Timestamp(now)));
+  }
+
+  /**
+   * Returns the latest dirty state for a metalake.
+   *
+   * @param metalakeId the metalake ID
+   * @return the dirty marker, or {@code null} when the metalake is clean
+   */
+  @Nullable
+  public MetricDirtyPO getDirtyMetalake(long metalakeId) {
+    return SessionUtils.getWithoutCommit(
+        MetricDataMapper.class, mapper -> mapper.getDirtyMetalake(metalakeId));
+  }
+
+  /**
+   * Deletes a dirty marker only when no newer event changed its revision.
+   *
+   * @param metalakeId the metalake ID
+   * @param revision the expected dirty revision
+   * @return whether the expected marker was deleted
+   */
+  public boolean deleteDirtyIfRevision(long metalakeId, long revision) {
+    return SessionUtils.doWithCommitAndFetchResult(
+            MetricDataMapper.class, mapper -> mapper.deleteDirtyIfRevision(metalakeId, revision))
+        > 0;
+  }
+
+  /**
+   * Records retry state only when no newer event changed the dirty revision.
+   *
+   * @param metalakeId the metalake ID
+   * @param revision the expected dirty revision
+   * @param retryCount the consecutive failure count
+   * @param retryAfter the earliest retry time in milliseconds
+   * @param lastError the truncated failure message
+   * @return whether retry state was stored for the expected revision
+   */
+  public boolean markRetryIfRevision(
+      long metalakeId, long revision, int retryCount, long retryAfter, String lastError) {
+    return SessionUtils.doWithCommitAndFetchResult(
+            MetricDataMapper.class,
+            mapper ->
+                mapper.markRetryIfRevision(
+                    metalakeId, revision, retryCount, new Timestamp(retryAfter), lastError))
+        > 0;
+  }
+
   public void cleanMetricsByTimestamp(long oldestTimestamp) {
     SessionUtils.doWithCommit(
         MetricDataMapper.class,
@@ -160,7 +285,13 @@ public class MetricDataService {
   }
 
   public void cleanInvalidMetrics() {
-    SessionUtils.doWithCommit(MetricDataMapper.class, MetricDataMapper::cleanInvalidMetrics);
+    SessionUtils.doWithCommit(
+        MetricDataMapper.class,
+        mapper -> {
+          mapper.cleanInvalidMetrics();
+          mapper.cleanInvalidCurrentMetrics();
+          mapper.cleanInvalidDirtyMetrics();
+        });
   }
 
   public List<UserRoleRelPO> listUserRoleRelsByUserIds(Set<Long> userIds) {
@@ -189,5 +320,54 @@ public class MetricDataService {
     return SessionUtils.getWithoutCommit(
         MetricDataMapper.class,
         mapper -> mapper.listTagNameMetadataObjectRelsByMetalakeId(metalakeId));
+  }
+
+  private static List<MetricPO> mergeMetrics(
+      List<MetricPO> historyMetrics, List<MetricPO> currentMetrics) {
+    Map<String, MetricPO> metricByNameAndTimestamp = new LinkedHashMap<>();
+    historyMetrics.forEach(metric -> metricByNameAndTimestamp.put(metricKey(metric), metric));
+    // Current is added last so it wins when a daily history point has the same timestamp.
+    currentMetrics.forEach(metric -> metricByNameAndTimestamp.put(metricKey(metric), metric));
+
+    List<MetricPO> result = new ArrayList<>(metricByNameAndTimestamp.values());
+    result.sort(
+        Comparator.comparing(MetricPO::getMetricName).thenComparing(MetricPO::getCreatedTime));
+    return result;
+  }
+
+  private static String metricKey(MetricPO metric) {
+    return metric.getMetricName() + '\u0000' + metric.getCreatedTime().getTime();
+  }
+
+  private static List<MetricPO> flattenMetrics(
+      long metalakeId, Map<Long, List<MetricPO>> metricsByUser, long timestamp) {
+    Timestamp sharedTimestamp = new Timestamp(timestamp);
+    List<MetricPO> result = new ArrayList<>();
+    metricsByUser.forEach(
+        (userId, metrics) ->
+            metrics.forEach(
+                metric ->
+                    result.add(
+                        MetricPO.builder()
+                            .withMetalakeId(metalakeId)
+                            .withUserId(userId)
+                            .withMetricName(metric.getMetricName())
+                            .withMetricValue(metric.getMetricValue())
+                            .withCreatedTime(sharedTimestamp)
+                            .build())));
+    return result;
+  }
+
+  private static void insertMetricsInBatches(
+      MetricDataMapper mapper, List<MetricPO> metrics, boolean history) {
+    for (int start = 0; start < metrics.size(); start += INSERT_BATCH_SIZE) {
+      List<MetricPO> batch =
+          metrics.subList(start, Math.min(start + INSERT_BATCH_SIZE, metrics.size()));
+      if (history) {
+        mapper.insertMetricsDataBatch(batch);
+      } else {
+        mapper.insertCurrentMetrics(batch);
+      }
+    }
   }
 }

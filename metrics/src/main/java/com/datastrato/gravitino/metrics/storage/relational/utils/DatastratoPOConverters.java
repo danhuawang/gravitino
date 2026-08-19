@@ -7,6 +7,7 @@ package com.datastrato.gravitino.metrics.storage.relational.utils;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import java.util.List;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 public class DatastratoPOConverters {
@@ -18,7 +19,7 @@ public class DatastratoPOConverters {
     }
 
     return metricPOs.stream()
-        .collect(Collectors.groupingBy(MetricPO::getMetricName))
+        .collect(Collectors.groupingBy(MetricPO::getMetricName, TreeMap::new, Collectors.toList()))
         .entrySet()
         .stream()
         .map(

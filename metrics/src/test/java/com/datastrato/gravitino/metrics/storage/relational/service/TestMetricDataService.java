@@ -7,20 +7,27 @@ package com.datastrato.gravitino.metrics.storage.relational.service;
 import static com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService.Metric.ASSET_COUNT;
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_MAX_CONNECTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.metrics.AssetNode;
 import com.datastrato.gravitino.metrics.MetalakeSnapshot;
 import com.datastrato.gravitino.metrics.MetricsCollector;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
+import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.google.common.collect.Lists;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +39,7 @@ import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -87,6 +95,16 @@ class TestMetricDataService {
     service.setMetricsCollector(metricsCollector);
   }
 
+  @BeforeEach
+  void cleanDashboardMetricTables() throws SQLException {
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+        Statement statement = conn.createStatement()) {
+      statement.executeUpdate("DELETE FROM dashboard_metric_dirty");
+      statement.executeUpdate("DELETE FROM dashboard_metric_current");
+      statement.executeUpdate("DELETE FROM dashboard_metrics");
+    }
+  }
+
   @Test
   void testInsertAndQueryMetrics() {
     String user = "u1";
@@ -131,6 +149,277 @@ class TestMetricDataService {
   }
 
   @Test
+  void testDirtyMarkerRevisionDebounceAndRetry() {
+    long firstEvent = System.currentTimeMillis() - 2_000;
+    service.markMetalakeDirty(1L, firstEvent);
+
+    MetricDirtyPO firstDirty = service.getDirtyMetalake(1L);
+    assertEquals(1L, firstDirty.getRevision());
+    assertEquals(firstEvent, firstDirty.getFirstDirtyAt().getTime());
+    assertEquals(firstEvent, firstDirty.getLastEventAt().getTime());
+    assertEquals(0, firstDirty.getRetryCount());
+    assertNull(firstDirty.getRetryAfter());
+
+    assertTrue(
+        service.markRetryIfRevision(
+            1L, firstDirty.getRevision(), 1, System.currentTimeMillis() - 1, "failed"));
+    assertEquals(
+        1,
+        service
+            .listDueDirtyMetalakes(
+                System.currentTimeMillis(), System.currentTimeMillis(), System.currentTimeMillis())
+            .stream()
+            .filter(dirty -> dirty.getMetalakeId() == 1L)
+            .count());
+
+    long secondEvent = System.currentTimeMillis();
+    service.markMetalakeDirty(1L, secondEvent);
+    MetricDirtyPO secondDirty = service.getDirtyMetalake(1L);
+    assertEquals(2L, secondDirty.getRevision());
+    assertEquals(firstEvent, secondDirty.getFirstDirtyAt().getTime());
+    assertEquals(secondEvent, secondDirty.getLastEventAt().getTime());
+    assertEquals(0, secondDirty.getRetryCount());
+    assertNull(secondDirty.getRetryAfter());
+    assertNull(secondDirty.getLastError());
+
+    service.markMetalakeDirty(1L, firstEvent);
+    MetricDirtyPO outOfOrderDirty = service.getDirtyMetalake(1L);
+    assertEquals(3L, outOfOrderDirty.getRevision());
+    assertEquals(secondEvent, outOfOrderDirty.getLastEventAt().getTime());
+
+    assertFalse(service.deleteDirtyIfRevision(1L, firstDirty.getRevision()));
+    assertFalse(service.deleteDirtyIfRevision(1L, secondDirty.getRevision()));
+    assertTrue(service.deleteDirtyIfRevision(1L, outOfOrderDirty.getRevision()));
+    assertNull(service.getDirtyMetalake(1L));
+  }
+
+  @Test
+  void testOutOfOrderEventsPreserveEarliestAndLatestTimes() {
+    long latestEvent = System.currentTimeMillis();
+    long earliestEvent = latestEvent - 5_000L;
+    service.markMetalakeDirty(2L, latestEvent);
+    service.markMetalakeDirty(2L, earliestEvent);
+
+    MetricDirtyPO dirty = service.getDirtyMetalake(2L);
+    assertEquals(2L, dirty.getRevision());
+    assertEquals(earliestEvent, dirty.getFirstDirtyAt().getTime());
+    assertEquals(latestEvent, dirty.getLastEventAt().getTime());
+  }
+
+  @Test
+  void testDueQueryHonorsQuietPeriodMaximumDebounceAndRetryTime() {
+    long now = System.currentTimeMillis();
+    service.markMetalakeDirty(1L, now - 6_000L);
+    service.markMetalakeDirty(1L, now);
+    service.markMetalakeDirty(2L, now);
+
+    List<MetricDirtyPO> due = service.listDueDirtyMetalakes(now - 1_000L, now - 5_000L, now);
+    assertEquals(1, due.size());
+    assertEquals(1L, due.get(0).getMetalakeId());
+
+    MetricDirtyPO secondDirty = service.getDirtyMetalake(2L);
+    assertTrue(
+        service.markRetryIfRevision(2L, secondDirty.getRevision(), 1, now + 2_000L, "retry"));
+    assertTrue(
+        service.listDueDirtyMetalakes(now + 1_000L, now + 1_000L, now + 1_000L).stream()
+            .noneMatch(dirty -> dirty.getMetalakeId() == 2L));
+    assertTrue(
+        service.listDueDirtyMetalakes(now + 2_000L, now + 2_000L, now + 2_000L).stream()
+            .anyMatch(dirty -> dirty.getMetalakeId() == 2L));
+  }
+
+  @Test
+  void testReplaceCurrentMetricsRemovesStaleRows() {
+    long firstTimestamp = System.currentTimeMillis() + 10_000;
+    MetricPO assetCount =
+        MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(1.0).build();
+    MetricPO catalogCount =
+        MetricPO.builder().withMetricName("catalog_count").withMetricValue(2.0).build();
+    service.replaceCurrentMetrics(
+        2L,
+        Collections.singletonMap(
+            MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ,
+            Lists.newArrayList(assetCount, catalogCount)),
+        firstTimestamp);
+
+    MetricDTO[] firstResult =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName2, "u1", new String[0], firstTimestamp, firstTimestamp);
+    assertEquals(2, firstResult.length);
+
+    long secondTimestamp = firstTimestamp + 1;
+    MetricPO updatedAssetCount =
+        MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(3.0).build();
+    service.replaceCurrentMetrics(
+        2L,
+        Collections.singletonMap(
+            MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, Lists.newArrayList(updatedAssetCount)),
+        secondTimestamp);
+
+    MetricDTO[] staleResult =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName2, "u1", new String[] {"catalog_count"}, firstTimestamp, secondTimestamp);
+    assertEquals(0, staleResult.length);
+    MetricDTO[] currentResult =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName2,
+            "u1",
+            new String[] {ASSET_COUNT.getName()},
+            secondTimestamp,
+            secondTimestamp);
+    assertEquals(1, currentResult.length);
+    assertEquals(3.0, currentResult[0].values()[0]);
+    assertEquals(secondTimestamp, currentResult[0].timestamps()[0]);
+  }
+
+  @Test
+  void testReplaceCurrentAndAppendHistoryUsesOneTimestamp() throws SQLException {
+    long runTimestamp = System.currentTimeMillis() + 20_000;
+    MetricPO metric = MetricPO.builder().withMetricName("table_count").withMetricValue(4.0).build();
+    service.replaceCurrentAndAppendHistory(
+        1L,
+        Collections.singletonMap(
+            MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, Lists.newArrayList(metric)),
+        runTimestamp);
+
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+        Statement statement = conn.createStatement()) {
+      ResultSet current =
+          statement.executeQuery(
+              "SELECT updated_time FROM dashboard_metric_current"
+                  + " WHERE metalake_id = 1 AND metric_name = 'table_count'");
+      assertTrue(current.next());
+      assertEquals(runTimestamp, current.getTimestamp(1).getTime());
+
+      ResultSet history =
+          statement.executeQuery(
+              "SELECT created_time FROM dashboard_metrics"
+                  + " WHERE metalake_id = 1 AND metric_name = 'table_count'"
+                  + " AND created_time = TIMESTAMP '"
+                  + new Timestamp(runTimestamp)
+                  + "'");
+      assertTrue(history.next());
+      assertEquals(runTimestamp, history.getTimestamp(1).getTime());
+    }
+
+    MetricDTO[] merged =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName1, "u1", new String[] {"table_count"}, runTimestamp, runTimestamp);
+    assertEquals(1, merged.length);
+    assertEquals(1, merged[0].values().length, "current should win duplicate timestamp");
+  }
+
+  @Test
+  void testCurrentWinsHistoryAtTheSameTimestamp() {
+    long timestamp = System.currentTimeMillis() + 25_000;
+    MetricPO history =
+        MetricPO.builder()
+            .withMetricName(ASSET_COUNT.getName())
+            .withMetricValue(1.0)
+            .withCreatedTime(new Timestamp(timestamp))
+            .build();
+    service.insertMetrics(
+        1L, MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, Lists.newArrayList(history));
+
+    MetricPO current =
+        MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(2.0).build();
+    service.replaceCurrentMetrics(
+        1L,
+        Collections.singletonMap(
+            MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, Lists.newArrayList(current)),
+        timestamp);
+
+    MetricDTO[] result =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName1, "u1", new String[] {ASSET_COUNT.getName()}, timestamp, timestamp);
+    assertEquals(1, result.length);
+    assertEquals(1, result[0].values().length);
+    assertEquals(2.0, result[0].values()[0]);
+  }
+
+  @Test
+  void testHistoryAndCurrentAreSortedByTimestamp() {
+    long firstTimestamp = System.currentTimeMillis() + 40_000;
+    long secondTimestamp = firstTimestamp + 1;
+    long currentTimestamp = secondTimestamp + 1;
+    MetricPO second =
+        MetricPO.builder()
+            .withMetricName(ASSET_COUNT.getName())
+            .withMetricValue(2.0)
+            .withCreatedTime(new Timestamp(secondTimestamp))
+            .build();
+    MetricPO first =
+        MetricPO.builder()
+            .withMetricName(ASSET_COUNT.getName())
+            .withMetricValue(1.0)
+            .withCreatedTime(new Timestamp(firstTimestamp))
+            .build();
+    service.insertMetrics(
+        1L, MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, Lists.newArrayList(second, first));
+    MetricPO current =
+        MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(3.0).build();
+    service.replaceCurrentMetrics(
+        1L,
+        Collections.singletonMap(
+            MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, Lists.newArrayList(current)),
+        currentTimestamp);
+
+    MetricDTO[] result =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName1,
+            "u1",
+            new String[] {ASSET_COUNT.getName()},
+            firstTimestamp,
+            currentTimestamp);
+    assertEquals(1, result.length);
+    Assertions.assertArrayEquals(
+        new long[] {firstTimestamp, secondTimestamp, currentTimestamp}, result[0].timestamps());
+    Assertions.assertArrayEquals(new double[] {1.0, 2.0, 3.0}, result[0].values());
+  }
+
+  @Test
+  void testCurrentReplacementRollsBackOnInsertFailure() {
+    long originalTimestamp = System.currentTimeMillis() + 30_000;
+    MetricPO original =
+        MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(5.0).build();
+    service.replaceCurrentMetrics(
+        1L,
+        Collections.singletonMap(
+            MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, Lists.newArrayList(original)),
+        originalTimestamp);
+
+    MetricPO duplicate =
+        MetricPO.builder().withMetricName(ASSET_COUNT.getName()).withMetricValue(6.0).build();
+    assertThrows(
+        RuntimeException.class,
+        () ->
+            service.replaceCurrentAndAppendHistory(
+                1L,
+                Collections.singletonMap(
+                    MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ,
+                    Lists.newArrayList(duplicate, duplicate)),
+                originalTimestamp + 1));
+
+    MetricDTO[] result =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName1,
+            "u1",
+            new String[] {ASSET_COUNT.getName()},
+            originalTimestamp,
+            originalTimestamp);
+    assertEquals(1, result.length);
+    assertEquals(5.0, result[0].values()[0]);
+    MetricDTO[] failedRun =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName1,
+            "u1",
+            new String[] {ASSET_COUNT.getName()},
+            originalTimestamp + 1,
+            originalTimestamp + 1);
+    assertEquals(0, failedRun.length);
+  }
+
+  @Test
   void testCleanInvalidMetrics() throws SQLException {
     String user = "u1";
     MetricPO assetCount =
@@ -138,6 +427,11 @@ class TestMetricDataService {
     List<MetricPO> metrics = Lists.newArrayList(assetCount);
 
     service.insertMetrics(3L, MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, metrics);
+    service.replaceCurrentMetrics(
+        3L,
+        Collections.singletonMap(MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ, metrics),
+        System.currentTimeMillis());
+    service.markMetalakeDirty(3L, System.currentTimeMillis());
     MetricDTO[] result =
         service.getMetricsByNameAndTimestamp(
             metalakeName3, user, new String[0], 0, System.currentTimeMillis() + 2_000);
@@ -162,6 +456,7 @@ class TestMetricDataService {
             metalakeName3, user, new String[0], 0, System.currentTimeMillis() + 2_000);
     Assertions.assertNotNull(cleanedResult);
     Assertions.assertEquals(0, cleanedResult.length, "Metrics should be cleaned up");
+    assertNull(service.getDirtyMetalake(3L));
   }
 
   private static void initTables() throws Exception {

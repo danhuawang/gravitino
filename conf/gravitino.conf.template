@@ -153,9 +153,10 @@ gravitino.datastrato.search.storage.impl = memory
 # OpenSearch password
 #gravitino.datastrato.search.opensearch.password = ----
 
-# Search listener configuration
-gravitino.eventListener.names = search
+# Search and dashboard metrics listener configuration
+gravitino.eventListener.names = search,dashboard-metrics
 gravitino.eventListener.search.class = com.datastrato.gravitino.search.listener.DataDiscoveryListener
+gravitino.eventListener.dashboard-metrics.class = com.datastrato.gravitino.metrics.listener.DashboardMetricsEventListener
 
 # ── Gravitino Enterprise License ─────────────────────────────────────────────
 # Required: the GRAV-... license key string issued by Datastrato.
