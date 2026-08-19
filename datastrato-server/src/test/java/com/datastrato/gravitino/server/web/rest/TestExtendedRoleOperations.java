@@ -9,6 +9,7 @@ import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
@@ -27,21 +28,29 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
+import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
+import org.apache.gravitino.dto.responses.GroupListResponse;
 import org.apache.gravitino.dto.responses.RoleResponse;
+import org.apache.gravitino.dto.responses.UserListResponse;
 import org.apache.gravitino.exceptions.NoSuchMetadataObjectException;
+import org.apache.gravitino.exceptions.NoSuchRoleException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
+import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -49,6 +58,7 @@ import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -82,6 +92,11 @@ public class TestExtendedRoleOperations extends JerseyTest {
         true);
   }
 
+  @BeforeEach
+  public void resetMocks() {
+    reset(accessControlDispatcher, tableDispatcher);
+  }
+
   protected Application configure() {
     try {
       forceSet(
@@ -101,6 +116,75 @@ public class TestExtendedRoleOperations extends JerseyTest {
         });
 
     return resourceConfig;
+  }
+
+  @Test
+  public void testListUsersByRole() {
+    when(accessControlDispatcher.listUsersByRole(any(), any()))
+        .thenReturn(new User[] {buildUser("user1"), buildUser("user2")});
+
+    Response resp =
+        target("/web/security/metalakes/testMetalake/roles/testRole/users")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    UserListResponse userListResponse = resp.readEntity(UserListResponse.class);
+    Assertions.assertEquals(0, userListResponse.getCode());
+    Assertions.assertEquals(2, userListResponse.getUsers().length);
+    Assertions.assertEquals("user1", userListResponse.getUsers()[0].name());
+    Assertions.assertEquals("user2", userListResponse.getUsers()[1].name());
+
+    when(accessControlDispatcher.listUsersByRole(any(), any()))
+        .thenThrow(new NoSuchRoleException("Role testRole does not exist"));
+    Response errorResp =
+        target("/web/security/metalakes/testMetalake/roles/testRole/users")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), errorResp.getStatus());
+    ErrorResponse errorResponse = errorResp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.NOT_FOUND_CODE, errorResponse.getCode());
+    Assertions.assertEquals(NoSuchRoleException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testListGroupsByRole() {
+    when(accessControlDispatcher.listGroupsByRole(any(), any()))
+        .thenReturn(new Group[] {buildGroup("group1"), buildGroup("group2")});
+
+    Response resp =
+        target("/web/security/metalakes/testMetalake/roles/testRole/groups")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    GroupListResponse groupListResponse = resp.readEntity(GroupListResponse.class);
+    Assertions.assertEquals(0, groupListResponse.getCode());
+    Assertions.assertEquals(2, groupListResponse.getGroups().length);
+    Assertions.assertEquals("group1", groupListResponse.getGroups()[0].name());
+    Assertions.assertEquals("group2", groupListResponse.getGroups()[1].name());
+
+    when(accessControlDispatcher.listGroupsByRole(any(), any()))
+        .thenThrow(new RuntimeException("Test exception"));
+    Response errorResp =
+        target("/web/security/metalakes/testMetalake/roles/testRole/groups")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(
+        Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), errorResp.getStatus());
+    ErrorResponse errorResponse = errorResp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.INTERNAL_ERROR_CODE, errorResponse.getCode());
+    Assertions.assertEquals(RuntimeException.class.getSimpleName(), errorResponse.getType());
   }
 
   @Test
@@ -182,6 +266,28 @@ public class TestExtendedRoleOperations extends JerseyTest {
     ErrorResponse errorResponse2 = resp2.readEntity(ErrorResponse.class);
     Assertions.assertEquals(ErrorConstants.INTERNAL_ERROR_CODE, errorResponse2.getCode());
     Assertions.assertEquals(RuntimeException.class.getSimpleName(), errorResponse2.getType());
+  }
+
+  private User buildUser(String user) {
+    return UserEntity.builder()
+        .withId(1L)
+        .withName(user)
+        .withNamespace(Namespace.of("testMetalake", "system", "user"))
+        .withRoleNames(Collections.emptyList())
+        .withAuditInfo(
+            AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+        .build();
+  }
+
+  private Group buildGroup(String group) {
+    return GroupEntity.builder()
+        .withId(1L)
+        .withName(group)
+        .withNamespace(Namespace.of("testMetalake", "system", "group"))
+        .withRoleNames(Collections.emptyList())
+        .withAuditInfo(
+            AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+        .build();
   }
 
   private Role buildRole(String role) {

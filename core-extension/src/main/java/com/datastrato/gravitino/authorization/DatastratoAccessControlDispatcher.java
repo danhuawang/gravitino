@@ -17,6 +17,7 @@ import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.Group;
@@ -41,7 +42,9 @@ import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.lock.LockType;
 import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.AuditInfo;
+import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.storage.relational.service.DatastratoRoleMetaService;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
@@ -265,6 +268,66 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   @Override
   public String[] listRoleNames(String metalake) throws NoSuchMetalakeException {
     return accessControlDispatcher.listRoleNames(metalake);
+  }
+
+  /**
+   * Lists users that are granted the role under a metalake.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The users that are granted the role.
+   */
+  public User[] listUsersByRole(String metalake, String role) {
+    accessControlDispatcher.getRole(metalake, role);
+    try {
+      return entityStore
+          .relationOperations()
+          .listEntitiesByRelation(
+              SupportsRelationOperations.Type.ROLE_USER_REL,
+              AuthorizationUtils.ofRole(metalake, role),
+              Entity.EntityType.ROLE,
+              false /* allFields */)
+          .stream()
+          .map(entity -> (UserEntity) entity)
+          .toArray(User[]::new);
+    } catch (IOException ioe) {
+      LOG.error(
+          "Listing users by role {} under metalake {} failed due to storage issues",
+          role,
+          metalake,
+          ioe);
+      throw new RuntimeException(ioe);
+    }
+  }
+
+  /**
+   * Lists groups that are granted the role under a metalake.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The groups that are granted the role.
+   */
+  public Group[] listGroupsByRole(String metalake, String role) {
+    accessControlDispatcher.getRole(metalake, role);
+    try {
+      return entityStore
+          .relationOperations()
+          .listEntitiesByRelation(
+              SupportsRelationOperations.Type.ROLE_GROUP_REL,
+              AuthorizationUtils.ofRole(metalake, role),
+              Entity.EntityType.ROLE,
+              false /* allFields */)
+          .stream()
+          .map(entity -> (GroupEntity) entity)
+          .toArray(Group[]::new);
+    } catch (IOException ioe) {
+      LOG.error(
+          "Listing groups by role {} under metalake {} failed due to storage issues",
+          role,
+          metalake,
+          ioe);
+      throw new RuntimeException(ioe);
+    }
   }
 
   /**

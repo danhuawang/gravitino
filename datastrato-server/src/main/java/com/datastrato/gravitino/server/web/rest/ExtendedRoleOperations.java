@@ -11,6 +11,7 @@ import com.google.common.collect.Lists;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.GET;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -23,7 +24,9 @@ import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
+import org.apache.gravitino.dto.responses.GroupListResponse;
 import org.apache.gravitino.dto.responses.RoleResponse;
+import org.apache.gravitino.dto.responses.UserListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.web.Utils;
@@ -41,6 +44,42 @@ public class ExtendedRoleOperations {
   @Context private HttpServletRequest httpRequest;
 
   public ExtendedRoleOperations() {}
+
+  @GET
+  @Path("users")
+  @Produces("application/vnd.gravitino.v1+json")
+  public Response listUsersByRole(
+      @PathParam("metalake") String metalake, @PathParam("role") String role) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () ->
+              Utils.ok(
+                  new UserListResponse(
+                      DTOConverters.toDTOs(
+                          accessControlDispatcher().listUsersByRole(metalake, role)))));
+    } catch (Exception e) {
+      return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
+    }
+  }
+
+  @GET
+  @Path("groups")
+  @Produces("application/vnd.gravitino.v1+json")
+  public Response listGroupsByRole(
+      @PathParam("metalake") String metalake, @PathParam("role") String role) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () ->
+              Utils.ok(
+                  new GroupListResponse(
+                      DTOConverters.toDTOs(
+                          accessControlDispatcher().listGroupsByRole(metalake, role)))));
+    } catch (Exception e) {
+      return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
+    }
+  }
 
   @PUT
   @Produces("application/vnd.gravitino.v1+json")
@@ -88,5 +127,10 @@ public class ExtendedRoleOperations {
       return ExceptionHandlers.handleRolePermissionOperationException(
           OperationType.UPDATE, role, metalake, e);
     }
+  }
+
+  private DatastratoAccessControlDispatcher accessControlDispatcher() {
+    return (DatastratoAccessControlDispatcher)
+        ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
   }
 }
