@@ -33,8 +33,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 public class TestTransitKmsClient {
 
   private static final String PROVIDER_NAME = "Transit test provider";
-  private static final String API = "test-transit";
-  private static final String SOURCE = "primary";
+  private static final String PROVIDER = "primary";
   private static final String KEY_ID = "customer key";
   private static final String VALID_RESPONSE =
       "{\"data\":{\"supports_encryption\":true,\"supports_decryption\":true}}";
@@ -168,10 +167,7 @@ public class TestTransitKmsClient {
     assertThrows(IllegalArgumentException.class, () -> client.getKeyProperties(null));
     assertThrows(
         IllegalArgumentException.class,
-        () -> client.getKeyProperties(new KmsReference("other-api", SOURCE, KEY_ID)));
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> client.getKeyProperties(new KmsReference(API, "secondary", KEY_ID)));
+        () -> client.getKeyProperties(new KmsReference("secondary", KEY_ID)));
     for (String keyId : new String[] {".", "..", "nested/key", "nested\\key"}) {
       assertThrows(IllegalArgumentException.class, () -> client.getKeyProperties(reference(keyId)));
     }
@@ -191,11 +187,11 @@ public class TestTransitKmsClient {
   }
 
   private TransitKmsClient createClient() {
-    return connection.kms(API, SOURCE, "team/transit");
+    return connection.kms(PROVIDER, "team/transit");
   }
 
   private KmsReference reference(String keyId) {
-    return new KmsReference(API, SOURCE, keyId);
+    return new KmsReference(PROVIDER, keyId);
   }
 
   private void respond(HttpExchange exchange) throws IOException {

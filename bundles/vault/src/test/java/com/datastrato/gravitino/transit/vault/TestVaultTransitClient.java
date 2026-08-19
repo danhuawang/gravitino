@@ -90,7 +90,7 @@ public class TestVaultTransitClient extends TestKmsClientContract {
   }
 
   private KmsReference reference(String keyId) {
-    return new KmsReference(VaultTransitKmsClientFactory.API, SOURCE, keyId);
+    return new KmsReference(SOURCE, keyId);
   }
 
   private void respond(HttpExchange exchange) throws IOException {

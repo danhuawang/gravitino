@@ -33,7 +33,7 @@ public abstract class AbstractTransitKmsClientIT {
   private static final String CLIENT_TOKEN_ENVIRONMENT_VARIABLE = "GRAVITINO_TRANSIT_IT_TOKEN";
   private static final String INVALID_TOKEN_ENVIRONMENT_VARIABLE =
       "GRAVITINO_TRANSIT_IT_INVALID_TOKEN";
-  private static final String SOURCE = "test";
+  private static final String PROVIDER = "test";
   private static final String USABLE_KEY = "usable-key";
   private static final String SIGNING_KEY = "signing-key";
 
@@ -71,8 +71,8 @@ public abstract class AbstractTransitKmsClientIT {
 
   @Test
   void inspectsRealTransitKeyMetadata() {
-    try (KmsClient client = factory().create(SOURCE, properties())) {
-      KmsReference usableReference = new KmsReference(api(), SOURCE, USABLE_KEY);
+    try (KmsClient client = factory().create(PROVIDER, properties())) {
+      KmsReference usableReference = new KmsReference(PROVIDER, USABLE_KEY);
       KmsKeyProperties usable = client.getKeyProperties(usableReference).orElseThrow();
 
       assertEquals(usableReference, usable.reference());
@@ -81,23 +81,22 @@ public abstract class AbstractTransitKmsClientIT {
       assertTrue(usable.supportsUnwrapping());
 
       KmsKeyProperties signing =
-          client.getKeyProperties(new KmsReference(api(), SOURCE, SIGNING_KEY)).orElseThrow();
+          client.getKeyProperties(new KmsReference(PROVIDER, SIGNING_KEY)).orElseThrow();
       assertTrue(signing.enabled());
       assertFalse(signing.supportsWrapping());
       assertFalse(signing.supportsUnwrapping());
 
-      assertFalse(
-          client.getKeyProperties(new KmsReference(api(), SOURCE, "missing-key")).isPresent());
+      assertFalse(client.getKeyProperties(new KmsReference(PROVIDER, "missing-key")).isPresent());
     }
   }
 
   @Test
   void rejectsInvalidEnvironmentCredential() {
     try (KmsClient client =
-        factory().create(SOURCE, properties(INVALID_TOKEN_ENVIRONMENT_VARIABLE))) {
+        factory().create(PROVIDER, properties(INVALID_TOKEN_ENVIRONMENT_VARIABLE))) {
       assertThrows(
           KmsAuthenticationException.class,
-          () -> client.getKeyProperties(new KmsReference(api(), SOURCE, USABLE_KEY)));
+          () -> client.getKeyProperties(new KmsReference(PROVIDER, USABLE_KEY)));
     }
   }
 
@@ -128,13 +127,6 @@ public abstract class AbstractTransitKmsClientIT {
    * @return the token environment-variable name
    */
   protected abstract String tokenEnvironmentVariable();
-
-  /**
-   * Returns the KMS API identifier exposed by the provider factory.
-   *
-   * @return the KMS API identifier
-   */
-  protected abstract String api();
 
   /**
    * Creates the provider factory under test.

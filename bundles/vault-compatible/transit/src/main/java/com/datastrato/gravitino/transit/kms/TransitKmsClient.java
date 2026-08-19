@@ -21,28 +21,21 @@ import org.apache.gravitino.exceptions.ConnectionFailedException;
 public final class TransitKmsClient implements KmsClient {
 
   private final String providerName;
-  private final String expectedApi;
-  private final String source;
+  private final String provider;
   private final TransitKmsApi api;
 
   /**
    * Creates a KMS API view over a shared Transit connection.
    *
    * @param providerName provider name used in errors
-   * @param expectedApi provider API identifier
-   * @param source configured KMS source
+   * @param provider configured KMS provider name accepted by this client
    * @param transitMount Transit secrets-engine mount
    * @param connection shared provider-owned connection
    */
   public TransitKmsClient(
-      String providerName,
-      String expectedApi,
-      String source,
-      String transitMount,
-      TransitConnection connection) {
+      String providerName, String provider, String transitMount, TransitConnection connection) {
     this.providerName = providerName;
-    this.expectedApi = expectedApi;
-    this.source = source;
+    this.provider = provider;
     this.api =
         new TransitKmsApi(
             providerName,
@@ -78,17 +71,11 @@ public final class TransitKmsClient implements KmsClient {
       throw new IllegalArgumentException(
           String.format("%s key reference cannot be null", providerName));
     }
-    if (!expectedApi.equals(reference.api())) {
+    if (!provider.equals(reference.provider())) {
       throw new IllegalArgumentException(
           String.format(
-              "KMS API %s does not match expected API %s for %s",
-              reference.api(), expectedApi, providerName));
-    }
-    if (!source.equals(reference.source())) {
-      throw new IllegalArgumentException(
-          String.format(
-              "%s source %s does not match configured source %s",
-              providerName, reference.source(), source));
+              "%s provider %s does not match configured provider %s",
+              providerName, reference.provider(), provider));
     }
     validateKeyId(reference.keyId());
   }

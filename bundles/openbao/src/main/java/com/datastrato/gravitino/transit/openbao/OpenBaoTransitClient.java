@@ -18,7 +18,7 @@ final class OpenBaoTransitClient implements KmsClient {
   private final TransitKmsClient kmsClient;
 
   OpenBaoTransitClient(
-      String source,
+      String provider,
       URI serviceAddress,
       String transitMount,
       String bearerToken,
@@ -29,7 +29,7 @@ final class OpenBaoTransitClient implements KmsClient {
             serviceAddress,
             bearerToken,
             allowInsecureHttp);
-    kmsClient = connection.kms(OpenBaoTransitKmsClientFactory.API, source, transitMount);
+    kmsClient = connection.kms(provider, transitMount);
   }
 
   @Override

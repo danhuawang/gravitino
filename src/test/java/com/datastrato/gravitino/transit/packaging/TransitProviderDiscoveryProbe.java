@@ -49,18 +49,18 @@ final class TransitProviderDiscoveryProbe {
     Set<String> discoveredApis = new HashSet<>();
     int factoryCount = 0;
     for (KmsClientFactory factory : ServiceLoader.load(KmsClientFactory.class)) {
-      if (!EXPECTED_APIS.contains(factory.api())) {
+      String api = apiFor(factory);
+      if (api == null || !EXPECTED_APIS.contains(api)) {
         continue;
       }
-      if (!expectedProviders.containsKey(factory.api())) {
+      if (!expectedProviders.containsKey(api)) {
         throw new AssertionError(
-            String.format("Unexpected packaged Transit factory for API %s", factory.api()));
+            String.format("Unexpected packaged Transit factory for API %s", api));
       }
-      verifyCodeSource(factory, providerDirectory, expectedProviders.get(factory.api()));
+      verifyCodeSource(factory, providerDirectory, expectedProviders.get(api));
       verifyClientConstruction(factory);
-      if (!discoveredApis.add(factory.api())) {
-        throw new AssertionError(
-            String.format("Duplicate packaged KMS factory for API %s", factory.api()));
+      if (!discoveredApis.add(api)) {
+        throw new AssertionError(String.format("Duplicate packaged KMS factory for API %s", api));
       }
       factoryCount++;
     }
@@ -72,6 +72,18 @@ final class TransitProviderDiscoveryProbe {
               "Expected %d packaged Transit factories for %s, but found %d for %s",
               expectedProviders.size(), expectedProviders.keySet(), factoryCount, discoveredApis));
     }
+  }
+
+  private static String apiFor(KmsClientFactory factory) {
+    String className = factory.getClass().getName();
+    if ("com.datastrato.gravitino.transit.vault.VaultTransitKmsClientFactory".equals(className)) {
+      return "vault-transit";
+    }
+    if ("com.datastrato.gravitino.transit.openbao.OpenBaoTransitKmsClientFactory"
+        .equals(className)) {
+      return "openbao-transit";
+    }
+    return null;
   }
 
   private static Map<String, String> expectedProviders(String[] mappings) {

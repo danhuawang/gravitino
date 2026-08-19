@@ -95,13 +95,12 @@ public final class TransitConnection implements AutoCloseable {
   /**
    * Creates a typed, non-owning KMS view over this connection.
    *
-   * @param expectedApi provider KMS API identifier
-   * @param source configured KMS source
+   * @param provider configured KMS provider name accepted by the client
    * @param transitMount Transit secrets-engine mount
    * @return typed KMS client sharing this connection
    */
-  public TransitKmsClient kms(String expectedApi, String source, String transitMount) {
-    return new TransitKmsClient(providerName, expectedApi, source, transitMount, this);
+  public TransitKmsClient kms(String provider, String transitMount) {
+    return new TransitKmsClient(providerName, provider, transitMount, this);
   }
 
   /**

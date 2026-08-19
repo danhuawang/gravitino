@@ -18,7 +18,7 @@ final class VaultTransitClient implements KmsClient {
   private final TransitKmsClient kmsClient;
 
   VaultTransitClient(
-      String source,
+      String provider,
       URI serviceAddress,
       String transitMount,
       String bearerToken,
@@ -29,7 +29,7 @@ final class VaultTransitClient implements KmsClient {
             serviceAddress,
             bearerToken,
             allowInsecureHttp);
-    kmsClient = connection.kms(VaultTransitKmsClientFactory.API, source, transitMount);
+    kmsClient = connection.kms(provider, transitMount);
   }
 
   @Override

@@ -66,14 +66,8 @@ public final class VaultTransitKmsClientFactory implements KmsClientFactory {
 
   /** {@inheritDoc} */
   @Override
-  public String api() {
-    return API;
-  }
-
-  /** {@inheritDoc} */
-  @Override
-  public KmsClient create(String source, Map<String, String> properties) {
-    TransitKmsClientFactorySupport.validateSource(PROVIDER_NAME, source);
+  public KmsClient create(String provider, Map<String, String> properties) {
+    TransitKmsClientFactorySupport.validateSource(PROVIDER_NAME, provider);
     TransitKmsClientFactorySupport.validateProperties(
         PROVIDER_NAME, properties, SUPPORTED_PROPERTIES);
 
@@ -109,6 +103,6 @@ public final class VaultTransitKmsClientFactory implements KmsClientFactory {
             PROVIDER_NAME, environmentVariable, environmentLookup);
 
     return new VaultTransitClient(
-        source, serviceAddress, transitMount, bearerToken, allowInsecureHttp);
+        provider, serviceAddress, transitMount, bearerToken, allowInsecureHttp);
   }
 }

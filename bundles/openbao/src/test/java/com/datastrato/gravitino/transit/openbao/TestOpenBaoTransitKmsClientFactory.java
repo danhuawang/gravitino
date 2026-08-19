@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -15,9 +16,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.gravitino.encryption.kms.KmsAuthenticationException;
@@ -25,14 +27,13 @@ import org.apache.gravitino.encryption.kms.KmsClient;
 import org.apache.gravitino.encryption.kms.KmsClientFactory;
 import org.apache.gravitino.encryption.kms.KmsConfigurationException;
 import org.apache.gravitino.encryption.kms.KmsReference;
-import org.apache.gravitino.encryption.kms.TestKmsClientFactoryContract;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryContract {
+public class TestOpenBaoTransitKmsClientFactory {
 
-  private static final String SOURCE = "primary";
+  private static final String PROVIDER = "primary";
   private static final String TOKEN_ENVIRONMENT_VARIABLE = "GRAVITINO_TEST_OPENBAO_TOKEN";
 
   private final AtomicReference<String> requestedPath = new AtomicReference<>();
@@ -60,8 +61,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
     }
   }
 
-  @Override
-  protected KmsClientFactory factory() {
+  private KmsClientFactory factory() {
     return new OpenBaoTransitKmsClientFactory(
         name -> {
           environmentLookups.incrementAndGet();
@@ -69,14 +69,9 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
         });
   }
 
-  @Override
-  protected String expectedApi() {
-    return OpenBaoTransitKmsClientFactory.API;
-  }
-
   @Test
   void createsWorkingClientWithDefaultMount() {
-    try (KmsClient client = factory().create(SOURCE, properties())) {
+    try (KmsClient client = factory().create(PROVIDER, properties())) {
       client.getKeyProperties(reference("customer-key"));
       assertEquals("/v1/transit/keys/customer-key", requestedPath.get());
     }
@@ -87,7 +82,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
     Map<String, String> properties = properties();
     properties.put(OpenBaoTransitKmsClientFactory.TRANSIT_MOUNT, "team/transit");
 
-    try (KmsClient client = factory().create(SOURCE, properties)) {
+    try (KmsClient client = factory().create(PROVIDER, properties)) {
       client.getKeyProperties(reference("customer-key"));
       assertEquals("/v1/team/transit/keys/customer-key", requestedPath.get());
     }
@@ -95,7 +90,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
 
   @Test
   void resolvesEnvironmentCredentialOncePerClient() {
-    try (KmsClient client = factory().create(SOURCE, properties())) {
+    try (KmsClient client = factory().create(PROVIDER, properties())) {
       assertEquals(1, environmentLookups.get());
       client.getKeyProperties(reference("customer-key"));
       assertEquals("read-only-token", requestedToken.get());
@@ -106,7 +101,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
       assertEquals(1, environmentLookups.get());
     }
 
-    try (KmsClient client = factory().create(SOURCE, properties())) {
+    try (KmsClient client = factory().create(PROVIDER, properties())) {
       client.getKeyProperties(reference("customer-key"));
       assertEquals("replacement-token", requestedToken.get());
       assertEquals(2, environmentLookups.get());
@@ -122,13 +117,12 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
         OpenBaoTransitKmsClientFactory.CREDENTIAL_ENVIRONMENT_VARIABLE, secondaryVariable);
     KmsClientFactory sharedFactory = factory();
 
-    try (KmsClient primary = sharedFactory.create(SOURCE, properties());
+    try (KmsClient primary = sharedFactory.create(PROVIDER, properties());
         KmsClient secondary = sharedFactory.create("secondary", secondaryProperties)) {
       primary.getKeyProperties(reference("customer-key"));
       assertEquals("read-only-token", requestedToken.get());
 
-      secondary.getKeyProperties(
-          new KmsReference(OpenBaoTransitKmsClientFactory.API, "secondary", "customer-key"));
+      secondary.getKeyProperties(new KmsReference("secondary", "customer-key"));
       assertEquals("secondary-token", requestedToken.get());
       assertEquals(2, environmentLookups.get());
     }
@@ -136,39 +130,37 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
 
   @Test
   void serviceLoaderDiscoversOpenBaoTransitFactory() {
-    Map<String, Class<?>> factoryClasses = new LinkedHashMap<>();
+    Set<Class<?>> factoryClasses = new HashSet<>();
     for (KmsClientFactory factory : ServiceLoader.load(KmsClientFactory.class)) {
-      factoryClasses.put(factory.api(), factory.getClass());
+      factoryClasses.add(factory.getClass());
     }
 
-    assertEquals(
-        OpenBaoTransitKmsClientFactory.class,
-        factoryClasses.get(OpenBaoTransitKmsClientFactory.API));
+    assertTrue(factoryClasses.contains(OpenBaoTransitKmsClientFactory.class));
   }
 
   @Test
   void rejectsMissingRequiredConfiguration() {
-    assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, null));
+    assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, null));
 
     Map<String, String> missingAddress = properties();
     missingAddress.remove(OpenBaoTransitKmsClientFactory.SERVICE_ADDRESS);
-    assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, missingAddress));
+    assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, missingAddress));
 
     Map<String, String> missingEnvironmentVariable = properties();
     missingEnvironmentVariable.remove(
         OpenBaoTransitKmsClientFactory.CREDENTIAL_ENVIRONMENT_VARIABLE);
     assertThrows(
         KmsConfigurationException.class,
-        () -> factory().create(SOURCE, missingEnvironmentVariable));
+        () -> factory().create(PROVIDER, missingEnvironmentVariable));
 
     Map<String, String> missingCredentialMethod = properties();
     missingCredentialMethod.remove(OpenBaoTransitKmsClientFactory.CREDENTIAL_METHOD);
     assertThrows(
-        KmsConfigurationException.class, () -> factory().create(SOURCE, missingCredentialMethod));
+        KmsConfigurationException.class, () -> factory().create(PROVIDER, missingCredentialMethod));
   }
 
   @Test
-  void rejectsInvalidSourceAndUnknownConfiguration() {
+  void rejectsInvalidProviderAndUnknownConfiguration() {
     assertThrows(KmsConfigurationException.class, () -> factory().create(" ", properties()));
     assertThrows(
         KmsConfigurationException.class, () -> factory().create(" primary ", properties()));
@@ -176,7 +168,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
     for (String property : new String[] {"credential.token", "credential.tokenFile"}) {
       Map<String, String> properties = properties();
       properties.put(property, "must-not-be-accepted");
-      assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, properties));
+      assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, properties));
     }
   }
 
@@ -185,7 +177,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
     Map<String, String> properties = properties();
     properties.put(OpenBaoTransitKmsClientFactory.CREDENTIAL_METHOD, "token_file");
 
-    assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, properties));
+    assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, properties));
   }
 
   @Test
@@ -201,17 +193,17 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
   void requiresExplicitOptInForPlaintextHttp() {
     Map<String, String> properties = properties();
     properties.remove(OpenBaoTransitKmsClientFactory.ALLOW_INSECURE_HTTP);
-    assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, properties));
+    assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, properties));
 
     properties.put(OpenBaoTransitKmsClientFactory.ALLOW_INSECURE_HTTP, "false");
-    assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, properties));
+    assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, properties));
 
     properties.put(OpenBaoTransitKmsClientFactory.ALLOW_INSECURE_HTTP, "not-a-boolean");
-    assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, properties));
+    assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, properties));
 
     properties.put(OpenBaoTransitKmsClientFactory.SERVICE_ADDRESS, "https://openbao.example:8200");
     properties.remove(OpenBaoTransitKmsClientFactory.ALLOW_INSECURE_HTTP);
-    try (KmsClient ignored = factory().create(SOURCE, properties)) {
+    try (KmsClient ignored = factory().create(PROVIDER, properties)) {
       assertEquals(1, environmentLookups.get());
     }
   }
@@ -221,12 +213,12 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
     for (String mount : new String[] {"", "/transit", "transit/", "team//transit", ".", ".."}) {
       Map<String, String> properties = properties();
       properties.put(OpenBaoTransitKmsClientFactory.TRANSIT_MOUNT, mount);
-      assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, properties));
+      assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, properties));
     }
 
     Map<String, String> properties = properties();
     properties.put(OpenBaoTransitKmsClientFactory.CREDENTIAL_ENVIRONMENT_VARIABLE, "INVALID-NAME");
-    assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, properties));
+    assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, properties));
   }
 
   @Test
@@ -239,7 +231,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
       }
       KmsAuthenticationException exception =
           assertThrows(
-              KmsAuthenticationException.class, () -> factory().create(SOURCE, properties()));
+              KmsAuthenticationException.class, () -> factory().create(PROVIDER, properties()));
       if (token != null && token.contains("secret-token")) {
         assertFalse(exception.toString().contains(token));
         assertFalse(exception.getCause().toString().contains(token));
@@ -249,7 +241,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
   }
 
   private KmsReference reference(String keyId) {
-    return new KmsReference(OpenBaoTransitKmsClientFactory.API, SOURCE, keyId);
+    return new KmsReference(PROVIDER, keyId);
   }
 
   private Map<String, String> properties() {
@@ -267,7 +259,7 @@ public class TestOpenBaoTransitKmsClientFactory extends TestKmsClientFactoryCont
   private void assertInvalidServiceAddress(String address) {
     Map<String, String> properties = properties();
     properties.put(OpenBaoTransitKmsClientFactory.SERVICE_ADDRESS, address);
-    assertThrows(KmsConfigurationException.class, () -> factory().create(SOURCE, properties));
+    assertThrows(KmsConfigurationException.class, () -> factory().create(PROVIDER, properties));
   }
 
   private void respond(HttpExchange exchange) throws IOException {

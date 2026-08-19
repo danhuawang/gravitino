@@ -40,11 +40,6 @@ class OpenBaoTransitKmsClientIT extends AbstractTransitKmsClientIT {
   }
 
   @Override
-  protected String api() {
-    return OpenBaoTransitKmsClientFactory.API;
-  }
-
-  @Override
   protected KmsClientFactory factory() {
     return new OpenBaoTransitKmsClientFactory();
   }

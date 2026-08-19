@@ -40,11 +40,6 @@ class VaultTransitKmsClientIT extends AbstractTransitKmsClientIT {
   }
 
   @Override
-  protected String api() {
-    return VaultTransitKmsClientFactory.API;
-  }
-
-  @Override
   protected KmsClientFactory factory() {
     return new VaultTransitKmsClientFactory();
   }
