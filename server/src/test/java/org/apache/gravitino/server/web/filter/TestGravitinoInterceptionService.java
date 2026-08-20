@@ -283,8 +283,108 @@ public class TestGravitinoInterceptionService {
     Mockito.when(enterpriseEntityOperationsDescriptor.getImplementation())
         .thenReturn("com.datastrato.gravitino.server.web.rest.EntityOperations");
 
+<<<<<<< HEAD
     Assertions.assertTrue(filter.matches(enterpriseCreationWithTagsDescriptor));
     Assertions.assertTrue(filter.matches(enterpriseEntityOperationsDescriptor));
+=======
+    Descriptor extendedUserOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(extendedUserOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedUserOperations");
+
+    Descriptor extendedGroupOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(extendedGroupOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedGroupOperations");
+
+    Descriptor extendedRoleOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(extendedRoleOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedRoleOperations");
+
+    Descriptor extendedMetadataObjectRoleOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(extendedMetadataObjectRoleOperationsDescriptor.getImplementation())
+        .thenReturn(
+            "com.datastrato.gravitino.server.web.rest.ExtendedMetadataObjectRoleOperations");
+
+    Descriptor enterpriseExtendedTagOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(enterpriseExtendedTagOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedTagOperations");
+
+    Assertions.assertTrue(filter.matches(enterpriseCreationWithTagsDescriptor));
+    Assertions.assertTrue(filter.matches(enterpriseEntityOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(extendedUserOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(extendedGroupOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(extendedRoleOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(extendedMetadataObjectRoleOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(enterpriseExtendedTagOperationsDescriptor));
+  }
+
+  @Test
+  public void testInvalidV2TagAssociationBodyReturnsBadRequestAfterAuthorization()
+      throws Throwable {
+    try (MockedStatic<PrincipalUtils> principalUtilsMocked = mockStatic(PrincipalUtils.class);
+        MockedStatic<GravitinoAuthorizerProvider> authorizerMocked =
+            mockStatic(GravitinoAuthorizerProvider.class);
+        MockedStatic<AuthorizationUtils> authUtilsMocked = mockStatic(AuthorizationUtils.class)) {
+
+      principalUtilsMocked
+          .when(PrincipalUtils::getCurrentPrincipal)
+          .thenReturn(new UserPrincipal("tester"));
+      principalUtilsMocked
+          .when(() -> PrincipalUtils.doAs(ArgumentMatchers.any(), ArgumentMatchers.any()))
+          .thenCallRealMethod();
+      principalUtilsMocked.when(PrincipalUtils::getCurrentUserName).thenReturn("tester");
+
+      GravitinoAuthorizerProvider mockedProvider = mock(GravitinoAuthorizerProvider.class);
+      authorizerMocked.when(GravitinoAuthorizerProvider::getInstance).thenReturn(mockedProvider);
+      GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+      when(mockedProvider.getGravitinoAuthorizer()).thenReturn(authorizer);
+      when(authorizer.authorize(any(), any(), any(), any(), any())).thenReturn(true);
+      when(authorizer.deny(any(), any(), any(), any(), any())).thenReturn(false);
+      when(authorizer.isOwner(any(), any(), any(), any())).thenReturn(true);
+      authUtilsMocked
+          .when(
+              () ->
+                  AuthorizationUtils.checkCurrentUser(
+                      ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any()))
+          .thenAnswer(invocation -> null);
+
+      TagValuesAssociateRequest request =
+          JsonUtils.objectMapper()
+              .readValue(
+                  "{\"tagsToAdd\":[{\"name\":\"data_domain\",\"value\":\" \"}]}",
+                  TagValuesAssociateRequest.class);
+      Method method =
+          TestMetadataObjectTagAssociationOperations.class.getMethod(
+              "associateTagValuesForObject",
+              String.class,
+              String.class,
+              String.class,
+              TagValuesAssociateRequest.class);
+      Object[] args = new Object[] {"testMetalake", "catalog", "object1", request};
+      TagDispatcher tagDispatcher = mock(TagDispatcher.class);
+      MetadataObjectTagOperations operations = new MetadataObjectTagOperations(tagDispatcher);
+      HttpServletRequest httpRequest = mock(HttpServletRequest.class);
+      FieldUtils.writeField(operations, "httpRequest", httpRequest, true);
+      Response invalidBodyResponse =
+          operations.associateTagValuesForObject(
+              (String) args[0],
+              (String) args[1],
+              (String) args[2],
+              (TagValuesAssociateRequest) args[3]);
+
+      MethodInvocation methodInvocation = mock(MethodInvocation.class);
+      when(methodInvocation.getMethod()).thenReturn(method);
+      when(methodInvocation.getArguments()).thenReturn(args);
+      when(methodInvocation.proceed()).thenReturn(invalidBodyResponse);
+
+      MethodInterceptor methodInterceptor =
+          new GravitinoInterceptionService().getMethodInterceptors(method).get(0);
+      Response response = (Response) methodInterceptor.invoke(methodInvocation);
+
+      assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+      verify(tagDispatcher, never())
+          .associateTagValuesForMetadataObject(any(), any(), any(), any());
+    }
+>>>>>>> aa52e75d7 ([#1293] feat(auth): security UI user/group list and batch enabled (#1294))
   }
 
   /**

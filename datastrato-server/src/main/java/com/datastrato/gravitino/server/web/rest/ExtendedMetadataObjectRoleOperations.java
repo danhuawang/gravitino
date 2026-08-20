@@ -51,8 +51,7 @@ public class ExtendedMetadataObjectRoleOperations {
   /** Creates a new ExtendedMetadataObjectRoleOperations. */
   public ExtendedMetadataObjectRoleOperations() {
     this.accessControlDispatcher =
-        (DatastratoAccessControlDispatcher)
-            ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
+        ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
   }
 
   /**

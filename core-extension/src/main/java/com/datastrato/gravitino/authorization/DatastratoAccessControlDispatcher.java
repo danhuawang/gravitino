@@ -46,6 +46,7 @@ import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.storage.relational.service.DatastratoRoleMetaService;
+import org.apache.gravitino.storage.relational.service.DatastratoUserMetaService;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -268,6 +269,25 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   @Override
   public String[] listRoleNames(String metalake) throws NoSuchMetalakeException {
     return accessControlDispatcher.listRoleNames(metalake);
+  }
+
+  /**
+   * Batch-updates the {@code enabled} flag for the given users under a metalake.
+   *
+   * <p>Validates first that every distinct username exists and has no {@code externalId}. Only then
+   * runs the UPDATE. Otherwise no rows are updated and an {@link IllegalArgumentException} is
+   * thrown.
+   *
+   * @param metalake The metalake name.
+   * @param usernames User names to update.
+   * @param enabled Target enabled value.
+   * @return Distinct user names that were updated.
+   * @throws IllegalArgumentException If any user is missing or has an external id.
+   */
+  public List<String> batchUpdateUserEnabled(
+      String metalake, List<String> usernames, boolean enabled) {
+    return DatastratoUserMetaService.getInstance()
+        .batchUpdateUserEnabled(metalake, usernames, enabled);
   }
 
   /**

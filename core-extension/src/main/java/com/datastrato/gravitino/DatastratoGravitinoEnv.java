@@ -38,7 +38,6 @@ import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
-import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.FutureGrantManager;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.OwnerDispatcher;
@@ -297,12 +296,12 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @Override
-  public AccessControlDispatcher accessControlDispatcher() {
+  public DatastratoAccessControlDispatcher accessControlDispatcher() {
     return accessControlDispatcher;
   }
 
   @Override
-  public AccessControlDispatcher internalAccessControlDispatcher() {
+  public DatastratoAccessControlDispatcher internalAccessControlDispatcher() {
     return internalDatastratoAccessControlDispatcher;
   }
 

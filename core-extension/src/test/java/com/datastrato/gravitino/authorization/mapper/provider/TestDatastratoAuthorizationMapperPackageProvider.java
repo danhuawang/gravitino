@@ -7,6 +7,7 @@ package com.datastrato.gravitino.authorization.mapper.provider;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.datastrato.gravitino.authorization.mapper.DatastratoSecurableObjectMapper;
+import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +18,8 @@ public class TestDatastratoAuthorizationMapperPackageProvider {
     List<Class<?>> mapperClasses =
         new DatastratoAuthorizationMapperPackageProvider().getMapperClasses();
 
-    assertEquals(List.of(DatastratoSecurableObjectMapper.class), mapperClasses);
+    assertEquals(
+        List.of(DatastratoSecurableObjectMapper.class, DatastratoUserMetaMapper.class),
+        mapperClasses);
   }
 }

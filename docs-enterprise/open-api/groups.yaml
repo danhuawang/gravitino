@@ -1,0 +1,86 @@
+# Copyright 2026 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+paths:
+
+  /web/security/metalakes/{metalake}/groups:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+    get:
+      tags:
+        - groups
+      summary: List metalake groups for the security UI
+      operationId: listSecurityGroups
+      description: |
+        List groups under a metalake for the enterprise security Groups page.
+
+        Returns OSS group fields plus `origin`. `origin` is `Local` when `externalId` is blank and
+        `Provisioned` when `externalId` is present.
+
+      responses:
+        "200":
+          description: Returns the list of groups
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ExtendedGroupListResponse"
+        "404":
+          description: Not Found - The target metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    IdentitySource:
+      type: string
+      description: |
+        Source of the identity. Serialized as `origin`. `Local` when `externalId` is blank;
+        `Provisioned` when `externalId` is present.
+      enum:
+        - Local
+        - Provisioned
+
+    ExtendedGroup:
+      allOf:
+        - $ref: "../../docs/open-api/groups.yaml#/components/schemas/Group"
+        - type: object
+          required:
+            - origin
+          properties:
+            origin:
+              $ref: "#/components/schemas/IdentitySource"
+
+    ExtendedGroupListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        groups:
+          type: array
+          description: A list of groups with origin for the security UI
+          items:
+            $ref: "#/components/schemas/ExtendedGroup"

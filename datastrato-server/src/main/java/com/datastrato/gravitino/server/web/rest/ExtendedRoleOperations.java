@@ -18,6 +18,7 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.SecurableObject;
@@ -29,6 +30,9 @@ import org.apache.gravitino.dto.responses.RoleResponse;
 import org.apache.gravitino.dto.responses.UserListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.server.authorization.NameBindings;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
@@ -41,15 +45,28 @@ import org.slf4j.LoggerFactory;
 public class ExtendedRoleOperations {
   private static final Logger LOG = LoggerFactory.getLogger(ExtendedRoleOperations.class);
 
+  private final DatastratoAccessControlDispatcher accessControlDispatcher;
+
   @Context private HttpServletRequest httpRequest;
 
-  public ExtendedRoleOperations() {}
+  /**
+   * Creates the resource. Dispatcher comes from {@link ExtendedDatastratoGravitinoEnv} rather than
+   * constructor injection; Jersey does not bind this type (same as OSS {@code UserOperations}).
+   */
+  public ExtendedRoleOperations() {
+    this.accessControlDispatcher =
+        ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
+  }
 
   @GET
   @Path("users")
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION)
   public Response listUsersByRole(
-      @PathParam("metalake") String metalake, @PathParam("role") String role) {
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("role") @AuthorizationMetadata(type = Entity.EntityType.ROLE) String role) {
     try {
       return Utils.doAs(
           httpRequest,
@@ -57,7 +74,7 @@ public class ExtendedRoleOperations {
               Utils.ok(
                   new UserListResponse(
                       DTOConverters.toDTOs(
-                          accessControlDispatcher().listUsersByRole(metalake, role)))));
+                          accessControlDispatcher.listUsersByRole(metalake, role)))));
     } catch (Exception e) {
       return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
     }
@@ -66,8 +83,12 @@ public class ExtendedRoleOperations {
   @GET
   @Path("groups")
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION)
   public Response listGroupsByRole(
-      @PathParam("metalake") String metalake, @PathParam("role") String role) {
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("role") @AuthorizationMetadata(type = Entity.EntityType.ROLE) String role) {
     try {
       return Utils.doAs(
           httpRequest,
@@ -75,7 +96,7 @@ public class ExtendedRoleOperations {
               Utils.ok(
                   new GroupListResponse(
                       DTOConverters.toDTOs(
-                          accessControlDispatcher().listGroupsByRole(metalake, role)))));
+                          accessControlDispatcher.listGroupsByRole(metalake, role)))));
     } catch (Exception e) {
       return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
     }
@@ -83,9 +104,11 @@ public class ExtendedRoleOperations {
 
   @PUT
   @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GRANTS")
   public Response updateBulkPermissions(
-      @PathParam("metalake") String metalake,
-      @PathParam("role") String role,
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("role") @AuthorizationMetadata(type = Entity.EntityType.ROLE) String role,
       PermissionUpdateRequest request) {
     try {
       LOG.info("Updating privileges for role {} on metalake {}", role, metalake);
@@ -118,19 +141,12 @@ public class ExtendedRoleOperations {
             return Utils.ok(
                 new RoleResponse(
                     DTOConverters.toDTO(
-                        ((DatastratoAccessControlDispatcher)
-                                ExtendedDatastratoGravitinoEnv.getInstance()
-                                    .accessControlDispatcher())
-                            .updatePrivilegesForRole(metalake, role, updatedObjects))));
+                        accessControlDispatcher.updatePrivilegesForRole(
+                            metalake, role, updatedObjects))));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleRolePermissionOperationException(
           OperationType.UPDATE, role, metalake, e);
     }
-  }
-
-  private DatastratoAccessControlDispatcher accessControlDispatcher() {
-    return (DatastratoAccessControlDispatcher)
-        ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
   }
 }
