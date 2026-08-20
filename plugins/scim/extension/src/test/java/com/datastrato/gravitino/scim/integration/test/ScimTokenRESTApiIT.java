@@ -8,7 +8,9 @@ package com.datastrato.gravitino.scim.integration.test;
 import com.datastrato.gravitino.scim.basic.token.ScimTokenGenerator;
 import com.datastrato.gravitino.scim.dto.requests.CreateScimTokenRequest;
 import com.datastrato.gravitino.scim.dto.requests.RotateScimTokenRequest;
+import com.datastrato.gravitino.scim.dto.responses.ScimProvisioningListResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenDeleteResponse;
+import com.datastrato.gravitino.scim.dto.responses.ScimTokenListResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenResponse;
 import com.datastrato.gravitino.scim.web.rest.feature.ScimTokenRESTFeature;
 import com.google.common.collect.Maps;
@@ -20,7 +22,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.dto.responses.ErrorConstants;
@@ -86,7 +91,52 @@ class ScimTokenRESTApiIT extends BaseIT {
   }
 
   @Test
-  void testManageTokens() throws Exception {
+  void testListProvisioning() throws Exception {
+    withEmptyMetalake(
+        empty -> {
+          createToken("overview-a", null);
+          createToken("overview-b", null);
+          ScimProvisioningListResponse list =
+              read(get("/scim/provisioning", OWNER), ScimProvisioningListResponse.class);
+          list.validate();
+          var byName = index(list.getMetalakes(), m -> m.getMetalake());
+          Assertions.assertTrue(byName.containsKey(METALAKE));
+          Assertions.assertTrue(byName.containsKey(empty));
+          Assertions.assertTrue(byName.get(METALAKE).getTokenCount() >= 2L);
+          Assertions.assertEquals(0L, byName.get(empty).getTokenCount());
+        });
+  }
+
+  @Test
+  void testListTokens() throws Exception {
+    withEmptyMetalake(
+        empty -> {
+          createToken("list-a", null);
+          createToken("list-b", 30);
+
+          ScimTokenListResponse emptyList =
+              read(get("/metalakes/" + empty + "/scim/tokens", OWNER), ScimTokenListResponse.class);
+          emptyList.validate();
+          Assertions.assertTrue(emptyList.getTokens().isEmpty());
+
+          ScimTokenListResponse list =
+              read(
+                  get("/metalakes/" + METALAKE + "/scim/tokens", OWNER),
+                  ScimTokenListResponse.class);
+          list.validate();
+          var byName = index(list.getTokens(), t -> t.getTokenName());
+          Assertions.assertTrue(byName.containsKey("list-a"));
+          Assertions.assertEquals("valid", byName.get("list-a").getStatus());
+          Assertions.assertTrue(byName.get("list-b").getExpiresAt() > 0L);
+          assertError(
+              404,
+              get("/metalakes/" + MISSING_METALAKE + "/scim/tokens", OWNER),
+              ErrorConstants.NOT_FOUND_CODE);
+        });
+  }
+
+  @Test
+  void testCrud() throws Exception {
     ScimTokenResponse created = createToken(TOKEN_NAME, null);
     Assertions.assertEquals(METALAKE, created.getToken().getMetalake());
     Assertions.assertEquals(TOKEN_NAME, created.getToken().getTokenName());
@@ -175,6 +225,12 @@ class ScimTokenRESTApiIT extends BaseIT {
     return deleteResponse;
   }
 
+  private static HttpResponse<String> get(String path, String username) throws Exception {
+    return HTTP.send(
+        authorized(username).uri(URI.create(apiBase + path)).GET().build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
   private static HttpResponse<String> post(String path, Object body, String username)
       throws Exception {
     return HTTP.send(
@@ -216,5 +272,29 @@ class ScimTokenRESTApiIT extends BaseIT {
 
   private static int errorCode(HttpResponse<String> response) throws Exception {
     return JsonUtils.objectMapper().readTree(response.body()).get("code").asInt();
+  }
+
+  private void withEmptyMetalake(MetalakeAction action) throws Exception {
+    String empty = "scimTokenEmptyMetalake";
+    client.createMetalake(empty, "", new HashMap<>());
+    try {
+      action.run(empty);
+    } finally {
+      client.dropMetalake(empty, true);
+    }
+  }
+
+  private static <T> T read(HttpResponse<String> response, Class<T> type) throws Exception {
+    Assertions.assertEquals(200, response.statusCode(), response.body());
+    return JsonUtils.objectMapper().readValue(response.body(), type);
+  }
+
+  private static <T, K> Map<K, T> index(List<T> items, Function<T, K> key) {
+    return items.stream().collect(Collectors.toMap(key, Function.identity()));
+  }
+
+  @FunctionalInterface
+  private interface MetalakeAction {
+    void run(String emptyMetalake) throws Exception;
   }
 }

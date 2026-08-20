@@ -60,6 +60,19 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
+  void testListByMl(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    insertToken(1L, METALAKE_ID, "token-a", "hash-a", 0L);
+    insertToken(2L, METALAKE_ID, "token-b", "hash-b", 0L);
+    ScimTokenMetaService tokenMetaService = ScimTokenMetaService.getInstance();
+
+    assertEquals(2, tokenMetaService.listScimTokensByMetalake(METALAKE_NAME).size());
+    assertTrue(tokenMetaService.listScimTokensByMetalake("missing").isEmpty());
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
   void testInsert(String type) throws IOException {
     init(type);
     insertMetalake();
@@ -113,6 +126,35 @@ class TestScimTokenMetaService extends AbstractScimMetaServiceTest {
     runServiceCall(
         () ->
             assertFalse(tokenMetaService.updateScimTokenOnRotate(newTokenMeta, staleOldTokenMeta)));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testTouchUsed(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    insertToken(1L, METALAKE_ID, "scim-token", "hash-a", 0L);
+    ScimTokenMetaService svc = ScimTokenMetaService.getInstance();
+
+    closeSession();
+    assertTrue(svc.updateScimTokenLastUsedAt(1L));
+    assertFalse(svc.updateScimTokenLastUsedAt(999L));
+    refreshSession();
+    assertTrue(svc.getScimTokenMetaByHash("hash-a").getLastUsedAt() > 0L);
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testTouchSkipDeleted(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    insertToken(1L, METALAKE_ID, "scim-token", "hash-a", 0L);
+    ScimTokenMetaService svc = ScimTokenMetaService.getInstance();
+
+    closeSession();
+    svc.updateScimTokenLastUsedAt(1L);
+    runServiceCall(() -> svc.softDeleteScimToken(METALAKE_NAME, "scim-token"));
+    assertFalse(svc.updateScimTokenLastUsedAt(1L));
   }
 
   @ParameterizedTest

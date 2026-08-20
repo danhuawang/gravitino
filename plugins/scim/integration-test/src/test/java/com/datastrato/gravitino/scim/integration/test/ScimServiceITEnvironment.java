@@ -10,6 +10,8 @@ import static org.apache.gravitino.server.GravitinoServer.WEBSERVER_CONF_PREFIX;
 
 import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.model.CreatedScimToken;
+import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
+import com.datastrato.gravitino.scim.storage.service.ScimTokenMetaService;
 import com.google.common.collect.Maps;
 import java.io.File;
 import java.nio.file.Files;
@@ -113,13 +115,8 @@ final class ScimServiceITEnvironment implements AutoCloseable {
    */
   String mintScimBearerToken(String metalakeName, String tokenName, String creator)
       throws Exception {
-    GravitinoEnv env = GravitinoEnv.getInstance();
+    ensureTokenManagerInitialized();
     ScimTokenManager tokenManager = ScimTokenManager.getInstance();
-    try {
-      tokenManager.initialize(serverConfig, env.entityStore(), env.idGenerator());
-    } catch (IllegalStateException alreadyInitialized) {
-      // Singleton may already be initialized in this JVM.
-    }
 
     return PrincipalUtils.doAs(
         new UserPrincipal(creator),
@@ -127,6 +124,29 @@ final class ScimServiceITEnvironment implements AutoCloseable {
           CreatedScimToken created = tokenManager.createScimToken(metalakeName, tokenName, null);
           return created.getTokenValue();
         });
+  }
+
+  /**
+   * Loads active SCIM token metadata for assertions (for example {@code last_used_at}).
+   *
+   * @param metalakeName target metalake
+   * @param tokenName token name
+   * @return active token metadata row
+   */
+  ScimTokenMetaPO readScimTokenMeta(String metalakeName, String tokenName) {
+    ensureTokenManagerInitialized();
+    return ScimTokenMetaService.getInstance()
+        .getScimTokenMetaByMetalakeAndName(metalakeName, tokenName);
+  }
+
+  private void ensureTokenManagerInitialized() {
+    GravitinoEnv env = GravitinoEnv.getInstance();
+    ScimTokenManager tokenManager = ScimTokenManager.getInstance();
+    try {
+      tokenManager.initialize(serverConfig, env.entityStore(), env.idGenerator());
+    } catch (IllegalStateException alreadyInitialized) {
+      // Singleton may already be initialized in this JVM.
+    }
   }
 
   @Override

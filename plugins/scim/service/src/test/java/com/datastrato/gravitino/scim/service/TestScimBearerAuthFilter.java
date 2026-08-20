@@ -5,7 +5,9 @@
 
 package com.datastrato.gravitino.scim.service;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -34,12 +36,13 @@ import org.mockito.ArgumentCaptor;
 
 class TestScimBearerAuthFilter {
 
+  private static final String SCIM_PATH = "/scim/v2/metalakes/ml1/Users";
+
   private ScimTokenManager tokenManager;
   private ScimBearerAuthFilter filter;
   private HttpServletRequest request;
   private HttpServletResponse response;
   private FilterChain chain;
-  private StringWriter responseBody;
 
   @BeforeEach
   void setUp() throws Exception {
@@ -48,106 +51,105 @@ class TestScimBearerAuthFilter {
     request = mock(HttpServletRequest.class);
     response = mock(HttpServletResponse.class);
     chain = mock(FilterChain.class);
-    responseBody = new StringWriter();
-    when(response.getWriter()).thenReturn(new PrintWriter(responseBody));
+    when(response.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
   }
 
   @Test
-  void testBypassNonMetalake() throws Exception {
+  void testBypassHealth() throws Exception {
     when(request.getServletPath()).thenReturn("/health");
-
     filter.doFilter(request, response, chain);
-
     verify(chain).doFilter(request, response);
     verify(tokenManager, never()).authenticateBearerToken(anyString(), anyString());
+    verify(tokenManager, never()).updateScimTokenLastUsedAt(anyLong());
   }
 
   @Test
-  void testMissingAuth401() throws Exception {
-    when(request.getServletPath()).thenReturn("/scim/v2/metalakes/ml1/Users");
-    when(request.getHeader(AuthConstants.HTTP_HEADER_AUTHORIZATION)).thenReturn(null);
-
+  void testNoAuth401() throws Exception {
+    when(request.getServletPath()).thenReturn(SCIM_PATH);
     filter.doFilter(request, response, chain);
-
     verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
     verify(chain, never()).doFilter(request, response);
   }
 
   @Test
-  void testValidToken() throws Exception {
-    when(request.getServletPath()).thenReturn("/scim/v2/metalakes/ml1/Users");
-    when(request.getHeader(AuthConstants.HTTP_HEADER_AUTHORIZATION))
-        .thenReturn("Bearer gravitino_scim_test");
-    when(tokenManager.authenticateBearerToken("gravitino_scim_test", "ml1"))
-        .thenReturn(token("entra-prod"));
-
+  void testAuthOk() throws Exception {
+    stubAuth("gravitino_scim_test", token("entra-prod"));
     filter.doFilter(request, response, chain);
-
     verify(chain).doFilter(request, response);
-    ArgumentCaptor<Object> principalCaptor = ArgumentCaptor.forClass(Object.class);
+    ArgumentCaptor<Object> principal = ArgumentCaptor.forClass(Object.class);
     verify(request)
         .setAttribute(
-            eq(AuthConstants.AUTHENTICATED_PRINCIPAL_ATTRIBUTE_NAME), principalCaptor.capture());
-    assertEquals("entra-prod", ((UserPrincipal) principalCaptor.getValue()).getName());
+            eq(AuthConstants.AUTHENTICATED_PRINCIPAL_ATTRIBUTE_NAME), principal.capture());
+    assertEquals("entra-prod", ((UserPrincipal) principal.getValue()).getName());
+    verify(tokenManager).updateScimTokenLastUsedAt(1L);
   }
 
   @Test
-  void testDoAsActor() throws Exception {
-    when(request.getServletPath()).thenReturn("/scim/v2/metalakes/ml1/Users");
-    when(request.getHeader(AuthConstants.HTTP_HEADER_AUTHORIZATION))
-        .thenReturn("Bearer gravitino_scim_test");
-    when(tokenManager.authenticateBearerToken("gravitino_scim_test", "ml1"))
-        .thenReturn(token("entra-prod"));
+  void testLastUsedOn4xx() throws Exception {
+    stubAuth("gravitino_scim_test", token("entra-prod"));
+    when(response.getStatus()).thenReturn(HttpServletResponse.SC_NOT_FOUND);
+    filter.doFilter(request, response, chain);
+    verify(tokenManager).updateScimTokenLastUsedAt(1L);
+  }
 
-    AtomicReference<String> actorInChain = new AtomicReference<>();
-    FilterChain observingChain =
-        (req, resp) -> actorInChain.set(PrincipalUtils.getCurrentUserName());
+  @Test
+  void testLastUsedFailSafe() throws Exception {
+    stubAuth("gravitino_scim_test", token("entra-prod"));
+    doThrow(new RuntimeException("db")).when(tokenManager).updateScimTokenLastUsedAt(1L);
+    assertDoesNotThrow(() -> filter.doFilter(request, response, chain));
+    verify(chain).doFilter(request, response);
+    verify(response, never()).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+  }
 
-    filter.doFilter(request, response, observingChain);
-
-    assertEquals("entra-prod", actorInChain.get());
+  @Test
+  void testDoAs() throws Exception {
+    stubAuth("gravitino_scim_test", token("entra-prod"));
+    AtomicReference<String> actor = new AtomicReference<>();
+    filter.doFilter(
+        request, response, (req, resp) -> actor.set(PrincipalUtils.getCurrentUserName()));
+    assertEquals("entra-prod", actor.get());
   }
 
   @Test
   void testExpired419() throws Exception {
-    when(request.getServletPath()).thenReturn("/scim/v2/metalakes/ml1/Users");
-    when(request.getHeader(AuthConstants.HTTP_HEADER_AUTHORIZATION))
-        .thenReturn("Bearer gravitino_scim_expired");
-    doThrow(new TokenExpiredException("SCIM token has expired"))
+    stubAuth("gravitino_scim_expired", null);
+    doThrow(new TokenExpiredException("expired"))
         .when(tokenManager)
         .authenticateBearerToken("gravitino_scim_expired", "ml1");
-
     filter.doFilter(request, response, chain);
-
     verify(response).setStatus(419);
-    verify(chain, never()).doFilter(request, response);
+    verify(tokenManager, never()).updateScimTokenLastUsedAt(anyLong());
   }
 
   @Test
-  void testMissingMetalake404() throws Exception {
-    when(request.getServletPath()).thenReturn("/scim/v2/metalakes/ml1/Users");
-    when(request.getHeader(AuthConstants.HTTP_HEADER_AUTHORIZATION))
-        .thenReturn("Bearer gravitino_scim_test");
-    doThrow(new NotFoundException("Metalake not found"))
+  void testNoMetalake404() throws Exception {
+    stubAuth("gravitino_scim_test", null);
+    doThrow(new NotFoundException("missing"))
         .when(tokenManager)
         .authenticateBearerToken("gravitino_scim_test", "ml1");
-
     filter.doFilter(request, response, chain);
-
     verify(response).setStatus(HttpServletResponse.SC_NOT_FOUND);
+    verify(tokenManager, never()).updateScimTokenLastUsedAt(anyLong());
   }
 
   @Test
-  void testInvalidToken401() throws Exception {
-    when(request.getServletPath()).thenReturn("/scim/v2/metalakes/ml1/Users");
+  void testBadToken401() throws Exception {
+    when(request.getServletPath()).thenReturn(SCIM_PATH);
     when(request.getHeader(AuthConstants.HTTP_HEADER_AUTHORIZATION)).thenReturn("Bearer bad");
-    doThrow(new UnauthorizedException("Invalid SCIM bearer token"))
+    doThrow(new UnauthorizedException("bad"))
         .when(tokenManager)
         .authenticateBearerToken("bad", "ml1");
-
     filter.doFilter(request, response, chain);
-
     verify(response).setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+  }
+
+  private void stubAuth(String rawToken, ScimToken token) throws Exception {
+    when(request.getServletPath()).thenReturn(SCIM_PATH);
+    when(request.getHeader(AuthConstants.HTTP_HEADER_AUTHORIZATION))
+        .thenReturn("Bearer " + rawToken);
+    if (token != null) {
+      when(tokenManager.authenticateBearerToken(rawToken, "ml1")).thenReturn(token);
+    }
   }
 
   private static ScimToken token(String name) {

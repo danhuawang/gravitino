@@ -9,5 +9,7 @@ package com.datastrato.gravitino.scim.web;
 public enum ScimOperationType {
   CREATE,
   ROTATE,
-  DELETE
+  DELETE,
+  LIST,
+  LIST_PROVISIONING
 }

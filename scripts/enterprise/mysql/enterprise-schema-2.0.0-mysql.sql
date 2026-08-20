@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS `scim_token_meta` (
     `audit_info` MEDIUMTEXT NOT NULL COMMENT 'scim token audit info',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'scim token deleted at',
     `updated_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'updated at',
+    `last_used_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'last authenticated SCIM request time in ms, 0 means never',
     PRIMARY KEY (`token_id`),
     UNIQUE KEY `uk_stm_mid_tn_del` (`metalake_id`, `token_name`, `deleted_at`),
     UNIQUE KEY `uk_stm_hash_del` (`token_hash`, `deleted_at`)

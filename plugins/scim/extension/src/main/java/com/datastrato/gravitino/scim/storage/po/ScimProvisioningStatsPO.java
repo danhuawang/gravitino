@@ -13,22 +13,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-/** Persistent object for SCIM token metadata rows in {@code scim_token_meta}. */
+/** SCIM provisioning overview stats for one metalake. */
 @Getter
 @EqualsAndHashCode
 @ToString
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder(setterPrefix = "with")
-public class ScimTokenMetaPO {
-  private Long tokenId;
-  private Long metalakeId;
-  private String tokenName;
-  private String tokenHash;
-  private Long expiresAt;
-  private String auditInfo;
-  private Long deletedAt;
-  private Long updatedAt;
-  /** Epoch millis of the last authenticated SCIM request; {@code 0} means never used. */
-  @Builder.Default private Long lastUsedAt = 0L;
+public class ScimProvisioningStatsPO {
+  private String metalakeName;
+  private Long tokenCount;
+  private Long lastUsedAt;
 }

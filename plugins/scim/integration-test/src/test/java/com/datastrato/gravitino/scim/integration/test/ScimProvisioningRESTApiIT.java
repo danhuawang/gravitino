@@ -100,6 +100,17 @@ class ScimProvisioningRESTApiIT {
   }
 
   @Test
+  void testLastUsedOnAuth() throws Exception {
+    String tokenName = "last-used-it";
+    String token = environment.mintScimBearerToken(METALAKE, tokenName, TOKEN_CREATOR);
+    var before = environment.readScimTokenMeta(METALAKE, tokenName);
+    assertStatus(200, get(scimPath("/Users"), token));
+    var after = environment.readScimTokenMeta(METALAKE, tokenName);
+    Assertions.assertTrue(after.getLastUsedAt() > 0L);
+    Assertions.assertEquals(before.getUpdatedAt(), after.getUpdatedAt());
+  }
+
+  @Test
   void testMetadataEndpoints() throws Exception {
     HttpResponse<String> resourceTypes = get(scimPath("/ResourceTypes"), bearerToken);
     assertStatus(200, resourceTypes);

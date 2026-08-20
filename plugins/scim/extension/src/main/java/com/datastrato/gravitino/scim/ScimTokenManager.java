@@ -8,7 +8,9 @@ package com.datastrato.gravitino.scim;
 import com.datastrato.gravitino.scim.basic.token.ScimTokenGenerator;
 import com.datastrato.gravitino.scim.basic.token.ScimTokenGenerator.GeneratedToken;
 import com.datastrato.gravitino.scim.model.CreatedScimToken;
+import com.datastrato.gravitino.scim.model.ScimProvisioningSummary;
 import com.datastrato.gravitino.scim.model.ScimToken;
+import com.datastrato.gravitino.scim.model.ScimTokenSummary;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import com.datastrato.gravitino.scim.storage.relational.ScimGarbageCollector;
 import com.datastrato.gravitino.scim.storage.relational.ScimRelationalStorage;
@@ -19,11 +21,15 @@ import com.google.common.base.Preconditions;
 import java.io.Closeable;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
+import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.exceptions.AlreadyExistsException;
 import org.apache.gravitino.exceptions.MetalakeNotInUseException;
@@ -126,6 +132,7 @@ public class ScimTokenManager implements Closeable {
               .withAuditInfo(ScimPOConverters.serializeAuditInfo(auditInfo))
               .withDeletedAt(0L)
               .withUpdatedAt(0L)
+              .withLastUsedAt(0L)
               .build();
       try {
         TOKEN_META_SERVICE.insertScimToken(tokenMeta);
@@ -218,6 +225,51 @@ public class ScimTokenManager implements Closeable {
   }
 
   /**
+   * Lists active SCIM tokens for the given metalake.
+   *
+   * <p>Rows past {@code expiresAt} but not yet processed by the expiry task appear with {@code
+   * status = expired}. Soft-deleted rows are omitted.
+   *
+   * @param metalakeName target metalake name
+   * @return token rows sorted by token name
+   */
+  public List<ScimTokenSummary> listScimTokens(String metalakeName) {
+    resolveMetalakeId(metalakeName);
+    long nowMillis = System.currentTimeMillis();
+    return TOKEN_META_SERVICE.listScimTokensByMetalake(metalakeName).stream()
+        .map(tokenMeta -> ScimTokenSummary.from(tokenMeta, nowMillis))
+        .collect(Collectors.toList());
+  }
+
+  /**
+   * Builds SCIM Provisioning overview rows for the given metalakes.
+   *
+   * <p>Metalakes with no active tokens appear with {@code tokenCount = 0} and {@code lastUsedAt =
+   * 0}.
+   *
+   * @param metalakes metalakes to include (already auth-filtered)
+   * @return overview rows sorted by metalake name
+   */
+  public List<ScimProvisioningSummary> listProvisioningSummaries(Metalake[] metalakes) {
+    if (metalakes.length == 0) {
+      return List.of();
+    }
+
+    List<Long> metalakeIds =
+        Arrays.stream(metalakes)
+            .map(
+                metalake ->
+                    metalake instanceof BaseMetalake
+                        ? ((BaseMetalake) metalake).id()
+                        : resolveMetalakeId(metalake.name()))
+            .collect(Collectors.toList());
+
+    return TOKEN_META_SERVICE.listProvisioningStatsByMetalakeIds(metalakeIds).stream()
+        .map(ScimProvisioningSummary::from)
+        .collect(Collectors.toList());
+  }
+
+  /**
    * Authenticates a presented SCIM bearer token against the URL metalake scope.
    *
    * @param bearerToken full bearer token value from the {@code Authorization} header
@@ -249,6 +301,17 @@ public class ScimTokenManager implements Closeable {
       throw new UnauthorizedException("Invalid SCIM bearer token");
     }
     return token;
+  }
+
+  /**
+   * Updates {@code last_used_at} after bearer auth succeeds for a metalake-scoped SCIM request.
+   *
+   * <p>Called whether the resource later returns 2xx or 4xx/5xx.
+   *
+   * @param tokenId SCIM token id
+   */
+  public void updateScimTokenLastUsedAt(long tokenId) {
+    TOKEN_META_SERVICE.updateScimTokenLastUsedAt(tokenId);
   }
 
   @Override

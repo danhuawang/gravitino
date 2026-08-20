@@ -15,8 +15,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.scim.basic.token.ScimTokenGenerator;
 import com.datastrato.gravitino.scim.model.CreatedScimToken;
+import com.datastrato.gravitino.scim.model.ScimProvisioningSummary;
+import com.datastrato.gravitino.scim.model.ScimTokenSummary;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import java.time.Instant;
+import java.util.List;
+import org.apache.gravitino.Entity;
+import org.apache.gravitino.Metalake;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.UserPrincipal;
 import org.apache.gravitino.exceptions.AlreadyExistsException;
 import org.apache.gravitino.exceptions.NotFoundException;
@@ -100,6 +106,25 @@ class TestScimTokenManager extends AbstractScimManagerTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
+  void testRotateKeepsLastUsed(String type) throws Exception {
+    initManagerTest(type);
+    insertMetalakes();
+    runManagerCallAndReturnAs("alice", () -> manager.createScimToken(METALAKE_NAME, "prod", null));
+    ScimTokenMetaPO meta = scimTokenMetaMapper.selectByMetalakeAndName(METALAKE_NAME, "prod");
+    closeSession();
+    manager.updateScimTokenLastUsedAt(meta.getTokenId());
+    refreshSession();
+    long lastUsed =
+        scimTokenMetaMapper.selectByMetalakeAndName(METALAKE_NAME, "prod").getLastUsedAt();
+
+    runManagerCallAndReturnAs("bob", () -> manager.rotateScimToken(METALAKE_NAME, "prod", 7));
+    ScimTokenMetaPO rotated = scimTokenMetaMapper.selectByMetalakeAndName(METALAKE_NAME, "prod");
+    assertEquals(lastUsed, rotated.getLastUsedAt());
+    assertTrue(rotated.getUpdatedAt() > 0L);
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
   void testAuthBearer(String type) throws Exception {
     initManagerTest(type);
     insertMetalakes();
@@ -111,6 +136,14 @@ class TestScimTokenManager extends AbstractScimManagerTest {
     closeSession();
     manager.authenticateBearerToken(created.getTokenValue(), METALAKE_NAME);
     refreshSession();
+    ScimTokenMetaPO stored = scimTokenMetaMapper.selectByMetalakeAndName(METALAKE_NAME, "prod");
+    assertEquals(0L, stored.getLastUsedAt());
+
+    closeSession();
+    manager.updateScimTokenLastUsedAt(stored.getTokenId());
+    refreshSession();
+    assertTrue(
+        scimTokenMetaMapper.selectByMetalakeAndName(METALAKE_NAME, "prod").getLastUsedAt() > 0L);
 
     assertThrows(
         UnauthorizedException.class,
@@ -118,6 +151,74 @@ class TestScimTokenManager extends AbstractScimManagerTest {
     assertThrows(
         UnauthorizedException.class,
         () -> manager.authenticateBearerToken(created.getTokenValue(), OTHER_METALAKE_NAME));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testListTokens(String type) throws Exception {
+    initManagerTest(type);
+    insertMetalakes();
+    runManagerCallAndReturnAs("alice", () -> manager.createScimToken(METALAKE_NAME, "prod", null));
+    runManagerCallAndReturnAs("alice", () -> manager.createScimToken(METALAKE_NAME, "staging", 30));
+    ScimTokenMetaPO prod = scimTokenMetaMapper.selectByMetalakeAndName(METALAKE_NAME, "prod");
+    closeSession();
+    manager.updateScimTokenLastUsedAt(prod.getTokenId());
+    refreshSession();
+    scimTokenMetaMapper.insert(
+        ScimTokenMetaPO.builder()
+            .withTokenId(99L)
+            .withMetalakeId(METALAKE_ID)
+            .withTokenName("expired")
+            .withTokenHash("hash-expired")
+            .withExpiresAt(System.currentTimeMillis() - 60_000L)
+            .withAuditInfo("{}")
+            .withDeletedAt(0L)
+            .withUpdatedAt(0L)
+            .build());
+
+    List<ScimTokenSummary> tokens = manager.listScimTokens(METALAKE_NAME);
+    assertEquals(3, tokens.size());
+    assertEquals("expired", tokens.get(0).getTokenName());
+    assertEquals("expired", tokens.get(0).getStatus());
+    assertEquals("valid", tokens.get(1).getStatus());
+    assertTrue(tokens.get(1).getLastUsedAt() > 0L);
+    assertTrue(tokens.get(1).getCreatedAt() > 0L);
+    assertEquals(0, manager.listScimTokens(OTHER_METALAKE_NAME).size());
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testListProvisioning(String type) throws Exception {
+    initManagerTest(type);
+    insertMetalakes();
+    runManagerCallAndReturnAs("alice", () -> manager.createScimToken(METALAKE_NAME, "prod", null));
+    runManagerCallAndReturnAs(
+        "alice", () -> manager.createScimToken(METALAKE_NAME, "staging", null));
+    closeSession();
+    manager.updateScimTokenLastUsedAt(
+        scimTokenMetaMapper.selectByMetalakeAndName(METALAKE_NAME, "prod").getTokenId());
+    refreshSession();
+
+    List<ScimProvisioningSummary> summaries =
+        manager.listProvisioningSummaries(
+            entityStore
+                .list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE)
+                .toArray(new Metalake[0]));
+    assertEquals(2, summaries.size());
+    ScimProvisioningSummary active =
+        summaries.stream()
+            .filter(s -> METALAKE_NAME.equals(s.getMetalake()))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(2L, active.getTokenCount());
+    assertTrue(active.getLastUsedAt() > 0L);
+    ScimProvisioningSummary empty =
+        summaries.stream()
+            .filter(s -> OTHER_METALAKE_NAME.equals(s.getMetalake()))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(0L, empty.getTokenCount());
+    assertEquals(0L, empty.getLastUsedAt());
   }
 
   @ParameterizedTest

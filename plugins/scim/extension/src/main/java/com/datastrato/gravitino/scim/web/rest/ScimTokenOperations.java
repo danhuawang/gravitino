@@ -9,18 +9,23 @@ import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.dto.ScimTokenDTO;
+import com.datastrato.gravitino.scim.dto.ScimTokenSummaryDTO;
 import com.datastrato.gravitino.scim.dto.requests.CreateScimTokenRequest;
 import com.datastrato.gravitino.scim.dto.requests.RotateScimTokenRequest;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenDeleteResponse;
+import com.datastrato.gravitino.scim.dto.responses.ScimTokenListResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenResponse;
 import com.datastrato.gravitino.scim.model.CreatedScimToken;
 import com.datastrato.gravitino.scim.web.ScimOperationType;
 import com.datastrato.gravitino.scim.web.ScimRESTUtils;
+import java.util.List;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
+import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -54,6 +59,34 @@ public class ScimTokenOperations {
   @Inject
   public ScimTokenOperations(ScimTokenManager tokenManager) {
     this.tokenManager = tokenManager;
+  }
+
+  /**
+   * Lists active SCIM tokens for the given metalake.
+   *
+   * @param metalake target metalake name
+   * @return token list response
+   */
+  @GET
+  @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "list-scim-tokens." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "list-scim-tokens", absolute = true)
+  @AuthorizationExpression(expression = "METALAKE::OWNER")
+  public Response listTokens(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake) {
+    return ScimRESTUtils.doAs(
+        httpRequest,
+        () -> {
+          List<ScimTokenSummaryDTO> tokens =
+              tokenManager.listScimTokens(metalake).stream()
+                  .map(ScimTokenSummaryDTO::from)
+                  .collect(Collectors.toList());
+          return ScimRESTUtils.ok(new ScimTokenListResponse(tokens));
+        },
+        metalake,
+        "",
+        ScimOperationType.LIST);
   }
 
   /**

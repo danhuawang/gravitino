@@ -22,6 +22,7 @@ public class TestScimTokenMetaPO {
             .withAuditInfo("{}")
             .withDeletedAt(0L)
             .withUpdatedAt(500L)
+            .withLastUsedAt(0L)
             .build();
 
     Assertions.assertEquals(1L, tokenMeta.getTokenId());
@@ -32,6 +33,7 @@ public class TestScimTokenMetaPO {
     Assertions.assertEquals("{}", tokenMeta.getAuditInfo());
     Assertions.assertEquals(0L, tokenMeta.getDeletedAt());
     Assertions.assertEquals(500L, tokenMeta.getUpdatedAt());
+    Assertions.assertEquals(0L, tokenMeta.getLastUsedAt());
   }
 
   @Test

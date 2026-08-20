@@ -88,7 +88,6 @@ tasks {
 
   test {
     dependsOn("copyLibAndConfigs", "testClasses")
-    environment("GRAVITINO_HOME", rootDir.path)
 
     val skipITs = project.hasProperty("skipITs")
     if (skipITs) {

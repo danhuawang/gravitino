@@ -136,6 +136,40 @@ public class TestScimTokenMapperPackageProvider {
   }
 
   @Test
+  void testProvisioningStatsSql() {
+    String sql =
+        new ScimTokenMetaBaseSQLProvider().listProvisioningStatsByMetalakeIds(List.of(1L, 2L));
+    assertTrue(sql.contains("COUNT(stm.token_id) as tokenCount"), sql);
+    assertTrue(sql.contains("COALESCE(MAX(stm.last_used_at), 0) as lastUsedAt"), sql);
+    assertTrue(sql.contains("LEFT JOIN"), sql);
+    assertTrue(sql.contains("mm.deleted_at = 0"), sql);
+    assertTrue(sql.contains("stm.deleted_at = 0"), sql);
+    assertTrue(sql.contains("ORDER BY mm.metalake_name ASC"), sql);
+  }
+
+  @Test
+  void testListSql() {
+    String sql = new ScimTokenMetaBaseSQLProvider().listByMetalake("my_metalake");
+    assertTrue(sql.contains("ORDER BY stm.token_name ASC"), sql);
+    assertTrue(sql.contains("deleted_at = 0"), sql);
+  }
+
+  @Test
+  void testTouchSql() {
+    String sql = new ScimTokenMetaBaseSQLProvider().updateScimTokenLastUsedAt(1L);
+    assertTrue(sql.startsWith("UPDATE scim_token_meta SET last_used_at = "), sql);
+    assertUsesMillisecondTimestamp(sql);
+  }
+
+  @Test
+  void testPgTouchSql() {
+    String sql = new ScimTokenMetaPostgreSQLProvider().updateScimTokenLastUsedAt(1L);
+
+    assertTrue(sql.startsWith("UPDATE scim_token_meta SET last_used_at = "), sql);
+    assertUsesPostgreSQLMillisecondTimestamp(sql);
+  }
+
+  @Test
   void testUpdateOnRotateMs() {
     ScimTokenMetaPO oldTokenMeta =
         ScimTokenMetaPO.builder()

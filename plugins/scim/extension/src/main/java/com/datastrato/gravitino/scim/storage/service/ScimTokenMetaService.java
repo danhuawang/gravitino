@@ -9,10 +9,13 @@ import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATI
 
 import com.datastrato.gravitino.scim.model.ScimToken;
 import com.datastrato.gravitino.scim.storage.mapper.ScimTokenMetaMapper;
+import com.datastrato.gravitino.scim.storage.po.ScimProvisioningStatsPO;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import com.datastrato.gravitino.scim.storage.relational.utils.ScimExceptionUtils;
 import com.datastrato.gravitino.scim.storage.relational.utils.ScimPOConverters;
 import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
@@ -92,6 +95,42 @@ public class ScimTokenMetaService {
   }
 
   /**
+   * Lists SCIM provisioning stats for the given metalake ids, including zero-token metalakes.
+   *
+   * @param metalakeIds metalake ids to include
+   * @return stats rows ordered by metalake name
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listScimProvisioningStatsByMetalakeIds")
+  public List<ScimProvisioningStatsPO> listProvisioningStatsByMetalakeIds(List<Long> metalakeIds) {
+    if (metalakeIds.isEmpty()) {
+      return Collections.emptyList();
+    }
+    List<ScimProvisioningStatsPO> stats =
+        SessionUtils.getWithoutCommit(
+            ScimTokenMetaMapper.class,
+            mapper -> mapper.listProvisioningStatsByMetalakeIds(metalakeIds));
+    return stats == null ? Collections.emptyList() : stats;
+  }
+
+  /**
+   * Lists active token rows for a metalake ordered by token name.
+   *
+   * @param metalakeName target metalake name
+   * @return active token rows
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listScimTokensByMetalake")
+  public List<ScimTokenMetaPO> listScimTokensByMetalake(String metalakeName) {
+    List<ScimTokenMetaPO> tokens =
+        SessionUtils.getWithoutCommit(
+            ScimTokenMetaMapper.class, mapper -> mapper.listByMetalake(metalakeName));
+    return tokens == null ? Collections.emptyList() : tokens;
+  }
+
+  /**
    * Inserts a new token metadata row.
    *
    * @param tokenMeta token metadata to insert
@@ -132,6 +171,22 @@ public class ScimTokenMetaService {
       ScimExceptionUtils.checkSQLException(re, "token", newTokenMeta.getTokenName());
       throw re;
     }
+  }
+
+  /**
+   * Updates {@code last_used_at} to the current time for an active token.
+   *
+   * @param tokenId token id
+   * @return true when an active row was updated
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "updateScimTokenLastUsedAt")
+  public boolean updateScimTokenLastUsedAt(long tokenId) {
+    Integer updated =
+        SessionUtils.doWithCommitAndFetchResult(
+            ScimTokenMetaMapper.class, mapper -> mapper.updateScimTokenLastUsedAt(tokenId));
+    return updated != null && updated > 0;
   }
 
   /**

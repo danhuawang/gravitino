@@ -16,9 +16,74 @@
 
 paths:
 
+  /scim/provisioning:
+    get:
+      tags:
+        - SCIM Token
+      summary: List metalake SCIM provisioning overview
+      description: >
+        Returns every metalake the caller owns (`METALAKE::OWNER`) with its SCIM
+        endpoint path, active token count, and most recent token activity
+        (`lastUsedAt`). Metalakes the caller does not own are omitted. Metalakes
+        with no tokens are included with `tokenCount: 0` and `lastUsedAt: 0`
+        (Never).
+      operationId: listScimProvisioning
+      responses:
+        "200":
+          description: Returns the provisioning overview
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimProvisioningListResponse"
+              examples:
+                ScimProvisioningListResponse:
+                  $ref: "#/components/examples/ScimProvisioningListResponse"
+        "401":
+          description: Unauthorized - Missing or invalid main-server authentication
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /metalakes/{metalake}/scim/tokens:
     parameters:
       - $ref: "../../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+
+    get:
+      tags:
+        - SCIM Token
+      summary: List SCIM integration tokens
+      description: >
+        Lists active SCIM tokens for the specified metalake. Requires
+        `METALAKE::OWNER` on `{metalake}`. Plaintext token values are never
+        returned. Rows past `expiresAt` but not yet processed by the expiry task
+        appear with `status: expired`.
+      operationId: listScimTokens
+      responses:
+        "200":
+          description: Returns the SCIM token list
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenListResponse"
+              examples:
+                ScimTokenListResponse:
+                  $ref: "#/components/examples/ScimTokenListResponse"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "404":
+          description: Not Found - The specified metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
     post:
       tags:
@@ -231,6 +296,53 @@ components:
           format: int64
           description: Expiry epoch millis; `0` means no expiry
 
+    ScimTokenSummary:
+      type: object
+      required:
+        - tokenName
+        - expiresAt
+        - status
+        - createdAt
+        - lastUsedAt
+      properties:
+        tokenName:
+          type: string
+          description: Operator-readable token name
+        expiresAt:
+          type: integer
+          format: int64
+          description: Expiry epoch millis; `0` means no expiry
+        status:
+          type: string
+          description: >
+            `valid` if `expiresAt = 0` or `now < expiresAt`; `expired` if past
+            `expiresAt` and the row is still active
+          enum:
+            - valid
+            - expired
+        createdAt:
+          type: integer
+          format: int64
+          description: Creation time in epoch millis
+        lastUsedAt:
+          type: integer
+          format: int64
+          description: Last authenticated SCIM use in epoch millis; `0` means never
+
+    ScimTokenListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        tokens:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScimTokenSummary"
+
     ScimTokenResponse:
       type: object
       properties:
@@ -255,6 +367,45 @@ components:
         deleted:
           type: boolean
           description: Whether the token was soft-deleted
+
+    ScimProvisioning:
+      type: object
+      required:
+        - metalake
+        - endpoint
+        - tokenCount
+        - lastUsedAt
+      properties:
+        metalake:
+          type: string
+          description: Metalake name
+        endpoint:
+          type: string
+          description: SCIM base path for the metalake (for example `/scim/v2/metalakes/acme/`)
+        tokenCount:
+          type: integer
+          format: int64
+          description: Number of active (`deleted_at = 0`) SCIM tokens
+        lastUsedAt:
+          type: integer
+          format: int64
+          description: >
+            Max `last_used_at` across active tokens in epoch millis;
+            `0` means never used
+
+    ScimProvisioningListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        metalakes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScimProvisioning"
 
   responses:
     ScimTokenForbiddenErrorResponse:
@@ -290,6 +441,27 @@ components:
           "tokenValue": "gravitino_scim_abc123",
           "expiresAt": 0
         }
+      }
+
+    ScimTokenListResponse:
+      value: {
+        "code": 0,
+        "tokens": [
+          {
+            "tokenName": "prod",
+            "expiresAt": 1780000000000,
+            "status": "valid",
+            "createdAt": 1710000000000,
+            "lastUsedAt": 1710003600000
+          },
+          {
+            "tokenName": "staging",
+            "expiresAt": 0,
+            "status": "valid",
+            "createdAt": 1710100000000,
+            "lastUsedAt": 0
+          }
+        ]
       }
 
     ScimTokenRotateResponse:
@@ -342,4 +514,23 @@ components:
         "code": 1008,
         "type": "ForbiddenException",
         "message": "Current user is not authorized to perform the operation"
+      }
+
+    ScimProvisioningListResponse:
+      value: {
+        "code": 0,
+        "metalakes": [
+          {
+            "metalake": "acme",
+            "endpoint": "/scim/v2/metalakes/acme/",
+            "tokenCount": 1,
+            "lastUsedAt": 1710000000000
+          },
+          {
+            "metalake": "sandbox",
+            "endpoint": "/scim/v2/metalakes/sandbox/",
+            "tokenCount": 0,
+            "lastUsedAt": 0
+          }
+        ]
       }

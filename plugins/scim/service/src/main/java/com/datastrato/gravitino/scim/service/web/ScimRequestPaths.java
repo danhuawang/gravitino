@@ -5,6 +5,7 @@
 
 package com.datastrato.gravitino.scim.service.web;
 
+import com.datastrato.gravitino.scim.ScimUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.Optional;
@@ -19,10 +20,10 @@ public final class ScimRequestPaths {
   public static final String SCIM_SPEC = "/scim/*";
 
   /** Path prefix for metalake-scoped SCIM resources. */
-  public static final String METALAKE_SCIM_PREFIX = "/scim/v2/metalakes/";
+  public static final String METALAKE_SCIM_PREFIX = ScimUtils.METALAKE_SCIM_PREFIX;
 
   private static final Pattern METALAKE_PATH =
-      Pattern.compile("^/scim/v2/metalakes/([^/]+)(?:/.*)?$");
+      Pattern.compile("^" + Pattern.quote(ScimUtils.METALAKE_SCIM_PREFIX) + "([^/]+)(?:/.*)?$");
 
   private ScimRequestPaths() {}
 

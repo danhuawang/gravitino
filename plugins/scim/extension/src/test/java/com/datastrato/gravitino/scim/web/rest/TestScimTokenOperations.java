@@ -16,9 +16,12 @@ import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.dto.requests.CreateScimTokenRequest;
 import com.datastrato.gravitino.scim.dto.requests.RotateScimTokenRequest;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenDeleteResponse;
+import com.datastrato.gravitino.scim.dto.responses.ScimTokenListResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenResponse;
 import com.datastrato.gravitino.scim.model.CreatedScimToken;
+import com.datastrato.gravitino.scim.model.ScimTokenSummary;
 import java.io.IOException;
+import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.Application;
@@ -39,6 +42,7 @@ class TestScimTokenOperations extends JerseyTest {
 
   private static final String ACCEPT = "application/vnd.gravitino.v1+json";
   private static final String METALAKE = "my_metalake";
+  private static final String TOKENS = "/metalakes/" + METALAKE + "/scim/tokens";
   private static final ScimTokenManager TOKEN_MANAGER = mock(ScimTokenManager.class);
 
   @BeforeEach
@@ -72,59 +76,78 @@ class TestScimTokenOperations extends JerseyTest {
   }
 
   @Test
-  void testCreateToken() throws Exception {
+  void testList() {
+    doReturn(
+            List.of(
+                summary("prod", 1000L, "valid", 500L, 900L),
+                summary("staging", 0L, "valid", 600L, 0L)))
+        .when(TOKEN_MANAGER)
+        .listScimTokens(METALAKE);
+
+    ScimTokenListResponse body = get(TOKENS).readEntity(ScimTokenListResponse.class);
+    Assertions.assertEquals(2, body.getTokens().size());
+    Assertions.assertEquals("prod", body.getTokens().get(0).getTokenName());
+    Assertions.assertEquals(900L, body.getTokens().get(0).getLastUsedAt());
+  }
+
+  @Test
+  void testCreate() throws Exception {
     CreateScimTokenRequest request = new CreateScimTokenRequest("prod", 30);
-    doReturn(createdToken("prod", "gravitino_scim_secret", 1000L))
+    doReturn(created("prod", "gravitino_scim_secret", 1000L))
         .when(TOKEN_MANAGER)
         .createScimToken(eq(METALAKE), eq("prod"), eq(30));
 
-    Response httpResponse = post("/metalakes/" + METALAKE + "/scim/tokens", request);
-    Assertions.assertEquals(Response.Status.OK.getStatusCode(), httpResponse.getStatus());
-    ScimTokenResponse response = httpResponse.readEntity(ScimTokenResponse.class);
-    Assertions.assertEquals("prod", response.getToken().getTokenName());
+    Assertions.assertEquals(
+        "prod",
+        post(TOKENS, request).readEntity(ScimTokenResponse.class).getToken().getTokenName());
 
     doThrow(new AlreadyExistsException("exists"))
         .when(TOKEN_MANAGER)
         .createScimToken(eq(METALAKE), eq("prod"), eq(30));
-    assertStatus(
-        Response.Status.CONFLICT, post("/metalakes/" + METALAKE + "/scim/tokens", request));
+    assertStatus(Response.Status.CONFLICT, post(TOKENS, request));
   }
 
   @Test
-  void testRotateToken() throws Exception {
-    RotateScimTokenRequest request = new RotateScimTokenRequest(7);
-    doReturn(createdToken("prod", "gravitino_scim_new", 2000L))
+  void testRotate() throws Exception {
+    doReturn(created("prod", "gravitino_scim_new", 2000L))
         .when(TOKEN_MANAGER)
         .rotateScimToken(eq(METALAKE), eq("prod"), eq(7));
 
-    Response httpResponse = post("/metalakes/" + METALAKE + "/scim/tokens/prod/rotate", request);
-    Assertions.assertEquals(Response.Status.OK.getStatusCode(), httpResponse.getStatus());
-    ScimTokenResponse response = httpResponse.readEntity(ScimTokenResponse.class);
-    Assertions.assertEquals("gravitino_scim_new", response.getToken().getTokenValue());
+    Assertions.assertEquals(
+        "gravitino_scim_new",
+        post(TOKENS + "/prod/rotate", new RotateScimTokenRequest(7))
+            .readEntity(ScimTokenResponse.class)
+            .getToken()
+            .getTokenValue());
   }
 
   @Test
-  void testDeleteToken() {
+  void testDelete() {
     doReturn(true).when(TOKEN_MANAGER).deleteScimToken(METALAKE, "prod");
-
-    ScimTokenDeleteResponse response =
-        delete("/metalakes/" + METALAKE + "/scim/tokens/prod")
-            .readEntity(ScimTokenDeleteResponse.class);
-    Assertions.assertTrue(response.getDeleted());
+    Assertions.assertTrue(
+        delete(TOKENS + "/prod").readEntity(ScimTokenDeleteResponse.class).getDeleted());
 
     doReturn(false).when(TOKEN_MANAGER).deleteScimToken(METALAKE, "missing");
-    assertStatus(
-        Response.Status.NOT_FOUND, delete("/metalakes/" + METALAKE + "/scim/tokens/missing"));
+    assertStatus(Response.Status.NOT_FOUND, delete(TOKENS + "/missing"));
   }
 
   @Test
-  void testCreateTokenValidation() {
-    assertStatus(
-        Response.Status.BAD_REQUEST,
-        post("/metalakes/" + METALAKE + "/scim/tokens", new CreateScimTokenRequest("", 30)));
+  void testCreateBadRequest() {
+    assertStatus(Response.Status.BAD_REQUEST, post(TOKENS, new CreateScimTokenRequest("", 30)));
   }
 
-  private CreatedScimToken createdToken(String name, String value, long expiresAt) {
+  private static ScimTokenSummary summary(
+      String name, long expires, String status, long created, long used) {
+    return ScimTokenSummary.builder()
+        .withTokenName(name)
+        .withExpiresAt(expires)
+        .withStatus(status)
+        .withCreatedAt(created)
+        .withLastUsedAt(used)
+        .build();
+  }
+
+  private static CreatedScimToken created(String name, String value, long expiresAt) {
     return CreatedScimToken.builder()
         .withTokenName(name)
         .withTokenValue(value)
@@ -141,6 +164,10 @@ class TestScimTokenOperations extends JerseyTest {
 
   private Response delete(String path) {
     return target(path).request().accept(ACCEPT).delete();
+  }
+
+  private Response get(String path) {
+    return target(path).request().accept(ACCEPT).get();
   }
 
   private void assertStatus(Response.Status expected, Response response) {

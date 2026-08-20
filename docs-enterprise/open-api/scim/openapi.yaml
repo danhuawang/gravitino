@@ -31,9 +31,11 @@ info:
     `com.datastrato.gravitino.scim.web.rest.feature` in
     `gravitino.server.rest.extensionPackages`.
 
-    All endpoints require main-server authentication and **`METALAKE::OWNER`**
-    authorization on the `{metalake}` path parameter. Plaintext token values are
-    returned only in create and rotate responses.
+    All token create/rotate/delete endpoints require main-server authentication and
+    **`METALAKE::OWNER`** authorization on the `{metalake}` path parameter. The
+    provisioning overview list uses the same owner scope: only metalakes the caller
+    owns are returned. Plaintext token values are returned only in create and rotate
+    responses.
 
 servers:
   - url: "{scheme}://{host}:{port}/{basePath}"
@@ -57,6 +59,9 @@ security:
   - BasicAuth: []
 
 paths:
+  /scim/provisioning:
+    $ref: "./scim-tokens.yaml#/paths/~1scim~1provisioning"
+
   /metalakes/{metalake}/scim/tokens:
     $ref: "./scim-tokens.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1scim~1tokens"
 

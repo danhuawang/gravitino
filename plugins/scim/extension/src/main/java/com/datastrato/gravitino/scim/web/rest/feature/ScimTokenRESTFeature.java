@@ -9,6 +9,7 @@ import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper;
 import com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter;
+import com.datastrato.gravitino.scim.web.rest.ScimProvisioningOperations;
 import com.datastrato.gravitino.scim.web.rest.ScimTokenBinder;
 import com.datastrato.gravitino.scim.web.rest.ScimTokenOperations;
 import com.google.common.base.Splitter;
@@ -58,6 +59,7 @@ public class ScimTokenRESTFeature implements Feature {
 
     context.register(ScimTokenBinder.class);
     context.register(ScimTokenOperations.class);
+    context.register(ScimProvisioningOperations.class);
     LOG.info(
         "SCIM OAuth authorization uses user_group_rel via {}",
         ScimOAuthPrincipalMapper.PRINCIPAL_MAPPER_CLASS_NAME);

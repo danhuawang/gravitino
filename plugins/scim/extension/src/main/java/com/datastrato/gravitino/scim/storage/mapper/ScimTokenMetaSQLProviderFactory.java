@@ -10,6 +10,7 @@ import com.datastrato.gravitino.scim.storage.mapper.provider.h2.ScimTokenMetaH2P
 import com.datastrato.gravitino.scim.storage.mapper.provider.postgresql.ScimTokenMetaPostgreSQLProvider;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import com.google.common.collect.ImmutableMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.storage.relational.JDBCBackend.JDBCBackendType;
 import org.apache.ibatis.annotations.Param;
@@ -45,6 +46,15 @@ public class ScimTokenMetaSQLProviderFactory {
     return currentProvider().selectByMetalakeAndName(metalakeName, tokenName);
   }
 
+  public static String listProvisioningStatsByMetalakeIds(
+      @Param("metalakeIds") List<Long> metalakeIds) {
+    return currentProvider().listProvisioningStatsByMetalakeIds(metalakeIds);
+  }
+
+  public static String listByMetalake(@Param("metalakeName") String metalakeName) {
+    return currentProvider().listByMetalake(metalakeName);
+  }
+
   public static String softDeleteByMetalakeAndName(
       @Param("metalakeName") String metalakeName, @Param("tokenName") String tokenName) {
     return currentProvider().softDeleteByMetalakeAndName(metalakeName, tokenName);
@@ -62,6 +72,10 @@ public class ScimTokenMetaSQLProviderFactory {
       @Param("newTokenMeta") ScimTokenMetaPO newTokenMeta,
       @Param("oldTokenMeta") ScimTokenMetaPO oldTokenMeta) {
     return currentProvider().updateTokenOnRotate(newTokenMeta, oldTokenMeta);
+  }
+
+  public static String updateScimTokenLastUsedAt(@Param("tokenId") Long tokenId) {
+    return currentProvider().updateScimTokenLastUsedAt(tokenId);
   }
 
   public static String deleteByLegacyTimeline(

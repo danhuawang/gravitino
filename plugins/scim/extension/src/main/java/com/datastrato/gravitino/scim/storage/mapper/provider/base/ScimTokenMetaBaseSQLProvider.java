@@ -7,6 +7,7 @@ package com.datastrato.gravitino.scim.storage.mapper.provider.base;
 
 import com.datastrato.gravitino.scim.storage.mapper.ScimTokenMetaMapper;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
+import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -16,13 +17,13 @@ public class ScimTokenMetaBaseSQLProvider {
   private static final String SELECT_COLUMNS =
       " token_id as tokenId, metalake_id as metalakeId, token_name as tokenName,"
           + " token_hash as tokenHash, expires_at as expiresAt, audit_info as auditInfo,"
-          + " deleted_at as deletedAt, updated_at as updatedAt";
+          + " deleted_at as deletedAt, updated_at as updatedAt, last_used_at as lastUsedAt";
 
   public String insert(@Param("tokenMeta") ScimTokenMetaPO tokenMeta) {
     return "INSERT INTO "
         + ScimTokenMetaMapper.TABLE_NAME
         + " (token_id, metalake_id, token_name, token_hash, expires_at, audit_info, deleted_at,"
-        + " updated_at)"
+        + " updated_at, last_used_at)"
         + " VALUES ("
         + " #{tokenMeta.tokenId},"
         + " #{tokenMeta.metalakeId},"
@@ -31,7 +32,8 @@ public class ScimTokenMetaBaseSQLProvider {
         + " #{tokenMeta.expiresAt},"
         + " #{tokenMeta.auditInfo},"
         + " #{tokenMeta.deletedAt},"
-        + " #{tokenMeta.updatedAt}"
+        + " #{tokenMeta.updatedAt},"
+        + " #{tokenMeta.lastUsedAt}"
         + " )";
   }
 
@@ -54,6 +56,49 @@ public class ScimTokenMetaBaseSQLProvider {
         + activeMetalakeIdInClause("stm")
         + " AND stm.token_name = #{tokenName}"
         + " AND stm.deleted_at = 0";
+  }
+
+  /**
+   * Lists SCIM provisioning stats for the given metalake ids, including zero-token metalakes.
+   *
+   * @param metalakeIds metalake ids to include
+   * @return SQL statement
+   */
+  public String listProvisioningStatsByMetalakeIds(@Param("metalakeIds") List<Long> metalakeIds) {
+    return "<script>"
+        + "SELECT mm.metalake_name as metalakeName,"
+        + " COUNT(stm.token_id) as tokenCount,"
+        + " COALESCE(MAX(stm.last_used_at), 0) as lastUsedAt"
+        + " FROM "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mm LEFT JOIN "
+        + ScimTokenMetaMapper.TABLE_NAME
+        + " stm ON mm.metalake_id = stm.metalake_id AND stm.deleted_at = 0"
+        + " WHERE mm.deleted_at = 0"
+        + " AND mm.metalake_id IN"
+        + " <foreach collection='metalakeIds' item='metalakeId' open='(' close=')' separator=','>"
+        + " #{metalakeId}"
+        + " </foreach>"
+        + " GROUP BY mm.metalake_id, mm.metalake_name"
+        + " ORDER BY mm.metalake_name ASC"
+        + "</script>";
+  }
+
+  /**
+   * Lists active token rows for a metalake ordered by token name.
+   *
+   * @param metalakeName target metalake name
+   * @return SQL statement
+   */
+  public String listByMetalake(@Param("metalakeName") String metalakeName) {
+    return "SELECT"
+        + SELECT_COLUMNS
+        + " FROM "
+        + ScimTokenMetaMapper.TABLE_NAME
+        + " stm WHERE "
+        + activeMetalakeIdInClause("stm")
+        + " AND stm.deleted_at = 0"
+        + " ORDER BY stm.token_name ASC";
   }
 
   public String softDeleteByMetalakeAndName(
@@ -113,6 +158,21 @@ public class ScimTokenMetaBaseSQLProvider {
         + " AND token_hash = #{oldTokenMeta.tokenHash}"
         + " AND expires_at = #{oldTokenMeta.expiresAt}"
         + " AND audit_info = #{oldTokenMeta.auditInfo}"
+        + " AND deleted_at = 0";
+  }
+
+  /**
+   * Updates {@code last_used_at} for an active token after authenticated SCIM access.
+   *
+   * @param tokenId token id
+   * @return SQL statement
+   */
+  public String updateScimTokenLastUsedAt(@Param("tokenId") Long tokenId) {
+    return "UPDATE "
+        + ScimTokenMetaMapper.TABLE_NAME
+        + " SET last_used_at = "
+        + currentTimeMillisExpression()
+        + " WHERE token_id = #{tokenId}"
         + " AND deleted_at = 0";
   }
 

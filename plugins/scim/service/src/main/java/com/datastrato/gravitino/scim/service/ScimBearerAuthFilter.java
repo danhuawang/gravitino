@@ -88,6 +88,9 @@ public class ScimBearerAuthFilter implements Filter {
       ScimToken token = tokenManager.authenticateBearerToken(bearerToken, metalakeName);
       UserPrincipal principal = new UserPrincipal(token.getTokenName());
       httpRequest.setAttribute(AuthConstants.AUTHENTICATED_PRINCIPAL_ATTRIBUTE_NAME, principal);
+      // Touch last_used_at before the SCIM handler runs so the JDBC update is not nested inside
+      // entity-store SqlSessions opened on the same Jetty worker thread.
+      updateScimTokenLastUsedAt(token);
       PrincipalUtils.doAs(
           principal,
           () -> {
@@ -107,6 +110,14 @@ public class ScimBearerAuthFilter implements Filter {
           httpResponse, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
     } catch (Exception e) {
       throw new ServletException(e);
+    }
+  }
+
+  private void updateScimTokenLastUsedAt(ScimToken token) {
+    try {
+      tokenManager.updateScimTokenLastUsedAt(token.getTokenId());
+    } catch (RuntimeException e) {
+      LOG.warn("Failed to update last_used_at for SCIM token {}", token.getTokenId(), e);
     }
   }
 

@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import java.io.IOException;
+import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.po.MetalakePO;
 import org.junit.jupiter.api.Tag;
@@ -119,7 +120,75 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
     assertEquals(2000L, updated.getExpiresAt());
     assertEquals("{\"rotated\":true}", updated.getAuditInfo());
     assertTrue(updated.getUpdatedAt() > 0L);
+    assertEquals(0L, updated.getLastUsedAt());
     assertNull(scimTokenMetaMapper.selectByTokenHash("hash-a"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testListByMl(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    insertMetalake(20L, "other_metalake");
+    scimTokenMetaMapper.insert(createTokenMeta(1L, METALAKE_ID, "token-b", "hash-b", 0L));
+    scimTokenMetaMapper.insert(createTokenMeta(2L, METALAKE_ID, "token-a", "hash-a", 0L));
+    scimTokenMetaMapper.insert(createTokenMeta(3L, 20L, "token-c", "hash-c", 0L));
+
+    var tokens = scimTokenMetaMapper.listByMetalake(METALAKE_NAME);
+    assertEquals(2, tokens.size());
+    assertEquals("token-a", tokens.get(0).getTokenName());
+    assertEquals("token-b", tokens.get(1).getTokenName());
+    assertEquals(1, scimTokenMetaMapper.listByMetalake("other_metalake").size());
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testProvisioningStatsByMetalakeIds(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    insertMetalake(20L, "other_metalake");
+    insertMetalake(30L, "empty_metalake");
+    scimTokenMetaMapper.insert(createTokenMeta(1L, METALAKE_ID, "token-a", "hash-a", 0L));
+    scimTokenMetaMapper.insert(createTokenMeta(2L, METALAKE_ID, "token-b", "hash-b", 0L));
+    scimTokenMetaMapper.insert(createTokenMeta(3L, 20L, "token-c", "hash-c", 0L));
+    scimTokenMetaMapper.updateScimTokenLastUsedAt(1L);
+
+    var stats =
+        scimTokenMetaMapper.listProvisioningStatsByMetalakeIds(List.of(METALAKE_ID, 20L, 30L));
+    assertEquals(3, stats.size());
+    assertEquals(METALAKE_NAME, stats.get(0).getMetalakeName());
+    assertEquals(2L, stats.get(0).getTokenCount());
+    assertTrue(stats.get(0).getLastUsedAt() > 0L);
+    assertEquals("other_metalake", stats.get(1).getMetalakeName());
+    assertEquals(1L, stats.get(1).getTokenCount());
+    assertEquals("empty_metalake", stats.get(2).getMetalakeName());
+    assertEquals(0L, stats.get(2).getTokenCount());
+    assertEquals(0L, stats.get(2).getLastUsedAt());
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testTouchUsed(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    scimTokenMetaMapper.insert(createTokenMeta(1L, METALAKE_ID, "scim-token", "hash-a", 0L));
+
+    assertEquals(1, scimTokenMetaMapper.updateScimTokenLastUsedAt(1L));
+    ScimTokenMetaPO updated = scimTokenMetaMapper.selectByTokenHash("hash-a");
+    assertTrue(updated.getLastUsedAt() > 0L);
+    assertEquals(0L, updated.getUpdatedAt());
+    assertEquals(0, scimTokenMetaMapper.updateScimTokenLastUsedAt(999L));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testTouchSkipDeleted(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    scimTokenMetaMapper.insert(createTokenMeta(1L, METALAKE_ID, "scim-token", "hash-a", 0L));
+    scimTokenMetaMapper.updateScimTokenLastUsedAt(1L);
+    scimTokenMetaMapper.softDeleteByMetalakeAndName(METALAKE_NAME, "scim-token");
+    assertEquals(0, scimTokenMetaMapper.updateScimTokenLastUsedAt(1L));
   }
 
   @ParameterizedTest
