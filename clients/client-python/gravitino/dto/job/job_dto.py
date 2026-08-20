@@ -15,11 +15,40 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import re
 from dataclasses import dataclass, field
-from dataclasses_json import config, DataClassJsonMixin
+from datetime import datetime, timezone
+from typing import Optional
+
+from dataclasses_json import DataClassJsonMixin, config
 
 from gravitino.api.job.job_handle import JobHandle
 from gravitino.dto.audit_dto import AuditDTO
+
+_FRACTIONAL_SECONDS_PATTERN = re.compile(r"(\.\d{6})\d+")
+
+
+def _deserialize_datetime(value: Optional[datetime | str]) -> Optional[datetime]:
+    if value is None or isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
+        raise TypeError(f"finishedAt must be an ISO-8601 string, got {type(value)}")
+
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    # Match Python 3.11+ by truncating nanoseconds to microsecond precision.
+    normalized = _FRACTIONAL_SECONDS_PATTERN.sub(r"\1", normalized, count=1)
+    parsed = datetime.fromisoformat(normalized)
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else parsed
+
+
+def _serialize_datetime(value: Optional[datetime]) -> Optional[str]:
+    if value is None:
+        return None
+    if not isinstance(value, datetime):
+        raise TypeError(f"finishedAt must be a datetime, got {type(value)}")
+
+    normalized = value.astimezone(timezone.utc) if value.tzinfo is not None else value
+    return normalized.isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -36,6 +65,17 @@ class JobDTO(DataClassJsonMixin):
         )
     )
     _audit: AuditDTO = field(metadata=config(field_name="audit"))
+    _finished_at: Optional[datetime] = field(
+        default=None,
+        metadata=config(
+            field_name="finishedAt",
+            encoder=_serialize_datetime,
+            decoder=_deserialize_datetime,
+        ),
+    )
+
+    def __post_init__(self) -> None:
+        self._finished_at = _deserialize_datetime(self._finished_at)
 
     def job_id(self) -> str:
         """Returns the job ID."""
@@ -52,6 +92,12 @@ class JobDTO(DataClassJsonMixin):
     def audit(self) -> AuditDTO:
         """Returns the audit information of the job."""
         return self._audit
+
+    def finished_at(self) -> Optional[datetime]:
+        """Returns the time the job finished execution, or ``None`` if the job has not finished
+        execution yet.
+        """
+        return self._finished_at
 
     def validate(self) -> None:
         """Validates the JobDTO, ensuring required fields are present and non-empty."""
