@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
@@ -17,7 +18,10 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.EntityCombinedView;
 import org.apache.gravitino.dto.rel.ColumnDTO;
+import org.apache.gravitino.function.FunctionDefinition;
+import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.meta.AuditInfo;
+import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Representation;
@@ -30,6 +34,38 @@ import org.mockito.Mockito;
 class TestEntityConverterUtils {
 
   private static final Namespace VIEW_NAMESPACE = Namespace.of("test", "c1", "s1");
+
+  @Test
+  void testToFunctionSearchEntityPOUsesV2Projection() {
+    NameIdentifier identifier = NameIdentifier.of(VIEW_NAMESPACE, "mask_email");
+    FunctionEntity function =
+        FunctionEntity.builder()
+            .withId(2000L)
+            .withName(identifier.name())
+            .withNamespace(identifier.namespace())
+            .withComment("masks sensitive email addresses")
+            .withFunctionType(FunctionType.SCALAR)
+            .withDeterministic(true)
+            .withDefinitions(new FunctionDefinition[0])
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+    Tag tag = Mockito.mock(Tag.class);
+    Mockito.when(tag.name()).thenReturn("pii");
+
+    SearchEntityPO po =
+        EntityConverterUtils.toFunctionSearchEntityPO(function, new Tag[] {tag}, identifier);
+
+    assertEquals(2000L, po.getEntityId());
+    assertEquals(Entity.EntityType.FUNCTION, po.getEntityType());
+    assertEquals("test", po.getMetalake());
+    assertEquals("c1", po.getCatalogName());
+    assertEquals("mask_email", po.getEntityName());
+    assertEquals("masks sensitive email addresses", po.getEntityComment());
+    assertEquals("c1.s1.mask_email", po.getFullQualifiedName());
+    assertTrue(po.isInUse());
+    assertEquals(1, po.getTags().size());
+    assertEquals("pii", po.getTags().get(0).getTagName());
+  }
 
   @Test
   void testToViewSearchEntityPO() {

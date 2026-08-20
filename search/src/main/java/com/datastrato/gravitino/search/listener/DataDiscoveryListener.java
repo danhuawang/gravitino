@@ -19,6 +19,7 @@ import org.apache.gravitino.listener.api.event.SchemaEvent;
 import org.apache.gravitino.listener.api.event.TableEvent;
 import org.apache.gravitino.listener.api.event.TagEvent;
 import org.apache.gravitino.listener.api.event.TopicEvent;
+import org.apache.gravitino.listener.api.event.function.FunctionEvent;
 import org.apache.gravitino.listener.api.event.view.ViewEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,7 @@ public class DataDiscoveryListener implements EventListenerPlugin {
         ImmutableMap.<Class, EventHandler>builder()
             .put(TableEvent.class, new TableEventHandler(searchService))
             .put(ViewEvent.class, new ViewEventHandler(searchService))
+            .put(FunctionEvent.class, new FunctionEventHandler(searchService))
             .put(SchemaEvent.class, new SchemaEventHandler(searchService))
             .put(CatalogEvent.class, new CatalogEventHandler(searchService))
             .put(TagEvent.class, new TagEventHandler(searchService))
@@ -70,6 +72,8 @@ public class DataDiscoveryListener implements EventListenerPlugin {
         handler = eventHandlers.get(TableEvent.class);
       } else if (event instanceof ViewEvent) {
         handler = eventHandlers.get(ViewEvent.class);
+      } else if (event instanceof FunctionEvent) {
+        handler = eventHandlers.get(FunctionEvent.class);
       } else if (event instanceof SchemaEvent) {
         handler = eventHandlers.get(SchemaEvent.class);
       } else if (event instanceof CatalogEvent) {

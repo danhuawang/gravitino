@@ -25,6 +25,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import org.apache.gravitino.Audit;
 import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.Owner;
@@ -36,6 +37,8 @@ import org.apache.gravitino.catalog.EntityCombinedTable;
 import org.apache.gravitino.catalog.EntityCombinedTopic;
 import org.apache.gravitino.catalog.EntityCombinedView;
 import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.exceptions.GravitinoRuntimeException;
+import org.apache.gravitino.function.Function;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
@@ -358,6 +361,49 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(properties))
+        .withUpdateTime(System.currentTimeMillis())
+        .build();
+  }
+
+  /**
+   * Converts a function loaded from Gravitino to the lightweight search projection defined by the
+   * v2 Function index template.
+   *
+   * @param function The function metadata.
+   * @param tags The tags attached to the function, including inherited tags.
+   * @param nameIdentifier The function name identifier.
+   * @return The persistent object to index.
+   */
+  public static SearchEntityPO toFunctionSearchEntityPO(
+      Function function, Tag[] tags, NameIdentifier nameIdentifier) {
+    if (!(function instanceof HasIdentifier)) {
+      throw new GravitinoRuntimeException(
+          "Cannot resolve the entity id of function %s, unexpected function implementation %s",
+          nameIdentifier, function.getClass().getName());
+    }
+
+    String metalakeName = nameIdentifier.namespace().levels()[0];
+    String catalog = nameIdentifier.namespace().levels()[1];
+    String schema = nameIdentifier.namespace().levels()[2];
+    String owner =
+        getMetadataObjectOwner(
+            NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.FUNCTION), metalakeName);
+
+    return SearchEntityPO.SearchEntityPOBuilder.builder()
+        .withEntityId(((HasIdentifier) function).id())
+        .withEntityType(EntityType.FUNCTION)
+        .withInUse(true)
+        .withMetalake(metalakeName)
+        .withEntityName(function.name())
+        .withEntityComment(function.comment())
+        .withCatalogName(catalog)
+        .withFullQualifiedName(String.format("%s.%s.%s", catalog, schema, function.name()))
+        .withTags(toSearchTag(tags))
+        .withSearchAudit(toSearchAudit(function.auditInfo()))
+        .withOwner(owner)
+        .withUserPermissions(null)
+        .withRolePermissions(null)
+        .withEntityProperties(Collections.emptyList())
         .withUpdateTime(System.currentTimeMillis())
         .build();
   }

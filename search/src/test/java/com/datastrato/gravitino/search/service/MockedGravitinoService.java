@@ -29,6 +29,7 @@ import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
 import org.apache.gravitino.catalog.EntityCombinedTable;
 import org.apache.gravitino.catalog.EntityCombinedView;
+import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
@@ -36,12 +37,16 @@ import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.dto.tag.TagDTO;
+import org.apache.gravitino.exceptions.NoSuchFunctionException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NoSuchViewException;
+import org.apache.gravitino.function.FunctionDefinition;
+import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.ColumnEntity;
+import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.SchemaVersion;
 import org.apache.gravitino.meta.TableEntity;
@@ -61,6 +66,7 @@ public class MockedGravitinoService {
   public Map<String, EntityCombinedSchema> schemas = new HashMap<>();
   public Map<String, EntityCombinedTable> tables = new HashMap<>();
   public Map<String, EntityCombinedView> views = new HashMap<>();
+  public Map<String, FunctionEntity> functions = new HashMap<>();
 
   private Map<String, Tag> tags = new HashMap<>();
   private Map<String, Set<Tag>> objTags = new HashMap<>();
@@ -75,6 +81,7 @@ public class MockedGravitinoService {
     FieldUtils.writeField(gravitinoEnv, "schemaDispatcher", mockSchemaDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "tableDispatcher", mockTableDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "viewDispatcher", mockViewDispatcher(), true);
+    FieldUtils.writeField(gravitinoEnv, "functionDispatcher", mockFunctionDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "tagDispatcher", mockTagDispatcher(), true);
 
     return Mockito.spy(service);
@@ -227,6 +234,34 @@ public class MockedGravitinoService {
               }
             });
     return viewDispatcher;
+  }
+
+  private FunctionDispatcher mockFunctionDispatcher() {
+    FunctionDispatcher functionDispatcher = Mockito.mock(FunctionDispatcher.class);
+
+    Mockito.when(functionDispatcher.listFunctions(any(Namespace.class)))
+        .thenAnswer(
+            args -> {
+              Namespace namespace = args.getArgument(0);
+              return functions.keySet().stream()
+                  .filter(function -> function.startsWith(namespace.toString() + "."))
+                  .map(NameIdentifier::parse)
+                  .toArray(NameIdentifier[]::new);
+            });
+    Mockito.when(functionDispatcher.functionExists(any(NameIdentifier.class)))
+        .thenAnswer(args -> functions.containsKey(args.getArgument(0).toString()));
+    Mockito.when(functionDispatcher.getFunction(any(NameIdentifier.class)))
+        .thenAnswer(
+            args -> {
+              NameIdentifier name = args.getArgument(0);
+              FunctionEntity function = functions.get(name.toString());
+              if (function == null) {
+                throw new NoSuchFunctionException("No such function: %s", name);
+              }
+              return function;
+            });
+
+    return functionDispatcher;
   }
 
   private TagDispatcher mockTagDispatcher() {
@@ -402,6 +437,28 @@ public class MockedGravitinoService {
     return combinedView;
   }
 
+  public FunctionEntity createFunction(NameIdentifier nameIdentifier) {
+    return putFunction(nameIdentifier, "test function");
+  }
+
+  public FunctionEntity putFunction(NameIdentifier nameIdentifier, String comment) {
+    FunctionEntity oldFunction = functions.get(nameIdentifier.toString());
+    long entityId = oldFunction == null ? entityIdAllocator++ : oldFunction.id();
+    FunctionEntity function =
+        FunctionEntity.builder()
+            .withId(entityId)
+            .withName(nameIdentifier.name())
+            .withNamespace(nameIdentifier.namespace())
+            .withComment(comment)
+            .withFunctionType(FunctionType.SCALAR)
+            .withDeterministic(true)
+            .withDefinitions(new FunctionDefinition[0])
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+    functions.put(nameIdentifier.toString(), function);
+    return function;
+  }
+
   public void addTagsToObject(NameIdentifier nameIdentifier, Set<String> tags) {
     objTags.put(
         nameIdentifier.toString(),
@@ -431,6 +488,8 @@ public class MockedGravitinoService {
       return schemas.get(key).schemaEntity().id();
     } else if (views.containsKey(key)) {
       return views.get(key).viewEntity().id();
+    } else if (functions.containsKey(key)) {
+      return functions.get(key).id();
     } else if (catalogs.containsKey(key)) {
       return catalogs.get(key).entity().id();
     }

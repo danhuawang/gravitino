@@ -95,6 +95,7 @@ public class OpenSearchStorage implements SearchStorage {
   private static final String TOPIC_ENTITY_INDEX_SUFFIX = "topic_entity_index";
   private static final String TABLE_ENTITY_INDEX_SUFFIX = "table_entity_index";
   private static final String VIEW_ENTITY_INDEX_SUFFIX = "view_entity_index";
+  private static final String FUNCTION_ENTITY_INDEX_SUFFIX = "function_entity_index";
 
   private int maxRetries;
   private long retryBackoffMs;
@@ -114,7 +115,8 @@ public class OpenSearchStorage implements SearchStorage {
           EntityType.MODEL, MODEL_ENTITY_INDEX_SUFFIX,
           EntityType.TOPIC, TOPIC_ENTITY_INDEX_SUFFIX,
           EntityType.TABLE, TABLE_ENTITY_INDEX_SUFFIX,
-          EntityType.VIEW, VIEW_ENTITY_INDEX_SUFFIX);
+          EntityType.VIEW, VIEW_ENTITY_INDEX_SUFFIX,
+          EntityType.FUNCTION, FUNCTION_ENTITY_INDEX_SUFFIX);
 
   private final Set<String> createdIndicesAlias = Sets.newHashSet();
 

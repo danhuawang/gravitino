@@ -20,6 +20,7 @@ import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
@@ -42,6 +43,7 @@ import org.slf4j.LoggerFactory;
  * ｜ ｜-- SchemaEntitySource (ParentSearchEntitySource)
  * ｜ ｜ ｜-- TableEntitySource (LeafSearchEntitySource)
  * ｜ ｜ ｜-- ViewEntitySource (LeafSearchEntitySource)
+ * ｜ ｜ ｜-- FunctionEntitySource (LeafSearchEntitySource)
  * ｜ ｜ ｜-- TopicEntitySource (LeafSearchEntitySource)
  * ｜ ｜ ｜-- FilesetEntitySource (LeafSearchEntitySource)
  * ｜ ｜ ｜-- ModelEntitySource (LeafSearchEntitySource)
@@ -95,6 +97,8 @@ interface SearchEntitySource {
         return new TableSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case VIEW:
         return new ViewSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
+      case FUNCTION:
+        return new FunctionSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case TOPIC:
         return new TopicSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case FILESET:
@@ -134,6 +138,12 @@ interface SearchEntitySource {
                 idents ->
                     new ViewSearchEntitySource(
                         toSearchEntityIdentifiers(idents, Entity.EntityType.VIEW)))
+            .ifPresent(relationalSources::add);
+        listFunctions(ns)
+            .map(
+                idents ->
+                    new FunctionSearchEntitySource(
+                        toSearchEntityIdentifiers(idents, Entity.EntityType.FUNCTION)))
             .ifPresent(relationalSources::add);
         return relationalSources.build();
 
@@ -178,6 +188,27 @@ interface SearchEntitySource {
       return Optional.of(viewDispatcher.listViews(namespace));
     } catch (UnsupportedOperationException e) {
       LOG.debug("The catalog of schema {} does not support views", namespace);
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * Lists the functions under the given schema namespace. Relational catalogs are not required to
+   * support functions, in which case an empty result is returned.
+   *
+   * @param namespace the schema namespace
+   * @return the function identifiers, or empty if the catalog does not support functions
+   */
+  static Optional<NameIdentifier[]> listFunctions(Namespace namespace) {
+    FunctionDispatcher functionDispatcher = GravitinoEnv.getInstance().functionDispatcher();
+    if (functionDispatcher == null) {
+      return Optional.empty();
+    }
+
+    try {
+      return Optional.of(functionDispatcher.listFunctions(namespace));
+    } catch (UnsupportedOperationException e) {
+      LOG.debug("The catalog of schema {} does not support functions", namespace);
       return Optional.empty();
     }
   }

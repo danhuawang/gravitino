@@ -7,7 +7,7 @@ This software is licensed under the Apache License version 2.
 
 ## Overview
 
-Data Discovery provides a metadata search capability within the Gravitino server. It enables users to retrieve metadata of all kinds such as catalogs, schemas, tables, filesets, topics, and models via API or web UI.
+Data Discovery provides a metadata search capability within the Gravitino server. It enables users to retrieve metadata of all kinds such as catalogs, schemas, tables, views, functions, filesets, topics, and models via API or web UI.
 
 Searches can be performed across multiple fields including name, tags, and description. The search engine is built on **OpenSearch**, which offers powerful full-text search capabilities and scalability.
 
@@ -128,6 +128,17 @@ The view mapping was introduced in the `v2` bundle and does not index the `in_us
 `tags.properties`. Those values are still stored and returned with the document; they simply
 cannot be searched or filtered on for views yet.
 
+#### Function
+
+The Function mapping was introduced in the `v2` bundle as a lightweight search projection. It
+indexes the common name, comment, catalog, fully qualified name, tag name, and audit fields listed
+above. Function definitions and parameters are deliberately not indexed; callers should use the
+Gravitino Function API to retrieve those details after discovering a Function.
+
+Like the View mapping, the Function mapping does not index the `in_use`, `owner`,
+`user_permissions`, and `role_permissions` common fields, nor `tags.tag_comment` and
+`tags.properties`.
+
 #### Model
 
 | Field Path                                                                                 | Type             |
@@ -172,7 +183,7 @@ curl -X GET "http://localhost:8090/api/search/query?metalake=test&pageNumber=0&p
 curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20catalog_name:test_catalog&pageNumber=0&pageSize=10" | jq
 
 # Search for metadata in the metalake `test` with keyword "demo" and filter: entity_type=TABLE, returning the first 10 results
-# Support entity type: CATALOG, SCHEMA, TABLE, VIEW, MODEL, TOPIC, FILESET
+# Support entity type: CATALOG, SCHEMA, TABLE, VIEW, FUNCTION, MODEL, TOPIC, FILESET
 curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20entity_type:TABLE&pageNumber=0&pageSize=10" | jq
 
 # Search for metadata in the metalake `test` with keyword "demo" and filter: tag_name=demo_tag, returning the first 10 results
@@ -240,6 +251,7 @@ The example index information for the `test` Metalake are:
 | test_schema_entity_index  | test_schema_entity_index_11828332843  | schema_entity_index_template_v2  | store the schema metadata in test metalake  |
 | test_table_entity_index   | test_table_entity_index_11828332843   | table_entity_index_template_v2   | store the table metadata in test metalake   |
 | test_view_entity_index    | test_view_entity_index_11828332843    | view_entity_index_template_v2    | store the view metadata in test metalake    |
+| test_function_entity_index | test_function_entity_index_11828332843 | function_entity_index_template_v2 | store the function metadata in test metalake |
 | test_model_entity_index   | test_model_entity_index_11828332843   | model_entity_index_template_v2   | store the model metadata in test metalake   |
 | test_topic_entity_index   | test_topic_entity_index_11828332843   | topic_entity_index_template_v2   | store the topic metadata in test metalake   |
 | test_fileset_entity_index | test_fileset_entity_index_11828332843 | fileset_entity_index_template_v2 | store the fileset metadata in test metalake |
@@ -270,6 +282,7 @@ v1/
 v2/
   ├── catalog_entity_indices.json
   ├── view_entity_indices.json
+  ├── function_entity_indices.json
   ├── ...
 ```
 
@@ -302,7 +315,7 @@ POST /api/search/sync/metalakes/{metalake}/objects
 |------------------|---------|----------|-------------------------------------------------------------------------------------------------------------------------------------|----------------|
 | metalake         | string  | Yes      | Metalake name                                                                                                                       | `test`         |
 | metadataFullName | string  | No       | Full name of the metadata entity, like <catalog>.<schema>.<table>. If `metadataFullName` is set, `metadataType` should also be set. | `test_catalog` |
-| metadataType     | string  | No       | Type of metadata entity (e.g., `catalog `, `schema`, `table`, `view`, `model`, `topic`, `fileset`)                                  | `catalog`      |
+| metadataType     | string  | No       | Type of metadata entity (e.g., `catalog `, `schema`, `table`, `view`, `function`, `model`, `topic`, `fileset`)                      | `catalog`      |
 | cascade          | boolean | No       | Whether to cascade sync to related entities                                                                                         | `true`         |
 
 You can also post an empty body, then the Gravitino server will sync all metadata entities in the specified metalake.
