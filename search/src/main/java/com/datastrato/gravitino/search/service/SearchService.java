@@ -187,13 +187,7 @@ public class SearchService implements Closeable {
 
     Preconditions.checkArgument(metadataObject != null, "The metadata object cannot be null.");
 
-    if (syncTasks.size() > maxQueueSize) {
-      throw new RuntimeException(
-          String.format(
-              "The number of sync tasks is too large, "
-                  + "please wait for the previous tasks to finish. Current size: %d MaxQueueSize: %d",
-              syncTasks.size(), maxQueueSize));
-    }
+    checkSyncTaskQueueSize();
 
     SyncTask syncTask =
         new SyncTask(metalake, metadataObject, cascade, this, syncTaskOptions, finishedHandler);
@@ -216,23 +210,8 @@ public class SearchService implements Closeable {
   }
 
   public SyncTask synchronizeEntityDataByTag(String metalake, String tagName) {
-    if (syncTasks.size() > maxQueueSize) {
-      throw new RuntimeException(
-          String.format(
-              "The number of sync tasks is too large, "
-                  + "please wait for the previous tasks to finish. Current size: %d MaxQueueSize: %d",
-              syncTasks.size(), maxQueueSize));
-    }
-
-    TagSearchEntitySource source = new TagSearchEntitySource(metalake, tagName);
-
-    // As Tag is not a metadata object, we create a SearchEntityIdentifier using the metalake name.
-    SearchEntityIdentifier searchEntityIdentifier =
-        SearchEntityIdentifier.of(NameIdentifier.of(metalake), EntityType.METALAKE);
-    SyncTask syncTask = new SyncTask(searchEntityIdentifier, source, this);
-    LOG.info("TaskId: {}, start synchronize metadata by tag ...", syncTask.getTaskId());
-    addTask(syncTask);
-    return syncTask;
+    return synchronizeEntityDataByTag(
+        metalake, tagName, TagSearchEntitySource.ofAssociatedEntities(metalake, tagName));
   }
 
   public Future<?> removeMetadata(
@@ -253,16 +232,47 @@ public class SearchService implements Closeable {
         });
   }
 
-  public Future<?> removeMetadataByTag(String metalake, String tagName) {
-    return executorService.submit(
-        () -> {
-          try {
-            removeMetadataByQuery(
-                metalake, new Condition.InCondition("tag_name", ImmutableList.of(tagName)));
-          } catch (Exception e) {
-            LOG.error("Failed to remove metadata by tag {}: {}", tagName, e.getMessage(), e);
-          }
-        });
+  /**
+   * Re-synchronizes every entity that carried the given tag, so that their indexed documents drop a
+   * tag that no longer exists.
+   *
+   * <p>The entities cannot be discovered through Gravitino at this point, the tag is already gone
+   * and {@code listMetadataObjectsForTag} would not report anything, so they are looked up in the
+   * search index by the tag they still carry.
+   *
+   * @param metalake The metalake owning the deleted tag.
+   * @param tagName The name of the deleted tag.
+   * @return The synchronization task queued for the entities that carried the tag.
+   */
+  public SyncTask resyncMetadataByTag(String metalake, String tagName) {
+    return synchronizeEntityDataByTag(
+        metalake, tagName, TagSearchEntitySource.ofIndexedEntities(metalake, tagName, storage));
+  }
+
+  private SyncTask synchronizeEntityDataByTag(
+      String metalake, String tagName, TagSearchEntitySource source) {
+    checkSyncTaskQueueSize();
+
+    // As Tag is not a metadata object, we create a SearchEntityIdentifier using the metalake name.
+    SearchEntityIdentifier searchEntityIdentifier =
+        SearchEntityIdentifier.of(NameIdentifier.of(metalake), EntityType.METALAKE);
+    SyncTask syncTask = new SyncTask(searchEntityIdentifier, source, this);
+    LOG.info(
+        "TaskId: {}, start synchronizing metadata by tag {} ...", syncTask.getTaskId(), tagName);
+    addTask(syncTask);
+    return syncTask;
+  }
+
+  private void checkSyncTaskQueueSize() {
+    synchronized (this) {
+      if (syncTasks.size() >= maxQueueSize) {
+        throw new RuntimeException(
+            String.format(
+                "The number of sync tasks is too large, "
+                    + "please wait for the previous tasks to finish. Current size: %d MaxQueueSize: %d",
+                syncTasks.size(), maxQueueSize));
+      }
+    }
   }
 
   public void removeMetadataByQuery(String metalake, Condition condition) {

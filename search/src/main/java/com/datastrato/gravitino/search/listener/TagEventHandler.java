@@ -32,7 +32,8 @@ public class TagEventHandler implements EventHandler {
 
     } else if (event instanceof DeleteTagEvent) {
       String metalake = event.identifier().namespace().level(0);
-      searchService.removeMetadataByTag(metalake, event.identifier().name());
+      // The entities that carried the tag stay searchable, only the tag has to drop off them.
+      searchService.resyncMetadataByTag(metalake, event.identifier().name());
 
     } else if (event instanceof AlterTagEvent) {
       AlterTagEvent alterTag = (AlterTagEvent) event;

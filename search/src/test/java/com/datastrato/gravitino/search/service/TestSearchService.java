@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino.search.service;
 
+import static com.datastrato.gravitino.search.config.SearchConfig.ENTITY_GRAVITINO_SEARCH_MAX_TASK_QUEUE_SIZE;
 import static com.datastrato.gravitino.search.config.SearchConfig.ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL;
 import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
 import static com.datastrato.gravitino.search.utils.FilterConditionUtils.createEntityNameQueryCondition;
@@ -401,6 +402,27 @@ public class TestSearchService {
     List<SearchEntityPO> searchEntityList = inMemorySearchStorage.getSearchEntities();
     Assertions.assertEquals(4, searchEntityList.size());
     inMemorySearchStorage.clear();
+  }
+
+  @Test
+  void testResyncMetadataByTagHonorsTaskQueueLimit() {
+    Config config = Mockito.mock(Config.class);
+    Mockito.when(config.get(ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL)).thenReturn("memory");
+    Mockito.when(config.getAllConfig())
+        .thenReturn(
+            ImmutableMap.of(
+                ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL.getKey(),
+                "memory",
+                ENTITY_GRAVITINO_SEARCH_MAX_TASK_QUEUE_SIZE.getKey(),
+                "0"));
+
+    try (SearchService limitedQueueService = new SearchService(config)) {
+      RuntimeException exception =
+          Assertions.assertThrows(
+              RuntimeException.class,
+              () -> limitedQueueService.resyncMetadataByTag("test_metalake", "test_tag"));
+      Assertions.assertTrue(exception.getMessage().contains("MaxQueueSize: 0"));
+    }
   }
 
   void testSyncTaskWithoutCleanData(
