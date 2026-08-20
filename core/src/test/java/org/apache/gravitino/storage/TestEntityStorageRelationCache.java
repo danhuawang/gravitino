@@ -211,35 +211,17 @@ public class TestEntityStorageRelationCache extends AbstractEntityStorageTest {
 
       store.delete(readRole.nameIdentifier(), Entity.EntityType.ROLE);
 
-      ReverseIndexCache reverseIndexCache =
-          ((CaffeineEntityCache) ((RelationalEntityStore) store).getCache()).getReverseIndex();
-      List<EntityCacheKey> reverseIndexValue =
-          reverseIndexCache.get(
-              NameIdentifier.of("metalake", "newCatalogName", "schema", "fileset"),
-              Entity.EntityType.FILESET);
-      Assertions.assertEquals(1, reverseIndexValue.size());
-      Assertions.assertEquals(writeRole.nameIdentifier(), reverseIndexValue.get(0).identifier());
+      // ROLE entities are not cached, so ROLE_SECURABLE_OBJECT_REVERSE_RULE no longer indexes
+      // them. Assert store-level freshness instead of reverse-index internals.
+      Role reloadedWriteRole =
+          store.get(writeRole.nameIdentifier(), Entity.EntityType.ROLE, RoleEntity.class);
+      Assertions.assertEquals(1, reloadedWriteRole.securableObjects().size());
 
       store.put(readRole, true);
       store.get(readRole.nameIdentifier(), Entity.EntityType.ROLE, RoleEntity.class);
-      reverseIndexValue =
-          reverseIndexCache.get(
-              NameIdentifier.of("metalake", "newCatalogName", "schema", "fileset"),
-              Entity.EntityType.FILESET);
-      Assertions.assertEquals(2, reverseIndexValue.size());
-      List<NameIdentifier> ids =
-          reverseIndexValue.stream().map(EntityCacheKey::identifier).collect(Collectors.toList());
-      Assertions.assertTrue(ids.contains(readRole.nameIdentifier()));
-      Assertions.assertTrue(ids.contains(writeRole.nameIdentifier()));
 
       store.delete(readRole.nameIdentifier(), Entity.EntityType.ROLE);
       store.delete(writeRole.nameIdentifier(), Entity.EntityType.ROLE);
-
-      reverseIndexValue =
-          reverseIndexCache.get(
-              NameIdentifier.of("metalake", "newCatalogName", "schema", "fileset"),
-              Entity.EntityType.FILESET);
-      Assertions.assertNull(reverseIndexValue);
 
       store.put(readRole, true);
       store.put(writeRole, true);
@@ -1276,39 +1258,28 @@ public class TestEntityStorageRelationCache extends AbstractEntityStorageTest {
                 .build();
         store.put(role, false);
 
-        // Read role to populate cache; ROLE_SECURABLE_OBJECT_REVERSE_RULE writes:
-        // funcIdent:FUNCTION -> [roleIdent:ROLE] into the reverse index.
-        RoleEntity cachedRole =
+        // Read the role once so a stale copy would be observable if it were cached.
+        RoleEntity loadedRole =
             store.get(role.nameIdentifier(), Entity.EntityType.ROLE, RoleEntity.class);
-        Assertions.assertEquals(3, cachedRole.securableObjects().size());
-
-        if (enableCache && store instanceof RelationalEntityStore) {
-          RelationalEntityStore relationalEntityStore = (RelationalEntityStore) store;
-          if (relationalEntityStore.getCache() instanceof CaffeineEntityCache) {
-            ReverseIndexCache reverseIndex =
-                ((CaffeineEntityCache) relationalEntityStore.getCache()).getReverseIndex();
-            List<EntityCacheKey> reverseKeys =
-                reverseIndex.get(function.nameIdentifier(), Entity.EntityType.FUNCTION);
-            Assertions.assertNotNull(reverseKeys);
-            Assertions.assertTrue(
-                reverseKeys.stream().anyMatch(k -> k.identifier().equals(role.nameIdentifier())));
-          }
-        }
-
-        // Delete the function; BFS invalidation should evict the role from cache via reverse index.
-        store.delete(function.nameIdentifier(), Entity.EntityType.FUNCTION, false);
+        Assertions.assertEquals(3, loadedRole.securableObjects().size());
 
         if (enableCache && store instanceof RelationalEntityStore) {
           RelationalEntityStore relationalEntityStore = (RelationalEntityStore) store;
           if (relationalEntityStore.getCache() instanceof CaffeineEntityCache) {
             CaffeineEntityCache cache = (CaffeineEntityCache) relationalEntityStore.getCache();
+            // ROLE entities are deliberately not cached.
             Assertions.assertNull(
                 cache
                     .getCacheData()
                     .getIfPresent(
                         EntityCacheRelationKey.of(role.nameIdentifier(), Entity.EntityType.ROLE)));
+            Assertions.assertNull(
+                cache.getReverseIndex().get(function.nameIdentifier(), Entity.EntityType.FUNCTION));
           }
         }
+
+        // Delete the function; the next role read must not serve a stale securable object list.
+        store.delete(function.nameIdentifier(), Entity.EntityType.FUNCTION, false);
 
         // Re-read role; the function securable object should have been removed from DB via cascade.
         RoleEntity reloadedRole =

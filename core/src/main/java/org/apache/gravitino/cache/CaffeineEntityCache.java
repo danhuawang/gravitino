@@ -326,8 +326,17 @@ public class CaffeineEntityCache extends BaseEntityCache {
   public <E extends Entity & HasIdentifier> void put(E entity) {
     Preconditions.checkArgument(entity != null, "Entity cannot be null");
 
+    // USER/GROUP/ROLE embed relation-derived fields that cannot be invalidated by a key drop on
+    // the entity itself; authorization uses its own caches and does not need these entries.
+    Entity.EntityType type = entity.type();
+    if (type == Entity.EntityType.USER
+        || type == Entity.EntityType.GROUP
+        || type == Entity.EntityType.ROLE) {
+      return;
+    }
+
     NameIdentifier identifier = getIdentFromEntity(entity);
-    EntityCacheRelationKey entityCacheKey = EntityCacheRelationKey.of(identifier, entity.type());
+    EntityCacheRelationKey entityCacheKey = EntityCacheRelationKey.of(identifier, type);
 
     segmentedLock.withLock(
         entityCacheKey,

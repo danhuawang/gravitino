@@ -156,12 +156,27 @@ public class TestCaffeineEntityCacheInvalidation {
         "METADATA_OBJECT_ROLE_REL cache must be invalidated after revoking the role");
   }
 
+  @Test
+  void testUserGroupRoleAreNotCached() {
+    cache.put(TestUtil.getTestUserEntity());
+    cache.put(TestUtil.getTestGroupEntity());
+    cache.put(TestUtil.getTestRoleEntity());
+
+    Assertions.assertEquals(0, cache.size());
+    Assertions.assertFalse(
+        cache.contains(TestUtil.getTestUserEntity().nameIdentifier(), Entity.EntityType.USER));
+    Assertions.assertFalse(
+        cache.contains(TestUtil.getTestGroupEntity().nameIdentifier(), Entity.EntityType.GROUP));
+    Assertions.assertFalse(
+        cache.contains(TestUtil.getTestRoleEntity().nameIdentifier(), Entity.EntityType.ROLE));
+  }
+
   /**
-   * When the role entity was also separately cached (via a previous get), invalidating it must
-   * still propagate to the METADATA_OBJECT_ROLE_REL relation cache.
+   * Invalidating a role key must still clear METADATA_OBJECT_ROLE_REL entries indexed from that
+   * role, even though ROLE entities themselves are never cached.
    */
   @Test
-  void testRoleInvalidationWithSeparatelyCachedRoleEntity() {
+  void testRoleInvalidationPropagatesWithoutCachingRoleEntity() {
     String metalake = "metalake";
     String catalogName = "catalog";
     String schemaName = "schema1";
@@ -171,18 +186,17 @@ public class TestCaffeineEntityCacheInvalidation {
     NameIdentifier schemaIdent = NameIdentifier.of(metalake, catalogName, schemaName);
     NameIdentifier roleIdent = NameIdentifierUtil.ofRole(metalake, roleName);
 
-    // Simulate separate entity get (e.g., loadRole)
+    // ROLE entities are not cached; put is a no-op for the entity key.
     cache.put(role);
+    Assertions.assertFalse(cache.contains(roleIdent, Entity.EntityType.ROLE));
 
-    // Simulate relation cache populated after listBindingRoleNames
+    // Relation cache is still populated after listBindingRoleNames.
     cache.put(
         schemaIdent,
         Entity.EntityType.SCHEMA,
         SupportsRelationOperations.Type.METADATA_OBJECT_ROLE_REL,
         Lists.newArrayList(role));
 
-    // Both caches are present
-    Assertions.assertTrue(cache.contains(roleIdent, Entity.EntityType.ROLE));
     Assertions.assertTrue(
         cache.contains(
             schemaIdent,
@@ -192,10 +206,6 @@ public class TestCaffeineEntityCacheInvalidation {
     // Invalidate role (simulates revokePrivilegesFromRole)
     cache.invalidate(roleIdent, Entity.EntityType.ROLE);
 
-    // Both the role entity cache and the relation cache must be gone
-    Assertions.assertFalse(
-        cache.contains(roleIdent, Entity.EntityType.ROLE),
-        "Role entity cache must be gone after invalidation");
     Assertions.assertFalse(
         cache.contains(
             schemaIdent,
@@ -207,12 +217,6 @@ public class TestCaffeineEntityCacheInvalidation {
   /**
    * When multiple roles share the same schema as a securable object, invalidating one role must
    * invalidate the METADATA_OBJECT_ROLE_REL cache for that schema (since the full list is stale).
-   *
-   * <p>Note: The existing BFS propagation logic also cascades from the cleared relation cache back
-   * to other role entities via the schema's reverse index (the same behaviour that clears stale
-   * role-entity caches on schema rename). Clearing role2's entity cache is a pre-existing
-   * performance trade-off, not a correctness bug: role2 will be re-fetched fresh from the DB on the
-   * next access.
    */
   @Test
   void testMultipleRolesInvalidationForSameSchema() {
@@ -226,9 +230,7 @@ public class TestCaffeineEntityCacheInvalidation {
     NameIdentifier schemaIdent = NameIdentifier.of(metalake, catalogName, schemaName);
     NameIdentifier role1Ident = NameIdentifierUtil.ofRole(metalake, "role1");
 
-    // Cache both role entities separately and the relation list
-    cache.put(role1);
-    cache.put(role2);
+    // ROLE entities are not cached; only the relation list is.
     cache.put(
         schemaIdent,
         Entity.EntityType.SCHEMA,
@@ -375,7 +377,7 @@ public class TestCaffeineEntityCacheInvalidation {
     NameIdentifier schemaIdent = NameIdentifier.of(metalake, catalogName, schemaName);
     NameIdentifier roleIdent = NameIdentifierUtil.ofRole(metalake, roleName);
 
-    cache.put(role);
+    // ROLE entities are not cached; reverse-index entries come from relation puts.
     cache.put(
         schemaIdent,
         Entity.EntityType.SCHEMA,

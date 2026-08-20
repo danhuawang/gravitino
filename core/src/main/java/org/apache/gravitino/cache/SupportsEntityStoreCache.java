@@ -62,6 +62,10 @@ public interface SupportsEntityStoreCache {
   /**
    * Puts an entity into the cache.
    *
+   * <p>{@link Entity.EntityType#USER}, {@link Entity.EntityType#GROUP} and {@link
+   * Entity.EntityType#ROLE} are not cached: their materialized form embeds relation-derived data
+   * that can go stale when a different entity changes.
+   *
    * @param entity The entity to cache
    * @param <E> The class of the entity
    */
