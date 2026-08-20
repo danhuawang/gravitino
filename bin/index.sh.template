@@ -9,6 +9,10 @@ cd "$(dirname "$0")"
 CREATE_SCRIPT="opensearch/create_indices_template.sh"
 DELETE_SCRIPT="opensearch/delete_indices_template.sh"
 
+# Exit code used by CREATE_SCRIPT when it refuses a version before touching OpenSearch. Any other
+# non-zero status means part of the bundle may already be installed.
+CREATE_REJECTED=2
+
 # Show usage information
 show_usage() {
     cat <<EOF
@@ -167,16 +171,21 @@ get_all_index_template_versions() {
     local response=$(curl -s -k -u "$USERNAME:$PASSWORD" "$OPENSEARCH_URL/_index_template")
     local http_code=$(curl -s -o /dev/null -w "%{http_code}" -k -u "$USERNAME:$PASSWORD" "$OPENSEARCH_URL/_index_template")
 
+    # Diagnostics go to stderr: callers capture stdout and treat every line as a version name.
     if [[ "$http_code" -ne 200 ]]; then
-        echo "Error: Failed to fetch index templates (HTTP $http_code)."
+        echo "Error: Failed to fetch index templates (HTTP $http_code)." >&2
         return 1
     fi
 
-    echo "$response" \
-    | jq -r '.index_templates[].name' \
+    local names
+    if ! names=$(echo "$response" | jq -r '.index_templates[].name' 2>/dev/null); then
+        echo "Error: Failed to parse index template list." >&2
+        return 1
+    fi
+
+    printf '%s\n' "$names" \
     | sed -En 's/.*_entity_index_template_([a-zA-Z0-9]+)$/\1/p' \
-    | sort -u \
-    || echo "Error: Failed to parse index template list."
+    | sort -u
 }
 
 rebuild_index() {
@@ -239,7 +248,10 @@ main() {
             validate_parameters
             test_connection
 
-            existVersions=$(get_all_index_template_versions)
+            if ! existVersions=$(get_all_index_template_versions); then
+              echo "Error: Failed to list the index template versions already installed."
+              exit 1
+            fi
             if [[ -n "$existVersions" ]]; then
               echo "Info: Existing index templates found with versions: $existVersions"
               echo "Info: Run '$0 upgrade <version>' to reconcile or upgrade them."
@@ -263,22 +275,44 @@ main() {
             validate_parameters
             validate_version
             test_connection
-            existVersions=$(get_all_index_template_versions)
+            if ! existVersions=$(get_all_index_template_versions); then
+              echo "Error: Failed to list the index template versions already installed."
+              exit 1
+            fi
 
             if echo "$existVersions" | grep -qx "$VERSION"; then
-              # A release may add a template for a new entity type without changing the mappings
-              # of the existing ones, so the requested version can be partially present. The
-              # create script skips the templates that already exist, so running it again only
-              # fills in the missing ones and never rewrites an existing template.
-              echo "Index version $VERSION already exists, reconciling missing entity templates..."
-              bash "$CREATE_SCRIPT" "$VERSION" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"
+              # Retry creation to repair a previous attempt that installed only part of the
+              # immutable version bundle. Existing templates are never rewritten.
+              echo "Index version $VERSION already exists, verifying its templates..."
             else
               echo "Creating index template with version $VERSION..."
-              bash "$CREATE_SCRIPT" "$VERSION" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"
-              if [[ $? -eq 0 ]]; then
-                echo "Deleting previous index templates with version $versions..."
-                bash "$DELETE_SCRIPT" "$existVersions" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"
+            fi
+
+            bash "$CREATE_SCRIPT" "$VERSION" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"
+            CREATE_STATUS=$?
+            if [[ "$CREATE_STATUS" -eq "$CREATE_REJECTED" ]]; then
+              echo "Error: Version $VERSION was rejected before any template was written. Existing templates were preserved."
+              exit 1
+            elif [[ "$CREATE_STATUS" -ne 0 ]]; then
+              echo "Error: Version $VERSION was only partially created and is already active for new indices."
+              echo "Error: Previous templates were preserved; fix the failure and re-run '$0 upgrade $VERSION' to complete the bundle."
+              exit 1
+            fi
+
+            DELETE_FAILED=0
+            while read -r existingVersion; do
+              if [[ -z "$existingVersion" || "$existingVersion" == "$VERSION" ]]; then
+                continue
               fi
+              echo "Deleting previous index templates with version $existingVersion..."
+              if ! bash "$DELETE_SCRIPT" "$existingVersion" "$OPENSEARCH_URL" "$USERNAME" "$PASSWORD"; then
+                DELETE_FAILED=1
+              fi
+            done <<< "$existVersions"
+
+            if [[ "$DELETE_FAILED" -ne 0 ]]; then
+              echo "Error: Version $VERSION was created, but some previous templates could not be deleted."
+              exit 1
             fi
             ;;
 

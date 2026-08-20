@@ -1,0 +1,7 @@
+# Index pattern              Template JSON
+table_entity_index           table_entity_indices.json
+model_entity_index           model_entity_indices.json
+catalog_entity_index         catalog_entity_indices.json
+schema_entity_index          schema_entity_indices.json
+topic_entity_index           topic_entity_indices.json
+fileset_entity_index         fileset_entity_indices.json

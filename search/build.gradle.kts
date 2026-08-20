@@ -49,6 +49,7 @@ dependencies {
   annotationProcessor(libs.lombok)
 
   testImplementation(project(":core-extension", "testArtifacts"))
+  testImplementation(project(":integration-test-common", "testArtifacts"))
   testImplementation(project(":test:test-common"))
 
   testImplementation(project(":iceberg:iceberg-rest-server"))

@@ -10,6 +10,10 @@ OPENSEARCH_URL=$2
 USERNAME=$3
 PASSWORD=$4
 
+# Reported to the caller while OpenSearch is still untouched, so that it can tell a rejected
+# version apart from a half-installed one.
+REJECTED=2
+
 # Prepare credentials for curl
 CREDENTIALS="-u $USERNAME:$PASSWORD -k"
 
@@ -19,38 +23,65 @@ RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $OPENSEARCH_URL $CREDENTIALS)
 
 if [ "$RESPONSE" != "200" ]; then
     echo "Error: Failed to connect to OpenSearch (HTTP $RESPONSE)"
-    exit 1
+    exit "$REJECTED"
 fi
 
 echo "Successfully connected to OpenSearch"
 
 # Define JSON directory based on version
 JSON_DIR="./opensearch/$VERSION"
+MANIFEST="$JSON_DIR/templates.list"
 
 # Check if version directory exists
 if [ ! -d "$JSON_DIR" ]; then
-    echo "Error: The index tempalte Directory $JSON_DIR of version $VERSION does not exist"
-    exit 1
+    echo "Error: The index template directory $JSON_DIR of version $VERSION does not exist"
+    exit "$REJECTED"
 fi
 
-# Template mapping with wildcard patterns
-KEYS=(
-    "table_entity_index"
-    "model_entity_index"
-    "catalog_entity_index"
-    "schema_entity_index"
-    "topic_entity_index"
-    "fileset_entity_index"
-)
+if [ ! -f "$MANIFEST" ]; then
+    echo "Error: Template manifest $MANIFEST does not exist"
+    exit "$REJECTED"
+fi
 
-VALUES=(
-    "table_entity_indices.json"
-    "model_entity_indices.json"
-    "catalog_entity_indices.json"
-    "schema_entity_indices.json"
-    "topic_entity_indices.json"
-    "fileset_entity_indices.json"
-)
+KEYS=()
+VALUES=()
+
+# Load and validate the complete version manifest before changing OpenSearch.
+while read -r pattern json_file extra; do
+    if [[ -z "$pattern" || "$pattern" == \#* ]]; then
+        continue
+    fi
+    if [[ -z "$json_file" || -n "$extra" ]]; then
+        echo "Error: Invalid template manifest entry: $pattern $json_file $extra"
+        exit "$REJECTED"
+    fi
+
+    json_path="$JSON_DIR/$json_file"
+    if [ ! -f "$json_path" ]; then
+        echo "Error: Template file $json_path does not exist"
+        exit "$REJECTED"
+    fi
+    if ! jq empty "$json_path" >/dev/null 2>&1; then
+        echo "Error: Template file $json_path is not valid JSON"
+        exit "$REJECTED"
+    fi
+
+    KEYS+=("$pattern")
+    VALUES+=("$json_file")
+done < "$MANIFEST"
+
+if [ "${#KEYS[@]}" -eq 0 ]; then
+    echo "Error: Template manifest $MANIFEST does not contain any templates"
+    exit "$REJECTED"
+fi
+
+# Number of priorities reserved for a single version, see the priority computation below.
+PRIORITY_BAND=100
+
+if [ "${#KEYS[@]}" -gt "$PRIORITY_BAND" ]; then
+    echo "Error: Version $VERSION ships ${#KEYS[@]} templates but only $PRIORITY_BAND priorities are reserved per version"
+    exit "$REJECTED"
+fi
 
 
 # Function to create composable index template
@@ -112,8 +143,12 @@ EOF
 ERROR_OCCURRED=0
 
 # Create composable templates for each pattern
+# Each version owns a band of 100 priorities so that a later version always outranks an earlier one
+# no matter how many templates it ships. Bands must stay wider than the largest bundle, otherwise
+# two versions could assign the same priority to the same index pattern and OpenSearch would reject
+# the request.
 NUM="${VERSION//[!0-9]/}"
-priority=$((10000 + NUM * 10))
+priority=$((10000 + NUM * PRIORITY_BAND))
 for i in "${!KEYS[@]}"; do
     pattern="${KEYS[$i]}"
     json_file="${VALUES[$i]}"
@@ -124,3 +159,4 @@ for i in "${!KEYS[@]}"; do
 done
 
 echo "Index template creation completed with status: $ERROR_OCCURRED"
+exit "$ERROR_OCCURRED"

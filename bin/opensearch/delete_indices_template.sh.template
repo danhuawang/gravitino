@@ -24,24 +24,49 @@ fi
 
 echo "Successfully connected to OpenSearch"
 
-# Define template mapping (must match init_indices.sh)
-KEYS=(
-    "table_entity_index"
-    "model_entity_index"
-    "catalog_entity_index"
-    "schema_entity_index"
-    "topic_entity_index"
-    "fileset_entity_index"
-)
+JSON_DIR="./opensearch/$VERSION"
+MANIFEST="$JSON_DIR/templates.list"
 
-VALUES=(
-    "table_entity_index_template_$VERSION"
-    "model_entity_index_template_$VERSION"
-    "catalog_entity_index_template_$VERSION"
-    "schema_entity_index_template_$VERSION"
-    "topic_entity_index_template_$VERSION"
-    "fileset_entity_index_template_$VERSION"
-)
+TEMPLATE_NAMES=()
+
+if [ -f "$MANIFEST" ]; then
+    while read -r pattern json_file extra; do
+        if [[ -z "$pattern" || "$pattern" == \#* ]]; then
+            continue
+        fi
+        if [[ -z "$json_file" || -n "$extra" ]]; then
+            echo "Error: Invalid template manifest entry: $pattern $json_file $extra"
+            exit 1
+        fi
+        TEMPLATE_NAMES+=("${pattern}_template_$VERSION")
+    done < "$MANIFEST"
+
+    if [ "${#TEMPLATE_NAMES[@]}" -eq 0 ]; then
+        echo "Error: Template manifest $MANIFEST does not contain any templates"
+        exit 1
+    fi
+else
+    # The bundle of this version is not shipped locally any more: the directory was pruned, the
+    # distribution was downgraded, or the version was created by hand. Discover the templates from
+    # OpenSearch instead, otherwise such a version could never be removed and every subsequent
+    # upgrade would fail on it.
+    echo "Info: Template manifest $MANIFEST does not exist, discovering templates from OpenSearch"
+
+    DISCOVERED=$(curl -s -X GET \
+        "$OPENSEARCH_URL/_index_template/*_entity_index_template_$VERSION" \
+        $CREDENTIALS | jq -r '.index_templates[]?.name')
+
+    while read -r template_name; do
+        if [[ -n "$template_name" ]]; then
+            TEMPLATE_NAMES+=("$template_name")
+        fi
+    done <<< "$DISCOVERED"
+
+    if [ "${#TEMPLATE_NAMES[@]}" -eq 0 ]; then
+        echo "Warning: No index templates of version $VERSION found in OpenSearch, nothing to delete"
+        exit 0
+    fi
+fi
 
 # Function to delete index template
 delete_index_template() {
@@ -76,16 +101,12 @@ delete_index_template() {
 # Main processing
 ERROR_OCCURRED=0
 
-# Delete all templates defined in the mapping
-for i in "${!VALUES[@]}"; do
-    template_name="${VALUES[$i]}"
+# Delete all templates defined in the version manifest
+for template_name in "${TEMPLATE_NAMES[@]}"; do
     if ! delete_index_template "$template_name"; then
-           ERROR_OCCURRED=1
+        ERROR_OCCURRED=1
     fi
-    let "priority+=1"
 done
-
-
 
 # Final status message
 if [ "$ERROR_OCCURRED" -eq 0 ]; then
