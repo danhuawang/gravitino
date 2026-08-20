@@ -12,10 +12,14 @@ import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.parser.Condition.RangeType;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.datastrato.gravitino.search.po.SearchTableEntityPO;
+import com.datastrato.gravitino.search.po.SearchTableEntityPO.SearchColumn;
+import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -79,15 +83,7 @@ public class InMemorySearchStorage implements SearchStorage {
                   }
                   return true;
                 })
-            .filter(
-                en -> {
-                  if (keyword != null && !keyword.isEmpty()) {
-                    return en.getEntityName().contains(keyword)
-                        || en.getEntityComment().contains(keyword)
-                        || en.getFullQualifiedName().contains(keyword);
-                  }
-                  return true;
-                })
+            .filter(en -> matchesKeyword(en, keyword))
             .collect(Collectors.groupingBy(SearchEntityPO::getEntityType));
 
     List<SearchEntitiesDTO> result = new ArrayList<>();
@@ -133,6 +129,47 @@ public class InMemorySearchStorage implements SearchStorage {
 
   @Override
   public void close() throws IOException {}
+
+  /**
+   * Matches an entity against a free-text keyword. Mirrors the fields the OpenSearch backend
+   * matches on: the entity name, its comment, its full qualified name, and the column names and
+   * comments of the entity types that carry columns.
+   *
+   * @param entity The indexed entity.
+   * @param keyword The keyword, a blank keyword matches everything.
+   * @return Whether the entity matches the keyword.
+   */
+  private static boolean matchesKeyword(SearchEntityPO entity, String keyword) {
+    if (keyword == null || keyword.isEmpty()) {
+      return true;
+    }
+
+    if (contains(entity.getEntityName(), keyword)
+        || contains(entity.getEntityComment(), keyword)
+        || contains(entity.getFullQualifiedName(), keyword)) {
+      return true;
+    }
+
+    return columnsOf(entity).stream()
+        .anyMatch(
+            column ->
+                contains(column.getColumnName(), keyword)
+                    || contains(column.getColumnComment(), keyword));
+  }
+
+  private static List<SearchColumn> columnsOf(SearchEntityPO entity) {
+    List<SearchColumn> columns = null;
+    if (entity instanceof SearchTableEntityPO) {
+      columns = ((SearchTableEntityPO) entity).getColumns();
+    } else if (entity instanceof SearchViewEntityPO) {
+      columns = ((SearchViewEntityPO) entity).getColumns();
+    }
+    return columns == null ? Collections.emptyList() : columns;
+  }
+
+  private static boolean contains(String value, String keyword) {
+    return value != null && value.contains(keyword);
+  }
 
   Predicate<SearchEntityPO> buildFilter(Condition condition) {
     if (condition == null) {

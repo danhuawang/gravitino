@@ -9,8 +9,10 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import org.apache.commons.lang3.StringUtils;
 
+@Getter
 @EqualsAndHashCode(callSuper = true)
 @JsonDeserialize(builder = SearchTableEntityPO.SearchTableEntityPOBuilder.class)
 public class SearchTableEntityPO extends SearchEntityPO {
@@ -55,6 +57,7 @@ public class SearchTableEntityPO extends SearchEntityPO {
     }
   }
 
+  @Getter
   @SuppressWarnings("unused")
   @JsonDeserialize(builder = SearchColumn.Builder.class)
   public static class SearchColumn {

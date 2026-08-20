@@ -19,6 +19,7 @@ import org.apache.gravitino.listener.api.event.SchemaEvent;
 import org.apache.gravitino.listener.api.event.TableEvent;
 import org.apache.gravitino.listener.api.event.TagEvent;
 import org.apache.gravitino.listener.api.event.TopicEvent;
+import org.apache.gravitino.listener.api.event.view.ViewEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,15 +35,17 @@ public class DataDiscoveryListener implements EventListenerPlugin {
     this.searchService = ExtendedDatastratoGravitinoEnv.getInstance().getSearchService();
 
     this.eventHandlers =
-        ImmutableMap.of(
-            TableEvent.class, new TableEventHandler(searchService),
-            SchemaEvent.class, new SchemaEventHandler(searchService),
-            CatalogEvent.class, new CatalogEventHandler(searchService),
-            TagEvent.class, new TagEventHandler(searchService),
-            TopicEvent.class, new TopicEventHandler(searchService),
-            FilesetEvent.class, new FilesetEventHandler(searchService),
-            ModelEvent.class, new ModelEventHandler(searchService),
-            OwnerEvent.class, new OwnerEventHandler(searchService));
+        ImmutableMap.<Class, EventHandler>builder()
+            .put(TableEvent.class, new TableEventHandler(searchService))
+            .put(ViewEvent.class, new ViewEventHandler(searchService))
+            .put(SchemaEvent.class, new SchemaEventHandler(searchService))
+            .put(CatalogEvent.class, new CatalogEventHandler(searchService))
+            .put(TagEvent.class, new TagEventHandler(searchService))
+            .put(TopicEvent.class, new TopicEventHandler(searchService))
+            .put(FilesetEvent.class, new FilesetEventHandler(searchService))
+            .put(ModelEvent.class, new ModelEventHandler(searchService))
+            .put(OwnerEvent.class, new OwnerEventHandler(searchService))
+            .build();
 
     this.icebergEventHandler = new IcebergEventHandler(searchService);
   }
@@ -65,6 +68,8 @@ public class DataDiscoveryListener implements EventListenerPlugin {
       EventHandler handler = null;
       if (event instanceof TableEvent) {
         handler = eventHandlers.get(TableEvent.class);
+      } else if (event instanceof ViewEvent) {
+        handler = eventHandlers.get(ViewEvent.class);
       } else if (event instanceof SchemaEvent) {
         handler = eventHandlers.get(SchemaEvent.class);
       } else if (event instanceof CatalogEvent) {

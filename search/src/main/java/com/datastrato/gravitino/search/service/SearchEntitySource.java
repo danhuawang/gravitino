@@ -20,12 +20,15 @@ import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.tag.Tag;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.apache.gravitino.utils.NamespaceUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Interface representing a source of search entities.
@@ -38,12 +41,15 @@ import org.apache.gravitino.utils.NamespaceUtil;
  * ｜-- CatalogSearchEntitySource (ParentSearchEntitySource)
  * ｜ ｜-- SchemaEntitySource (ParentSearchEntitySource)
  * ｜ ｜ ｜-- TableEntitySource (LeafSearchEntitySource)
+ * ｜ ｜ ｜-- ViewEntitySource (LeafSearchEntitySource)
  * ｜ ｜ ｜-- TopicEntitySource (LeafSearchEntitySource)
  * ｜ ｜ ｜-- FilesetEntitySource (LeafSearchEntitySource)
  * ｜ ｜ ｜-- ModelEntitySource (LeafSearchEntitySource)
  * </pre>
  */
 interface SearchEntitySource {
+
+  Logger LOG = LoggerFactory.getLogger(SearchEntitySource.class);
 
   /**
    * Returns the next batch of entities to be processed.
@@ -87,6 +93,8 @@ interface SearchEntitySource {
         return new SchemaSearchEntitySource(searchEntityIdentifier, cascade, catalogType);
       case TABLE:
         return new TableSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
+      case VIEW:
+        return new ViewSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case TOPIC:
         return new TopicSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case FILESET:
@@ -101,13 +109,13 @@ interface SearchEntitySource {
   }
 
   /**
-   * Create a SearchEntitySource based on the given schema name identifier and catalog type.
+   * Create the SearchEntitySources holding the entities directly under the given schema.
    *
    * @param schemaNameIdentifier the name identifier of the schema
    * @param catalogType the type of the catalog
-   * @return a SearchEntitySource instance
+   * @return the SearchEntitySource instances of the schema children
    */
-  static LeafSearchEntitySource createSearchEntitySourceBySchema(
+  static List<SearchEntitySource> createSearchEntitySourceBySchema(
       NameIdentifier schemaNameIdentifier, Catalog.Type catalogType) {
     Namespace ns = Namespace.fromString(schemaNameIdentifier.toString());
     NamespaceUtil.checkTable(ns);
@@ -117,27 +125,60 @@ interface SearchEntitySource {
     switch (catalogType) {
       case RELATIONAL:
         nameIdentifiers = GravitinoEnv.getInstance().tableDispatcher().listTables(ns);
-        return new TableSearchEntitySource(
-            toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.TABLE));
+        ImmutableList.Builder<SearchEntitySource> relationalSources = ImmutableList.builder();
+        relationalSources.add(
+            new TableSearchEntitySource(
+                toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.TABLE)));
+        listViews(ns)
+            .map(
+                idents ->
+                    new ViewSearchEntitySource(
+                        toSearchEntityIdentifiers(idents, Entity.EntityType.VIEW)))
+            .ifPresent(relationalSources::add);
+        return relationalSources.build();
 
       case MESSAGING:
         nameIdentifiers = GravitinoEnv.getInstance().topicDispatcher().listTopics(ns);
-        return new TopicSearchEntitySource(
-            toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.TOPIC));
+        return ImmutableList.of(
+            new TopicSearchEntitySource(
+                toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.TOPIC)));
 
       case FILESET:
         nameIdentifiers = GravitinoEnv.getInstance().filesetDispatcher().listFilesets(ns);
-        return new FilesetSearchEntitySource(
-            toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.FILESET));
+        return ImmutableList.of(
+            new FilesetSearchEntitySource(
+                toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.FILESET)));
 
       case MODEL:
         nameIdentifiers = GravitinoEnv.getInstance().modelDispatcher().listModels(ns);
-        return new ModelSearchEntitySource(
-            toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.MODEL));
+        return ImmutableList.of(
+            new ModelSearchEntitySource(
+                toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.MODEL)));
 
       default:
         throw new GravitinoRuntimeException(
             "Unsupported catalog type with catalog: " + catalogType);
+    }
+  }
+
+  /**
+   * Lists the views under the given schema namespace. Relational catalogs are not required to
+   * support views, in which case an empty result is returned.
+   *
+   * @param namespace the schema namespace
+   * @return the view identifiers, or empty if the catalog does not support views
+   */
+  static Optional<NameIdentifier[]> listViews(Namespace namespace) {
+    ViewDispatcher viewDispatcher = GravitinoEnv.getInstance().viewDispatcher();
+    if (viewDispatcher == null) {
+      return Optional.empty();
+    }
+
+    try {
+      return Optional.of(viewDispatcher.listViews(namespace));
+    } catch (UnsupportedOperationException e) {
+      LOG.debug("The catalog of schema {} does not support views", namespace);
+      return Optional.empty();
     }
   }
 

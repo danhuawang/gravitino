@@ -11,9 +11,11 @@ import static com.datastrato.gravitino.test.OpenSearchContainer.LOG;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
+import com.datastrato.gravitino.search.dto.SearchViewEntityDTO;
 import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
+import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -77,7 +79,7 @@ public class TestOpenSearchStorage {
       String[] command = {
         "/bin/bash",
         scriptPath,
-        "v1",
+        "v2",
         container.getOpenSearchUrl(),
         OpenSearchContainer.DEFAULT_USERNAME,
         DEFAULT_PASSWORD
@@ -179,5 +181,54 @@ public class TestOpenSearchStorage {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  @Test
+  void testSynchronizeAndQueryView() {
+    SearchViewEntityPO viewPO =
+        SearchViewEntityPO.SearchViewEntityPOBuilder.builder()
+            .withEntityId(400)
+            .withEntityName("daily_orders")
+            .withFullQualifiedName("c1.s1.daily_orders")
+            .withEntityType(Entity.EntityType.VIEW)
+            .withMetalake("view-metalake")
+            .withCatalogName("c1")
+            .withEntityComment("orders aggregated by day")
+            .withEntityProperties(
+                ImmutableList.of(new SearchEntityPO.PropertyPO("refresh-mode", "incremental")))
+            .withColumns(
+                ImmutableList.of(
+                    SearchTableEntityPO.SearchColumn.builder()
+                        .withColumnName("order_day")
+                        .withColumnComment("the order day")
+                        .build()))
+            .build();
+    storage.write(ImmutableList.of(viewPO), true);
+
+    List<SearchEntitiesDTO> result =
+        storage.search("view-metalake", null, null, ImmutableList.of(), 10, 0);
+    SearchEntitiesDTO dto = getSearchEntitiesDTOByType(result, Entity.EntityType.VIEW);
+    Assertions.assertNotNull(dto);
+    Assertions.assertEquals(1, dto.getTotalSize());
+
+    SearchViewEntityDTO viewDTO = (SearchViewEntityDTO) dto.getEntities().get(0);
+    Assertions.assertEquals(viewPO.getFullQualifiedName(), viewDTO.getFullQualifiedName());
+    Assertions.assertEquals("order_day", viewDTO.getColumns().get(0).getColumnName());
+
+    // The view must be reachable by its name, comment, a column name and a property.
+    assertViewFound("daily_orders");
+    assertViewFound("aggregated");
+    assertViewFound("order_day");
+    assertViewFound("refresh-mode");
+    assertViewFound("incremental");
+  }
+
+  private void assertViewFound(String keyword) {
+    SearchEntitiesDTO dto =
+        getSearchEntitiesDTOByType(
+            storage.search("view-metalake", keyword, null, ImmutableList.of(), 10, 0),
+            Entity.EntityType.VIEW);
+    Assertions.assertNotNull(dto, "No view matched the keyword " + keyword);
+    Assertions.assertEquals(1, dto.getTotalSize(), "Unexpected hits for the keyword " + keyword);
   }
 }

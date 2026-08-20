@@ -6,7 +6,6 @@ package com.datastrato.gravitino.search.service;
 
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.utils.EntityConverterUtils;
-import com.google.common.collect.ImmutableList;
 import java.util.List;
 import org.apache.gravitino.Auditable;
 import org.apache.gravitino.Catalog;
@@ -49,8 +48,7 @@ class SchemaSearchEntitySource extends ParentEntitySource {
 
   @Override
   protected List<SearchEntitySource> createChildEntitySources() {
-    return ImmutableList.of(
-        SearchEntitySource.createSearchEntitySourceBySchema(
-            searchEntityIdentifier.entityIdent(), catalogType));
+    return SearchEntitySource.createSearchEntitySourceBySchema(
+        searchEntityIdentifier.entityIdent(), catalogType);
   }
 }

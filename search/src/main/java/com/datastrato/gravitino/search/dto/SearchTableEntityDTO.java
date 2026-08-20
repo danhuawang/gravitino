@@ -8,7 +8,9 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
 import java.util.List;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 
+@Getter
 @EqualsAndHashCode(callSuper = true)
 @JsonDeserialize(builder = SearchTableEntityDTO.SearchTableEntityDTOBuilder.class)
 public class SearchTableEntityDTO extends SearchEntityDTO {
@@ -51,6 +53,7 @@ public class SearchTableEntityDTO extends SearchEntityDTO {
     }
   }
 
+  @Getter
   @JsonDeserialize(builder = SearchColumnDTO.Builder.class)
   @SuppressWarnings("unused") // Fields are accessed by Jackson via reflection
   public static class SearchColumnDTO {

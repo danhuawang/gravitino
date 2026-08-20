@@ -94,6 +94,7 @@ public class OpenSearchStorage implements SearchStorage {
   private static final String MODEL_ENTITY_INDEX_SUFFIX = "model_entity_index";
   private static final String TOPIC_ENTITY_INDEX_SUFFIX = "topic_entity_index";
   private static final String TABLE_ENTITY_INDEX_SUFFIX = "table_entity_index";
+  private static final String VIEW_ENTITY_INDEX_SUFFIX = "view_entity_index";
 
   private int maxRetries;
   private long retryBackoffMs;
@@ -112,7 +113,8 @@ public class OpenSearchStorage implements SearchStorage {
           EntityType.FILESET, FILESET_ENTITY_INDEX_SUFFIX,
           EntityType.MODEL, MODEL_ENTITY_INDEX_SUFFIX,
           EntityType.TOPIC, TOPIC_ENTITY_INDEX_SUFFIX,
-          EntityType.TABLE, TABLE_ENTITY_INDEX_SUFFIX);
+          EntityType.TABLE, TABLE_ENTITY_INDEX_SUFFIX,
+          EntityType.VIEW, VIEW_ENTITY_INDEX_SUFFIX);
 
   private final Set<String> createdIndicesAlias = Sets.newHashSet();
 
@@ -611,6 +613,11 @@ public class OpenSearchStorage implements SearchStorage {
         allQueries.add(buildStringNestedQuery("model_versions", "aliases", word));
       }
 
+      if (entityType == EntityType.VIEW) {
+        // Match column names in views, same as tables.
+        allQueries.add(buildStringNestedQuery("columns", "column_name", word));
+      }
+
       // Query word match content in properties.
       allQueries.add(buildPropertiesNestedQuery(word));
     }
@@ -662,8 +669,15 @@ public class OpenSearchStorage implements SearchStorage {
                                 .query(FieldValue.of(word))
                                 .boost(2.0f))));
 
+    // Not every entity index maps "tags": queries run once per entity index, and an index that
+    // does not declare the path must contribute no matches instead of failing the whole search.
     return Query.of(
-        q -> q.nested(n -> n.path("tags").query(qb -> qb.bool(b -> b.should(shouldQueries)))));
+        q ->
+            q.nested(
+                n ->
+                    n.path("tags")
+                        .ignoreUnmapped(true)
+                        .query(qb -> qb.bool(b -> b.should(shouldQueries)))));
   }
 
   private static Query buildPropertiesNestedQuery(String word) {
@@ -705,6 +719,7 @@ public class OpenSearchStorage implements SearchStorage {
             q.nested(
                 n ->
                     n.path("entity_properties")
+                        .ignoreUnmapped(true)
                         .query(qb -> qb.bool(b -> b.should(shouldQueries)))));
   }
 
@@ -729,7 +744,12 @@ public class OpenSearchStorage implements SearchStorage {
                                 .boost(2.5f))));
 
     return Query.of(
-        q -> q.nested(n -> n.path(columnName).query(qb -> qb.bool(b -> b.should(shouldQueries)))));
+        q ->
+            q.nested(
+                n ->
+                    n.path(columnName)
+                        .ignoreUnmapped(true)
+                        .query(qb -> qb.bool(b -> b.should(shouldQueries)))));
   }
 
   private static List<Query> buildConditionPart(Condition filter) {

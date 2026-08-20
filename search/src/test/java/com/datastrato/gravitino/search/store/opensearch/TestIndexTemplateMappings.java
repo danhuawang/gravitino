@@ -108,7 +108,8 @@ class TestIndexTemplateMappings {
             "catalog_name",
             "full_qualified_name",
             "tags",
-            "columns"));
+            "columns",
+            "entity_properties"));
 
     Map<String, Path> v2Templates = loadManifest("v2");
     // The audit block is the one part every entity type shares, so it is pinned to the shape the

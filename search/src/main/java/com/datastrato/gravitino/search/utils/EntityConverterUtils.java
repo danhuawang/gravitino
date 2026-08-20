@@ -11,6 +11,8 @@ import com.datastrato.gravitino.search.po.SearchEntityPO.SearchTagPO;
 import com.datastrato.gravitino.search.po.SearchModelEntityPO;
 import com.datastrato.gravitino.search.po.SearchModelEntityPO.SearchModelVersionPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
+import com.datastrato.gravitino.search.po.SearchTableEntityPO.SearchColumn;
+import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Arrays;
@@ -32,12 +34,15 @@ import org.apache.gravitino.catalog.EntityCombinedModel;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
 import org.apache.gravitino.catalog.EntityCombinedTable;
 import org.apache.gravitino.catalog.EntityCombinedTopic;
+import org.apache.gravitino.catalog.EntityCombinedView;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
+import org.apache.gravitino.meta.ViewEntity;
+import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.tag.Tag;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
@@ -308,6 +313,68 @@ public class EntityConverterUtils {
         .withEntityProperties(mapToKeyValueObjects(table.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
+  }
+
+  /**
+   * Converts a view loaded from Gravitino to its search persistent object.
+   *
+   * @param view The combined view metadata.
+   * @param tags The tags attached to the view, including the inherited ones.
+   * @param nameIdentifier The name identifier of the view.
+   * @return The persistent object to index.
+   */
+  public static SearchViewEntityPO toViewSearchEntityPO(
+      EntityCombinedView view, Tag[] tags, NameIdentifier nameIdentifier) {
+    Map<String, String> properties = view.properties();
+    String inUseString = properties.get("in-use");
+    boolean inUse = inUseString == null || Boolean.parseBoolean(inUseString);
+    ViewEntity viewEntity = view.viewEntity();
+
+    long id =
+        viewEntity != null
+            ? viewEntity.id()
+            : getEntityIdFromProperties(view.viewFromCatalog().properties(), EntityType.VIEW);
+
+    String metalakeName = nameIdentifier.namespace().levels()[0];
+    String catalog = nameIdentifier.namespace().levels()[1];
+    String schema = nameIdentifier.namespace().levels()[2];
+    String owner =
+        getMetadataObjectOwner(
+            NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.VIEW), metalakeName);
+
+    return SearchViewEntityPO.SearchViewEntityPOBuilder.builder()
+        .withEntityId(id)
+        .withEntityType(EntityType.VIEW)
+        .withInUse(inUse)
+        .withMetalake(metalakeName)
+        .withEntityName(view.name())
+        .withEntityComment(view.comment())
+        .withCatalogName(catalog)
+        .withFullQualifiedName(String.format("%s.%s.%s", catalog, schema, view.name()))
+        .withTags(toSearchTag(tags))
+        .withSearchAudit(toSearchAudit(view.auditInfo()))
+        .withColumns(toSearchColumns(view.columns()))
+        .withOwner(owner)
+        .withUserPermissions(null)
+        .withRolePermissions(null)
+        .withEntityProperties(mapToKeyValueObjects(properties))
+        .withUpdateTime(System.currentTimeMillis())
+        .build();
+  }
+
+  private static List<SearchColumn> toSearchColumns(Column[] columns) {
+    if (ArrayUtils.isEmpty(columns)) {
+      return Collections.emptyList();
+    }
+
+    return Arrays.stream(columns)
+        .map(
+            column ->
+                SearchColumn.builder()
+                    .withColumnName(column.name())
+                    .withColumnComment(column.comment())
+                    .build())
+        .collect(Collectors.toList());
   }
 
   private static List<SearchTagPO> toSearchTag(Tag[] tags) {

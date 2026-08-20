@@ -86,6 +86,11 @@ public class IcebergSearchIT extends BaseIT {
   private static final String TABLE_ORDERS = "orders";
   private static final String TABLE_ORDERS_V2 = "orders_v2";
 
+  // The bundle the server expects: the view template only exists from v2 on, and
+  // OpenSearchStorage#checkIndexTemplate refuses to start without a template per indexed entity
+  // type.
+  private static final String TEMPLATE_VERSION = "v2";
+
   // Default Gravitino HTTP port (must match gravitino.conf.template default).
   // Used to wire gravitino.iceberg-rest.gravitino-uri before the server starts.
   private static final int GRAVITINO_DEFAULT_PORT = 8090;
@@ -549,7 +554,7 @@ public class IcebergSearchIT extends BaseIT {
       String[] command = {
         "/bin/bash",
         scriptPath.toString(),
-        "v1",
+        TEMPLATE_VERSION,
         openSearchContainer.getOpenSearchUrl(),
         OpenSearchContainer.DEFAULT_USERNAME,
         OpenSearchContainer.DEFAULT_PASSWORD

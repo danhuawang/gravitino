@@ -28,13 +28,16 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
 import org.apache.gravitino.catalog.EntityCombinedTable;
+import org.apache.gravitino.catalog.EntityCombinedView;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
+import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.exceptions.NoSuchViewException;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
@@ -42,8 +45,11 @@ import org.apache.gravitino.meta.ColumnEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.SchemaVersion;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.rel.Column;
+import org.apache.gravitino.rel.Representation;
+import org.apache.gravitino.rel.SQLRepresentation;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.tag.Tag;
 import org.apache.gravitino.tag.TagDispatcher;
@@ -54,6 +60,7 @@ public class MockedGravitinoService {
   public Map<String, BaseCatalog> catalogs = new HashMap<>();
   public Map<String, EntityCombinedSchema> schemas = new HashMap<>();
   public Map<String, EntityCombinedTable> tables = new HashMap<>();
+  public Map<String, EntityCombinedView> views = new HashMap<>();
 
   private Map<String, Tag> tags = new HashMap<>();
   private Map<String, Set<Tag>> objTags = new HashMap<>();
@@ -67,6 +74,7 @@ public class MockedGravitinoService {
     FieldUtils.writeField(gravitinoEnv, "catalogDispatcher", mockCatalogDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "schemaDispatcher", mockSchemaDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "tableDispatcher", mockTableDispatcher(), true);
+    FieldUtils.writeField(gravitinoEnv, "viewDispatcher", mockViewDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "tagDispatcher", mockTagDispatcher(), true);
 
     return Mockito.spy(service);
@@ -188,6 +196,37 @@ public class MockedGravitinoService {
               }
             });
     return tableDispatcher;
+  }
+
+  private ViewDispatcher mockViewDispatcher() {
+    ViewDispatcher viewDispatcher = Mockito.mock(ViewDispatcher.class);
+
+    Mockito.when(viewDispatcher.listViews(any(Namespace.class)))
+        .thenAnswer(
+            args -> {
+              Namespace namespace = args.getArgument(0);
+              return views.keySet().stream()
+                  .filter(v -> v.startsWith(namespace.toString() + "."))
+                  .map(NameIdentifier::parse)
+                  .toArray(NameIdentifier[]::new);
+            });
+    Mockito.when(viewDispatcher.viewExists(any(NameIdentifier.class)))
+        .thenAnswer(
+            args -> {
+              NameIdentifier name = args.getArgument(0);
+              return views.containsKey(name.toString());
+            });
+    Mockito.when(viewDispatcher.loadView(any(NameIdentifier.class)))
+        .thenAnswer(
+            args -> {
+              NameIdentifier name = args.getArgument(0);
+              if (views.containsKey(name.toString())) {
+                return views.get(name.toString());
+              } else {
+                throw new NoSuchViewException("No such view: %s", name);
+              }
+            });
+    return viewDispatcher;
   }
 
   private TagDispatcher mockTagDispatcher() {
@@ -335,6 +374,34 @@ public class MockedGravitinoService {
     return table;
   }
 
+  public EntityCombinedView createView(NameIdentifier nameIdentifier) {
+    ViewEntity view =
+        ViewEntity.builder()
+            .withId(entityIdAllocator++)
+            .withName(nameIdentifier.name())
+            .withNamespace(nameIdentifier.namespace())
+            .withComment("test view")
+            .withColumns(
+                new Column[] {
+                  ColumnDTO.builder()
+                      .withName("test_view_column")
+                      .withDataType(Types.IntegerType.get())
+                      .withComment("the view column")
+                      .build()
+                })
+            .withRepresentations(
+                new Representation[] {
+                  SQLRepresentation.builder().withDialect("trino").withSql("SELECT 1").build()
+                })
+            .withProperties(ImmutableMap.of("refresh-mode", "incremental"))
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+
+    EntityCombinedView combinedView = EntityCombinedView.of(view, view);
+    views.put(nameIdentifier.toString(), combinedView);
+    return combinedView;
+  }
+
   public void addTagsToObject(NameIdentifier nameIdentifier, Set<String> tags) {
     objTags.put(
         nameIdentifier.toString(),
@@ -362,6 +429,8 @@ public class MockedGravitinoService {
       return tables.get(key).tableFromGravitino().id();
     } else if (schemas.containsKey(key)) {
       return schemas.get(key).schemaEntity().id();
+    } else if (views.containsKey(key)) {
+      return views.get(key).viewEntity().id();
     } else if (catalogs.containsKey(key)) {
       return catalogs.get(key).entity().id();
     }

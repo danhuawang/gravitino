@@ -8,10 +8,12 @@ import com.datastrato.gravitino.search.dto.SearchCatalogEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchModelEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
+import com.datastrato.gravitino.search.dto.SearchViewEntityDTO;
 import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchModelEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
+import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
@@ -42,7 +44,8 @@ public class SearchEntityCodec {
           EntityType.FILESET, SearchEntityPO.class,
           EntityType.MODEL, SearchModelEntityPO.class,
           EntityType.TOPIC, SearchEntityPO.class,
-          EntityType.TABLE, SearchTableEntityPO.class);
+          EntityType.TABLE, SearchTableEntityPO.class,
+          EntityType.VIEW, SearchViewEntityPO.class);
 
   public static final Map<EntityType, Class<? extends SearchEntityDTO>> ENTITY_TYPE_TO_CLASS_DTO =
       ImmutableMap.of(
@@ -51,7 +54,8 @@ public class SearchEntityCodec {
           EntityType.FILESET, SearchEntityDTO.class,
           EntityType.MODEL, SearchModelEntityDTO.class,
           EntityType.TOPIC, SearchEntityDTO.class,
-          EntityType.TABLE, SearchTableEntityDTO.class);
+          EntityType.TABLE, SearchTableEntityDTO.class,
+          EntityType.VIEW, SearchViewEntityDTO.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(SearchEntityCodec.class);
   private final ObjectMapper objectMapper;
