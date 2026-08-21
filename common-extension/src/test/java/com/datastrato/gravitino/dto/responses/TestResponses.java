@@ -7,16 +7,21 @@ package com.datastrato.gravitino.dto.responses;
 import static org.apache.gravitino.file.Fileset.Type.EXTERNAL;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
+import com.datastrato.gravitino.dto.policy.ExtendedPolicyDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import java.util.Map;
 import org.apache.gravitino.Catalog;
+import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
+import org.apache.gravitino.dto.policy.PolicyContentDTO;
+import org.apache.gravitino.dto.policy.PolicyDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.dto.rel.RepresentationDTO;
 import org.apache.gravitino.dto.rel.SQLRepresentationDTO;
@@ -229,5 +234,41 @@ public class TestResponses {
           .withAudit(AuditDTO.builder().build())
           .build()
     };
+  }
+
+  @Test
+  public void testExtendedPolicyListResponse() throws JsonProcessingException {
+    PolicyContentDTO content =
+        PolicyContentDTO.CustomContentDTO.builder()
+            .withCustomRules(ImmutableMap.of("rule1", "val1"))
+            .withSupportedObjectTypes(ImmutableSet.of(MetadataObject.Type.TABLE))
+            .build();
+
+    PolicyDTO policy =
+        PolicyDTO.builder()
+            .withName("policy1")
+            .withPolicyType("custom")
+            .withComment("comment")
+            .withEnabled(true)
+            .withContent(content)
+            .withAudit(AuditDTO.builder().build())
+            .build();
+
+    ExtendedPolicyDTO extendedPolicy =
+        ExtendedPolicyDTO.builder().withPolicy(policy).withAssociatedObjectsCount(5).build();
+
+    ExtendedPolicyListResponse response =
+        new ExtendedPolicyListResponse(new ExtendedPolicyDTO[] {extendedPolicy});
+    Assertions.assertDoesNotThrow(response::validate);
+
+    String serJson = JsonUtils.objectMapper().writeValueAsString(response);
+    Assertions.assertTrue(serJson.contains("\"name\":\"policy1\""));
+    Assertions.assertTrue(serJson.contains("\"policyType\":\"custom\""));
+    Assertions.assertTrue(serJson.contains("\"associatedObjectsCount\":5"));
+
+    ExtendedPolicyListResponse illegalResp = new ExtendedPolicyListResponse();
+    Exception exception =
+        Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
+    Assertions.assertEquals("\"policies\" cannot be null", exception.getMessage());
   }
 }

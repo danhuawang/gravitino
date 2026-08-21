@@ -29,6 +29,7 @@ dependencies {
   implementation(libs.commons.lang3)
   implementation(libs.bundles.jersey)
   implementation(libs.bundles.log4j)
+  implementation(libs.metrics.jersey2)
 
   annotationProcessor(libs.lombok)
 

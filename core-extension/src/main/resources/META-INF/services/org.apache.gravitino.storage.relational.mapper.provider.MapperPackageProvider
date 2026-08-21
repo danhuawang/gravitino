@@ -3,3 +3,4 @@
 # This software is licensed under the Apache License version 2.
 #
 com.datastrato.gravitino.authorization.mapper.provider.DatastratoAuthorizationMapperPackageProvider
+com.datastrato.gravitino.policy.mapper.provider.DatastratoPolicyMapperPackageProvider
