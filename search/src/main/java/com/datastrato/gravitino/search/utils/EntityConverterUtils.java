@@ -30,6 +30,7 @@ import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.OwnerDispatcher;
+import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.EntityCombinedFileset;
 import org.apache.gravitino.catalog.EntityCombinedModel;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
@@ -361,6 +362,24 @@ public class EntityConverterUtils {
         .withUserPermissions(null)
         .withRolePermissions(null)
         .withEntityProperties(mapToKeyValueObjects(properties))
+        .withUpdateTime(System.currentTimeMillis())
+        .build();
+  }
+
+  /**
+   * Converts a User to the lightweight search projection defined by the v2 User index template.
+   *
+   * @param user The User metadata.
+   * @param metalake The metalake containing the User.
+   * @return The persistent object to index.
+   */
+  public static SearchEntityPO toUserSearchEntityPO(User user, String metalake) {
+    return SearchEntityPO.SearchEntityPOBuilder.builder()
+        .withEntityId(user.id())
+        .withEntityType(EntityType.USER)
+        .withMetalake(metalake)
+        .withEntityName(user.name())
+        .withSearchAudit(toSearchAudit(user.auditInfo()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
   }

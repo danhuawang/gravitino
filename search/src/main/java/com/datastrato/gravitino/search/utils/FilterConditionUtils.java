@@ -56,7 +56,9 @@ public class FilterConditionUtils {
     if (nestedRoot != null) {
       if (exactField.startsWith(nestedRoot + ".")) {
         String nestedPath = nestedFieldMap.get(field).split("\\.")[0];
-        return new Query.Builder().nested(n -> n.path(nestedPath).query(innerQuery)).build();
+        return new Query.Builder()
+            .nested(n -> n.path(nestedPath).ignoreUnmapped(true).query(innerQuery))
+            .build();
       }
 
       throw new IllegalArgumentException(

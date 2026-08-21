@@ -14,6 +14,11 @@ class SearchEntityIdentifier {
   private final NameIdentifier entityIdent;
   private final Entity.EntityType entityType;
 
+  private SearchEntityIdentifier(NameIdentifier entityIdent, Entity.EntityType entityType) {
+    this.entityIdent = entityIdent;
+    this.entityType = entityType;
+  }
+
   public SearchEntityIdentifier(MetadataObject metadataObject, String metalake) {
     if (metadataObject == null) {
       this.entityType = Entity.EntityType.METALAKE;
@@ -27,6 +32,10 @@ class SearchEntityIdentifier {
 
   public static SearchEntityIdentifier of(
       NameIdentifier nameIdentifier, Entity.EntityType entityType) {
+    if (entityType == Entity.EntityType.USER) {
+      return new SearchEntityIdentifier(nameIdentifier, entityType);
+    }
+
     MetadataObject metadataObject = NameIdentifierUtil.toMetadataObject(nameIdentifier, entityType);
     String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
     return new SearchEntityIdentifier(metadataObject, metalake);

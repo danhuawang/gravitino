@@ -34,6 +34,7 @@ import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -199,6 +200,24 @@ public class SearchService implements Closeable {
 
   public SyncTask synchronizeMetadata(
       NameIdentifier nameIdentifier, Entity.EntityType type, boolean cascade) {
+    if (type == EntityType.USER) {
+      String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+      boolean metalakeExists =
+          GravitinoEnv.getInstance()
+              .metalakeDispatcher()
+              .metalakeExists(NameIdentifier.of(metalake));
+      if (!metalakeExists) {
+        throw new NoSuchMetalakeException("The metalake '%s' does not exist.", metalake);
+      }
+
+      SearchEntityIdentifier identifier = SearchEntityIdentifier.of(nameIdentifier, type);
+      SearchEntitySource source = SearchEntitySource.createSearchEntitySource(identifier, false);
+      SyncTask syncTask = new SyncTask(identifier, source, this);
+      LOG.info("TaskId: {}, start synchronize metadata...", syncTask.getTaskId());
+      addTask(syncTask);
+      return syncTask;
+    }
+
     String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
     MetadataObject metadataObject = NameIdentifierUtil.toMetadataObject(nameIdentifier, type);
     return synchronizeMetadata(
@@ -273,6 +292,40 @@ public class SearchService implements Closeable {
                 syncTasks.size(), maxQueueSize));
       }
     }
+  }
+
+  /**
+   * Removes a top-level search entity identified by its type and name.
+   *
+   * <p>A User is not a {@link MetadataObject} and does not have a fully qualified name in its v2
+   * search mapping, so its removal events use this scoped query instead of the regular metadata
+   * hierarchy query.
+   *
+   * @param metalake The metalake containing the entity.
+   * @param entityName The entity name.
+   * @param entityType The entity type.
+   * @return A future representing the asynchronous removal.
+   */
+  public Future<?> removeEntityByName(String metalake, String entityName, EntityType entityType) {
+    return executorService.submit(
+        () -> {
+          try {
+            Condition condition =
+                new Condition.AndCondition(
+                    ImmutableList.of(
+                        new Condition.TermCondition(
+                            "entity_type", entityType.name().toLowerCase(Locale.ROOT)),
+                        new Condition.TermCondition("entity_name.keyword", entityName)));
+            removeMetadataByQuery(metalake, condition);
+          } catch (Exception e) {
+            LOG.error(
+                "Failed to remove {} named {} from metalake {}",
+                entityType,
+                entityName,
+                metalake,
+                e);
+          }
+        });
   }
 
   public void removeMetadataByQuery(String metalake, Condition condition) {

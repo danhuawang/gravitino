@@ -20,6 +20,7 @@ import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.dto.tag.TagDTO;
@@ -105,6 +106,8 @@ interface SearchEntitySource {
         return new FilesetSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case MODEL:
         return new ModelSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
+      case USER:
+        return new UserSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
 
       default:
         throw new GravitinoRuntimeException(
@@ -218,6 +221,19 @@ interface SearchEntitySource {
     return Arrays.stream(nameIdentifiers)
         .map(iden -> SearchEntityIdentifier.of(iden, entityType))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Returns the internal access-control dispatcher when available so search synchronization does
+   * not emit read events. Tests and partially initialized environments may only provide the public
+   * dispatcher, which is used as a fallback.
+   *
+   * @return The available access-control dispatcher, or null when authorization is disabled.
+   */
+  static AccessControlDispatcher accessControlDispatcher() {
+    AccessControlDispatcher dispatcher =
+        GravitinoEnv.getInstance().internalAccessControlDispatcher();
+    return dispatcher != null ? dispatcher : GravitinoEnv.getInstance().accessControlDispatcher();
   }
 
   /**

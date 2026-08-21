@@ -6,11 +6,13 @@ package com.datastrato.gravitino.search.utils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
 import org.apache.gravitino.Entity;
@@ -22,12 +24,14 @@ import org.apache.gravitino.function.FunctionDefinition;
 import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.FunctionEntity;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Representation;
 import org.apache.gravitino.rel.SQLRepresentation;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.tag.Tag;
+import org.apache.gravitino.utils.NamespaceUtil;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -172,6 +176,30 @@ class TestEntityConverterUtils {
             NameIdentifier.of(VIEW_NAMESPACE, "v6"));
 
     assertTrue(po.getColumns().isEmpty());
+  }
+
+  @Test
+  void testToUserSearchEntityPOUsesSparseProjection() {
+    UserEntity user =
+        UserEntity.builder()
+            .withId(2001L)
+            .withName("alice_analyst")
+            .withEnabled(true)
+            .withRoleNames(ImmutableList.of())
+            .withRoleIds(ImmutableList.of())
+            .withNamespace(NamespaceUtil.ofUser("test"))
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+
+    SearchEntityPO po = EntityConverterUtils.toUserSearchEntityPO(user, "test");
+
+    assertEquals(2001L, po.getEntityId());
+    assertEquals(Entity.EntityType.USER, po.getEntityType());
+    assertEquals("alice_analyst", po.getEntityName());
+    assertEquals("test", po.getMetalake());
+    assertNull(po.getEntityComment());
+    assertNull(po.getCatalogName());
+    assertNull(po.getFullQualifiedName());
   }
 
   private ViewEntity newViewEntity(String name, Map<String, String> properties) {

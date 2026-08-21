@@ -180,8 +180,14 @@ public class SearchEntityPO {
       Preconditions.checkArgument(entityType != null, "entityType cannot be null");
       Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
       Preconditions.checkArgument(StringUtils.isNotBlank(entityName), "entityName cannot be blank");
-      Preconditions.checkArgument(
-          StringUtils.isNotBlank(catalogName), "catalogName cannot be blank");
+      if (hasCatalog(entityType)) {
+        Preconditions.checkArgument(
+            StringUtils.isNotBlank(catalogName), "catalogName cannot be blank");
+      }
+    }
+
+    private static boolean hasCatalog(EntityType type) {
+      return type != EntityType.USER;
     }
 
     public T build() {

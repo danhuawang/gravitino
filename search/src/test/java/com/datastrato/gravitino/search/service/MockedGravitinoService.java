@@ -25,6 +25,8 @@ import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.AccessControlDispatcher;
+import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
 import org.apache.gravitino.catalog.EntityCombinedTable;
@@ -39,6 +41,7 @@ import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.exceptions.NoSuchFunctionException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.NoSuchViewException;
 import org.apache.gravitino.function.FunctionDefinition;
 import org.apache.gravitino.function.FunctionType;
@@ -50,6 +53,7 @@ import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.SchemaVersion;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.rel.Column;
@@ -58,6 +62,8 @@ import org.apache.gravitino.rel.SQLRepresentation;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.tag.Tag;
 import org.apache.gravitino.tag.TagDispatcher;
+import org.apache.gravitino.utils.NameIdentifierUtil;
+import org.apache.gravitino.utils.NamespaceUtil;
 import org.mockito.Mockito;
 
 public class MockedGravitinoService {
@@ -66,6 +72,7 @@ public class MockedGravitinoService {
   public Map<String, EntityCombinedSchema> schemas = new HashMap<>();
   public Map<String, EntityCombinedTable> tables = new HashMap<>();
   public Map<String, EntityCombinedView> views = new HashMap<>();
+  public Map<String, UserEntity> users = new HashMap<>();
   public Map<String, FunctionEntity> functions = new HashMap<>();
 
   private Map<String, Tag> tags = new HashMap<>();
@@ -83,8 +90,45 @@ public class MockedGravitinoService {
     FieldUtils.writeField(gravitinoEnv, "viewDispatcher", mockViewDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "functionDispatcher", mockFunctionDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "tagDispatcher", mockTagDispatcher(), true);
+    AccessControlDispatcher accessControlDispatcher = mockAccessControlDispatcher();
+    FieldUtils.writeField(gravitinoEnv, "accessControlDispatcher", accessControlDispatcher, true);
+    FieldUtils.writeField(
+        gravitinoEnv, "internalAccessControlDispatcher", accessControlDispatcher, true);
 
     return Mockito.spy(service);
+  }
+
+  private AccessControlDispatcher mockAccessControlDispatcher() {
+    AccessControlDispatcher dispatcher = Mockito.mock(AccessControlDispatcher.class);
+    Mockito.when(dispatcher.listUserNames(anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              return users.values().stream()
+                  .filter(user -> metalake.equals(user.namespace().level(0)))
+                  .map(User::name)
+                  .toArray(String[]::new);
+            });
+    Mockito.when(dispatcher.listUsers(anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              return users.values().stream()
+                  .filter(user -> metalake.equals(user.namespace().level(0)))
+                  .toArray(User[]::new);
+            });
+    Mockito.when(dispatcher.getUser(anyString(), anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              String userName = args.getArgument(1);
+              User user = users.get(NameIdentifierUtil.ofUser(metalake, userName).toString());
+              if (user == null) {
+                throw new NoSuchUserException("No such user: %s", userName);
+              }
+              return user;
+            });
+    return dispatcher;
   }
 
   private MetalakeDispatcher mockMetalakeDispatcher() {
@@ -335,6 +379,27 @@ public class MockedGravitinoService {
 
     metalakes.put(name, metalake);
     return metalake;
+  }
+
+  /** Adds a User to the in-memory authorization dispatcher used by search tests. */
+  public UserEntity createUser(String metalake, String userName) {
+    UserEntity user =
+        UserEntity.builder()
+            .withId(entityIdAllocator++)
+            .withName(userName)
+            .withEnabled(true)
+            .withAuditInfo(AuditInfo.EMPTY)
+            .withRoleNames(Lists.newArrayList())
+            .withRoleIds(Lists.newArrayList())
+            .withNamespace(NamespaceUtil.ofUser(metalake))
+            .build();
+    users.put(NameIdentifierUtil.ofUser(metalake, userName).toString(), user);
+    return user;
+  }
+
+  /** Removes a User from the in-memory authorization dispatcher used by search tests. */
+  public void removeUser(String metalake, String userName) {
+    users.remove(NameIdentifierUtil.ofUser(metalake, userName).toString());
   }
 
   public BaseCatalog createCatalog(NameIdentifier nameIdentifier) throws IllegalAccessException {

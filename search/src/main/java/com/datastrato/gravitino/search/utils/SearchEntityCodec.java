@@ -46,6 +46,7 @@ public class SearchEntityCodec {
           EntityType.TOPIC, SearchEntityPO.class,
           EntityType.TABLE, SearchTableEntityPO.class,
           EntityType.VIEW, SearchViewEntityPO.class,
+          EntityType.USER, SearchEntityPO.class,
           EntityType.FUNCTION, SearchEntityPO.class);
 
   public static final Map<EntityType, Class<? extends SearchEntityDTO>> ENTITY_TYPE_TO_CLASS_DTO =
@@ -57,6 +58,7 @@ public class SearchEntityCodec {
           EntityType.TOPIC, SearchEntityDTO.class,
           EntityType.TABLE, SearchTableEntityDTO.class,
           EntityType.VIEW, SearchViewEntityDTO.class,
+          EntityType.USER, SearchEntityDTO.class,
           EntityType.FUNCTION, SearchEntityDTO.class);
 
   private static final Logger LOG = LoggerFactory.getLogger(SearchEntityCodec.class);

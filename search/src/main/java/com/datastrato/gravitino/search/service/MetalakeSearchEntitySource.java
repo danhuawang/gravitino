@@ -6,12 +6,15 @@ package com.datastrato.gravitino.search.service;
 
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 
 class MetalakeSearchEntitySource extends ParentEntitySource {
 
@@ -36,6 +39,18 @@ class MetalakeSearchEntitySource extends ParentEntitySource {
       SearchEntityIdentifier metadata =
           SearchEntityIdentifier.of(nameIdentifier, Entity.EntityType.CATALOG);
       sources.add(new CatalogSearchEntitySource(metadata, true));
+    }
+
+    AccessControlDispatcher accessControlDispatcher = SearchEntitySource.accessControlDispatcher();
+    if (accessControlDispatcher != null) {
+      NameIdentifier[] userIdentifiers =
+          Arrays.stream(accessControlDispatcher.listUserNames(searchEntityIdentifier.metalake()))
+              .map(name -> NameIdentifierUtil.ofUser(searchEntityIdentifier.metalake(), name))
+              .toArray(NameIdentifier[]::new);
+      sources.add(
+          new UserSearchEntitySource(
+              SearchEntitySource.toSearchEntityIdentifiers(
+                  userIdentifiers, Entity.EntityType.USER)));
     }
     return sources;
   }

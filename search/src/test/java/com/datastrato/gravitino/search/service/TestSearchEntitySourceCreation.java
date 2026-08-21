@@ -18,6 +18,7 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -150,6 +151,12 @@ class TestSearchEntitySourceCreation {
         SearchEntitySource.createSearchEntitySource(
             SearchEntityIdentifier.of(
                 NameIdentifier.of(SCHEMA_NAMESPACE, "v1"), Entity.EntityType.VIEW),
+            false));
+    assertInstanceOf(
+        UserSearchEntitySource.class,
+        SearchEntitySource.createSearchEntitySource(
+            SearchEntityIdentifier.of(
+                NameIdentifierUtil.ofUser("test", "alice"), Entity.EntityType.USER),
             false));
     assertInstanceOf(
         FunctionSearchEntitySource.class,

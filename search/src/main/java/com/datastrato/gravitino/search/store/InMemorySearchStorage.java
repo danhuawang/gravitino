@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -200,7 +201,12 @@ public class InMemorySearchStorage implements SearchStorage {
         return entity -> value.equals(entity.getFullQualifiedName());
       }
       if (field.equals("entity_type")) {
-        return entity -> Entity.EntityType.valueOf(value).equals(entity.getEntityType());
+        return entity ->
+            Entity.EntityType.valueOf(value.toUpperCase(Locale.ROOT))
+                .equals(entity.getEntityType());
+      }
+      if (field.equals("entity_name") || field.equals("entity_name.keyword")) {
+        return entity -> value.equals(entity.getEntityName());
       }
       if (field.equals("metalake")) {
         return entity -> value.equals(entity.getMetalake());
@@ -212,7 +218,9 @@ public class InMemorySearchStorage implements SearchStorage {
       String field = prefixCondition.getField();
       String value = prefixCondition.getValue();
       if (field.equals("full_qualified_name") || field.equals("full_qualified_name.keyword")) {
-        return entity -> entity.getFullQualifiedName().startsWith(value);
+        return entity ->
+            entity.getFullQualifiedName() != null
+                && entity.getFullQualifiedName().startsWith(value);
       }
     }
 
@@ -223,9 +231,10 @@ public class InMemorySearchStorage implements SearchStorage {
       if (field.equals("tag_name")) {
         return entity -> {
           Set<String> tags =
-              entity.getTags().stream()
-                  .map(SearchEntityPO.SearchTagPO::getTagName)
-                  .collect(Collectors.toSet());
+              (entity.getTags() == null
+                      ? Collections.<SearchEntityPO.SearchTagPO>emptyList()
+                      : entity.getTags())
+                  .stream().map(SearchEntityPO.SearchTagPO::getTagName).collect(Collectors.toSet());
           return tags.containsAll(values);
         };
       }
