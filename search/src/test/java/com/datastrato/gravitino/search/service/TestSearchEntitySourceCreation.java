@@ -159,6 +159,12 @@ class TestSearchEntitySourceCreation {
                 NameIdentifierUtil.ofUser("test", "alice"), Entity.EntityType.USER),
             false));
     assertInstanceOf(
+        GroupSearchEntitySource.class,
+        SearchEntitySource.createSearchEntitySource(
+            SearchEntityIdentifier.of(
+                NameIdentifierUtil.ofGroup("test", "engineers"), Entity.EntityType.GROUP),
+            false));
+    assertInstanceOf(
         FunctionSearchEntitySource.class,
         SearchEntitySource.createSearchEntitySource(
             SearchEntityIdentifier.of(

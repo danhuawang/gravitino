@@ -24,6 +24,7 @@ import org.apache.gravitino.function.FunctionDefinition;
 import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.FunctionEntity;
+import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.rel.Column;
@@ -196,6 +197,29 @@ class TestEntityConverterUtils {
     assertEquals(2001L, po.getEntityId());
     assertEquals(Entity.EntityType.USER, po.getEntityType());
     assertEquals("alice_analyst", po.getEntityName());
+    assertEquals("test", po.getMetalake());
+    assertNull(po.getEntityComment());
+    assertNull(po.getCatalogName());
+    assertNull(po.getFullQualifiedName());
+  }
+
+  @Test
+  void testToGroupSearchEntityPOUsesSparseProjection() {
+    GroupEntity group =
+        GroupEntity.builder()
+            .withId(2002L)
+            .withName("data_engineers")
+            .withRoleNames(ImmutableList.of())
+            .withRoleIds(ImmutableList.of())
+            .withNamespace(NamespaceUtil.ofGroup("test"))
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+
+    SearchEntityPO po = EntityConverterUtils.toGroupSearchEntityPO(group, "test");
+
+    assertEquals(2002L, po.getEntityId());
+    assertEquals(Entity.EntityType.GROUP, po.getEntityType());
+    assertEquals("data_engineers", po.getEntityName());
     assertEquals("test", po.getMetalake());
     assertNull(po.getEntityComment());
     assertNull(po.getCatalogName());

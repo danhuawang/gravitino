@@ -87,4 +87,26 @@ class SearchEntityCodecTest {
     assertNull(dto.getEntityComment());
     assertNull(dto.getFullQualifiedName());
   }
+
+  @Test
+  void testSparseGroupRoundTrip() {
+    SearchEntityPO group =
+        SearchEntityPO.SearchEntityPOBuilder.builder()
+            .withEntityId(102L)
+            .withEntityType(Entity.EntityType.GROUP)
+            .withMetalake("test")
+            .withEntityName("engineers")
+            .withUpdateTime(10L)
+            .build();
+
+    String json = searchEntityCodec.serialize(group);
+    SearchEntityPO deserialized = searchEntityCodec.deserialize(json, SearchEntityPO.class);
+    SearchEntityDTO dto = searchEntityCodec.convert(deserialized, SearchEntityDTO.class);
+
+    assertEquals(Entity.EntityType.GROUP, dto.getEntityType());
+    assertEquals("engineers", dto.getEntityName());
+    assertNull(dto.getCatalogName());
+    assertNull(dto.getEntityComment());
+    assertNull(dto.getFullQualifiedName());
+  }
 }

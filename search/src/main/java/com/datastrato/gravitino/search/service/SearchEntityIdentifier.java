@@ -32,7 +32,7 @@ class SearchEntityIdentifier {
 
   public static SearchEntityIdentifier of(
       NameIdentifier nameIdentifier, Entity.EntityType entityType) {
-    if (entityType == Entity.EntityType.USER) {
+    if (entityType == Entity.EntityType.USER || entityType == Entity.EntityType.GROUP) {
       return new SearchEntityIdentifier(nameIdentifier, entityType);
     }
 

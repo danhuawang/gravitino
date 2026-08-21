@@ -179,7 +179,7 @@ public class SearchEntityDTO {
     }
 
     private static boolean hasCatalog(EntityType type) {
-      return type != EntityType.USER;
+      return type != EntityType.USER && type != EntityType.GROUP;
     }
 
     protected abstract T internalBuild();

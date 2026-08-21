@@ -200,7 +200,7 @@ public class SearchService implements Closeable {
 
   public SyncTask synchronizeMetadata(
       NameIdentifier nameIdentifier, Entity.EntityType type, boolean cascade) {
-    if (type == EntityType.USER) {
+    if (type == EntityType.USER || type == EntityType.GROUP) {
       String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
       boolean metalakeExists =
           GravitinoEnv.getInstance()
@@ -297,9 +297,9 @@ public class SearchService implements Closeable {
   /**
    * Removes a top-level search entity identified by its type and name.
    *
-   * <p>A User is not a {@link MetadataObject} and does not have a fully qualified name in its v2
-   * search mapping, so its removal events use this scoped query instead of the regular metadata
-   * hierarchy query.
+   * <p>User and Group are not {@link MetadataObject}s and do not have a fully qualified name in
+   * their v2 search mappings, so their removal events use this scoped query instead of the regular
+   * metadata hierarchy query.
    *
    * @param metalake The metalake containing the entity.
    * @param entityName The entity name.

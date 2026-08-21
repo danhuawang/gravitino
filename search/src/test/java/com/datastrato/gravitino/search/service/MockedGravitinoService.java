@@ -26,6 +26,7 @@ import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
+import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
@@ -40,6 +41,7 @@ import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.exceptions.NoSuchFunctionException;
+import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.NoSuchViewException;
@@ -50,6 +52,7 @@ import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.ColumnEntity;
 import org.apache.gravitino.meta.FunctionEntity;
+import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.SchemaVersion;
 import org.apache.gravitino.meta.TableEntity;
@@ -73,6 +76,7 @@ public class MockedGravitinoService {
   public Map<String, EntityCombinedTable> tables = new HashMap<>();
   public Map<String, EntityCombinedView> views = new HashMap<>();
   public Map<String, UserEntity> users = new HashMap<>();
+  public Map<String, GroupEntity> groups = new HashMap<>();
   public Map<String, FunctionEntity> functions = new HashMap<>();
 
   private Map<String, Tag> tags = new HashMap<>();
@@ -127,6 +131,34 @@ public class MockedGravitinoService {
                 throw new NoSuchUserException("No such user: %s", userName);
               }
               return user;
+            });
+    Mockito.when(dispatcher.listGroupNames(anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              return groups.values().stream()
+                  .filter(group -> metalake.equals(group.namespace().level(0)))
+                  .map(Group::name)
+                  .toArray(String[]::new);
+            });
+    Mockito.when(dispatcher.listGroups(anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              return groups.values().stream()
+                  .filter(group -> metalake.equals(group.namespace().level(0)))
+                  .toArray(Group[]::new);
+            });
+    Mockito.when(dispatcher.getGroup(anyString(), anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              String groupName = args.getArgument(1);
+              Group group = groups.get(NameIdentifierUtil.ofGroup(metalake, groupName).toString());
+              if (group == null) {
+                throw new NoSuchGroupException("No such group: %s", groupName);
+              }
+              return group;
             });
     return dispatcher;
   }
@@ -400,6 +432,26 @@ public class MockedGravitinoService {
   /** Removes a User from the in-memory authorization dispatcher used by search tests. */
   public void removeUser(String metalake, String userName) {
     users.remove(NameIdentifierUtil.ofUser(metalake, userName).toString());
+  }
+
+  /** Adds a Group to the in-memory authorization dispatcher used by search tests. */
+  public GroupEntity createGroup(String metalake, String groupName) {
+    GroupEntity group =
+        GroupEntity.builder()
+            .withId(entityIdAllocator++)
+            .withName(groupName)
+            .withAuditInfo(AuditInfo.EMPTY)
+            .withRoleNames(Lists.newArrayList())
+            .withRoleIds(Lists.newArrayList())
+            .withNamespace(NamespaceUtil.ofGroup(metalake))
+            .build();
+    groups.put(NameIdentifierUtil.ofGroup(metalake, groupName).toString(), group);
+    return group;
+  }
+
+  /** Removes a Group from the in-memory authorization dispatcher used by search tests. */
+  public void removeGroup(String metalake, String groupName) {
+    groups.remove(NameIdentifierUtil.ofGroup(metalake, groupName).toString());
   }
 
   public BaseCatalog createCatalog(NameIdentifier nameIdentifier) throws IllegalAccessException {

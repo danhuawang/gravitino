@@ -28,6 +28,7 @@ import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.authorization.User;
@@ -380,6 +381,24 @@ public class EntityConverterUtils {
         .withMetalake(metalake)
         .withEntityName(user.name())
         .withSearchAudit(toSearchAudit(user.auditInfo()))
+        .withUpdateTime(System.currentTimeMillis())
+        .build();
+  }
+
+  /**
+   * Converts a Group to the lightweight search projection defined by the v2 Group index template.
+   *
+   * @param group The Group metadata.
+   * @param metalake The metalake containing the Group.
+   * @return The persistent object to index.
+   */
+  public static SearchEntityPO toGroupSearchEntityPO(Group group, String metalake) {
+    return SearchEntityPO.SearchEntityPOBuilder.builder()
+        .withEntityId(group.id())
+        .withEntityType(EntityType.GROUP)
+        .withMetalake(metalake)
+        .withEntityName(group.name())
+        .withSearchAudit(toSearchAudit(group.auditInfo()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
   }

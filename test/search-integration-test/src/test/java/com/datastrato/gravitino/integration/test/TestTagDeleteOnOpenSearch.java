@@ -88,6 +88,10 @@ public class TestTagDeleteOnOpenSearch extends BaseIT {
     Catalog catalog = createMySQLCatalog();
     Schema schema = catalog.asSchemas().createSchema(SCHEMA_NAME, "", emptyMap());
     Table table = createTable(catalog, schema.name());
+
+    // Wait for the table creation event before triggering another sync for the same table.
+    waitUntilTableIsIndexed();
+
     metalake.createTag(TAG_NAME, "comment", emptyMap());
     table.supportsTags().associateTags(new String[] {TAG_NAME}, null);
   }
@@ -130,6 +134,13 @@ public class TestTagDeleteOnOpenSearch extends BaseIT {
               SearchEntityDTO table = querySingleTable();
               Assertions.assertTrue(table.getTags() == null || table.getTags().isEmpty());
             });
+  }
+
+  private void waitUntilTableIsIndexed() {
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(180))
+        .pollInterval(Duration.ofSeconds(1))
+        .untilAsserted(() -> querySingleTable());
   }
 
   private OpenSearchContainer createOpenSearchContainer() {
