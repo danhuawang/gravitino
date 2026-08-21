@@ -53,11 +53,7 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
-<<<<<<< HEAD
-=======
-import org.apache.gravitino.encryption.kms.KmsClientRegistry;
 import org.apache.gravitino.idp.IdpUserGroupManager;
->>>>>>> 3c89fdf0e ([#1298] feat(auth): add security UI APIs for local principals and membership (#1299))
 import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.EventListenerManager;
