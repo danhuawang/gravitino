@@ -117,7 +117,8 @@ public class GravitinoInterceptionService implements InterceptionService {
             "com.datastrato.gravitino.server.web.rest.ExtendedUserOperations",
             "com.datastrato.gravitino.server.web.rest.ExtendedGroupOperations",
             "com.datastrato.gravitino.server.web.rest.ExtendedRoleOperations",
-            "com.datastrato.gravitino.server.web.rest.ExtendedMetadataObjectRoleOperations"));
+            "com.datastrato.gravitino.server.web.rest.ExtendedMetadataObjectRoleOperations",
+            "com.datastrato.gravitino.server.web.rest.ExtendedTagOperations"));
   }
 
   @Override

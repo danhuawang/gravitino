@@ -47,6 +47,10 @@ security:
   - BasicAuth: []
 
 paths:
+  /web/metalakes/{metalake}/tags:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./tags.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1tags"
+
   /web/entities:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./entities.yaml#/paths/~1web~1entities"
