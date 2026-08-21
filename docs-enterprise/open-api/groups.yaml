@@ -49,6 +49,93 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+    post:
+      tags:
+        - groups
+      summary: Add an existing local group into a metalake
+      operationId: addSecurityGroup
+      description: |
+        Add an existing built-in IdP group into a metalake for the enterprise security Groups page.
+
+        Requires the group name to already exist in the built-in IdP. If it does not, returns 404 and
+        does not write `group_meta`. If the group is already in `group_meta` for the metalake,
+        returns 409. Otherwise creates the metalake `group_meta` row and optionally grants metalake
+        roles. This API does not create a built-in IdP group.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocalGroupAddRequest"
+            examples:
+              LocalGroupAddRequest:
+                $ref: "#/components/examples/LocalGroupAddRequest"
+
+      responses:
+        "200":
+          description: Returns the metalake group
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ExtendedGroupResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The target metalake or IdP group does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "409":
+          description: Conflict - The metalake group already exists
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/metalakes/{metalake}/groups/{group}/users:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
+    get:
+      tags:
+        - groups
+      summary: List members of a metalake group
+      operationId: listSecurityGroupUsers
+      description: |
+        List metalake users that belong to the group for the security group Members tab.
+
+        Local groups (`externalId` blank) resolve membership from the built-in IdP. Provisioned
+        groups resolve membership from SCIM. Each user includes `origin` and the user's metalake
+        roles.
+
+      responses:
+        "200":
+          description: Returns the users
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./users.yaml#/components/schemas/ExtendedUserListResponse"
+        "404":
+          description: Not Found - The target metalake or group does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchGroupException:
+                  $ref: "../../docs/open-api/groups.yaml#/components/examples/NoSuchGroupException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
 components:
   schemas:
     IdentitySource:
@@ -84,3 +171,40 @@ components:
           description: A list of groups with origin for the security UI
           items:
             $ref: "#/components/schemas/ExtendedGroup"
+
+    LocalGroupAddRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: >
+            The group name to add to the metalake. Must already exist in the built-in IdP.
+        roles:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          description: Optional metalake roles to grant to the group
+
+    ExtendedGroupResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        group:
+          $ref: "#/components/schemas/ExtendedGroup"
+
+  examples:
+    LocalGroupAddRequest:
+      value:
+        name: contractors
+        roles:
+          - Analyst

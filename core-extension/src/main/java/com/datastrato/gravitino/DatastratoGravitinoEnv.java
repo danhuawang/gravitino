@@ -35,6 +35,7 @@ import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoViewEventDispatcher;
 import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
+import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
@@ -52,6 +53,11 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
+<<<<<<< HEAD
+=======
+import org.apache.gravitino.encryption.kms.KmsClientRegistry;
+import org.apache.gravitino.idp.IdpUserGroupManager;
+>>>>>>> 3c89fdf0e ([#1298] feat(auth): add security UI APIs for local principals and membership (#1299))
 import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.EventListenerManager;
@@ -76,6 +82,8 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private DatastratoModelDispatcher datastratoModelDispatcher;
   private DatastratoViewDispatcher datastratoViewDispatcher;
   private DatastratoAccessControlDispatcher accessControlDispatcher;
+  private IdpUserGroupManager idpUserGroupManager;
+  private ScimUserGroupRelManager scimUserGroupRelManager;
 
   private SchemaDispatcher internalDatastratoSchemaDispatcher;
   private TableDispatcher internalDatastratoTableDispatcher;
@@ -188,14 +196,22 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoViewNormalizeDispatcher(internalViewOperationDispatcher, catalogManager());
 
     // initialize access control dispatcher
+    this.idpUserGroupManager = IdpUserGroupManager.getInstance(config(), idGenerator());
+    this.scimUserGroupRelManager = ScimUserGroupRelManager.getInstance();
     accessControlDispatcher =
         new DatastratoAccessControlDispatcher(
-            GravitinoEnv.getInstance().accessControlDispatcher(), entityStore());
+            GravitinoEnv.getInstance().accessControlDispatcher(),
+            entityStore(),
+            idpUserGroupManager(),
+            scimUserGroupRelManager());
 
     // initialize internal access control dispatcher
     this.internalDatastratoAccessControlDispatcher =
         new DatastratoAccessControlDispatcher(
-            GravitinoEnv.getInstance().internalAccessControlDispatcher(), entityStore());
+            GravitinoEnv.getInstance().internalAccessControlDispatcher(),
+            entityStore(),
+            idpUserGroupManager(),
+            scimUserGroupRelManager());
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
@@ -298,6 +314,24 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public DatastratoAccessControlDispatcher accessControlDispatcher() {
     return accessControlDispatcher;
+  }
+
+  /**
+   * Returns the built-in IdP user and group manager.
+   *
+   * @return The IdP user and group manager.
+   */
+  public IdpUserGroupManager idpUserGroupManager() {
+    return idpUserGroupManager;
+  }
+
+  /**
+   * Returns the SCIM user-group membership manager.
+   *
+   * @return The SCIM membership manager.
+   */
+  public ScimUserGroupRelManager scimUserGroupRelManager() {
+    return scimUserGroupRelManager;
   }
 
   @Override

@@ -7,9 +7,14 @@ package com.datastrato.gravitino.server.web.rest;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
+import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
+import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
+import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
+import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -29,7 +34,8 @@ import org.apache.gravitino.server.web.rest.OperationType;
  *
  * <p>Follows the same thin style as {@link ExtendedRoleOperations}: call {@link
  * DatastratoAccessControlDispatcher#listGroups(String)} and map to {@link ExtendedGroupDTO} with
- * {@code origin}.
+ * {@code origin}; add local group delegates to {@link
+ * DatastratoAccessControlDispatcher#addLocalGroup}.
  */
 @NameBindings.AccessControlInterfaces
 @Path("/web/security/metalakes/{metalake}/groups")
@@ -72,6 +78,71 @@ public class ExtendedGroupOperations {
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.LIST, "", metalake, e);
+    }
+  }
+
+  /**
+   * Adds an existing local IdP group into a metalake.
+   *
+   * @param metalake The metalake name.
+   * @param request Group name and optional roles.
+   * @return The metalake group with {@code origin}.
+   */
+  @POST
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  public Response addGroup(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      LocalGroupAddRequest request) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            MetalakeManager.checkMetalakeInUse(metalake);
+            request.validate();
+            return Utils.ok(
+                new ExtendedGroupResponse(
+                    ExtendedGroupDTO.from(
+                        accessControlDispatcher.addLocalGroup(
+                            metalake, request.getName(), request.getRoles()))));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(
+          OperationType.ADD, request == null ? "" : request.getName(), metalake, e);
+    }
+  }
+
+  /**
+   * Lists metalake users that belong to the group.
+   *
+   * <p>Local groups ({@code externalId} blank) resolve membership from the built-in IdP.
+   * Provisioned groups resolve membership from SCIM.
+   *
+   * @param metalake The metalake name.
+   * @param group The group name.
+   * @return Users with {@code origin}.
+   */
+  @GET
+  @Path("{group}/users")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  public Response listUsersForGroup(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("group") @AuthorizationMetadata(type = Entity.EntityType.GROUP) String group) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            MetalakeManager.checkMetalakeInUse(metalake);
+            return Utils.ok(
+                new ExtendedUserListResponse(
+                    ExtendedUserDTO.from(
+                        accessControlDispatcher.listUsersForGroup(metalake, group))));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(OperationType.LIST, group, metalake, e);
     }
   }
 }

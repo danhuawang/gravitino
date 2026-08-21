@@ -18,8 +18,11 @@ import static org.mockito.Mockito.when;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
+import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
+import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
+import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
 import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.time.Instant;
@@ -31,10 +34,10 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
-import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.dto.responses.ErrorConstants;
@@ -42,13 +45,16 @@ import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.responses.NameListResponse;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.exceptions.NoSuchUserException;
+import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
+import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
-import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -210,21 +216,137 @@ public class TestExtendedUserOperations extends JerseyTest {
 
   @Test
   public void testAuthorizationAnnotations() throws NoSuchMethodException {
-    java.lang.reflect.Method listUsers =
-        ExtendedUserOperations.class.getMethod("listUsers", String.class);
-    Assertions.assertEquals(
-        "METALAKE::OWNER || METALAKE::MANAGE_USERS",
-        listUsers.getAnnotation(AuthorizationExpression.class).expression());
-    Assertions.assertEquals(
-        Entity.EntityType.METALAKE,
-        listUsers.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());
+    assertManageUsers("listUsers", String.class);
+    assertManageUsers("getUser", String.class, String.class);
+    assertManageUsers("listGroupsForUser", String.class, String.class);
+    assertManageUsers("addUser", String.class, LocalUserAddRequest.class);
+    assertManageUsers("batchUpdateUserEnabled", String.class, UserEnabledBatchUpdateRequest.class);
+  }
 
-    java.lang.reflect.Method batchUpdate =
-        ExtendedUserOperations.class.getMethod(
-            "batchUpdateUserEnabled", String.class, UserEnabledBatchUpdateRequest.class);
+  @Test
+  public void testGetUser() {
+    when(accessControlDispatcher.getUser("metalake", "lee.p"))
+        .thenReturn(buildUser("lee.p", null, true));
+    Response response = get("/web/security/metalakes/metalake/users/lee.p");
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    ExtendedUserResponse body = response.readEntity(ExtendedUserResponse.class);
+    Assertions.assertEquals("lee.p", body.getUser().name());
+    Assertions.assertEquals(IdentitySource.LOCAL, body.getUser().origin());
+  }
+
+  @Test
+  public void testGetUserMissing() {
+    when(accessControlDispatcher.getUser(any(), any()))
+        .thenThrow(new NoSuchUserException("missing"));
+    Assertions.assertEquals(
+        Response.Status.NOT_FOUND.getStatusCode(),
+        get("/web/security/metalakes/metalake/users/missing").getStatus());
+  }
+
+  @Test
+  public void testListUserGroups() {
+    when(accessControlDispatcher.listGroupsForUser("metalake", "alice"))
+        .thenReturn(new Group[] {buildGroup("contractors", null)});
+    ExtendedGroupListResponse body =
+        get("/web/security/metalakes/metalake/users/alice/groups")
+            .readEntity(ExtendedGroupListResponse.class);
+    Assertions.assertEquals(1, body.getGroups().length);
+    Assertions.assertEquals("contractors", body.getGroups()[0].name());
+    Assertions.assertEquals(IdentitySource.LOCAL, body.getGroups()[0].origin());
+  }
+
+  @Test
+  public void testAddLocalUser() {
+    String metalake = "metalake";
+    User added = buildUser("jordan.reyes", null, true);
+    when(accessControlDispatcher.addLocalUser(
+            eq(metalake), eq("jordan.reyes"), eq(List.of("Analyst")), eq(true)))
+        .thenReturn(added);
+
+    Response response =
+        target("/web/security/metalakes/" + metalake + "/users")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new LocalUserAddRequest("jordan.reyes", List.of("Analyst"), true),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    ExtendedUserResponse body = response.readEntity(ExtendedUserResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    Assertions.assertEquals("jordan.reyes", body.getUser().name());
+    Assertions.assertEquals(IdentitySource.LOCAL, body.getUser().origin());
+    Assertions.assertTrue(body.getUser().enabled());
+  }
+
+  @Test
+  public void testAddLocalUserNotFound() {
+    String metalake = "metalake";
+    when(accessControlDispatcher.addLocalUser(any(), any(), any(), any()))
+        .thenThrow(new NotFoundException("IdP user missing"));
+
+    Response response =
+        target("/web/security/metalakes/" + metalake + "/users")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new LocalUserAddRequest("missing", null, true),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
+    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.NOT_FOUND_CODE, errorResponse.getCode());
+  }
+
+  @Test
+  public void testAddLocalUserConflict() {
+    String metalake = "metalake";
+    when(accessControlDispatcher.addLocalUser(any(), any(), any(), any()))
+        .thenThrow(new UserAlreadyExistsException("User already exists"));
+
+    Response response =
+        target("/web/security/metalakes/" + metalake + "/users")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new LocalUserAddRequest("alice", null, true), MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.CONFLICT.getStatusCode(), response.getStatus());
+    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
+  }
+
+  @Test
+  public void testAddLocalUserBadRequest() {
+    String metalake = "metalake";
+    Response response =
+        target("/web/security/metalakes/" + metalake + "/users")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(new LocalUserAddRequest(" ", null, true), MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  private Response get(String path) {
+    return target(path)
+        .request(MediaType.APPLICATION_JSON_TYPE)
+        .accept("application/vnd.gravitino.v1+json")
+        .get();
+  }
+
+  private static void assertManageUsers(String method, Class<?>... params)
+      throws NoSuchMethodException {
     Assertions.assertEquals(
         "METALAKE::OWNER || METALAKE::MANAGE_USERS",
-        batchUpdate.getAnnotation(AuthorizationExpression.class).expression());
+        ExtendedUserOperations.class
+            .getMethod(method, params)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
   }
 
   private void mockInUseMetalake() throws IOException {
@@ -242,6 +364,18 @@ public class TestExtendedUserOperations extends JerseyTest {
         .withNamespace(Namespace.of("metalake", "system", "user"))
         .withExternalId(externalId)
         .withEnabled(enabled)
+        .withRoleNames(Collections.emptyList())
+        .withAuditInfo(
+            AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+        .build();
+  }
+
+  private static Group buildGroup(String name, String externalId) {
+    return GroupEntity.builder()
+        .withId(1L)
+        .withName(name)
+        .withNamespace(Namespace.of("metalake", "system", "group"))
+        .withExternalId(externalId)
         .withRoleNames(Collections.emptyList())
         .withAuditInfo(
             AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())

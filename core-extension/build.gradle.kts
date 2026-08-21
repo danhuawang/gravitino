@@ -22,6 +22,11 @@ dependencies {
   implementation(libs.mybatis)
   implementation(libs.trino.jdbc)
 
+  compileOnly(project(":plugins:idp-basic"))
+  compileOnly(project(":plugins:scim"))
+
+  testImplementation(project(":plugins:idp-basic"))
+  testImplementation(project(":plugins:scim"))
   testImplementation(libs.commons.io)
   testImplementation(libs.commons.lang3)
   testImplementation(libs.junit.jupiter.api)

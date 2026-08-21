@@ -6,12 +6,17 @@ package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
+import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
+import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
 import com.google.common.collect.Lists;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
+import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -32,8 +37,9 @@ import org.apache.gravitino.server.web.rest.OperationType;
  * Enterprise REST APIs for metalake user administration.
  *
  * <p>Follows the same thin style as {@link ExtendedRoleOperations}: list via dispatcher {@code
- * listUsers} and {@link ExtendedUserListResponse} (OSS user fields plus {@code origin}); batch
- * enabled uses enterprise MetaService SQL behind the dispatcher.
+ * listUsers} and {@link ExtendedUserListResponse} (OSS user fields plus {@code origin}); add local
+ * user delegates to {@link DatastratoAccessControlDispatcher#addLocalUser}; batch enabled uses
+ * enterprise MetaService SQL behind the dispatcher.
  */
 @NameBindings.AccessControlInterfaces
 @Path("/web/security/metalakes/{metalake}/users")
@@ -76,6 +82,103 @@ public class ExtendedUserOperations {
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.LIST, "", metalake, e);
+    }
+  }
+
+  /**
+   * Adds an existing local IdP user into a metalake.
+   *
+   * @param metalake The metalake name.
+   * @param request Username, optional roles, and optional enabled flag.
+   * @return The metalake user with {@code origin}.
+   */
+  @POST
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  public Response addUser(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      LocalUserAddRequest request) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            MetalakeManager.checkMetalakeInUse(metalake);
+            request.validate();
+            return Utils.ok(
+                new ExtendedUserResponse(
+                    ExtendedUserDTO.from(
+                        accessControlDispatcher.addLocalUser(
+                            metalake,
+                            request.getName(),
+                            request.getRoles(),
+                            request.getEnabled()))));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleUserException(
+          OperationType.ADD, request == null ? "" : request.getName(), metalake, e);
+    }
+  }
+
+  /**
+   * Gets a metalake user for the security UI, including {@code origin}.
+   *
+   * @param metalake The metalake name.
+   * @param user The username.
+   * @return The metalake user with {@code origin}.
+   */
+  @GET
+  @Path("{user}")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  public Response getUser(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("user") @AuthorizationMetadata(type = Entity.EntityType.USER) String user) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            MetalakeManager.checkMetalakeInUse(metalake);
+            return Utils.ok(
+                new ExtendedUserResponse(
+                    ExtendedUserDTO.from(accessControlDispatcher.getUser(metalake, user))));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleUserException(OperationType.GET, user, metalake, e);
+    }
+  }
+
+  /**
+   * Lists metalake groups the user belongs to.
+   *
+   * <p>Local users ({@code externalId} blank) resolve membership from the built-in IdP. Provisioned
+   * users resolve membership from SCIM.
+   *
+   * @param metalake The metalake name.
+   * @param user The username.
+   * @return Groups with {@code origin}.
+   */
+  @GET
+  @Path("{user}/groups")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  public Response listGroupsForUser(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("user") @AuthorizationMetadata(type = Entity.EntityType.USER) String user) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            MetalakeManager.checkMetalakeInUse(metalake);
+            return Utils.ok(
+                new ExtendedGroupListResponse(
+                    ExtendedGroupDTO.from(
+                        accessControlDispatcher.listGroupsForUser(metalake, user))));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleUserException(OperationType.LIST, user, metalake, e);
     }
   }
 

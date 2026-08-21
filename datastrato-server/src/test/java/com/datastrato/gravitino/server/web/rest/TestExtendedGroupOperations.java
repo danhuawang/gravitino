@@ -4,10 +4,12 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import static javax.ws.rs.client.Entity.entity;
 import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
@@ -15,29 +17,36 @@ import static org.mockito.Mockito.when;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
+import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
+import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
+import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
-import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Group;
+import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.connector.PropertiesMetadata;
+import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
+import org.apache.gravitino.exceptions.NoSuchGroupException;
+import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.GroupEntity;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
-import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -133,14 +142,117 @@ public class TestExtendedGroupOperations extends JerseyTest {
 
   @Test
   public void testAuthorizationAnnotations() throws NoSuchMethodException {
-    java.lang.reflect.Method listGroups =
-        ExtendedGroupOperations.class.getMethod("listGroups", String.class);
+    assertManageGroups("listGroups", String.class);
+    assertManageGroups("addGroup", String.class, LocalGroupAddRequest.class);
+    assertManageGroups("listUsersForGroup", String.class, String.class);
+  }
+
+  @Test
+  public void testListGroupUsers() {
+    when(accessControlDispatcher.listUsersForGroup("metalake", "contractors"))
+        .thenReturn(new User[] {buildUser("alice", null)});
+    ExtendedUserListResponse body =
+        get("/web/security/metalakes/metalake/groups/contractors/users")
+            .readEntity(ExtendedUserListResponse.class);
+    Assertions.assertEquals(1, body.getUsers().length);
+    Assertions.assertEquals("alice", body.getUsers()[0].name());
+    Assertions.assertEquals(IdentitySource.LOCAL, body.getUsers()[0].origin());
+  }
+
+  @Test
+  public void testListGroupUsersMissing() {
+    when(accessControlDispatcher.listUsersForGroup(any(), any()))
+        .thenThrow(new NoSuchGroupException("missing"));
+    Assertions.assertEquals(
+        Response.Status.NOT_FOUND.getStatusCode(),
+        get("/web/security/metalakes/metalake/groups/missing/users").getStatus());
+  }
+
+  @Test
+  public void testAddLocalGroup() {
+    String metalake = "metalake";
+    Group added = buildGroup(1L, "contractors", null, Collections.singletonList("Analyst"));
+    when(accessControlDispatcher.addLocalGroup(
+            eq(metalake), eq("contractors"), eq(List.of("Analyst"))))
+        .thenReturn(added);
+
+    Response response =
+        target("/web/security/metalakes/" + metalake + "/groups")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new LocalGroupAddRequest("contractors", List.of("Analyst")),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    ExtendedGroupResponse body = response.readEntity(ExtendedGroupResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    Assertions.assertEquals("contractors", body.getGroup().name());
+    Assertions.assertEquals(IdentitySource.LOCAL, body.getGroup().origin());
+  }
+
+  @Test
+  public void testAddLocalGroupConflict() {
+    String metalake = "metalake";
+    when(accessControlDispatcher.addLocalGroup(any(), any(), any()))
+        .thenThrow(new GroupAlreadyExistsException("Group already exists"));
+
+    Response response =
+        target("/web/security/metalakes/" + metalake + "/groups")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new LocalGroupAddRequest("contractors", null),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.CONFLICT.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testAddLocalGroupNotFound() {
+    String metalake = "metalake";
+    when(accessControlDispatcher.addLocalGroup(any(), any(), any()))
+        .thenThrow(new NotFoundException("IdP group missing"));
+
+    Response response =
+        target("/web/security/metalakes/" + metalake + "/groups")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(new LocalGroupAddRequest("missing", null), MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testAddLocalGroupBadRequest() {
+    String metalake = "metalake";
+    Response response =
+        target("/web/security/metalakes/" + metalake + "/groups")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(entity(new LocalGroupAddRequest(" ", null), MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  private Response get(String path) {
+    return target(path)
+        .request(MediaType.APPLICATION_JSON_TYPE)
+        .accept("application/vnd.gravitino.v1+json")
+        .get();
+  }
+
+  private static void assertManageGroups(String method, Class<?>... params)
+      throws NoSuchMethodException {
     Assertions.assertEquals(
         "METALAKE::OWNER || METALAKE::MANAGE_GROUPS",
-        listGroups.getAnnotation(AuthorizationExpression.class).expression());
-    Assertions.assertEquals(
-        Entity.EntityType.METALAKE,
-        listGroups.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());
+        ExtendedGroupOperations.class
+            .getMethod(method, params)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
   }
 
   private void mockInUseMetalake() throws IOException {
@@ -151,14 +263,26 @@ public class TestExtendedGroupOperations extends JerseyTest {
     when(entityStore.get(any(), any(), any())).thenReturn(metalake);
   }
 
-  private static Group buildGroup(
-      Long id, String name, String externalId, java.util.List<String> roles) {
+  private static Group buildGroup(Long id, String name, String externalId, List<String> roles) {
     return GroupEntity.builder()
         .withId(id)
         .withName(name)
         .withNamespace(Namespace.of("metalake", "system", "group"))
         .withExternalId(externalId)
         .withRoleNames(roles)
+        .withAuditInfo(
+            AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+        .build();
+  }
+
+  private static User buildUser(String name, String externalId) {
+    return UserEntity.builder()
+        .withId(1L)
+        .withName(name)
+        .withNamespace(Namespace.of("metalake", "system", "user"))
+        .withExternalId(externalId)
+        .withEnabled(true)
+        .withRoleNames(Collections.emptyList())
         .withAuditInfo(
             AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
         .build();

@@ -6,6 +6,7 @@ package com.datastrato.gravitino.authorization;
 
 import static org.mockito.ArgumentMatchers.any;
 
+import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.datastrato.gravitino.storage.InMemoryEntityStore;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -29,6 +30,7 @@ import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.connector.authorization.AuthorizationPlugin;
 import org.apache.gravitino.exceptions.NoSuchRoleException;
+import org.apache.gravitino.idp.IdpUserGroupManager;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
@@ -122,7 +124,10 @@ public class TestDatastratoAccessControlDispatcher {
 
     accessControlManager =
         new DatastratoAccessControlDispatcher(
-            new AccessControlManager(entityStore, new RandomIdGenerator(), config), entityStore);
+            new AccessControlManager(entityStore, new RandomIdGenerator(), config),
+            entityStore,
+            Mockito.mock(IdpUserGroupManager.class),
+            Mockito.mock(ScimUserGroupRelManager.class));
 
     FieldUtils.writeField(GravitinoEnv.getInstance(), "entityStore", entityStore, true);
     FieldUtils.writeField(

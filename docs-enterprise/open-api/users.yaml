@@ -49,6 +49,56 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+    post:
+      tags:
+        - users
+      summary: Add an existing local user into a metalake
+      operationId: addSecurityUser
+      description: |
+        Add an existing built-in IdP user into a metalake for the enterprise security Users page.
+
+        Requires the username to already exist in the built-in IdP. If it does not, returns 404 and
+        does not write `user_meta`. If the username is already in `user_meta` for the metalake,
+        returns 409. Otherwise creates the metalake `user_meta` row (`enabled` defaults to true /
+        Active) and optionally grants metalake roles. This API does not create login credentials.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocalUserAddRequest"
+            examples:
+              LocalUserAddRequest:
+                $ref: "#/components/examples/LocalUserAddRequest"
+
+      responses:
+        "200":
+          description: Returns the metalake user
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ExtendedUserResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The target metalake or IdP user does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "409":
+          description: Conflict - The metalake user already exists
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/metalakes/{metalake}/users/enabled:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
@@ -91,6 +141,78 @@ paths:
               examples:
                 NoSuchMetalakeException:
                   $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/metalakes/{metalake}/users/{user}:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
+    get:
+      tags:
+        - users
+      summary: Get a metalake user for the security UI
+      operationId: getSecurityUser
+      description: |
+        Get a metalake user for the enterprise security user Overview page.
+
+        Returns OSS user fields plus `origin`. `origin` is `Local` when `externalId` is blank and
+        `Provisioned` when `externalId` is present.
+
+      responses:
+        "200":
+          description: Returns the user
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ExtendedUserResponse"
+        "404":
+          description: Not Found - The target metalake or user does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchUserException:
+                  $ref: "../../docs/open-api/users.yaml#/components/examples/NoSuchUserException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/metalakes/{metalake}/users/{user}/groups:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
+    get:
+      tags:
+        - users
+      summary: List groups for a metalake user
+      operationId: listSecurityUserGroups
+      description: |
+        List metalake groups the user belongs to for the security user Groups tab.
+
+        Local users (`externalId` blank) resolve membership from the built-in IdP. Provisioned users
+        resolve membership from SCIM. Each group includes `origin` and the group's metalake roles.
+
+      responses:
+        "200":
+          description: Returns the groups
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./groups.yaml#/components/schemas/ExtendedGroupListResponse"
+        "404":
+          description: Not Found - The target metalake or user does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchUserException:
+                  $ref: "../../docs/open-api/users.yaml#/components/examples/NoSuchUserException"
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
@@ -144,3 +266,45 @@ components:
         enabled:
           type: boolean
           description: Target enabled value for all listed users
+
+    LocalUserAddRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[^:]*$"
+          description: >
+            The username to add to the metalake. Must already exist in the built-in IdP.
+        roles:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          description: Optional metalake roles to grant to the user
+        enabled:
+          type: boolean
+          description: Metalake user enabled flag; defaults to true (Active)
+
+    ExtendedUserResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        user:
+          $ref: "#/components/schemas/ExtendedUser"
+
+  examples:
+    LocalUserAddRequest:
+      value:
+        name: jordan.reyes
+        roles:
+          - Analyst
+        enabled: true

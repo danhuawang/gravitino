@@ -32,9 +32,10 @@ dependencies {
   implementation(libs.metrics.jersey2)
 
   annotationProcessor(libs.lombok)
-
   compileOnly(libs.lombok)
 
+  testImplementation(project(":plugins:idp-basic"))
+  testImplementation(project(":plugins:scim"))
   testImplementation(project(":server-common"))
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")
