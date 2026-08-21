@@ -131,6 +131,22 @@ public class ScimTokenMetaService {
   }
 
   /**
+   * Returns the latest {@code last_used_at} among active SCIM tokens for a metalake.
+   *
+   * @param metalakeName target metalake name
+   * @return max last used epoch millis, or {@code 0} when none
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "getMaxScimTokenLastUsedAt")
+  public long getMaxScimTokenLastUsedAt(String metalakeName) {
+    Long lastUsedAt =
+        SessionUtils.getWithoutCommit(
+            ScimTokenMetaMapper.class, mapper -> mapper.selectMaxLastUsedAt(metalakeName));
+    return lastUsedAt == null ? 0L : lastUsedAt;
+  }
+
+  /**
    * Inserts a new token metadata row.
    *
    * @param tokenMeta token metadata to insert

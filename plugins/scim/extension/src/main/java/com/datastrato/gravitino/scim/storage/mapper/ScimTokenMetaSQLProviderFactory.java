@@ -55,6 +55,16 @@ public class ScimTokenMetaSQLProviderFactory {
     return currentProvider().listByMetalake(metalakeName);
   }
 
+  /**
+   * Builds the metalake-scoped max {@code last_used_at} statement for the active backend.
+   *
+   * @param metalakeName target metalake name
+   * @return SQL statement
+   */
+  public static String selectMaxLastUsedAt(@Param("metalakeName") String metalakeName) {
+    return currentProvider().selectMaxLastUsedAt(metalakeName);
+  }
+
   public static String softDeleteByMetalakeAndName(
       @Param("metalakeName") String metalakeName, @Param("tokenName") String tokenName) {
     return currentProvider().softDeleteByMetalakeAndName(metalakeName, tokenName);

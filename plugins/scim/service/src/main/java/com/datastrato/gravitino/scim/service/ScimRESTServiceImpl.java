@@ -5,6 +5,7 @@
 
 package com.datastrato.gravitino.scim.service;
 
+import com.datastrato.gravitino.scim.ScimErrorHistoryManager;
 import com.datastrato.gravitino.scim.service.classloader.ScimAuxClassLoaders;
 import com.datastrato.gravitino.scim.service.rest.GravitinoScimApplication;
 import com.datastrato.gravitino.scim.service.web.ScimHealthAliasServlet;
@@ -63,7 +64,8 @@ public final class ScimRESTServiceImpl {
         new ScimHttpAuditFilter(
             GravitinoEnv.getInstance().eventBus(),
             EventSource.GRAVITINO_SERVER,
-            new ScimHealthCheckPathMatcher()),
+            new ScimHealthCheckPathMatcher(),
+            ScimErrorHistoryManager.getInstance()),
         ScimRequestPaths.SCIM_SPEC);
     jettyServer.addFilter(new ScimBearerAuthFilter(), ScimRequestPaths.SCIM_SPEC);
     jettyServer.addFilter(new ScimURLScopeResolver(), ScimRequestPaths.SCIM_SPEC);

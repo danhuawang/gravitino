@@ -87,6 +87,7 @@ public class ScimTokenManager implements Closeable {
     this.relationalStorage = new ScimRelationalStorage(config);
     this.garbageCollector = new ScimGarbageCollector(config);
     this.garbageCollector.start();
+    ScimErrorHistoryManager.getInstance().initialize(idGenerator);
   }
 
   ScimTokenManager(Config config, EntityStore entityStore, IdGenerator idGenerator) {
@@ -95,6 +96,7 @@ public class ScimTokenManager implements Closeable {
     this.idGenerator = idGenerator;
     this.garbageCollector = new ScimGarbageCollector(config);
     this.garbageCollector.start();
+    ScimErrorHistoryManager.getInstance().initialize(idGenerator);
   }
 
   /**
@@ -239,6 +241,17 @@ public class ScimTokenManager implements Closeable {
     return TOKEN_META_SERVICE.listScimTokensByMetalake(metalakeName).stream()
         .map(tokenMeta -> ScimTokenSummary.from(tokenMeta, nowMillis))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Returns the latest {@code last_used_at} among active SCIM tokens for a metalake.
+   *
+   * @param metalakeName target metalake name
+   * @return max last used epoch millis, or {@code 0} when none
+   */
+  public long getMaxScimTokenLastUsedAt(String metalakeName) {
+    resolveMetalakeId(metalakeName);
+    return TOKEN_META_SERVICE.getMaxScimTokenLastUsedAt(metalakeName);
   }
 
   /**

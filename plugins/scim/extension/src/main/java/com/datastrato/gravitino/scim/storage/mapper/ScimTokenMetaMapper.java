@@ -54,6 +54,15 @@ public interface ScimTokenMetaMapper {
   @SelectProvider(type = ScimTokenMetaSQLProviderFactory.class, method = "listByMetalake")
   List<ScimTokenMetaPO> listByMetalake(@Param("metalakeName") String metalakeName);
 
+  /**
+   * Returns the latest {@code last_used_at} among active tokens for a metalake.
+   *
+   * @param metalakeName target metalake name
+   * @return max last used epoch millis, or {@code 0} when none
+   */
+  @SelectProvider(type = ScimTokenMetaSQLProviderFactory.class, method = "selectMaxLastUsedAt")
+  Long selectMaxLastUsedAt(@Param("metalakeName") String metalakeName);
+
   @UpdateProvider(
       type = ScimTokenMetaSQLProviderFactory.class,
       method = "softDeleteByMetalakeAndName")

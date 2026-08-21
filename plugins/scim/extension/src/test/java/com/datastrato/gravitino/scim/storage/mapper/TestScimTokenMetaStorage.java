@@ -143,6 +143,22 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
 
   @ParameterizedTest
   @MethodSource("storageProvider")
+  void testMaxLastUsedAtByMetalake(String type) throws IOException {
+    init(type);
+    insertMetalake();
+    insertMetalake(20L, "other_metalake");
+    scimTokenMetaMapper.insert(tokenMeta(1L, METALAKE_ID, "old-token", "hash-old", 100L, 0L));
+    scimTokenMetaMapper.insert(tokenMeta(2L, METALAKE_ID, "new-token", "hash-new", 500L, 0L));
+    scimTokenMetaMapper.insert(tokenMeta(3L, METALAKE_ID, "deleted-token", "hash-del", 999L, 1L));
+    scimTokenMetaMapper.insert(tokenMeta(4L, 20L, "other-token", "hash-other", 800L, 0L));
+
+    assertEquals(500L, scimTokenMetaMapper.selectMaxLastUsedAt(METALAKE_NAME));
+    assertEquals(800L, scimTokenMetaMapper.selectMaxLastUsedAt("other_metalake"));
+    assertEquals(0L, scimTokenMetaMapper.selectMaxLastUsedAt("missing"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
   void testProvisioningStatsByMetalakeIds(String type) throws IOException {
     init(type);
     insertMetalake();
@@ -263,6 +279,26 @@ class TestScimTokenMetaStorage extends AbstractScimMetaStorageTest {
         .withAuditInfo("{}")
         .withDeletedAt(0L)
         .withUpdatedAt(0L)
+        .build();
+  }
+
+  private static ScimTokenMetaPO tokenMeta(
+      long tokenId,
+      long metalakeId,
+      String tokenName,
+      String tokenHash,
+      long lastUsedAt,
+      long deletedAt) {
+    return ScimTokenMetaPO.builder()
+        .withTokenId(tokenId)
+        .withMetalakeId(metalakeId)
+        .withTokenName(tokenName)
+        .withTokenHash(tokenHash)
+        .withExpiresAt(0L)
+        .withAuditInfo("{}")
+        .withDeletedAt(deletedAt)
+        .withUpdatedAt(0L)
+        .withLastUsedAt(lastUsedAt)
         .build();
   }
 }

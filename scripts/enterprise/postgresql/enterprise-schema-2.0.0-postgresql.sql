@@ -57,3 +57,30 @@ COMMENT ON COLUMN scim_user_group_rel.audit_info IS 'relation audit info';
 COMMENT ON COLUMN scim_user_group_rel.current_version IS 'relation current version';
 COMMENT ON COLUMN scim_user_group_rel.last_version IS 'relation last version';
 COMMENT ON COLUMN scim_user_group_rel.deleted_at IS 'relation deleted at';
+
+CREATE TABLE IF NOT EXISTS scim_error_history (
+    error_id BIGINT NOT NULL,
+    metalake_id BIGINT NOT NULL DEFAULT 0,
+    http_method VARCHAR(16) NOT NULL,
+    request_path VARCHAR(1024) NOT NULL,
+    http_status INT NOT NULL,
+    scim_type VARCHAR(64) DEFAULT NULL,
+    error_detail VARCHAR(1024) NOT NULL DEFAULT '',
+    principal VARCHAR(256) NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (error_id)
+);
+
+CREATE INDEX IF NOT EXISTS scim_error_history_idx_metalake_created ON scim_error_history (metalake_id, created_at);
+CREATE INDEX IF NOT EXISTS scim_error_history_idx_created ON scim_error_history (created_at);
+COMMENT ON TABLE scim_error_history IS 'scim protocol error history';
+
+COMMENT ON COLUMN scim_error_history.error_id IS 'error history id';
+COMMENT ON COLUMN scim_error_history.metalake_id IS 'metalake id, 0 when unknown';
+COMMENT ON COLUMN scim_error_history.http_method IS 'HTTP method';
+COMMENT ON COLUMN scim_error_history.request_path IS 'SCIM request path';
+COMMENT ON COLUMN scim_error_history.http_status IS 'HTTP status code';
+COMMENT ON COLUMN scim_error_history.scim_type IS 'RFC 7644 scimType when present';
+COMMENT ON COLUMN scim_error_history.error_detail IS 'truncated SCIM error detail';
+COMMENT ON COLUMN scim_error_history.principal IS 'authenticated SCIM token name';
+COMMENT ON COLUMN scim_error_history.created_at IS 'created at in ms';

@@ -101,6 +101,19 @@ public class ScimTokenMetaBaseSQLProvider {
         + " ORDER BY stm.token_name ASC";
   }
 
+  /**
+   * Returns the latest {@code last_used_at} among active tokens for a metalake.
+   *
+   * @param metalakeName target metalake name
+   * @return SQL statement
+   */
+  public String selectMaxLastUsedAt(@Param("metalakeName") String metalakeName) {
+    return "SELECT COALESCE(MAX(stm.last_used_at), 0) FROM "
+        + ScimTokenMetaMapper.TABLE_NAME
+        + " stm WHERE stm.deleted_at = 0 AND "
+        + activeMetalakeIdInClause("stm");
+  }
+
   public String softDeleteByMetalakeAndName(
       @Param("metalakeName") String metalakeName, @Param("tokenName") String tokenName) {
     return "UPDATE "

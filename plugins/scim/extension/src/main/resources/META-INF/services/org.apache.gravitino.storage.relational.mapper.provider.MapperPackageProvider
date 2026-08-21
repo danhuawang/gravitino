@@ -4,3 +4,4 @@
 #
 com.datastrato.gravitino.scim.storage.mapper.provider.ScimTokenMapperPackageProvider
 com.datastrato.gravitino.scim.storage.mapper.provider.ScimUserGroupRelMapperPackageProvider
+com.datastrato.gravitino.scim.storage.mapper.provider.ScimErrorHistoryMapperPackageProvider

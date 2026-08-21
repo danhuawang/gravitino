@@ -5,20 +5,20 @@
 
 package com.datastrato.gravitino.scim.service.web;
 
+import com.datastrato.gravitino.scim.ScimErrorHistoryManager;
 import com.datastrato.gravitino.scim.service.ScimHealthCheckPathMatcher;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
-import jakarta.servlet.FilterConfig;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpServletResponseWrapper;
 import java.io.IOException;
 import java.security.Principal;
 import java.util.Optional;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.listener.EventBus;
@@ -29,18 +29,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Jakarta Servlet filter that dispatches {@link HttpRequestFailureEvent} for SCIM HTTP 4xx/5xx
- * responses through the shared {@link EventBus}, matching the main server / Iceberg REST audit path
- * ({@code EventBus} → audit listener → {@code gravitino.audit} / {@code gravitino_audit.log}).
+ * Jakarta Servlet filter that records SCIM HTTP 4xx/5xx failures for audit and error history.
  *
- * <p>Successful SCIM User operations are audited by operation-layer events emitted from {@code
- * ScimUserEventDispatcher} when SCIMple invokes repository methods. This filter only covers
- * HTTP-layer failures (auth rejection, malformed requests, unexpected 5xx) that never reach an
- * operation dispatcher.
+ * <p>Dispatches {@link HttpRequestFailureEvent} through {@link EventBus} when present, matching the
+ * main server audit path. Non-404 Users/Groups failures are also persisted to {@code
+ * scim_error_history} when a manager is provided; that path does not depend on {@link EventBus}.
  *
- * <p>Cannot reuse {@code org.apache.gravitino.server.web.HttpAuditFilter} directly because the SCIM
- * auxiliary listener runs on Jetty 11 / Jakarta Servlet, while that filter is compiled against
- * {@code javax.servlet}.
+ * <p>Cannot reuse {@code org.apache.gravitino.server.web.HttpAuditFilter} because the SCIM listener
+ * runs on Jetty 11 / Jakarta Servlet.
  */
 public final class ScimHttpAuditFilter implements Filter {
 
@@ -50,9 +46,10 @@ public final class ScimHttpAuditFilter implements Filter {
   private final Optional<EventBus> eventBus;
   private final EventSource eventSource;
   private final ScimHealthCheckPathMatcher healthCheckMatcher;
+  @Nullable private final ScimErrorHistoryManager errorHistoryManager;
 
   /**
-   * Constructs a SCIM HTTP audit filter.
+   * Constructs a SCIM HTTP audit filter without error-history persistence.
    *
    * @param eventBus event bus used to dispatch {@link HttpRequestFailureEvent}s; may be {@code
    *     null}, in which case the filter is a pass-through
@@ -61,23 +58,35 @@ public final class ScimHttpAuditFilter implements Filter {
    */
   public ScimHttpAuditFilter(
       EventBus eventBus, EventSource eventSource, ScimHealthCheckPathMatcher healthCheckMatcher) {
+    this(eventBus, eventSource, healthCheckMatcher, null);
+  }
+
+  /**
+   * Constructs a SCIM HTTP audit filter that also records protocol failures.
+   *
+   * @param eventBus event bus used to dispatch {@link HttpRequestFailureEvent}s; may be {@code
+   *     null}, in which case HTTP audit events are skipped
+   * @param eventSource identifies which server produced the event
+   * @param healthCheckMatcher determines which paths are health probes and should be skipped
+   * @param errorHistoryManager records SCIM protocol failures; {@code null} disables persistence
+   */
+  public ScimHttpAuditFilter(
+      EventBus eventBus,
+      EventSource eventSource,
+      ScimHealthCheckPathMatcher healthCheckMatcher,
+      @Nullable ScimErrorHistoryManager errorHistoryManager) {
     this.eventBus = Optional.ofNullable(eventBus);
     this.eventSource = eventSource;
     this.healthCheckMatcher = healthCheckMatcher;
+    this.errorHistoryManager = errorHistoryManager;
   }
-
-  @Override
-  public void init(FilterConfig filterConfig) {}
 
   @Override
   public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
       throws IOException, ServletException {
-    if (eventBus.isEmpty() || !(request instanceof HttpServletRequest httpRequest)) {
-      chain.doFilter(request, response);
-      return;
-    }
-
-    if (httpRequest.getDispatcherType() == DispatcherType.ERROR) {
+    if (!(request instanceof HttpServletRequest httpRequest)
+        || httpRequest.getDispatcherType() == DispatcherType.ERROR
+        || (eventBus.isEmpty() && errorHistoryManager == null)) {
       chain.doFilter(request, response);
       return;
     }
@@ -92,33 +101,20 @@ public final class ScimHttpAuditFilter implements Filter {
       return;
     }
 
-    StatusCapturingResponseWrapper wrappedResponse =
-        new StatusCapturingResponseWrapper((HttpServletResponse) response);
+    ScimCapturingResponse captured =
+        new ScimCapturingResponse((HttpServletResponse) response, errorHistoryManager != null);
     Throwable chainException = null;
     try {
       RequestContext.setRemoteAddress(resolveClientAddress(httpRequest));
-      chain.doFilter(httpRequest, wrappedResponse);
+      chain.doFilter(httpRequest, captured);
     } catch (Throwable t) {
       chainException = t;
-      if (wrappedResponse.getCapturedStatus() < 400) {
-        wrappedResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+      if (captured.status() < 400) {
+        captured.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
       }
     } finally {
       try {
-        if (!RequestContext.isOperationFailureFired()) {
-          int status = wrappedResponse.getCapturedStatus();
-          if (status >= 400) {
-            HttpRequestFailureEvent event =
-                new HttpRequestFailureEvent(
-                    resolveUser(httpRequest),
-                    resolveClientAddress(httpRequest),
-                    httpRequest.getMethod(),
-                    httpRequest.getRequestURI(),
-                    status,
-                    eventSource);
-            eventBus.get().dispatchEvent(event);
-          }
-        }
+        emitFailures(httpRequest, captured, chainException);
       } catch (Exception e) {
         LOG.error(
             "Failed to dispatch SCIM HTTP audit event for {} {}",
@@ -143,8 +139,39 @@ public final class ScimHttpAuditFilter implements Filter {
     }
   }
 
-  @Override
-  public void destroy() {}
+  private void emitFailures(
+      HttpServletRequest request, ScimCapturingResponse captured, @Nullable Throwable failure) {
+    ScimCapturingResponse.Failure snapshot = captured.failure(failure);
+    String path = request.getRequestURI();
+    if (!ScimRequestPaths.isMetalakeScopedPath(path)) {
+      path = ScimRequestPaths.resolveRequestPath(request);
+    }
+    if (errorHistoryManager != null
+        && ScimErrorHistoryManager.shouldRecord(snapshot.status(), path)) {
+      errorHistoryManager.recordHttpFailure(
+          ScimRequestPaths.metalakeFromPath(path).orElse(""),
+          request.getMethod(),
+          path,
+          snapshot.status(),
+          snapshot.scimType(),
+          snapshot.detail(),
+          resolveUser(request));
+    }
+    if (eventBus.isPresent()
+        && !RequestContext.isOperationFailureFired()
+        && snapshot.status() >= 400) {
+      eventBus
+          .get()
+          .dispatchEvent(
+              new HttpRequestFailureEvent(
+                  resolveUser(request),
+                  resolveClientAddress(request),
+                  request.getMethod(),
+                  request.getRequestURI(),
+                  snapshot.status(),
+                  eventSource));
+    }
+  }
 
   private static String resolveUser(HttpServletRequest request) {
     Object principalObj =
@@ -165,42 +192,5 @@ public final class ScimHttpAuditFilter implements Filter {
       return xForwardedFor.split(",")[0].trim();
     }
     return request.getRemoteAddr();
-  }
-
-  static final class StatusCapturingResponseWrapper extends HttpServletResponseWrapper {
-
-    private int capturedStatus = HttpServletResponse.SC_OK;
-
-    StatusCapturingResponseWrapper(HttpServletResponse response) {
-      super(response);
-    }
-
-    int getCapturedStatus() {
-      return capturedStatus;
-    }
-
-    @Override
-    public void setStatus(int sc) {
-      capturedStatus = sc;
-      super.setStatus(sc);
-    }
-
-    @Override
-    public void sendError(int sc) throws IOException {
-      capturedStatus = sc;
-      super.sendError(sc);
-    }
-
-    @Override
-    public void sendError(int sc, String msg) throws IOException {
-      capturedStatus = sc;
-      super.sendError(sc, msg);
-    }
-
-    @Override
-    public void reset() {
-      capturedStatus = HttpServletResponse.SC_OK;
-      super.reset();
-    }
   }
 }

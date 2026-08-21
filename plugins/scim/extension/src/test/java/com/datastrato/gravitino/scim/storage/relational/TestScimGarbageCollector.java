@@ -9,13 +9,17 @@ import static org.apache.gravitino.Configs.STORE_DELETE_AFTER_TIME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import com.datastrato.gravitino.scim.ScimConfigs;
 import com.datastrato.gravitino.scim.storage.mapper.AbstractScimMetaStorageTest;
+import com.datastrato.gravitino.scim.storage.mapper.ScimErrorHistoryMapper;
 import com.datastrato.gravitino.scim.storage.mapper.ScimTokenMetaMapper;
 import com.datastrato.gravitino.scim.storage.mapper.ScimUserGroupRelMapper;
+import com.datastrato.gravitino.scim.storage.po.ScimErrorHistoryPO;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.apache.gravitino.storage.relational.mapper.GroupMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.UserMetaMapper;
@@ -241,12 +245,54 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
         scimUserGroupRelMapper().selectMembersByGroupId("deleted_metalake", GROUP_ID + 1).size());
   }
 
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testCleanExpiredErrorHistory(String type) throws Exception {
+    init(type);
+    insertMetalake();
+    long now = System.currentTimeMillis();
+    scimErrorHistoryMapper().insert(errorRow(1L, now - TimeUnit.DAYS.toMillis(31)));
+    scimErrorHistoryMapper().insert(errorRow(2L, now));
+
+    getConfig().set(ScimConfigs.ERROR_HISTORY_RETENTION_DAYS, 30);
+    closeSession();
+
+    ScimGarbageCollector garbageCollector = new ScimGarbageCollector(getConfig());
+    try {
+      garbageCollector.cleanExpiredErrorHistory();
+    } finally {
+      garbageCollector.close();
+    }
+
+    reopenSession();
+    assertNull(scimErrorHistoryMapper().selectByErrorId(1L));
+    assertEquals(2L, scimErrorHistoryMapper().selectByErrorId(2L).getErrorId());
+  }
+
+  private static ScimErrorHistoryPO errorRow(long errorId, long createdAt) {
+    return ScimErrorHistoryPO.builder()
+        .withErrorId(errorId)
+        .withMetalakeId(0L)
+        .withMetalakeName(METALAKE_NAME)
+        .withHttpMethod("POST")
+        .withRequestPath("/scim/v2/metalakes/" + METALAKE_NAME + "/Users")
+        .withHttpStatus(409)
+        .withErrorDetail("")
+        .withPrincipal("")
+        .withCreatedAt(createdAt)
+        .build();
+  }
+
   private ScimTokenMetaMapper scimTokenMetaMapper() {
     return sharedSession.getMapper(ScimTokenMetaMapper.class);
   }
 
   private ScimUserGroupRelMapper scimUserGroupRelMapper() {
     return sharedSession.getMapper(ScimUserGroupRelMapper.class);
+  }
+
+  private ScimErrorHistoryMapper scimErrorHistoryMapper() {
+    return sharedSession.getMapper(ScimErrorHistoryMapper.class);
   }
 
   private void insertUserAndGroup() {

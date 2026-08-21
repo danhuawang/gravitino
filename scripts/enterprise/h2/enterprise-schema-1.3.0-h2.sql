@@ -35,3 +35,18 @@ CREATE TABLE IF NOT EXISTS `scim_user_group_rel` (
     KEY `idx_sugr_uid` (`user_id`),
     KEY `idx_sugr_gid` (`group_id`)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `scim_error_history` (
+    `error_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'error history id',
+    `metalake_id` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'metalake id, 0 when unknown',
+    `http_method` VARCHAR(16) NOT NULL COMMENT 'HTTP method',
+    `request_path` VARCHAR(1024) NOT NULL COMMENT 'SCIM request path',
+    `http_status` INT NOT NULL COMMENT 'HTTP status code',
+    `scim_type` VARCHAR(64) DEFAULT NULL COMMENT 'RFC 7644 scimType when present',
+    `error_detail` VARCHAR(1024) NOT NULL DEFAULT '' COMMENT 'truncated SCIM error detail',
+    `principal` VARCHAR(256) NOT NULL DEFAULT '' COMMENT 'authenticated SCIM token name',
+    `created_at` BIGINT(20) UNSIGNED NOT NULL COMMENT 'created at in ms',
+    PRIMARY KEY (`error_id`),
+    KEY `idx_seh_mid_created` (`metalake_id`, `created_at`),
+    KEY `idx_seh_created` (`created_at`)
+) ENGINE=InnoDB;

@@ -6,18 +6,26 @@
 package com.datastrato.gravitino.scim.service.web;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.scim.ScimErrorHistoryManager;
 import com.datastrato.gravitino.scim.service.ScimHealthCheckPathMatcher;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
+import jakarta.servlet.WriteListener;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.listener.EventBus;
@@ -183,6 +191,88 @@ class TestScimHttpAuditFilter {
     verify(eventBus).dispatchEvent(captor.capture());
     Assertions.assertEquals(500, captor.getValue().statusCode());
     Assertions.assertEquals("unknown", captor.getValue().user());
+  }
+
+  @Test
+  void testRecordScimErrorBody() throws Exception {
+    ScimErrorHistoryManager manager = mock(ScimErrorHistoryManager.class);
+    String users = "/scim/v2/metalakes/m1/Users";
+    HttpServletResponse resp = mock(HttpServletResponse.class);
+    when(resp.getOutputStream()).thenReturn(discardingOutputStream());
+    new ScimHttpAuditFilter(
+            mock(EventBus.class),
+            EventSource.GRAVITINO_SERVER,
+            new ScimHealthCheckPathMatcher(),
+            manager)
+        .doFilter(
+            mockRequest("POST", users, "entra", "9.9.9.9"),
+            resp,
+            (request, response) -> {
+              HttpServletResponse httpResponse = (HttpServletResponse) response;
+              httpResponse.setStatus(409);
+              httpResponse
+                  .getOutputStream()
+                  .write(
+                      "{\"detail\":\"already exists\",\"scimType\":\"uniqueness\"}"
+                          .getBytes(StandardCharsets.UTF_8));
+            });
+    verify(manager)
+        .recordHttpFailure(
+            eq("m1"),
+            eq("POST"),
+            eq(users),
+            eq(409),
+            eq("uniqueness"),
+            eq("already exists"),
+            eq("entra"));
+  }
+
+  @Test
+  void testRecordWriteErrorDetail() throws Exception {
+    ScimErrorHistoryManager manager = mock(ScimErrorHistoryManager.class);
+    String users = "/scim/v2/metalakes/m1/Users";
+    HttpServletResponse resp = mock(HttpServletResponse.class);
+    when(resp.getWriter()).thenReturn(new PrintWriter(new StringWriter()));
+    new ScimHttpAuditFilter(
+            mock(EventBus.class),
+            EventSource.GRAVITINO_SERVER,
+            new ScimHealthCheckPathMatcher(),
+            manager)
+        .doFilter(
+            mockRequest("POST", users, "entra", "9.9.9.9"),
+            resp,
+            (request, response) ->
+                ScimHttpResponses.writeError(
+                    (HttpServletResponse) response, 409, "already exists"));
+    verify(manager)
+        .recordHttpFailure(
+            eq("m1"), eq("POST"), eq(users), eq(409), isNull(), eq("already exists"), eq("entra"));
+
+    new ScimHttpAuditFilter(
+            mock(EventBus.class),
+            EventSource.GRAVITINO_SERVER,
+            new ScimHealthCheckPathMatcher(),
+            manager)
+        .doFilter(
+            mockRequest("POST", users, "entra", "9.9.9.9"),
+            mock(HttpServletResponse.class),
+            (request, response) -> ((HttpServletResponse) response).setStatus(404));
+    verify(manager, never()).recordHttpFailure(any(), any(), any(), eq(404), any(), any(), any());
+  }
+
+  private static ServletOutputStream discardingOutputStream() {
+    return new ServletOutputStream() {
+      @Override
+      public boolean isReady() {
+        return true;
+      }
+
+      @Override
+      public void setWriteListener(WriteListener writeListener) {}
+
+      @Override
+      public void write(int b) {}
+    };
   }
 
   private static HttpServletRequest mockRequest(

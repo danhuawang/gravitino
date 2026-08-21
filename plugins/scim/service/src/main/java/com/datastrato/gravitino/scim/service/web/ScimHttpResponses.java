@@ -36,6 +36,9 @@ public final class ScimHttpResponses {
     response.setStatus(status);
     response.setCharacterEncoding(StandardCharsets.UTF_8.name());
     response.setContentType("application/scim+json");
+    if (response instanceof ScimCapturingResponse captured) {
+      captured.noteDetail(detail);
+    }
     MAPPER.writeValue(
         response.getWriter(),
         Map.of(
