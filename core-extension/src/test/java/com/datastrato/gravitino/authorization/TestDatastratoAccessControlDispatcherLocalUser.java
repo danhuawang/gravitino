@@ -1,6 +1,6 @@
 /*
  * Copyright 2026 Datastrato Pvt Ltd.
- * This software is licensed under the Apache License, Version 2.
+ * This software is licensed under the Apache License version 2.
  */
 package com.datastrato.gravitino.authorization;
 
