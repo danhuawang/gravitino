@@ -757,46 +757,6 @@ subprojects {
   }
 }
 
-val datastratoLicenseCheckIncludes = listOf(
-  "authorization-jdbc-enterprise/**",
-  "common-extension/**",
-  "core-extension/**",
-  "datastrato-server/**",
-  "docs-enterprise/**",
-  "lineage-extension/**",
-  "metrics/**",
-  "qa/**",
-  "search/**",
-  "test/search-integration-test/**",
-  "test/test-common/**",
-  "bin/index.sh.template",
-  "bin/gravitino-metrics-service.sh.template",
-  "bin/opensearch/**",
-  "conf/gravitino-metrics-server.conf.template",
-  "catalogs/catalog-jdbc-oracle/**/*",
-  "integration-test-common/src/test/java/org/apache/gravitino/integration/test/container/OracleContainer.java",
-  "spark-connector/spark-common/src/main/java/org/apache/gravitino/spark/connector/jdbc/oracle/SparkOracleTypeConverter.java",
-  "spark-connector/spark-common/src/test/java/org/apache/gravitino/spark/connector/jdbc/oracle/TestSparkOracleTypeConverter.java",
-  "spark-connector/v3.4/spark/src/main/java/org/apache/gravitino/spark/connector/jdbc/oracle/SparkOracleTypeConverter34.java",
-  "spark-connector/v3.4/spark/src/test/java/org/apache/gravitino/spark/connector/jdbc/oracle/TestSparkOracleTypeConverter34.java",
-  "spark-connector/spark-common/src/main/java/org/apache/gravitino/spark/connector/jdbc/sqlserver/SparkSqlServerTypeConverter.java",
-  "spark-connector/spark-common/src/test/java/org/apache/gravitino/spark/connector/jdbc/sqlserver/TestSparkSqlServerTypeConverter.java",
-  "spark-connector/v3.4/spark/src/main/java/org/apache/gravitino/spark/connector/jdbc/sqlserver/SparkSqlServerTypeConverter34.java",
-  "spark-connector/v3.4/spark/src/test/java/org/apache/gravitino/spark/connector/jdbc/sqlserver/TestSparkSqlServerTypeConverter34.java",
-  "catalogs/catalog-jdbc-bigquery/**/*",
-  "catalogs/catalog-jdbc-maxcompute/**/*",
-  "catalogs/catalog-jdbc-sqlserver/**/*",
-  "bundles/vault-compatible/transit/**",
-  "bundles/vault/**",
-  "bundles/openbao/**",
-  "src/test/java/com/datastrato/gravitino/transit/packaging/TransitProviderDiscoveryProbe.java",
-  "licensing/**",
-  "scripts/enterprise/**",
-  "plugins/scim/**",
-  "core/src/main/java/org/apache/gravitino/listener/api/event/scim/**",
-  "core/src/test/java/org/apache/gravitino/listener/api/event/scim/**"
-)
-
 val printRatFailures by tasks.registering {
   group = "verification"
   description = "Prints Apache Rat files with unapproved licenses in CI-friendly text."
@@ -974,10 +934,7 @@ tasks.rat {
     // Root-level markdown/documentation files
     "design-docs",
     "README.md"
-    // Datastrato short header format is verified by checkDatastratoLicenseHeaders.
   )
-  // Excludes files checked by checkDatastratoLicenseHeaders.
-  exclusions.addAll(datastratoLicenseCheckIncludes)
 
   // Add .gitignore excludes to the Apache Rat exclusion list.
   val gitIgnore = project(":").file(".gitignore")
@@ -993,60 +950,20 @@ tasks.rat {
   setExcludes(exclusions)
 }
 
-tasks.register("checkDatastratoLicenseHeaders") {
-  group = "verification"
-  description = "Checks Datastrato header format for enterprise-owned files."
+// Enterprise license policy (Datastrato copyright-only header + new-file
+// enforcement). Kept in a separate file so upstream syncs do not touch
+// Datastrato license logic; only this apply line and the additive rat
+// exclusion fold below remain in the upstream-owned build.gradle.kts.
+apply(from = "enterprise-licenses.gradle.kts")
 
-  val supportedExtensions = setOf(
-    "java",
-    "scala",
-    "kt",
-    "kts",
-    "py",
-    "sh",
-    "template",
-    "conf"
-  )
-
-  doLast {
-    val filesToCheck = fileTree(rootDir) {
-      datastratoLicenseCheckIncludes.forEach { include(it) }
-      exclude(
-        "**/build/**",
-        "**/.gradle/**",
-        "**/.idea/**",
-        "**/node_modules/**",
-        "**/dist/**",
-        "**/.node/**"
-      )
-    }.files.filter { file ->
-      file.isFile &&
-        (supportedExtensions.contains(file.extension) || file.name in setOf("Dockerfile", "Jenkinsfile"))
-    }
-
-    val violations = mutableListOf<String>()
-    filesToCheck.forEach { file ->
-      val content = file.readText()
-      val hasCopyright =
-        Regex("Copyright\\s+\\d{4}\\s+Datastrato Pvt Ltd\\.")
-          .containsMatchIn(content)
-      val hasLicenseSentence =
-        content.contains("This software is licensed under the Apache License version 2.")
-      if (!hasCopyright || !hasLicenseSentence) {
-        violations.add(file.relativeTo(rootDir).path)
-      }
-    }
-
-    if (violations.isNotEmpty()) {
-      throw GradleException(
-        "Datastrato license header check failed for ${violations.size} file(s):\n" +
-          violations.sorted().joinToString("\n")
-      )
-    }
-  }
+// Fold the enterprise exclusions (exposed via extra) into the rat task
+// additively, without clobbering the upstream exclusions above. The RatTask
+// type is only importable here, so this stays in build.gradle.kts.
+tasks.rat {
+  setExcludes(excludes + (project.extra["enterpriseRatExcludes"] as List<String>))
 }
 
-tasks.check.get().dependsOn(tasks.rat, tasks.named("checkDatastratoLicenseHeaders"))
+tasks.check.get().dependsOn(tasks.rat)
 
 tasks.cyclonedxBom {
   setIncludeConfigs(listOf("runtimeClasspath"))

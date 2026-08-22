@@ -77,7 +77,7 @@ jobs:
             gradle.properties
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
 
       - name: Check required command
         run: |
@@ -89,7 +89,7 @@ jobs:
 
       - name: Integration test
         run: |
-          ./gradlew build -PskipWeb=true -x :clients:client-python:build -x test -x web -PskipTrinoConnector=true
+          ./gradlew build -x checkNewFileLicenseHeaders -PskipWeb=true -x :clients:client-python:build -x test -x web -PskipTrinoConnector=true
           ./gradlew compileDistribution -PskipWeb=true -x :clients:client-python:build -x test -x web -PskipTrinoConnector=true
           cd clients/filesystem-fuse
           make test-s3

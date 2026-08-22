@@ -174,7 +174,10 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      # fetch-depth: 0 so checkNewFileLicenseHeaders can merge-base against the PR base.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-java-toolchains
         with:
@@ -191,6 +194,11 @@ jobs:
         run: |
           wget https://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb
           sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb  
+
+      # Ensure origin/<base> exists for checkNewFileLicenseHeaders (and coverage).
+      - name: Fetch PR base ref
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --no-tags
 
       - name: Build with Gradle
         run: |
@@ -240,10 +248,6 @@ jobs:
           printf '\n'
 
           ./gradlew "${gradle_args[@]}"
-
-      - name: Fetch base branch for coverage diff
-        if: github.event_name == 'pull_request'
-        run: git fetch origin ${{ github.base_ref }} --depth=1
 
       - name: Generate Coverage Report
         id: coverage

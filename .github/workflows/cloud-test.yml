@@ -103,7 +103,7 @@ jobs:
           export MINIFORGE_BIN="$GITHUB_WORKSPACE/.gradle/python/Linux/Miniforge3/bin"
           export PATH="$MINIFORGE_BIN:$PATH"
           
-          ./gradlew build -x test
+          ./gradlew build -x checkNewFileLicenseHeaders -x test
           mkdir -p /tmp/bundles
           cp -r bundles/*-bundle/build/libs/*.jar /tmp/bundles
 

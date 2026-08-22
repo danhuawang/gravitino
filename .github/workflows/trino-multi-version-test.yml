@@ -18,7 +18,7 @@ jobs:
       - uses: ./.github/actions/setup-java-toolchains
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
 
       - name: Check required command
         run: dev/ci/check_commands.sh
@@ -31,7 +31,7 @@ jobs:
 
       - name: Build Gravitino
         run: |
-          ./gradlew build -PskipWeb=true -x test \
+          ./gradlew build -x checkNewFileLicenseHeaders -PskipWeb=true -x test \
             -x :web:web:build -x :web:integration-test:build \
             -x :web-v2:web:build -x :web-v2:integration-test:build \
             -x :clients:client-python:build \
