@@ -11,9 +11,11 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.listener.api.event.AddUserEvent;
 import org.apache.gravitino.listener.api.event.AlterUserEvent;
+import org.apache.gravitino.listener.api.event.GrantUserRolesEvent;
 import org.apache.gravitino.listener.api.event.RemoveUserByExternalIdEvent;
 import org.apache.gravitino.listener.api.event.RemoveUserByIdEvent;
 import org.apache.gravitino.listener.api.event.RemoveUserEvent;
+import org.apache.gravitino.listener.api.event.RevokeUserRolesEvent;
 import org.apache.gravitino.listener.api.info.UserInfo;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,6 +56,8 @@ class TestUserEventHandler {
     handler.handleEvent(new RemoveUserEvent("tester", METALAKE, USER_NAME, true));
 
     Mockito.verify(searchService).removeEntityByName(METALAKE, USER_NAME, EntityType.USER);
+    Mockito.verify(searchService)
+        .synchronizeMetadata(NameIdentifier.of(METALAKE), EntityType.METALAKE, true);
   }
 
   @Test
@@ -61,6 +65,8 @@ class TestUserEventHandler {
     handler.handleEvent(new RemoveUserByIdEvent("tester", METALAKE, 100L, true));
 
     Mockito.verify(searchService).delete(METALAKE, ImmutableList.of(100L), EntityType.USER);
+    Mockito.verify(searchService)
+        .synchronizeMetadata(NameIdentifier.of(METALAKE), EntityType.METALAKE, true);
   }
 
   @Test
@@ -78,5 +84,16 @@ class TestUserEventHandler {
     handler.handleEvent(new RemoveUserByExternalIdEvent("tester", METALAKE, "external", false));
 
     Mockito.verifyNoInteractions(searchService);
+  }
+
+  @Test
+  void testUserRoleChangesReconcilePermissionDocuments() {
+    handler.handleEvent(
+        new GrantUserRolesEvent("tester", METALAKE, userInfo, ImmutableList.of("reader")));
+    handler.handleEvent(
+        new RevokeUserRolesEvent("tester", METALAKE, userInfo, ImmutableList.of("reader")));
+
+    Mockito.verify(searchService, Mockito.times(2))
+        .synchronizeMetadata(NameIdentifier.of(METALAKE), EntityType.METALAKE, true);
   }
 }

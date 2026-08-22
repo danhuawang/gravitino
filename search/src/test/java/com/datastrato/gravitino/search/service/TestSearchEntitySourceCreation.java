@@ -170,6 +170,12 @@ class TestSearchEntitySourceCreation {
             SearchEntityIdentifier.of(
                 NameIdentifier.of(SCHEMA_NAMESPACE, "f1"), Entity.EntityType.FUNCTION),
             false));
+    assertInstanceOf(
+        RoleSearchEntitySource.class,
+        SearchEntitySource.createSearchEntitySource(
+            SearchEntityIdentifier.of(
+                NameIdentifierUtil.ofRole("test", "table_reader"), Entity.EntityType.ROLE),
+            false));
   }
 
   private void mockViewDispatcher(NameIdentifier[] views) throws IllegalAccessException {

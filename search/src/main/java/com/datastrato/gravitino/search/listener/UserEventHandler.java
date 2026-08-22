@@ -5,15 +5,18 @@
 package com.datastrato.gravitino.search.listener;
 
 import com.datastrato.gravitino.search.service.SearchService;
+import com.datastrato.gravitino.search.utils.PermissionProjectionCache;
 import com.google.common.collect.ImmutableList;
 import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.listener.api.event.AddUserEvent;
 import org.apache.gravitino.listener.api.event.AlterUserEvent;
 import org.apache.gravitino.listener.api.event.Event;
+import org.apache.gravitino.listener.api.event.GrantUserRolesEvent;
 import org.apache.gravitino.listener.api.event.RemoveUserByExternalIdEvent;
 import org.apache.gravitino.listener.api.event.RemoveUserByIdEvent;
 import org.apache.gravitino.listener.api.event.RemoveUserEvent;
+import org.apache.gravitino.listener.api.event.RevokeUserRolesEvent;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 
 /** Keeps the lightweight User search projection synchronized with User mutation events. */
@@ -43,22 +46,31 @@ public class UserEventHandler implements EventHandler {
       if (removeUserEvent.isExists()) {
         searchService.removeEntityByName(
             metalake, removeUserEvent.removedUserName(), EntityType.USER);
+        reconcilePermissions(metalake);
       }
     } else if (event instanceof RemoveUserByIdEvent) {
       RemoveUserByIdEvent removeUserEvent = (RemoveUserByIdEvent) event;
       if (removeUserEvent.isExists()) {
         searchService.delete(metalake, ImmutableList.of(removeUserEvent.userId()), EntityType.USER);
+        reconcilePermissions(metalake);
       }
     } else if (event instanceof RemoveUserByExternalIdEvent) {
       RemoveUserByExternalIdEvent removeUserEvent = (RemoveUserByExternalIdEvent) event;
       if (removeUserEvent.isExists()) {
-        searchService.synchronizeMetadata(NameIdentifier.of(metalake), EntityType.METALAKE, true);
+        reconcilePermissions(metalake);
       }
+    } else if (event instanceof GrantUserRolesEvent || event instanceof RevokeUserRolesEvent) {
+      reconcilePermissions(metalake);
     }
   }
 
   private void synchronize(String metalake, String userName) {
     searchService.synchronizeMetadata(
         NameIdentifierUtil.ofUser(metalake, userName), EntityType.USER, false);
+  }
+
+  private void reconcilePermissions(String metalake) {
+    PermissionProjectionCache.invalidate(metalake);
+    searchService.synchronizeMetadata(NameIdentifier.of(metalake), EntityType.METALAKE, true);
   }
 }

@@ -71,6 +71,15 @@ class MetalakeSearchEntitySource extends ParentEntitySource {
           new GroupSearchEntitySource(
               SearchEntitySource.toSearchEntityIdentifiers(
                   groupIdentifiers, Entity.EntityType.GROUP)));
+
+      NameIdentifier[] roleIdentifiers =
+          Arrays.stream(accessControlDispatcher.listRoleNames(searchEntityIdentifier.metalake()))
+              .map(name -> NameIdentifierUtil.ofRole(searchEntityIdentifier.metalake(), name))
+              .toArray(NameIdentifier[]::new);
+      sources.add(
+          new RoleSearchEntitySource(
+              SearchEntitySource.toSearchEntityIdentifiers(
+                  roleIdentifiers, Entity.EntityType.ROLE)));
     }
     return sources;
   }

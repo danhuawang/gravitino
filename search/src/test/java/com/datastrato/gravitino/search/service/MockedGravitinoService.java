@@ -7,12 +7,15 @@ package com.datastrato.gravitino.search.service;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 
+import com.datastrato.gravitino.DatastratoGravitinoEnv;
 import com.datastrato.gravitino.TestCatalog;
 import com.datastrato.gravitino.TestSchema;
 import com.datastrato.gravitino.TestTable;
+import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -25,8 +28,9 @@ import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
-import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.Group;
+import org.apache.gravitino.authorization.Role;
+import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
@@ -41,6 +45,7 @@ import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.exceptions.NoSuchFunctionException;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.exceptions.NoSuchRoleException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.NoSuchViewException;
 import org.apache.gravitino.function.FunctionDefinition;
@@ -51,6 +56,7 @@ import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.ColumnEntity;
 import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.GroupEntity;
+import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.SchemaVersion;
 import org.apache.gravitino.meta.TableEntity;
@@ -77,6 +83,7 @@ public class MockedGravitinoService {
   public Map<String, UserEntity> users = new HashMap<>();
   public Map<String, GroupEntity> groups = new HashMap<>();
   public Map<String, FunctionEntity> functions = new HashMap<>();
+  public Map<String, RoleEntity> roles = new HashMap<>();
 
   private Map<String, Tag> tags = new HashMap<>();
   private Map<String, Set<Tag>> objTags = new HashMap<>();
@@ -93,16 +100,27 @@ public class MockedGravitinoService {
     FieldUtils.writeField(gravitinoEnv, "viewDispatcher", mockViewDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "functionDispatcher", mockFunctionDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "tagDispatcher", mockTagDispatcher(), true);
-    AccessControlDispatcher accessControlDispatcher = mockAccessControlDispatcher();
+    DatastratoAccessControlDispatcher accessControlDispatcher = mockAccessControlDispatcher();
     FieldUtils.writeField(gravitinoEnv, "accessControlDispatcher", accessControlDispatcher, true);
     FieldUtils.writeField(
         gravitinoEnv, "internalAccessControlDispatcher", accessControlDispatcher, true);
+    FieldUtils.writeField(
+        DatastratoGravitinoEnv.getInstance(),
+        "accessControlDispatcher",
+        accessControlDispatcher,
+        true);
+    FieldUtils.writeField(
+        DatastratoGravitinoEnv.getInstance(),
+        "internalDatastratoAccessControlDispatcher",
+        accessControlDispatcher,
+        true);
 
     return Mockito.spy(service);
   }
 
-  private AccessControlDispatcher mockAccessControlDispatcher() {
-    AccessControlDispatcher dispatcher = Mockito.mock(AccessControlDispatcher.class);
+  private DatastratoAccessControlDispatcher mockAccessControlDispatcher() {
+    DatastratoAccessControlDispatcher dispatcher =
+        Mockito.mock(DatastratoAccessControlDispatcher.class);
     Mockito.when(dispatcher.listUserNames(anyString()))
         .thenAnswer(
             args -> {
@@ -158,6 +176,36 @@ public class MockedGravitinoService {
                 throw new NoSuchGroupException("No such group: %s", groupName);
               }
               return group;
+            });
+    Mockito.when(dispatcher.listRoleNames(anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              return roles.values().stream()
+                  .filter(role -> metalake.equals(role.namespace().level(0)))
+                  .map(Role::name)
+                  .toArray(String[]::new);
+            });
+    Mockito.when(dispatcher.getRole(anyString(), anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              String roleName = args.getArgument(1);
+              Role role = roles.get(NameIdentifierUtil.ofRole(metalake, roleName).toString());
+              if (role == null) {
+                throw new NoSuchRoleException("No such role: %s", roleName);
+              }
+              return role;
+            });
+    Mockito.when(dispatcher.listUsersByRole(anyString(), anyString()))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              String roleName = args.getArgument(1);
+              return users.values().stream()
+                  .filter(user -> metalake.equals(user.namespace().level(0)))
+                  .filter(user -> user.roles() != null && user.roles().contains(roleName))
+                  .toArray(User[]::new);
             });
     return dispatcher;
   }
@@ -420,13 +468,25 @@ public class MockedGravitinoService {
 
   /** Adds a User to the in-memory authorization dispatcher used by search tests. */
   public UserEntity createUser(String metalake, String userName) {
+    return createUser(metalake, userName, Lists.newArrayList());
+  }
+
+  /**
+   * Adds a User with directly assigned Roles to the authorization dispatcher used by search tests.
+   *
+   * @param metalake The User's Metalake.
+   * @param userName The User name.
+   * @param roleNames The directly assigned Role names.
+   * @return The created User.
+   */
+  public UserEntity createUser(String metalake, String userName, List<String> roleNames) {
     UserEntity user =
         UserEntity.builder()
             .withId(entityIdAllocator++)
             .withName(userName)
             .withEnabled(true)
             .withAuditInfo(AuditInfo.EMPTY)
-            .withRoleNames(Lists.newArrayList())
+            .withRoleNames(roleNames)
             .withRoleIds(Lists.newArrayList())
             .withNamespace(NamespaceUtil.ofUser(metalake))
             .build();
@@ -457,6 +517,44 @@ public class MockedGravitinoService {
   /** Removes a Group from the in-memory authorization dispatcher used by search tests. */
   public void removeGroup(String metalake, String groupName) {
     groups.remove(NameIdentifierUtil.ofGroup(metalake, groupName).toString());
+  }
+
+  /** Adds a Role to the in-memory authorization dispatcher used by search tests. */
+  public RoleEntity createRole(
+      String metalake, String roleName, List<SecurableObject> securableObjects) {
+    RoleEntity role =
+        RoleEntity.builder()
+            .withId(entityIdAllocator++)
+            .withName(roleName)
+            .withProperties(ImmutableMap.of())
+            .withAuditInfo(AuditInfo.EMPTY)
+            .withSecurableObjects(securableObjects)
+            .withNamespace(NamespaceUtil.ofRole(metalake))
+            .build();
+    roles.put(NameIdentifierUtil.ofRole(metalake, roleName).toString(), role);
+    return role;
+  }
+
+  /** Replaces the Securable Objects of a Role used by search tests. */
+  public RoleEntity updateRoleSecurableObjects(
+      String metalake, String roleName, List<SecurableObject> securableObjects) {
+    RoleEntity current = roles.get(NameIdentifierUtil.ofRole(metalake, roleName).toString());
+    RoleEntity updated =
+        RoleEntity.builder()
+            .withId(current.id())
+            .withName(current.name())
+            .withProperties(current.properties())
+            .withAuditInfo(current.auditInfo())
+            .withSecurableObjects(securableObjects)
+            .withNamespace(current.namespace())
+            .build();
+    roles.put(NameIdentifierUtil.ofRole(metalake, roleName).toString(), updated);
+    return updated;
+  }
+
+  /** Removes a Role from the in-memory authorization dispatcher used by search tests. */
+  public void removeRole(String metalake, String roleName) {
+    roles.remove(NameIdentifierUtil.ofRole(metalake, roleName).toString());
   }
 
   public BaseCatalog createCatalog(NameIdentifier nameIdentifier) throws IllegalAccessException {

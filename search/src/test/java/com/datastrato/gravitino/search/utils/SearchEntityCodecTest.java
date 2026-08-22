@@ -109,4 +109,26 @@ class SearchEntityCodecTest {
     assertNull(dto.getEntityComment());
     assertNull(dto.getFullQualifiedName());
   }
+
+  @Test
+  void testSparseRoleRoundTrip() {
+    SearchEntityPO role =
+        SearchEntityPO.SearchEntityPOBuilder.builder()
+            .withEntityId(103L)
+            .withEntityType(Entity.EntityType.ROLE)
+            .withMetalake("test")
+            .withEntityName("table_reader")
+            .withUpdateTime(10L)
+            .build();
+
+    String json = searchEntityCodec.serialize(role);
+    SearchEntityPO deserialized = searchEntityCodec.deserialize(json, SearchEntityPO.class);
+    SearchEntityDTO dto = searchEntityCodec.convert(deserialized, SearchEntityDTO.class);
+
+    assertEquals(Entity.EntityType.ROLE, dto.getEntityType());
+    assertEquals("table_reader", dto.getEntityName());
+    assertNull(dto.getCatalogName());
+    assertNull(dto.getEntityComment());
+    assertNull(dto.getFullQualifiedName());
+  }
 }

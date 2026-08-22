@@ -99,6 +99,7 @@ public class OpenSearchStorage implements SearchStorage {
   private static final String USER_ENTITY_INDEX_SUFFIX = "user_entity_index";
   private static final String GROUP_ENTITY_INDEX_SUFFIX = "group_entity_index";
   private static final String FUNCTION_ENTITY_INDEX_SUFFIX = "function_entity_index";
+  private static final String ROLE_ENTITY_INDEX_SUFFIX = "role_entity_index";
 
   private int maxRetries;
   private long retryBackoffMs;
@@ -123,6 +124,7 @@ public class OpenSearchStorage implements SearchStorage {
           .put(EntityType.USER, USER_ENTITY_INDEX_SUFFIX)
           .put(EntityType.GROUP, GROUP_ENTITY_INDEX_SUFFIX)
           .put(EntityType.FUNCTION, FUNCTION_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.ROLE, ROLE_ENTITY_INDEX_SUFFIX)
           .build();
 
   private final Set<String> createdIndicesAlias = Sets.newHashSet();

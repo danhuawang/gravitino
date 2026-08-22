@@ -13,6 +13,7 @@ import com.datastrato.gravitino.search.po.SearchModelEntityPO.SearchModelVersion
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO.SearchColumn;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
+import com.datastrato.gravitino.search.utils.PermissionProjectionCache.Permissions;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Arrays;
@@ -31,6 +32,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.OwnerDispatcher;
+import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.EntityCombinedFileset;
 import org.apache.gravitino.catalog.EntityCombinedModel;
@@ -122,6 +124,7 @@ public class EntityConverterUtils {
     String owner =
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.CATALOG), levels[0]);
+    Permissions permissions = getPermissions(nameIdentifier, EntityType.CATALOG);
     return SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
         .withEntityId(catalog.entity().id())
         .withEntityType(EntityType.CATALOG)
@@ -136,8 +139,8 @@ public class EntityConverterUtils {
         .withTags(toSearchTag(tags))
         .withSearchAudit(toSearchAudit(catalog.auditInfo()))
         .withOwner(owner)
-        .withUserPermissions(null)
-        .withRolePermissions(null)
+        .withUserPermissions(permissions.userPermissions())
+        .withRolePermissions(permissions.rolePermissions())
         .withEntityProperties(mapToKeyValueObjects(catalog.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
@@ -174,6 +177,7 @@ public class EntityConverterUtils {
     String owner =
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.SCHEMA), metalakeName);
+    Permissions permissions = getPermissions(nameIdentifier, EntityType.SCHEMA);
     return SearchEntityPO.SearchEntityPOBuilder.builder()
         .withEntityId(id)
         .withEntityType(EntityType.SCHEMA)
@@ -186,8 +190,8 @@ public class EntityConverterUtils {
         .withTags(toSearchTag(tags))
         .withSearchAudit(toSearchAudit(schema.auditInfo()))
         .withOwner(owner)
-        .withUserPermissions(null)
-        .withRolePermissions(null)
+        .withUserPermissions(permissions.userPermissions())
+        .withRolePermissions(permissions.rolePermissions())
         .withEntityProperties(mapToKeyValueObjects(schema.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
@@ -211,6 +215,7 @@ public class EntityConverterUtils {
     String owner =
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.TOPIC), metalakeName);
+    Permissions permissions = getPermissions(nameIdentifier, EntityType.TOPIC);
     return SearchEntityPO.SearchEntityPOBuilder.builder()
         .withEntityId(id)
         .withEntityType(EntityType.TOPIC)
@@ -223,8 +228,8 @@ public class EntityConverterUtils {
         .withTags(toSearchTag(tags))
         .withSearchAudit(toSearchAudit(topic.auditInfo()))
         .withOwner(owner)
-        .withUserPermissions(null)
-        .withRolePermissions(null)
+        .withUserPermissions(permissions.userPermissions())
+        .withRolePermissions(permissions.rolePermissions())
         .withEntityProperties(mapToKeyValueObjects(topic.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
@@ -249,6 +254,7 @@ public class EntityConverterUtils {
     String owner =
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.MODEL), metalakeName);
+    Permissions permissions = getPermissions(nameIdentifier, EntityType.MODEL);
 
     return SearchModelEntityPO.SearchModelEntityPOBuilder.builder()
         .withEntityId(id)
@@ -262,8 +268,8 @@ public class EntityConverterUtils {
         .withTags(toSearchTag(tags))
         .withSearchAudit(toSearchAudit(model.auditInfo()))
         .withOwner(owner)
-        .withUserPermissions(null)
-        .withRolePermissions(null)
+        .withUserPermissions(permissions.userPermissions())
+        .withRolePermissions(permissions.rolePermissions())
         .withEntityProperties(mapToKeyValueObjects(model.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .withModelVersions(searchModelVersionPOS)
@@ -288,6 +294,7 @@ public class EntityConverterUtils {
     String owner =
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.FILESET), metalakeName);
+    Permissions permissions = getPermissions(nameIdentifier, EntityType.FILESET);
 
     return SearchEntityPO.SearchEntityPOBuilder.builder()
         .withEntityId(filesetEntity != null ? filesetEntity.id() : id)
@@ -301,8 +308,8 @@ public class EntityConverterUtils {
         .withTags(toSearchTag(tags))
         .withSearchAudit(toSearchAudit(fileset.auditInfo()))
         .withOwner(owner)
-        .withUserPermissions(null)
-        .withRolePermissions(null)
+        .withUserPermissions(permissions.userPermissions())
+        .withRolePermissions(permissions.rolePermissions())
         .withEntityProperties(mapToKeyValueObjects(fileset.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
@@ -325,6 +332,7 @@ public class EntityConverterUtils {
     String owner =
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.TABLE), metalakeName);
+    Permissions permissions = getPermissions(nameIdentifier, EntityType.TABLE);
 
     return SearchTableEntityPO.SearchTableEntityPOBuilder.builder()
         .withEntityId(id)
@@ -347,8 +355,8 @@ public class EntityConverterUtils {
                             .build())
                 .collect(Collectors.toList()))
         .withOwner(owner)
-        .withUserPermissions(null)
-        .withRolePermissions(null)
+        .withUserPermissions(permissions.userPermissions())
+        .withRolePermissions(permissions.rolePermissions())
         .withEntityProperties(mapToKeyValueObjects(table.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
@@ -478,6 +486,34 @@ public class EntityConverterUtils {
         .withEntityProperties(Collections.emptyList())
         .withUpdateTime(System.currentTimeMillis())
         .build();
+  }
+
+  /**
+   * Converts a Role to the lightweight search projection defined by the v2 Role index template.
+   *
+   * @param role The Role metadata.
+   * @param metalake The metalake containing the Role.
+   * @return The persistent object to index.
+   */
+  public static SearchEntityPO toRoleSearchEntityPO(Role role, String metalake) {
+    if (!(role instanceof HasIdentifier)) {
+      throw new IllegalArgumentException("Role does not expose a Gravitino entity identifier");
+    }
+
+    return SearchEntityPO.SearchEntityPOBuilder.builder()
+        .withEntityId(((HasIdentifier) role).id())
+        .withEntityType(EntityType.ROLE)
+        .withMetalake(metalake)
+        .withEntityName(role.name())
+        .withSearchAudit(toSearchAudit(role.auditInfo()))
+        .withUpdateTime(System.currentTimeMillis())
+        .build();
+  }
+
+  private static Permissions getPermissions(NameIdentifier nameIdentifier, EntityType entityType) {
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    MetadataObject object = NameIdentifierUtil.toMetadataObject(nameIdentifier, entityType);
+    return PermissionProjectionCache.getPermissions(metalake, object);
   }
 
   private static List<SearchColumn> toSearchColumns(Column[] columns) {

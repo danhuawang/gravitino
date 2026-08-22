@@ -112,6 +112,8 @@ interface SearchEntitySource {
         return new UserSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case GROUP:
         return new GroupSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
+      case ROLE:
+        return new RoleSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
 
       default:
         throw new GravitinoRuntimeException(

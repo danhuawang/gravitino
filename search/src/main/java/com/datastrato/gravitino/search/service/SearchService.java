@@ -23,6 +23,7 @@ import com.datastrato.gravitino.search.store.SearchDataSource;
 import com.datastrato.gravitino.search.store.SearchStorage;
 import com.datastrato.gravitino.search.store.WriteContext;
 import com.datastrato.gravitino.search.store.opensearch.OpenSearchStorage;
+import com.datastrato.gravitino.search.utils.PermissionProjectionCache;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
@@ -188,6 +189,10 @@ public class SearchService implements Closeable {
 
     Preconditions.checkArgument(metadataObject != null, "The metadata object cannot be null.");
 
+    if (cascade && metadataObject.type() == METALAKE) {
+      PermissionProjectionCache.invalidate(metalake);
+    }
+
     checkSyncTaskQueueSize();
 
     SyncTask syncTask =
@@ -301,8 +306,8 @@ public class SearchService implements Closeable {
   /**
    * Removes a top-level search entity identified by its type and name.
    *
-   * <p>User and Group are not {@link MetadataObject}s and do not have a fully qualified name in
-   * their v2 search mappings, so their removal events use this scoped query instead of the regular
+   * <p>User and Group are not {@link MetadataObject}s, while the lightweight Role mapping also has
+   * no fully qualified name. Their removal events use this scoped query instead of the regular
    * metadata hierarchy query.
    *
    * @param metalake The metalake containing the entity.

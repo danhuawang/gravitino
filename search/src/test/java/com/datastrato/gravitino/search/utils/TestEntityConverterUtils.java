@@ -25,6 +25,7 @@ import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.GroupEntity;
+import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.rel.Column;
@@ -224,6 +225,30 @@ class TestEntityConverterUtils {
     assertNull(po.getEntityComment());
     assertNull(po.getCatalogName());
     assertNull(po.getFullQualifiedName());
+  }
+
+  @Test
+  void testToRoleSearchEntityPOUsesSparseProjection() {
+    RoleEntity role =
+        RoleEntity.builder()
+            .withId(2003L)
+            .withName("table_reader")
+            .withProperties(ImmutableMap.of("description", "reader"))
+            .withSecurableObjects(ImmutableList.of())
+            .withNamespace(NamespaceUtil.ofRole("test"))
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+
+    SearchEntityPO po = EntityConverterUtils.toRoleSearchEntityPO(role, "test");
+
+    assertEquals(2003L, po.getEntityId());
+    assertEquals(Entity.EntityType.ROLE, po.getEntityType());
+    assertEquals("table_reader", po.getEntityName());
+    assertEquals("test", po.getMetalake());
+    assertNull(po.getEntityComment());
+    assertNull(po.getCatalogName());
+    assertNull(po.getFullQualifiedName());
+    assertNull(po.getEntityProperties());
   }
 
   private ViewEntity newViewEntity(String name, Map<String, String> properties) {
