@@ -183,7 +183,7 @@ curl -X GET "http://localhost:8090/api/search/query?metalake=test&pageNumber=0&p
 curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20catalog_name:test_catalog&pageNumber=0&pageSize=10" | jq
 
 # Search for metadata in the metalake `test` with keyword "demo" and filter: entity_type=TABLE, returning the first 10 results
-# Support entity type: CATALOG, SCHEMA, TABLE, VIEW, FUNCTION, MODEL, TOPIC, FILESET
+# Support entity type: CATALOG, SCHEMA, TABLE, VIEW, FUNCTION, MODEL, TOPIC, FILESET, TAG
 curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20entity_type:TABLE&pageNumber=0&pageSize=10" | jq
 
 # Search for metadata in the metalake `test` with keyword "demo" and filter: tag_name=demo_tag, returning the first 10 results
@@ -255,6 +255,7 @@ The example index information for the `test` Metalake are:
 | test_model_entity_index   | test_model_entity_index_11828332843   | model_entity_index_template_v2   | store the model metadata in test metalake   |
 | test_topic_entity_index   | test_topic_entity_index_11828332843   | topic_entity_index_template_v2   | store the topic metadata in test metalake   |
 | test_fileset_entity_index | test_fileset_entity_index_11828332843 | fileset_entity_index_template_v2 | store the fileset metadata in test metalake |
+| test_tag_entity_index     | test_tag_entity_index_11828332843     | tag_entity_index_template_v2     | store the tag metadata in test metalake     |
 
 Each entity type has its own index template, which defines the mapping and settings for that index. The index templates are versioned to allow for upgrades and changes over time.
 
@@ -283,6 +284,7 @@ v2/
   ├── catalog_entity_indices.json
   ├── view_entity_indices.json
   ├── function_entity_indices.json
+  ├── tag_entity_indices.json
   ├── ...
 ```
 
@@ -315,7 +317,7 @@ POST /api/search/sync/metalakes/{metalake}/objects
 |------------------|---------|----------|-------------------------------------------------------------------------------------------------------------------------------------|----------------|
 | metalake         | string  | Yes      | Metalake name                                                                                                                       | `test`         |
 | metadataFullName | string  | No       | Full name of the metadata entity, like <catalog>.<schema>.<table>. If `metadataFullName` is set, `metadataType` should also be set. | `test_catalog` |
-| metadataType     | string  | No       | Type of metadata entity (e.g., `catalog `, `schema`, `table`, `view`, `function`, `model`, `topic`, `fileset`)                      | `catalog`      |
+| metadataType     | string  | No       | Type of metadata entity (e.g., `catalog`, `schema`, `table`, `view`, `function`, `model`, `topic`, `fileset`, `tag`)                | `catalog`      |
 | cascade          | boolean | No       | Whether to cascade sync to related entities                                                                                         | `true`         |
 
 You can also post an empty body, then the Gravitino server will sync all metadata entities in the specified metalake.
@@ -395,6 +397,7 @@ model_entity_index v2
 catalog_entity_index v2
 topic_entity_index v2
 fileset_entity_index v2
+tag_entity_index v2
 
 
 # show index alias index and index template details

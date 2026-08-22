@@ -104,6 +104,41 @@
           }
         }
       },
+      "entity_properties": {
+        "type": "nested",
+        "properties": {
+          "key": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              },
+              "ngram": {
+                "type": "text",
+                "analyzer": "ngram_analyzer"
+              }
+            }
+          },
+          "value": {
+            "type": "text",
+            "analyzer": "ik_smart_analyzer",
+            "boost": 1.2,
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              },
+              "ngram": {
+                "type": "text",
+                "analyzer": "ngram_analyzer"
+              }
+            }
+          }
+        }
+      },
       "update_time": {
         "type": "long"
       }

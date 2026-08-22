@@ -106,6 +106,8 @@ interface SearchEntitySource {
         return new FilesetSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case MODEL:
         return new ModelSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
+      case TAG:
+        return new TagSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case USER:
         return new UserSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case GROUP:

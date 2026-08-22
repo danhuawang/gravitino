@@ -60,6 +60,40 @@ public class EntityConverterUtils {
     // Prevent instantiation
   }
 
+  /**
+   * Converts a tag definition into a search entity.
+   *
+   * @param tag the tag definition
+   * @param nameIdentifier the tag identifier
+   * @return the tag search entity
+   */
+  public static SearchEntityPO toTagSearchEntityPO(Tag tag, NameIdentifier nameIdentifier) {
+    if (!(tag instanceof HasIdentifier)) {
+      throw new GravitinoRuntimeException(
+          String.format("Tag %s does not expose an entity id", tag.name()));
+    }
+
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    return SearchEntityPO.SearchEntityPOBuilder.builder()
+        .withEntityId(((HasIdentifier) tag).id())
+        .withEntityType(EntityType.TAG)
+        .withInUse(true)
+        .withMetalake(metalake)
+        .withEntityName(tag.name())
+        .withEntityComment(tag.comment())
+        .withFullQualifiedName(tag.name())
+        .withTags(Collections.emptyList())
+        .withSearchAudit(toSearchAudit(tag.auditInfo()))
+        .withOwner(
+            getMetadataObjectOwner(
+                NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.TAG), metalake))
+        .withEntityProperties(
+            mapToKeyValueObjects(
+                tag.properties() == null ? Collections.emptyMap() : tag.properties()))
+        .withUpdateTime(System.currentTimeMillis())
+        .build();
+  }
+
   @Nullable
   private static String getMetadataObjectOwner(MetadataObject metadataObject, String metalake) {
     OwnerDispatcher ownerDispatcher = GravitinoEnv.getInstance().ownerDispatcher();

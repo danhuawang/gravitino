@@ -230,6 +230,9 @@ public class InMemorySearchStorage implements SearchStorage {
       List<String> values = inCondition.getValues();
       if (field.equals("tag_name")) {
         return entity -> {
+          if (entity.getTags() == null) {
+            return false;
+          }
           Set<String> tags =
               (entity.getTags() == null
                       ? Collections.<SearchEntityPO.SearchTagPO>emptyList()

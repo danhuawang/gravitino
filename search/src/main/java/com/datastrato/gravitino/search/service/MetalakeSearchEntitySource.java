@@ -41,6 +41,17 @@ class MetalakeSearchEntitySource extends ParentEntitySource {
       sources.add(new CatalogSearchEntitySource(metadata, true));
     }
 
+    NameIdentifier[] tagIdentifiers =
+        Arrays.stream(
+                GravitinoEnv.getInstance()
+                    .tagDispatcher()
+                    .listTags(searchEntityIdentifier.metalake()))
+            .map(tagName -> NameIdentifierUtil.ofTag(searchEntityIdentifier.metalake(), tagName))
+            .toArray(NameIdentifier[]::new);
+    sources.add(
+        new TagSearchEntitySource(
+            SearchEntitySource.toSearchEntityIdentifiers(tagIdentifiers, Entity.EntityType.TAG)));
+
     AccessControlDispatcher accessControlDispatcher = SearchEntitySource.accessControlDispatcher();
     if (accessControlDispatcher != null) {
       NameIdentifier[] userIdentifiers =

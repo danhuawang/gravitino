@@ -10,14 +10,7 @@ import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
 import com.google.common.collect.ImmutableMap;
-import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -86,11 +79,6 @@ public class IcebergSearchIT extends BaseIT {
   private static final String TABLE_ORDERS = "orders";
   private static final String TABLE_ORDERS_V2 = "orders_v2";
 
-  // The bundle the server expects: the view template only exists from v2 on, and
-  // OpenSearchStorage#checkIndexTemplate refuses to start without a template per indexed entity
-  // type.
-  private static final String TEMPLATE_VERSION = "v2";
-
   // Default Gravitino HTTP port (must match gravitino.conf.template default).
   // Used to wire gravitino.iceberg-rest.gravitino-uri before the server starts.
   private static final int GRAVITINO_DEFAULT_PORT = 8090;
@@ -125,7 +113,7 @@ public class IcebergSearchIT extends BaseIT {
                 "OPENSEARCH_INITIAL_ADMIN_PASSWORD",
                 OpenSearchContainer.DEFAULT_PASSWORD));
     openSearchContainer.start();
-    initOpenSearchIndexTemplate();
+    OpenSearchIndexTemplates.create(openSearchContainer, OpenSearchIndexTemplates.CURRENT_VERSION);
 
     // 3. Start Hive container (provides Hive metastore + HDFS for Iceberg catalog backend).
     containerSuite.startHiveContainer(
@@ -543,63 +531,5 @@ public class IcebergSearchIT extends BaseIT {
             + "/user/hive/warehouse/iceberg_catalog");
     metalake.createCatalog(
         CATALOG_NAME, Catalog.Type.RELATIONAL, "lakehouse-iceberg", "comment", props);
-  }
-
-  private void initOpenSearchIndexTemplate() {
-    try {
-      Path userDir = Paths.get(System.getProperty("user.dir"));
-      Path scriptPath = resolveTemplateScriptPath(userDir);
-      File workDir = scriptPath.getParent().getParent().toFile();
-
-      String[] command = {
-        "/bin/bash",
-        scriptPath.toString(),
-        TEMPLATE_VERSION,
-        openSearchContainer.getOpenSearchUrl(),
-        OpenSearchContainer.DEFAULT_USERNAME,
-        OpenSearchContainer.DEFAULT_PASSWORD
-      };
-
-      ProcessBuilder builder = new ProcessBuilder(command);
-      builder.directory(workDir);
-      builder.redirectErrorStream(true);
-      Process process = builder.start();
-
-      StringBuilder output = new StringBuilder();
-      try (BufferedReader reader =
-          new BufferedReader(
-              new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-        String line;
-        while ((line = reader.readLine()) != null) {
-          output.append(line).append('\n');
-        }
-      }
-
-      int exitCode = process.waitFor();
-      if (exitCode != 0) {
-        throw new RuntimeException(
-            "Failed to initialize OpenSearch index templates, exitCode="
-                + exitCode
-                + ", output="
-                + output);
-      }
-      LOG.info("Initialized OpenSearch index templates successfully: {}", output);
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to initialize OpenSearch index templates", e);
-    }
-  }
-
-  private Path resolveTemplateScriptPath(Path userDir) {
-    Path current = userDir;
-    while (current != null) {
-      Path candidate = current.resolve("bin/opensearch/create_indices_template.sh.template");
-      if (Files.exists(candidate)) {
-        return candidate;
-      }
-      current = current.getParent();
-    }
-
-    throw new RuntimeException(
-        "Cannot find create_indices_template.sh.template from user.dir=" + userDir);
   }
 }

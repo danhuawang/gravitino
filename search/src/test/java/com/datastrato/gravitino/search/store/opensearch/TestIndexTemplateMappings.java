@@ -80,9 +80,17 @@ class TestIndexTemplateMappings {
     expectedFields.put(
         "group", commonFields("entity_id", "entity_type", "metalake", "entity_name"));
     expectedFields.put("role", commonFields("entity_id", "entity_type", "metalake", "entity_name"));
+    // Tags carry searchable properties, so unlike the other metalake-level projections the tag
+    // mapping also indexes "entity_properties".
     expectedFields.put(
         "tag",
-        commonFields("entity_id", "entity_type", "metalake", "entity_name", "entity_comment"));
+        commonFields(
+            "entity_id",
+            "entity_type",
+            "metalake",
+            "entity_name",
+            "entity_comment",
+            "entity_properties"));
     expectedFields.put(
         "policy",
         commonFields("entity_id", "entity_type", "metalake", "entity_name", "entity_comment"));

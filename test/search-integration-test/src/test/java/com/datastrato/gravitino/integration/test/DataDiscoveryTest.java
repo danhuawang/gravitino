@@ -56,6 +56,9 @@ public class DataDiscoveryTest extends BaseIT {
   @BeforeAll
   public void startIntegrationTest() throws Exception {
     openSearchContainer = createOpenSearchContainer();
+    // The server refuses to start when an indexed entity type has no template, so the bundle has
+    // to exist before it comes up.
+    OpenSearchIndexTemplates.create(openSearchContainer, OpenSearchIndexTemplates.CURRENT_VERSION);
 
     mySQLContainer = createMySQLContainer();
     Map<String, String> configs = new HashMap<>();

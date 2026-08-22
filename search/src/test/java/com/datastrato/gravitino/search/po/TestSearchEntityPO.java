@@ -36,6 +36,21 @@ public class TestSearchEntityPO {
   }
 
   @Test
+  void testMetalakeLevelTagDoesNotRequireCatalogName() {
+    SearchEntityPO tag =
+        SearchEntityPOBuilder.builder()
+            .withEntityId(2L)
+            .withEntityType(EntityType.TAG)
+            .withInUse(true)
+            .withMetalake("metalake")
+            .withEntityName("sensitive")
+            .withFullQualifiedName("sensitive")
+            .build();
+
+    Assertions.assertNull(tag.getCatalogName());
+  }
+
+  @Test
   void testSearchEntityWithException() {
     IllegalArgumentException exception =
         Assertions.assertThrows(

@@ -38,30 +38,34 @@ import org.slf4j.LoggerFactory;
 public class SearchEntityCodec {
 
   public static final Map<EntityType, Class<? extends SearchEntityPO>> ENTITY_TYPE_TO_CLASS =
-      ImmutableMap.of(
-          EntityType.CATALOG, SearchCatalogEntityPO.class,
-          EntityType.SCHEMA, SearchEntityPO.class,
-          EntityType.FILESET, SearchEntityPO.class,
-          EntityType.MODEL, SearchModelEntityPO.class,
-          EntityType.TOPIC, SearchEntityPO.class,
-          EntityType.TABLE, SearchTableEntityPO.class,
-          EntityType.VIEW, SearchViewEntityPO.class,
-          EntityType.USER, SearchEntityPO.class,
-          EntityType.GROUP, SearchEntityPO.class,
-          EntityType.FUNCTION, SearchEntityPO.class);
+      ImmutableMap.<EntityType, Class<? extends SearchEntityPO>>builder()
+          .put(EntityType.CATALOG, SearchCatalogEntityPO.class)
+          .put(EntityType.SCHEMA, SearchEntityPO.class)
+          .put(EntityType.FILESET, SearchEntityPO.class)
+          .put(EntityType.MODEL, SearchModelEntityPO.class)
+          .put(EntityType.TOPIC, SearchEntityPO.class)
+          .put(EntityType.TAG, SearchEntityPO.class)
+          .put(EntityType.TABLE, SearchTableEntityPO.class)
+          .put(EntityType.VIEW, SearchViewEntityPO.class)
+          .put(EntityType.USER, SearchEntityPO.class)
+          .put(EntityType.GROUP, SearchEntityPO.class)
+          .put(EntityType.FUNCTION, SearchEntityPO.class)
+          .build();
 
   public static final Map<EntityType, Class<? extends SearchEntityDTO>> ENTITY_TYPE_TO_CLASS_DTO =
-      ImmutableMap.of(
-          EntityType.CATALOG, SearchCatalogEntityDTO.class,
-          EntityType.SCHEMA, SearchEntityDTO.class,
-          EntityType.FILESET, SearchEntityDTO.class,
-          EntityType.MODEL, SearchModelEntityDTO.class,
-          EntityType.TOPIC, SearchEntityDTO.class,
-          EntityType.TABLE, SearchTableEntityDTO.class,
-          EntityType.VIEW, SearchViewEntityDTO.class,
-          EntityType.USER, SearchEntityDTO.class,
-          EntityType.GROUP, SearchEntityDTO.class,
-          EntityType.FUNCTION, SearchEntityDTO.class);
+      ImmutableMap.<EntityType, Class<? extends SearchEntityDTO>>builder()
+          .put(EntityType.CATALOG, SearchCatalogEntityDTO.class)
+          .put(EntityType.SCHEMA, SearchEntityDTO.class)
+          .put(EntityType.FILESET, SearchEntityDTO.class)
+          .put(EntityType.MODEL, SearchModelEntityDTO.class)
+          .put(EntityType.TOPIC, SearchEntityDTO.class)
+          .put(EntityType.TAG, SearchEntityDTO.class)
+          .put(EntityType.TABLE, SearchTableEntityDTO.class)
+          .put(EntityType.VIEW, SearchViewEntityDTO.class)
+          .put(EntityType.USER, SearchEntityDTO.class)
+          .put(EntityType.GROUP, SearchEntityDTO.class)
+          .put(EntityType.FUNCTION, SearchEntityDTO.class)
+          .build();
 
   private static final Logger LOG = LoggerFactory.getLogger(SearchEntityCodec.class);
   private final ObjectMapper objectMapper;

@@ -93,6 +93,7 @@ public class OpenSearchStorage implements SearchStorage {
   private static final String FILESET_ENTITY_INDEX_SUFFIX = "fileset_entity_index";
   private static final String MODEL_ENTITY_INDEX_SUFFIX = "model_entity_index";
   private static final String TOPIC_ENTITY_INDEX_SUFFIX = "topic_entity_index";
+  private static final String TAG_ENTITY_INDEX_SUFFIX = "tag_entity_index";
   private static final String TABLE_ENTITY_INDEX_SUFFIX = "table_entity_index";
   private static final String VIEW_ENTITY_INDEX_SUFFIX = "view_entity_index";
   private static final String USER_ENTITY_INDEX_SUFFIX = "user_entity_index";
@@ -110,17 +111,19 @@ public class OpenSearchStorage implements SearchStorage {
   private SearchEntityCodec searchEntityCodec;
 
   protected static final Map<EntityType, String> ENTITY_TYPE_TO_INDEX_SUFFIX =
-      ImmutableMap.of(
-          EntityType.CATALOG, CATALOG_ENTITY_SUFFIX,
-          EntityType.SCHEMA, SCHEMA_ENTITY_INDEX_SUFFIX,
-          EntityType.FILESET, FILESET_ENTITY_INDEX_SUFFIX,
-          EntityType.MODEL, MODEL_ENTITY_INDEX_SUFFIX,
-          EntityType.TOPIC, TOPIC_ENTITY_INDEX_SUFFIX,
-          EntityType.TABLE, TABLE_ENTITY_INDEX_SUFFIX,
-          EntityType.VIEW, VIEW_ENTITY_INDEX_SUFFIX,
-          EntityType.USER, USER_ENTITY_INDEX_SUFFIX,
-          EntityType.GROUP, GROUP_ENTITY_INDEX_SUFFIX,
-          EntityType.FUNCTION, FUNCTION_ENTITY_INDEX_SUFFIX);
+      ImmutableMap.<EntityType, String>builder()
+          .put(EntityType.CATALOG, CATALOG_ENTITY_SUFFIX)
+          .put(EntityType.SCHEMA, SCHEMA_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.FILESET, FILESET_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.MODEL, MODEL_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.TOPIC, TOPIC_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.TAG, TAG_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.TABLE, TABLE_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.VIEW, VIEW_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.USER, USER_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.GROUP, GROUP_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.FUNCTION, FUNCTION_ENTITY_INDEX_SUFFIX)
+          .build();
 
   private final Set<String> createdIndicesAlias = Sets.newHashSet();
 

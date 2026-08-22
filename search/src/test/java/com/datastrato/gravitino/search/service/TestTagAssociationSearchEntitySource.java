@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
-class TestTagSearchEntitySource {
+class TestTagAssociationSearchEntitySource {
 
   private static final String METALAKE = "test_metalake";
   private static final String TAG_NAME = "test_tag";
@@ -51,8 +51,8 @@ class TestTagSearchEntitySource {
   @Test
   void testIndexedEntitiesAreLoadedLazilyWithoutCascading() {
     AtomicInteger loadCount = new AtomicInteger();
-    TagSearchEntitySource source =
-        TagSearchEntitySource.ofIndexedEntities(
+    TagAssociationSearchEntitySource source =
+        TagAssociationSearchEntitySource.ofIndexedEntities(
             METALAKE,
             TAG_NAME,
             () -> {
@@ -81,7 +81,7 @@ class TestTagSearchEntitySource {
         .thenThrow(new IllegalStateException("Catalog loading failed"));
     FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
 
-    TagSearchEntitySource source =
+    TagAssociationSearchEntitySource source =
         indexedSource(
             ImmutableList.of(
                 SearchEntityIdentifier.of(DROPPED_SCHEMA_IDENT, Entity.EntityType.SCHEMA),
@@ -102,7 +102,7 @@ class TestTagSearchEntitySource {
         .thenThrow(new IllegalStateException("Catalog loading failed"));
     FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
 
-    TagSearchEntitySource source =
+    TagAssociationSearchEntitySource source =
         indexedSource(
             ImmutableList.of(
                 SearchEntityIdentifier.of(DROPPED_SCHEMA_IDENT, Entity.EntityType.SCHEMA)));
@@ -117,7 +117,7 @@ class TestTagSearchEntitySource {
     Mockito.when(catalogDispatcher.loadCatalog(ArgumentMatchers.any())).thenThrow(exception);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
 
-    TagSearchEntitySource source =
+    TagAssociationSearchEntitySource source =
         indexedSource(
             ImmutableList.of(
                 SearchEntityIdentifier.of(DROPPED_SCHEMA_IDENT, Entity.EntityType.SCHEMA),
@@ -128,7 +128,9 @@ class TestTagSearchEntitySource {
     assertTrue(source.getProcessFailedEntities().isEmpty());
   }
 
-  private static TagSearchEntitySource indexedSource(List<SearchEntityIdentifier> identifiers) {
-    return TagSearchEntitySource.ofIndexedEntities(METALAKE, TAG_NAME, () -> identifiers);
+  private static TagAssociationSearchEntitySource indexedSource(
+      List<SearchEntityIdentifier> identifiers) {
+    return TagAssociationSearchEntitySource.ofIndexedEntities(
+        METALAKE, TAG_NAME, () -> identifiers);
   }
 }

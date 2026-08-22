@@ -37,9 +37,7 @@ import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.connector.BaseCatalog;
-import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
-import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.exceptions.NoSuchFunctionException;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
@@ -56,6 +54,7 @@ import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.SchemaVersion;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
@@ -342,6 +341,12 @@ public class MockedGravitinoService {
 
   private TagDispatcher mockTagDispatcher() {
     TagDispatcher tagDispatcher = Mockito.mock(TagDispatcher.class);
+    Mockito.when(tagDispatcher.listTags(anyString()))
+        .thenAnswer(args -> tags.keySet().toArray(new String[0]));
+    Mockito.when(tagDispatcher.listTagsInfo(anyString()))
+        .thenAnswer(args -> tags.values().toArray(new Tag[0]));
+    Mockito.when(tagDispatcher.getTag(anyString(), anyString()))
+        .thenAnswer(args -> retrieveTag(args.getArgument(1)));
     Mockito.when(
             tagDispatcher.listTagsInfoForMetadataObject(anyString(), any(MetadataObject.class)))
         .thenAnswer(
@@ -582,15 +587,75 @@ public class MockedGravitinoService {
         tags.stream().map(this::retrieveTag).collect(Collectors.toSet()));
   }
 
+  /**
+   * Creates or replaces a tag, the way creating or altering it server side would.
+   *
+   * @param name The tag name.
+   * @param comment The tag comment.
+   * @param properties The tag properties.
+   * @return The stored tag.
+   */
+  public Tag putTag(String name, String comment, Map<String, String> properties) {
+    Tag existing = tags.get(name);
+    Tag tag =
+        TagEntity.builder()
+            .withId(existing == null ? entityIdAllocator++ : ((TagEntity) existing).id())
+            .withName(name)
+            .withNamespace(Namespace.of("test_metalake"))
+            .withComment(comment)
+            .withAuditInfo(AuditInfo.EMPTY)
+            .withProperties(properties)
+            .build();
+    tags.put(name, tag);
+    return tag;
+  }
+
+  /**
+   * Renames a tag while preserving its entity ID and metadata-object associations.
+   *
+   * @param oldName The current tag name.
+   * @param newName The new tag name.
+   * @param comment The updated tag comment.
+   * @param properties The updated tag properties.
+   * @return The renamed tag.
+   */
+  public Tag renameTag(
+      String oldName, String newName, String comment, Map<String, String> properties) {
+    Tag existing = tags.remove(oldName);
+    if (existing == null) {
+      throw new IllegalArgumentException("No such tag: " + oldName);
+    }
+
+    TagEntity existingEntity = (TagEntity) existing;
+    Tag renamed =
+        TagEntity.builder()
+            .withId(existingEntity.id())
+            .withName(newName)
+            .withNamespace(existingEntity.namespace())
+            .withComment(comment)
+            .withAuditInfo(existing.auditInfo())
+            .withProperties(properties)
+            .build();
+    tags.put(newName, renamed);
+    objTags.replaceAll(
+        (ignored, associatedTags) ->
+            associatedTags.stream()
+                .map(tag -> oldName.equals(tag.name()) ? renamed : tag)
+                .collect(Collectors.toSet()));
+    return renamed;
+  }
+
   private Tag retrieveTag(String name) {
     if (tags.containsKey(name)) {
       return tags.get(name);
     }
     Tag tag =
-        TagDTO.builder()
+        TagEntity.builder()
+            .withId(entityIdAllocator++)
             .withName(name)
+            .withNamespace(Namespace.of("test_metalake"))
             .withComment("test_tag_comment")
-            .withAudit(AuditDTO.builder().build())
+            .withAuditInfo(AuditInfo.EMPTY)
             .withProperties(ImmutableMap.of("key", "value"))
             .build();
     tags.put(name, tag);
@@ -609,6 +674,8 @@ public class MockedGravitinoService {
       return functions.get(key).id();
     } else if (catalogs.containsKey(key)) {
       return catalogs.get(key).entity().id();
+    } else if (tags.containsKey(nameIdentifier.name())) {
+      return ((TagEntity) tags.get(nameIdentifier.name())).id();
     }
     throw new RuntimeException("No such entity: " + key);
   }

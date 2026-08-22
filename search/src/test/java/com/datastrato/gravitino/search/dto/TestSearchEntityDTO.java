@@ -47,6 +47,21 @@ public class TestSearchEntityDTO {
   }
 
   @Test
+  void testMetalakeLevelTagDoesNotRequireCatalogName() {
+    SearchEntityDTO tag =
+        SearchEntityDTO.SearchEntityDTOBuilder.builder()
+            .withEntityId(2L)
+            .withEntityType(EntityType.TAG)
+            .withInUse(true)
+            .withMetalake("metalake")
+            .withEntityName("sensitive")
+            .withFullQualifiedName("sensitive")
+            .build();
+
+    Assertions.assertNull(tag.getCatalogName());
+  }
+
+  @Test
   void testSearchTableEntityDTOWithException() {
     IllegalArgumentException exception =
         org.junit.jupiter.api.Assertions.assertThrows(

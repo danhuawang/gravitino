@@ -13,6 +13,7 @@ import static org.apache.gravitino.Entity.EntityType.CATALOG;
 import static org.apache.gravitino.Entity.EntityType.METALAKE;
 import static org.apache.gravitino.Entity.EntityType.SCHEMA;
 import static org.apache.gravitino.Entity.EntityType.TABLE;
+import static org.apache.gravitino.Entity.EntityType.TAG;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
@@ -110,7 +111,7 @@ public class TestSearchService {
     try {
       // Synchronize all metadata
       NameIdentifier identifier = NameIdentifier.of("test_metalake");
-      testSyncTask(identifier, METALAKE, true, 10);
+      testSyncTask(identifier, METALAKE, true, 11);
 
       // Sync a non-existing metalake
       Assertions.assertThrows(
@@ -251,6 +252,7 @@ public class TestSearchService {
     Assertions.assertEquals(3, getSearchEntitiesDTOByType(dto, CATALOG).getEntities().size());
     Assertions.assertEquals(4, getSearchEntitiesDTOByType(dto, SCHEMA).getEntities().size());
     Assertions.assertEquals(3, getSearchEntitiesDTOByType(dto, TABLE).getEntities().size());
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, TAG).getEntities().size());
 
     // test query catalog with cascading
     nameIdentifier = NameIdentifier.of(metalake, "test_catalog1");
@@ -474,17 +476,17 @@ public class TestSearchService {
   void testSyncWithDelete() throws Exception {
     // Synchronize all metadata
     NameIdentifier metalakeIdent = NameIdentifier.of("test_metalake");
-    testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 10);
+    testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 11);
 
-    // The memory search storage should have 10 entities now.
+    // The memory search storage should have 11 entities now.
 
     // Simulate catalog1 has been removed
     Map<String, BaseCatalog> original = gravitinoService.catalogs;
 
     Map<String, Integer> removeCatalogAndExpectMap = Maps.newHashMap();
-    removeCatalogAndExpectMap.put("test_metalake.test_catalog1", 4);
-    removeCatalogAndExpectMap.put("test_metalake.test_catalog2", 7);
-    removeCatalogAndExpectMap.put("test_metalake.test_catalog3", 9);
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog1", 5);
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog2", 8);
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog3", 10);
 
     for (Map.Entry<String, Integer> entry : removeCatalogAndExpectMap.entrySet()) {
       String key = entry.getKey();
@@ -496,16 +498,16 @@ public class TestSearchService {
         original.put(key, catalog);
       }
 
-      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 10);
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 11);
     }
 
     // Now test remove schema
     Map<String, EntityCombinedSchema> originalSchemas = gravitinoService.schemas;
     Map<String, Integer> removeSchemaAndExpectMap = Maps.newHashMap();
-    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema1", 7);
-    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema2", 8);
-    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema1", 9);
-    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema2", 9);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema1", 8);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema2", 9);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema1", 10);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema2", 10);
 
     for (Map.Entry<String, Integer> entry : removeSchemaAndExpectMap.entrySet()) {
       String key = entry.getKey();
@@ -517,15 +519,15 @@ public class TestSearchService {
         originalSchemas.put(key, schema);
       }
 
-      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 10);
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 11);
     }
 
     // Start to test table
     Map<String, EntityCombinedTable> originalTables = gravitinoService.tables;
     Map<String, Integer> removeTableAndExpectMap = Maps.newHashMap();
-    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table1", 9);
-    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table2", 9);
-    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema2.test_table2", 9);
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table1", 10);
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table2", 10);
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema2.test_table2", 10);
 
     for (Map.Entry<String, Integer> entry : removeTableAndExpectMap.entrySet()) {
       String key = entry.getKey();
@@ -537,7 +539,7 @@ public class TestSearchService {
         originalTables.put(key, table);
       }
 
-      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 10);
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 11);
     }
   }
 

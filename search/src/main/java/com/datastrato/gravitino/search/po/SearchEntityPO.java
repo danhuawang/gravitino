@@ -187,7 +187,7 @@ public class SearchEntityPO {
     }
 
     private static boolean hasCatalog(EntityType type) {
-      return type != EntityType.USER && type != EntityType.GROUP;
+      return type != EntityType.TAG && type != EntityType.USER && type != EntityType.GROUP;
     }
 
     public T build() {

@@ -230,7 +230,9 @@ public class SearchService implements Closeable {
 
   public SyncTask synchronizeEntityDataByTag(String metalake, String tagName) {
     return synchronizeEntityDataByTag(
-        metalake, tagName, TagSearchEntitySource.ofAssociatedEntities(metalake, tagName));
+        metalake,
+        tagName,
+        TagAssociationSearchEntitySource.ofAssociatedEntities(metalake, tagName));
   }
 
   public Future<?> removeMetadata(
@@ -265,11 +267,13 @@ public class SearchService implements Closeable {
    */
   public SyncTask resyncMetadataByTag(String metalake, String tagName) {
     return synchronizeEntityDataByTag(
-        metalake, tagName, TagSearchEntitySource.ofIndexedEntities(metalake, tagName, storage));
+        metalake,
+        tagName,
+        TagAssociationSearchEntitySource.ofIndexedEntities(metalake, tagName, storage));
   }
 
   private SyncTask synchronizeEntityDataByTag(
-      String metalake, String tagName, TagSearchEntitySource source) {
+      String metalake, String tagName, TagAssociationSearchEntitySource source) {
     checkSyncTaskQueueSize();
 
     // As Tag is not a metadata object, we create a SearchEntityIdentifier using the metalake name.

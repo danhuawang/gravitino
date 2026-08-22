@@ -178,6 +178,23 @@ public class TestOpenSearchStorage {
       Assertions.assertEquals(
           catalogDTO.getFullQualifiedName(), catalogEntityPO.getFullQualifiedName());
 
+      SearchEntityPO tagPO =
+          SearchEntityPO.SearchEntityPOBuilder.builder()
+              .withEntityId(400)
+              .withEntityName("sensitive")
+              .withFullQualifiedName("sensitive")
+              .withEntityType(Entity.EntityType.TAG)
+              .withMetalake("test")
+              .withEntityComment("business classification")
+              .withEntityProperties(
+                  ImmutableList.of(new SearchEntityPO.PropertyPO("level", "critical")))
+              .build();
+      storage.write(ImmutableList.of(tagPO), true);
+
+      assertTagFound("sensitive");
+      assertTagFound("classification");
+      assertTagFound("critical");
+
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -230,5 +247,13 @@ public class TestOpenSearchStorage {
             Entity.EntityType.VIEW);
     Assertions.assertNotNull(dto, "No view matched the keyword " + keyword);
     Assertions.assertEquals(1, dto.getTotalSize(), "Unexpected hits for the keyword " + keyword);
+  }
+
+  private void assertTagFound(String keyword) {
+    List<SearchEntitiesDTO> result =
+        storage.search("test", keyword, null, ImmutableList.of(), 10, 0);
+    SearchEntitiesDTO dto = getSearchEntitiesDTOByType(result, Entity.EntityType.TAG);
+    Assertions.assertNotNull(dto, "No tag matched keyword " + keyword);
+    Assertions.assertEquals(1, dto.getTotalSize());
   }
 }
