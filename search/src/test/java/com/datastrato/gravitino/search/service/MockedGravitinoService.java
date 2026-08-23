@@ -13,6 +13,7 @@ import com.datastrato.gravitino.TestSchema;
 import com.datastrato.gravitino.TestTable;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import java.util.HashMap;
 import java.util.List;
@@ -56,6 +57,7 @@ import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.ColumnEntity;
 import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.GroupEntity;
+import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.SchemaVersion;
@@ -64,6 +66,9 @@ import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
+import org.apache.gravitino.policy.Policy;
+import org.apache.gravitino.policy.PolicyContents;
+import org.apache.gravitino.policy.PolicyDispatcher;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Representation;
 import org.apache.gravitino.rel.SQLRepresentation;
@@ -87,6 +92,8 @@ public class MockedGravitinoService {
 
   private Map<String, Tag> tags = new HashMap<>();
   private Map<String, Set<Tag>> objTags = new HashMap<>();
+  private Map<String, PolicyEntity> policies = new HashMap<>();
+  private Map<String, Set<PolicyEntity>> objPolicies = new HashMap<>();
 
   private long entityIdAllocator = 0;
 
@@ -114,6 +121,7 @@ public class MockedGravitinoService {
         "internalDatastratoAccessControlDispatcher",
         accessControlDispatcher,
         true);
+    FieldUtils.writeField(gravitinoEnv, "policyDispatcher", mockPolicyDispatcher(), true);
 
     return Mockito.spy(service);
   }
@@ -453,6 +461,59 @@ public class MockedGravitinoService {
     return tagDispatcher;
   }
 
+  private PolicyDispatcher mockPolicyDispatcher() {
+    PolicyDispatcher policyDispatcher = Mockito.mock(PolicyDispatcher.class);
+    Mockito.when(policyDispatcher.listPolicies(anyString()))
+        .thenAnswer(args -> policies.keySet().toArray(new String[0]));
+    Mockito.when(policyDispatcher.listPolicyInfos(anyString()))
+        .thenAnswer(args -> policies.values().toArray(new PolicyEntity[0]));
+    Mockito.when(policyDispatcher.getPolicy(anyString(), anyString()))
+        .thenAnswer(args -> policies.get(args.getArgument(1)));
+    Mockito.when(
+            policyDispatcher.listPolicyInfosForMetadataObject(
+                anyString(), any(MetadataObject.class)))
+        .thenAnswer(
+            args -> {
+              String metalake = args.getArgument(0);
+              MetadataObject object = args.getArgument(1);
+              return objPolicies
+                  .getOrDefault(metalake + "." + object.fullName(), ImmutableSet.of())
+                  .toArray(new PolicyEntity[0]);
+            });
+    Mockito.when(policyDispatcher.listMetadataObjectsForPolicy(anyString(), anyString()))
+        .thenAnswer(
+            args -> {
+              String policyName = args.getArgument(1);
+              return objPolicies.entrySet().stream()
+                  .filter(
+                      entry ->
+                          entry.getValue().stream()
+                              .anyMatch(policy -> policy.name().equals(policyName)))
+                  .map(entry -> toMetadataObject(entry.getKey()))
+                  .toArray(MetadataObject[]::new);
+            });
+    return policyDispatcher;
+  }
+
+  private static MetadataObject toMetadataObject(String key) {
+    String[] parts = key.split("\\.");
+    MetadataObject.Type type;
+    switch (parts.length) {
+      case 2:
+        type = MetadataObject.Type.CATALOG;
+        break;
+      case 3:
+        type = MetadataObject.Type.SCHEMA;
+        break;
+      case 4:
+        type = MetadataObject.Type.TABLE;
+        break;
+      default:
+        throw new IllegalArgumentException("Unexpected metadata object key: " + key);
+    }
+    return MetadataObjects.parse(String.join(".", ArrayUtils.remove(parts, 0)), type);
+  }
+
   public BaseMetalake createMetalake(String name) {
     BaseMetalake metalake =
         BaseMetalake.builder()
@@ -743,6 +804,40 @@ public class MockedGravitinoService {
     return renamed;
   }
 
+  PolicyEntity createPolicy(String name) {
+    PolicyEntity policy =
+        PolicyEntity.builder()
+            .withId(entityIdAllocator++)
+            .withName(name)
+            .withNamespace(Namespace.of("test_metalake"))
+            .withPolicyType(Policy.BuiltInType.CUSTOM)
+            .withComment("test_policy_comment")
+            .withEnabled(true)
+            .withContent(
+                PolicyContents.custom(
+                    ImmutableMap.of("retentionDays", 30),
+                    ImmutableSet.of(MetadataObject.Type.TABLE),
+                    ImmutableMap.of("owner", "governance")))
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+    policies.put(name, policy);
+    return policy;
+  }
+
+  /** Drops a policy from Gravitino, the way deleting it server side would. */
+  void deletePolicy(String name) {
+    policies.remove(name);
+    objPolicies
+        .values()
+        .forEach(associated -> associated.removeIf(policy -> policy.name().equals(name)));
+  }
+
+  void addPoliciesToObject(NameIdentifier nameIdentifier, Set<String> policyNames) {
+    objPolicies.put(
+        nameIdentifier.toString(),
+        policyNames.stream().map(policies::get).collect(Collectors.toSet()));
+  }
+
   private Tag retrieveTag(String name) {
     if (tags.containsKey(name)) {
       return tags.get(name);
@@ -774,6 +869,8 @@ public class MockedGravitinoService {
       return catalogs.get(key).entity().id();
     } else if (tags.containsKey(nameIdentifier.name())) {
       return ((TagEntity) tags.get(nameIdentifier.name())).id();
+    } else if (policies.containsKey(nameIdentifier.name())) {
+      return policies.get(nameIdentifier.name()).id();
     }
     throw new RuntimeException("No such entity: " + key);
   }

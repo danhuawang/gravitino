@@ -12,6 +12,7 @@ import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.parser.Condition.RangeType;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.datastrato.gravitino.search.po.SearchPolicyEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO.SearchColumn;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
@@ -133,8 +134,8 @@ public class InMemorySearchStorage implements SearchStorage {
 
   /**
    * Matches an entity against a free-text keyword. Mirrors the fields the OpenSearch backend
-   * matches on: the entity name, its comment, its full qualified name, and the column names and
-   * comments of the entity types that carry columns.
+   * matches on: the entity name, its comment, its full qualified name, its associated policy names,
+   * policy content, and the column names and comments of the entity types that carry columns.
    *
    * @param entity The indexed entity.
    * @param keyword The keyword, a blank keyword matches everything.
@@ -147,7 +148,11 @@ public class InMemorySearchStorage implements SearchStorage {
 
     if (contains(entity.getEntityName(), keyword)
         || contains(entity.getEntityComment(), keyword)
-        || contains(entity.getFullQualifiedName(), keyword)) {
+        || contains(entity.getFullQualifiedName(), keyword)
+        || (entity.getPolicyNames() != null
+            && entity.getPolicyNames().stream().anyMatch(policy -> contains(policy, keyword)))
+        || (entity instanceof SearchPolicyEntityPO
+            && contains(((SearchPolicyEntityPO) entity).getContent(), keyword))) {
       return true;
     }
 
@@ -240,6 +245,10 @@ public class InMemorySearchStorage implements SearchStorage {
                   .stream().map(SearchEntityPO.SearchTagPO::getTagName).collect(Collectors.toSet());
           return tags.containsAll(values);
         };
+      }
+      if (field.equals("policy_name")) {
+        return entity ->
+            entity.getPolicyNames() != null && entity.getPolicyNames().containsAll(values);
       }
     }
 

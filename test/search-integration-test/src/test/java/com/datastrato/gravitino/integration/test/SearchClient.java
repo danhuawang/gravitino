@@ -4,14 +4,20 @@
  */
 package com.datastrato.gravitino.integration.test;
 
+import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS_DTO;
+
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
+import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
-import com.datastrato.gravitino.search.rest.SearchQueryResponse;
 import com.datastrato.gravitino.search.rest.SyncMetadataResponse;
 import com.datastrato.gravitino.search.rest.TaskStatusResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
+import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.client.ObjectMapperProvider;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
@@ -43,8 +49,33 @@ public class SearchClient {
 
     HttpGet get = new HttpGet(uri);
     String json = client.execute(get, response -> EntityUtils.toString(response.getEntity()));
-    SearchQueryResponse responseObj = mapper.readValue(json, SearchQueryResponse.class);
-    return responseObj.getEntities();
+    return parseSearchResponse(mapper, json);
+  }
+
+  static List<SearchEntitiesDTO> parseSearchResponse(ObjectMapper mapper, String json)
+      throws JsonProcessingException {
+    JsonNode response = mapper.readTree(json);
+    List<SearchEntitiesDTO> result = new ArrayList<>();
+    for (JsonNode group : response.path("entities")) {
+      EntityType entityType = mapper.treeToValue(group.path("type"), EntityType.class);
+      Class<? extends SearchEntityDTO> entityClass = ENTITY_TYPE_TO_CLASS_DTO.get(entityType);
+      if (entityClass == null) {
+        throw new IllegalArgumentException("Unsupported search entity type: " + entityType);
+      }
+
+      List<SearchEntityDTO> entities = new ArrayList<>();
+      for (JsonNode entity : group.path("entities")) {
+        entities.add(mapper.treeToValue(entity, entityClass));
+      }
+
+      result.add(
+          SearchEntitiesDTO.builder()
+              .withTotalSize(group.path("totalSize").asInt())
+              .withType(entityType)
+              .withEntities(entities)
+              .build());
+    }
+    return result;
   }
 
   public String rebuildIndex(String metalake) throws Exception {

@@ -10,10 +10,12 @@ import static com.datastrato.gravitino.test.OpenSearchContainer.LOG;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
+import com.datastrato.gravitino.search.dto.SearchPolicyEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchViewEntityDTO;
 import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.datastrato.gravitino.search.po.SearchPolicyEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
@@ -119,6 +121,7 @@ public class TestOpenSearchStorage {
               .withMetalake("test")
               .withCatalogName("c1")
               .withEntityComment("demo table")
+              .withPolicyNames(ImmutableList.of("retention_policy"))
               .withColumns(
                   ImmutableList.of(
                       SearchTableEntityPO.SearchColumn.builder()
@@ -195,6 +198,28 @@ public class TestOpenSearchStorage {
       assertTagFound("classification");
       assertTagFound("critical");
 
+      SearchPolicyEntityPO policyPO =
+          SearchPolicyEntityPO.Builder.builder()
+              .withEntityId(500)
+              .withEntityName("retention_policy")
+              .withFullQualifiedName("retention_policy")
+              .withEntityType(Entity.EntityType.POLICY)
+              .withMetalake("test")
+              .withEntityComment("retains critical records")
+              .withPolicyType("custom")
+              .withEnabled(true)
+              .withContent("{\"retentionDays\":30}")
+              .build();
+      storage.write(ImmutableList.of(policyPO), true);
+
+      assertPolicyFound("retention_policy");
+      assertPolicyFound("records");
+      assertPolicyFound("retentionDays");
+
+      result = storage.search("test", "retention_policy", null, ImmutableList.of(), 10, 0);
+      Assertions.assertEquals(
+          1, getSearchEntitiesDTOByType(result, Entity.EntityType.TABLE).getTotalSize());
+
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -255,5 +280,16 @@ public class TestOpenSearchStorage {
     SearchEntitiesDTO dto = getSearchEntitiesDTOByType(result, Entity.EntityType.TAG);
     Assertions.assertNotNull(dto, "No tag matched keyword " + keyword);
     Assertions.assertEquals(1, dto.getTotalSize());
+  }
+
+  private void assertPolicyFound(String keyword) {
+    List<SearchEntitiesDTO> result =
+        storage.search("test", keyword, null, ImmutableList.of(), 10, 0);
+    SearchEntitiesDTO dto = getSearchEntitiesDTOByType(result, Entity.EntityType.POLICY);
+    Assertions.assertNotNull(dto, "No policy matched keyword " + keyword);
+    Assertions.assertEquals(1, dto.getTotalSize());
+    SearchPolicyEntityDTO policy = (SearchPolicyEntityDTO) dto.getEntities().get(0);
+    Assertions.assertEquals("custom", policy.getPolicyType());
+    Assertions.assertTrue(policy.isEnabled());
   }
 }

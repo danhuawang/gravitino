@@ -15,7 +15,9 @@ import com.datastrato.gravitino.search.parser.Condition.RangeType;
 import com.datastrato.gravitino.search.parser.Condition.TermCondition;
 import com.google.common.collect.ImmutableList;
 import java.util.Map;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.opensearch.client.json.JsonData;
 import org.opensearch.client.opensearch._types.FieldValue;
@@ -160,6 +162,14 @@ public class FilterConditionUtils {
 
   public static Condition createEntityNameQueryCondition(
       NameIdentifier nameIdentifier, boolean cascade) {
+    if (isMetalakeScoped(nameIdentifier)) {
+      // Tags, policies and the other entities living directly under a metalake have no
+      // catalog/schema hierarchy, so their documents carry no meaningful full qualified name and
+      // the index does not map one. They are identified by their name instead. There is nothing
+      // below them either, so the cascade flag makes no difference.
+      return new Condition.TermCondition("entity_name.keyword", nameIdentifier.name());
+    }
+
     String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
     String fqName = nameIdentifier.toString().replace(metalake + ".", "");
 
@@ -180,6 +190,20 @@ public class FilterConditionUtils {
 
   public static Condition createUpdateTimeCondition(long updateTime) {
     return Condition.less("update_time", String.valueOf(updateTime));
+  }
+
+  /**
+   * Returns whether the identifier addresses an entity that lives directly under a metalake, such
+   * as a tag or a policy. Those are held in the reserved system namespace, {@code
+   * <metalake>.system.<kind>.<name>}, rather than under a catalog.
+   *
+   * @param nameIdentifier The entity identifier.
+   * @return Whether the entity is scoped to the metalake itself.
+   */
+  private static boolean isMetalakeScoped(NameIdentifier nameIdentifier) {
+    Namespace namespace = nameIdentifier.namespace();
+    return namespace.length() == 3
+        && Entity.SYSTEM_CATALOG_RESERVED_NAME.equals(namespace.level(1));
   }
 
   public static Condition createRemovedEntityCondition(

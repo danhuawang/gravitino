@@ -47,6 +47,9 @@ public class SearchEntityPO {
   @JsonProperty("tags")
   private final List<SearchTagPO> tags;
 
+  @JsonProperty("policy_names")
+  private final List<String> policyNames;
+
   @JsonProperty("search_audit")
   private final SearchAuditPO searchAudit;
 
@@ -75,6 +78,7 @@ public class SearchEntityPO {
     this.catalogName = builder.catalogName;
     this.fullQualifiedName = builder.fullQualifiedName;
     this.tags = builder.tags;
+    this.policyNames = builder.policyNames;
     this.searchAudit = builder.searchAudit;
     this.owner = builder.owner;
     this.userPermissions = builder.userPermissions;
@@ -93,6 +97,7 @@ public class SearchEntityPO {
     protected String catalogName;
     protected String fullQualifiedName;
     protected List<SearchTagPO> tags;
+    protected List<String> policyNames;
     protected SearchAuditPO searchAudit;
     protected String owner;
     protected List<SearchUserPermissionPO> userPermissions;
@@ -145,6 +150,17 @@ public class SearchEntityPO {
       return self();
     }
 
+    /**
+     * Sets the names of policies associated with this entity.
+     *
+     * @param policyNames the associated policy names
+     * @return this builder
+     */
+    public SELF withPolicyNames(List<String> policyNames) {
+      this.policyNames = policyNames;
+      return self();
+    }
+
     public SELF withSearchAudit(SearchAuditPO searchAudit) {
       this.searchAudit = searchAudit;
       return self();
@@ -188,6 +204,7 @@ public class SearchEntityPO {
 
     private static boolean hasCatalog(EntityType type) {
       return type != EntityType.TAG
+          && type != EntityType.POLICY
           && type != EntityType.USER
           && type != EntityType.GROUP
           && type != EntityType.ROLE;

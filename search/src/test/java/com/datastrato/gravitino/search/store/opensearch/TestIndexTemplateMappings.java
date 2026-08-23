@@ -61,7 +61,7 @@ class TestIndexTemplateMappings {
   }
 
   @Test
-  void testExistingMappingsAreUnchangedInV2() throws IOException {
+  void testExistingMetadataMappingsAddPolicyNamesInV2() throws IOException {
     Map<String, Path> v1Templates = loadManifest("v1");
     Map<String, Path> v2Templates = loadManifest("v2");
 
@@ -69,7 +69,23 @@ class TestIndexTemplateMappings {
       String pattern = entityType + "_entity_index";
       JsonNode v1Mapping = OBJECT_MAPPER.readTree(v1Templates.get(pattern).toFile());
       JsonNode v2Mapping = OBJECT_MAPPER.readTree(v2Templates.get(pattern).toFile());
-      Assertions.assertEquals(v1Mapping, v2Mapping, entityType + " mapping changed in v2");
+      Set<String> expectedFields =
+          new HashSet<>(fieldNames(v1Mapping.path("mappings").path("properties")));
+      expectedFields.add("policy_names");
+      Assertions.assertEquals(
+          expectedFields,
+          fieldNames(v2Mapping.path("mappings").path("properties")),
+          entityType + " should add only policy_names in v2");
+      Assertions.assertEquals(
+          "keyword",
+          v2Mapping
+              .path("mappings")
+              .path("properties")
+              .path("policy_names")
+              .path("fields")
+              .path("keyword")
+              .path("type")
+              .asText());
     }
   }
 
@@ -93,7 +109,15 @@ class TestIndexTemplateMappings {
             "entity_properties"));
     expectedFields.put(
         "policy",
-        commonFields("entity_id", "entity_type", "metalake", "entity_name", "entity_comment"));
+        commonFields(
+            "entity_id",
+            "entity_type",
+            "metalake",
+            "entity_name",
+            "entity_comment",
+            "policy_type",
+            "enabled",
+            "content"));
     expectedFields.put(
         "function",
         commonFields(

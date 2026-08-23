@@ -94,6 +94,7 @@ public class OpenSearchStorage implements SearchStorage {
   private static final String MODEL_ENTITY_INDEX_SUFFIX = "model_entity_index";
   private static final String TOPIC_ENTITY_INDEX_SUFFIX = "topic_entity_index";
   private static final String TAG_ENTITY_INDEX_SUFFIX = "tag_entity_index";
+  private static final String POLICY_ENTITY_INDEX_SUFFIX = "policy_entity_index";
   private static final String TABLE_ENTITY_INDEX_SUFFIX = "table_entity_index";
   private static final String VIEW_ENTITY_INDEX_SUFFIX = "view_entity_index";
   private static final String USER_ENTITY_INDEX_SUFFIX = "user_entity_index";
@@ -119,6 +120,7 @@ public class OpenSearchStorage implements SearchStorage {
           .put(EntityType.MODEL, MODEL_ENTITY_INDEX_SUFFIX)
           .put(EntityType.TOPIC, TOPIC_ENTITY_INDEX_SUFFIX)
           .put(EntityType.TAG, TAG_ENTITY_INDEX_SUFFIX)
+          .put(EntityType.POLICY, POLICY_ENTITY_INDEX_SUFFIX)
           .put(EntityType.TABLE, TABLE_ENTITY_INDEX_SUFFIX)
           .put(EntityType.VIEW, VIEW_ENTITY_INDEX_SUFFIX)
           .put(EntityType.USER, USER_ENTITY_INDEX_SUFFIX)
@@ -643,7 +645,8 @@ public class OpenSearchStorage implements SearchStorage {
         MultiMatchQuery.of(
             m ->
                 m.query(word)
-                    .fields("entity_name^4.0", "entity_comment^3.0")
+                    .fields(
+                        "entity_name^4.0", "entity_comment^3.0", "policy_names^2.0", "content^1.0")
                     .type(TextQueryType.BestFields)
                     .operator(Operator.Or));
     queries.add(Query.of(q -> q.multiMatch(bestFieldsQuery)));
@@ -652,7 +655,11 @@ public class OpenSearchStorage implements SearchStorage {
         MultiMatchQuery.of(
             m ->
                 m.query(word)
-                    .fields("entity_name.ngram^4.0", "entity_comment.ngram^3.0")
+                    .fields(
+                        "entity_name.ngram^4.0",
+                        "entity_comment.ngram^3.0",
+                        "policy_names.ngram^2.0",
+                        "content.ngram^1.0")
                     .analyzer("standard")
                     .type(TextQueryType.Phrase)
                     .slop(0));
@@ -778,7 +785,12 @@ public class OpenSearchStorage implements SearchStorage {
             filter,
             ImmutableMap.of("tag_name", "tags"),
             ImmutableMap.of(
-                "tag_name", "tags.tag_name.keyword", "catalog_name", "catalog_name.keyword"));
+                "tag_name",
+                "tags.tag_name.keyword",
+                "catalog_name",
+                "catalog_name.keyword",
+                "policy_name",
+                "policy_names.keyword"));
     result.add(query);
     return result;
   }

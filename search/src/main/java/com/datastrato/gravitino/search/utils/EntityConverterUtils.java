@@ -10,16 +10,21 @@ import com.datastrato.gravitino.search.po.SearchEntityPO.PropertyPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO.SearchTagPO;
 import com.datastrato.gravitino.search.po.SearchModelEntityPO;
 import com.datastrato.gravitino.search.po.SearchModelEntityPO.SearchModelVersionPO;
+import com.datastrato.gravitino.search.po.SearchPolicyEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO.SearchColumn;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.datastrato.gravitino.search.utils.PermissionProjectionCache.Permissions;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.collect.ImmutableList;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.ArrayUtils;
@@ -43,14 +48,18 @@ import org.apache.gravitino.catalog.EntityCombinedView;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.function.Function;
+import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
+import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.ViewEntity;
+import org.apache.gravitino.policy.PolicyDispatcher;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.tag.Tag;
+import org.apache.gravitino.utils.MetadataObjectUtil;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,6 +94,7 @@ public class EntityConverterUtils {
         .withEntityComment(tag.comment())
         .withFullQualifiedName(tag.name())
         .withTags(Collections.emptyList())
+        .withPolicyNames(Collections.emptyList())
         .withSearchAudit(toSearchAudit(tag.auditInfo()))
         .withOwner(
             getMetadataObjectOwner(
@@ -94,6 +104,75 @@ public class EntityConverterUtils {
                 tag.properties() == null ? Collections.emptyMap() : tag.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
+  }
+
+  /**
+   * Converts a policy definition into a search entity.
+   *
+   * @param policy the policy definition
+   * @param nameIdentifier the policy identifier
+   * @return the policy search entity
+   */
+  public static SearchPolicyEntityPO toPolicySearchEntityPO(
+      PolicyEntity policy, NameIdentifier nameIdentifier) {
+    String content;
+    try {
+      content = JsonUtils.anyFieldMapper().writeValueAsString(policy.content());
+    } catch (JsonProcessingException e) {
+      throw new GravitinoRuntimeException("Failed to serialize policy content: %s", e.getMessage());
+    }
+
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    return SearchPolicyEntityPO.Builder.builder()
+        .withEntityId(policy.id())
+        .withEntityType(EntityType.POLICY)
+        .withInUse(true)
+        .withMetalake(metalake)
+        .withEntityName(policy.name())
+        .withEntityComment(policy.comment())
+        .withFullQualifiedName(policy.name())
+        .withTags(Collections.emptyList())
+        .withPolicyNames(Collections.emptyList())
+        .withSearchAudit(toSearchAudit(policy.auditInfo()))
+        .withOwner(
+            getMetadataObjectOwner(
+                NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.POLICY), metalake))
+        .withEntityProperties(Collections.emptyList())
+        .withUpdateTime(System.currentTimeMillis())
+        .withPolicyType(policy.policyType().policyType())
+        .withEnabled(policy.enabled())
+        .withContent(content)
+        .build();
+  }
+
+  private static List<String> getMetadataObjectPolicyNames(
+      NameIdentifier nameIdentifier, EntityType entityType) {
+    PolicyDispatcher policyDispatcher = GravitinoEnv.getInstance().policyDispatcher();
+    if (policyDispatcher == null) {
+      return ImmutableList.of();
+    }
+
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    MetadataObject metadataObject = NameIdentifierUtil.toMetadataObject(nameIdentifier, entityType);
+
+    Set<String> policyNames = new LinkedHashSet<>();
+    addPolicyNames(policyDispatcher, metalake, metadataObject, policyNames);
+    for (MetadataObject parent : MetadataObjectUtil.getParentMetadataObjects(metadataObject)) {
+      addPolicyNames(policyDispatcher, metalake, parent, policyNames);
+    }
+    return ImmutableList.copyOf(policyNames);
+  }
+
+  private static void addPolicyNames(
+      PolicyDispatcher policyDispatcher,
+      String metalake,
+      MetadataObject metadataObject,
+      Set<String> policyNames) {
+    PolicyEntity[] policies =
+        policyDispatcher.listPolicyInfosForMetadataObject(metalake, metadataObject);
+    if (ArrayUtils.isNotEmpty(policies)) {
+      Arrays.stream(policies).map(PolicyEntity::name).forEach(policyNames::add);
+    }
   }
 
   @Nullable
@@ -137,6 +216,7 @@ public class EntityConverterUtils {
         .withProvider(catalog.provider())
         .withType(catalog.type())
         .withTags(toSearchTag(tags))
+        .withPolicyNames(getMetadataObjectPolicyNames(nameIdentifier, EntityType.CATALOG))
         .withSearchAudit(toSearchAudit(catalog.auditInfo()))
         .withOwner(owner)
         .withUserPermissions(permissions.userPermissions())
@@ -188,6 +268,7 @@ public class EntityConverterUtils {
         .withCatalogName(catalog)
         .withFullQualifiedName(String.format("%s.%s", catalog, schema.name()))
         .withTags(toSearchTag(tags))
+        .withPolicyNames(getMetadataObjectPolicyNames(nameIdentifier, EntityType.SCHEMA))
         .withSearchAudit(toSearchAudit(schema.auditInfo()))
         .withOwner(owner)
         .withUserPermissions(permissions.userPermissions())
@@ -226,6 +307,7 @@ public class EntityConverterUtils {
         .withCatalogName(catalog)
         .withFullQualifiedName(String.format("%s.%s.%s", catalog, schema, topic.name()))
         .withTags(toSearchTag(tags))
+        .withPolicyNames(getMetadataObjectPolicyNames(nameIdentifier, EntityType.TOPIC))
         .withSearchAudit(toSearchAudit(topic.auditInfo()))
         .withOwner(owner)
         .withUserPermissions(permissions.userPermissions())
@@ -266,6 +348,7 @@ public class EntityConverterUtils {
         .withCatalogName(catalog)
         .withFullQualifiedName(String.format("%s.%s.%s", catalog, schema, model.name()))
         .withTags(toSearchTag(tags))
+        .withPolicyNames(getMetadataObjectPolicyNames(nameIdentifier, EntityType.MODEL))
         .withSearchAudit(toSearchAudit(model.auditInfo()))
         .withOwner(owner)
         .withUserPermissions(permissions.userPermissions())
@@ -306,6 +389,7 @@ public class EntityConverterUtils {
         .withCatalogName(catalog)
         .withFullQualifiedName(String.format("%s.%s.%s", catalog, schema, fileset.name()))
         .withTags(toSearchTag(tags))
+        .withPolicyNames(getMetadataObjectPolicyNames(nameIdentifier, EntityType.FILESET))
         .withSearchAudit(toSearchAudit(fileset.auditInfo()))
         .withOwner(owner)
         .withUserPermissions(permissions.userPermissions())
@@ -344,6 +428,7 @@ public class EntityConverterUtils {
         .withCatalogName(catalog)
         .withFullQualifiedName(String.format("%s.%s.%s", catalog, schema, table.name()))
         .withTags(toSearchTag(tags))
+        .withPolicyNames(getMetadataObjectPolicyNames(nameIdentifier, EntityType.TABLE))
         .withSearchAudit(toSearchAudit(table.auditInfo()))
         .withColumns(
             Arrays.stream(table.columns())

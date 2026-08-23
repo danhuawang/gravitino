@@ -36,6 +36,8 @@ public class SearchEntityDTO {
 
   private final List<SearchTagDTO> tags;
 
+  private final List<String> policyNames;
+
   private final SearchAuditDTO searchAudit;
 
   private final String owner;
@@ -58,6 +60,7 @@ public class SearchEntityDTO {
     this.catalogName = builder.catalogName;
     this.fullQualifiedName = builder.fullQualifiedName;
     this.tags = builder.tags;
+    this.policyNames = builder.policyNames;
     this.searchAudit = builder.searchAudit;
     this.owner = builder.owner;
     this.userPermissions = builder.userPermissions;
@@ -76,6 +79,7 @@ public class SearchEntityDTO {
     private String catalogName;
     private String fullQualifiedName;
     private List<SearchTagDTO> tags;
+    private List<String> policyNames;
     private SearchAuditDTO searchAudit;
     private String owner;
     private List<SearchUserPermissionDTO> userPermissions;
@@ -125,6 +129,17 @@ public class SearchEntityDTO {
 
     public SELF withTags(List<SearchTagDTO> tags) {
       this.tags = tags;
+      return self();
+    }
+
+    /**
+     * Sets the names of policies associated with this entity.
+     *
+     * @param policyNames the associated policy names
+     * @return this builder
+     */
+    public SELF withPolicyNames(List<String> policyNames) {
+      this.policyNames = policyNames;
       return self();
     }
 
@@ -180,6 +195,7 @@ public class SearchEntityDTO {
 
     private static boolean hasCatalog(EntityType type) {
       return type != EntityType.TAG
+          && type != EntityType.POLICY
           && type != EntityType.USER
           && type != EntityType.GROUP
           && type != EntityType.ROLE;

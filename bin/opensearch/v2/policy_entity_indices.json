@@ -86,6 +86,24 @@
           }
         }
       },
+      "policy_type": {
+        "type": "keyword"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "content": {
+        "type": "text",
+        "analyzer": "ik_smart_analyzer",
+        "boost": 1.0,
+        "fields": {
+          "ngram": {
+            "type": "text",
+            "analyzer": "ngram_analyzer",
+            "search_analyzer": "ngram_analyzer"
+          }
+        }
+      },
       "search_audit": {
         "type": "object",
         "dynamic": false,

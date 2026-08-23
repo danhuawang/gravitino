@@ -97,6 +97,7 @@ Gravitino Data Discovery uses the following index mapping in OpenSearch, All ent
 | `tags.tag_name`, `tags.tag_name.keyword`, `tags.tag_name.ngram`                   | `text / keyword` |
 | `tags.tag_comment`                                                                | `text`           |
 | `tags.properties`                                                                 | `object`         |
+| `policy_names`, `policy_names.keyword`, `policy_names.ngram`                      | `text / keyword` |
 | `search_audit.create_time`, `search_audit.last_modified_time`                     | `date`           |
 | `search_audit.creator`, `search_audit.last_modifier`                              | `keyword`        |
 | `user_permissions`, `role_permissions` (nested)                                   | -                |
@@ -149,6 +150,14 @@ Like the View mapping, the Function mapping does not index the `in_use`, `owner`
 | `model_versions.aliases`, `model_versions.aliases.keyword`, `model_versions.aliases.ngram` | `text / keyword` |
 | `model_versions.uri`                                                                       | `keyword`        |
 
+#### Policy
+
+| Field Path                                 | Type             |
+|--------------------------------------------|------------------|
+| `policy_type`                              | `keyword`        |
+| `enabled`                                  | `boolean`        |
+| `content`, `content.ngram`                 | `text`           |
+
 
 ## Metadata Search API
 
@@ -183,7 +192,7 @@ curl -X GET "http://localhost:8090/api/search/query?metalake=test&pageNumber=0&p
 curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20catalog_name:test_catalog&pageNumber=0&pageSize=10" | jq
 
 # Search for metadata in the metalake `test` with keyword "demo" and filter: entity_type=TABLE, returning the first 10 results
-# Support entity type: CATALOG, SCHEMA, TABLE, VIEW, FUNCTION, MODEL, TOPIC, FILESET, TAG
+# Support entity type: CATALOG, SCHEMA, TABLE, VIEW, FUNCTION, MODEL, TOPIC, FILESET, TAG, POLICY
 curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20entity_type:TABLE&pageNumber=0&pageSize=10" | jq
 
 # Search for metadata in the metalake `test` with keyword "demo" and filter: tag_name=demo_tag, returning the first 10 results
@@ -256,6 +265,7 @@ The example index information for the `test` Metalake are:
 | test_topic_entity_index   | test_topic_entity_index_11828332843   | topic_entity_index_template_v2   | store the topic metadata in test metalake   |
 | test_fileset_entity_index | test_fileset_entity_index_11828332843 | fileset_entity_index_template_v2 | store the fileset metadata in test metalake |
 | test_tag_entity_index     | test_tag_entity_index_11828332843     | tag_entity_index_template_v2     | store the tag metadata in test metalake     |
+| test_policy_entity_index  | test_policy_entity_index_11828332843  | policy_entity_index_template_v2  | store the policy metadata in test metalake  |
 
 Each entity type has its own index template, which defines the mapping and settings for that index. The index templates are versioned to allow for upgrades and changes over time.
 
@@ -285,6 +295,7 @@ v2/
   ├── view_entity_indices.json
   ├── function_entity_indices.json
   ├── tag_entity_indices.json
+  ├── policy_entity_indices.json
   ├── ...
 ```
 
@@ -317,7 +328,7 @@ POST /api/search/sync/metalakes/{metalake}/objects
 |------------------|---------|----------|-------------------------------------------------------------------------------------------------------------------------------------|----------------|
 | metalake         | string  | Yes      | Metalake name                                                                                                                       | `test`         |
 | metadataFullName | string  | No       | Full name of the metadata entity, like <catalog>.<schema>.<table>. If `metadataFullName` is set, `metadataType` should also be set. | `test_catalog` |
-| metadataType     | string  | No       | Type of metadata entity (e.g., `catalog`, `schema`, `table`, `view`, `function`, `model`, `topic`, `fileset`, `tag`)                | `catalog`      |
+| metadataType     | string  | No       | Type of metadata entity (e.g., `catalog`, `schema`, `table`, `view`, `function`, `model`, `topic`, `fileset`, `tag`, `policy`)                | `catalog`      |
 | cascade          | boolean | No       | Whether to cascade sync to related entities                                                                                         | `true`         |
 
 You can also post an empty body, then the Gravitino server will sync all metadata entities in the specified metalake.
@@ -398,6 +409,7 @@ catalog_entity_index v2
 topic_entity_index v2
 fileset_entity_index v2
 tag_entity_index v2
+policy_entity_index v2
 
 
 # show index alias index and index template details

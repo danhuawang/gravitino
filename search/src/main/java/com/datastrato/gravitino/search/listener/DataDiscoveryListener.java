@@ -23,6 +23,7 @@ import org.apache.gravitino.listener.api.event.TagEvent;
 import org.apache.gravitino.listener.api.event.TopicEvent;
 import org.apache.gravitino.listener.api.event.UserEvent;
 import org.apache.gravitino.listener.api.event.function.FunctionEvent;
+import org.apache.gravitino.listener.api.event.policy.PolicyEvent;
 import org.apache.gravitino.listener.api.event.view.ViewEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +50,7 @@ public class DataDiscoveryListener implements EventListenerPlugin {
             .put(TopicEvent.class, new TopicEventHandler(searchService))
             .put(FilesetEvent.class, new FilesetEventHandler(searchService))
             .put(ModelEvent.class, new ModelEventHandler(searchService))
+            .put(PolicyEvent.class, new PolicyEventHandler(searchService))
             .put(OwnerEvent.class, new OwnerEventHandler(searchService))
             .put(UserEvent.class, new UserEventHandler(searchService))
             .put(GroupEvent.class, new GroupEventHandler(searchService))
@@ -100,6 +102,8 @@ public class DataDiscoveryListener implements EventListenerPlugin {
         handler = eventHandlers.get(GroupEvent.class);
       } else if (event instanceof RoleEvent) {
         handler = eventHandlers.get(RoleEvent.class);
+      } else if (event instanceof PolicyEvent) {
+        handler = eventHandlers.get(PolicyEvent.class);
       }
 
       // Iceberg REST events are dispatched from the isolated Iceberg REST auxiliary service

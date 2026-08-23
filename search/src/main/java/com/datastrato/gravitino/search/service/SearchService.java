@@ -193,8 +193,6 @@ public class SearchService implements Closeable {
       PermissionProjectionCache.invalidate(metalake);
     }
 
-    checkSyncTaskQueueSize();
-
     SyncTask syncTask =
         new SyncTask(metalake, metadataObject, cascade, this, syncTaskOptions, finishedHandler);
     LOG.info("TaskId: {}, start synchronize metadata...", syncTask.getTaskId());
@@ -240,6 +238,48 @@ public class SearchService implements Closeable {
         TagAssociationSearchEntitySource.ofAssociatedEntities(metalake, tagName));
   }
 
+  /**
+   * Synchronizes every metadata object associated with a policy.
+   *
+   * @param metalake the metalake name
+   * @param policyName the policy name
+   * @return the synchronization task
+   */
+  public SyncTask synchronizeEntityDataByPolicy(String metalake, String policyName) {
+    return synchronizeEntityDataByPolicy(
+        metalake,
+        policyName,
+        PolicyAssociationSearchEntitySource.ofAssociatedEntities(metalake, policyName));
+  }
+
+  /**
+   * Re-synchronizes every entity that carried a deleted policy so the policy association is removed
+   * without deleting the entity from search.
+   *
+   * @param metalake the metalake name
+   * @param policyName the deleted policy name
+   * @return the synchronization task
+   */
+  public SyncTask resyncMetadataByPolicy(String metalake, String policyName) {
+    return synchronizeEntityDataByPolicy(
+        metalake,
+        policyName,
+        PolicyAssociationSearchEntitySource.ofIndexedEntities(metalake, policyName, storage));
+  }
+
+  private SyncTask synchronizeEntityDataByPolicy(
+      String metalake, String policyName, PolicyAssociationSearchEntitySource source) {
+    SearchEntityIdentifier identifier =
+        SearchEntityIdentifier.of(NameIdentifier.of(metalake), EntityType.METALAKE);
+    SyncTask syncTask = new SyncTask(identifier, source, this);
+    LOG.info(
+        "TaskId: {}, start synchronizing metadata by policy {} ...",
+        syncTask.getTaskId(),
+        policyName);
+    addTask(syncTask);
+    return syncTask;
+  }
+
   public Future<?> removeMetadata(
       NameIdentifier nameIdentifier, Entity.EntityType entityType, boolean cascade) {
     return executorService.submit(
@@ -279,7 +319,6 @@ public class SearchService implements Closeable {
 
   private SyncTask synchronizeEntityDataByTag(
       String metalake, String tagName, TagAssociationSearchEntitySource source) {
-    checkSyncTaskQueueSize();
 
     // As Tag is not a metadata object, we create a SearchEntityIdentifier using the metalake name.
     SearchEntityIdentifier searchEntityIdentifier =
@@ -289,18 +328,6 @@ public class SearchService implements Closeable {
         "TaskId: {}, start synchronizing metadata by tag {} ...", syncTask.getTaskId(), tagName);
     addTask(syncTask);
     return syncTask;
-  }
-
-  private void checkSyncTaskQueueSize() {
-    synchronized (this) {
-      if (syncTasks.size() >= maxQueueSize) {
-        throw new RuntimeException(
-            String.format(
-                "The number of sync tasks is too large, "
-                    + "please wait for the previous tasks to finish. Current size: %d MaxQueueSize: %d",
-                syncTasks.size(), maxQueueSize));
-      }
-    }
   }
 
   /**
@@ -381,8 +408,18 @@ public class SearchService implements Closeable {
   }
 
   protected void addTask(SyncTask syncTask) {
-    syncTask.saveTaskStatus();
+    // Admission and insertion share one lock: checking the size separately lets concurrent
+    // callers both pass the check and push the queue past its limit.
     synchronized (this) {
+      if (syncTasks.size() >= maxQueueSize) {
+        throw new RuntimeException(
+            String.format(
+                "The number of sync tasks is too large, "
+                    + "please wait for the previous tasks to finish. Current size: %d MaxQueueSize: %d",
+                syncTasks.size(), maxQueueSize));
+      }
+
+      syncTask.saveTaskStatus();
       syncTasks.add(syncTask);
       notify();
     }

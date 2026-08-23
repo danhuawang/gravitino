@@ -7,11 +7,13 @@ package com.datastrato.gravitino.search.utils;
 import com.datastrato.gravitino.search.dto.SearchCatalogEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchModelEntityDTO;
+import com.datastrato.gravitino.search.dto.SearchPolicyEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchViewEntityDTO;
 import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchModelEntityPO;
+import com.datastrato.gravitino.search.po.SearchPolicyEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
@@ -45,6 +47,7 @@ public class SearchEntityCodec {
           .put(EntityType.MODEL, SearchModelEntityPO.class)
           .put(EntityType.TOPIC, SearchEntityPO.class)
           .put(EntityType.TAG, SearchEntityPO.class)
+          .put(EntityType.POLICY, SearchPolicyEntityPO.class)
           .put(EntityType.TABLE, SearchTableEntityPO.class)
           .put(EntityType.VIEW, SearchViewEntityPO.class)
           .put(EntityType.USER, SearchEntityPO.class)
@@ -61,6 +64,7 @@ public class SearchEntityCodec {
           .put(EntityType.MODEL, SearchModelEntityDTO.class)
           .put(EntityType.TOPIC, SearchEntityDTO.class)
           .put(EntityType.TAG, SearchEntityDTO.class)
+          .put(EntityType.POLICY, SearchPolicyEntityDTO.class)
           .put(EntityType.TABLE, SearchTableEntityDTO.class)
           .put(EntityType.VIEW, SearchViewEntityDTO.class)
           .put(EntityType.USER, SearchEntityDTO.class)

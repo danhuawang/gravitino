@@ -11,6 +11,7 @@ import static com.datastrato.gravitino.search.utils.FilterConditionUtils.createE
 import static java.util.Collections.emptyList;
 import static org.apache.gravitino.Entity.EntityType.CATALOG;
 import static org.apache.gravitino.Entity.EntityType.METALAKE;
+import static org.apache.gravitino.Entity.EntityType.POLICY;
 import static org.apache.gravitino.Entity.EntityType.SCHEMA;
 import static org.apache.gravitino.Entity.EntityType.TABLE;
 import static org.apache.gravitino.Entity.EntityType.TAG;
@@ -104,6 +105,11 @@ public class TestSearchService {
 
     gravitinoService.addTagsToObject(
         NameIdentifier.of("test_metalake", "test_catalog2"), ImmutableSet.of("test_tag"));
+
+    gravitinoService.createPolicy("test_policy");
+    gravitinoService.addPoliciesToObject(
+        NameIdentifier.of("test_metalake", "test_catalog1", "test_schema1"),
+        ImmutableSet.of("test_policy"));
   }
 
   @Test
@@ -111,7 +117,7 @@ public class TestSearchService {
     try {
       // Synchronize all metadata
       NameIdentifier identifier = NameIdentifier.of("test_metalake");
-      testSyncTask(identifier, METALAKE, true, 11);
+      testSyncTask(identifier, METALAKE, true, 12);
 
       // Sync a non-existing metalake
       Assertions.assertThrows(
@@ -253,6 +259,17 @@ public class TestSearchService {
     Assertions.assertEquals(4, getSearchEntitiesDTOByType(dto, SCHEMA).getEntities().size());
     Assertions.assertEquals(3, getSearchEntitiesDTOByType(dto, TABLE).getEntities().size());
     Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, TAG).getEntities().size());
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, POLICY).getEntities().size());
+
+    dto = searchService.query(metalake, "test_policy", 0, Integer.MAX_VALUE);
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, POLICY).getEntities().size());
+    Assertions.assertEquals(2, getSearchEntitiesDTOByType(dto, TABLE).getEntities().size());
+    Assertions.assertTrue(
+        getSearchEntitiesDTOByType(dto, TABLE).getEntities().stream()
+            .allMatch(table -> table.getPolicyNames().contains("test_policy")));
+
+    dto = searchService.query(metalake, "retentionDays", 0, Integer.MAX_VALUE);
+    Assertions.assertEquals(1, getSearchEntitiesDTOByType(dto, POLICY).getEntities().size());
 
     // test query catalog with cascading
     nameIdentifier = NameIdentifier.of(metalake, "test_catalog1");
@@ -476,17 +493,17 @@ public class TestSearchService {
   void testSyncWithDelete() throws Exception {
     // Synchronize all metadata
     NameIdentifier metalakeIdent = NameIdentifier.of("test_metalake");
-    testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 11);
+    testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 12);
 
-    // The memory search storage should have 11 entities now.
+    // The memory search storage should have 12 entities now.
 
     // Simulate catalog1 has been removed
     Map<String, BaseCatalog> original = gravitinoService.catalogs;
 
     Map<String, Integer> removeCatalogAndExpectMap = Maps.newHashMap();
-    removeCatalogAndExpectMap.put("test_metalake.test_catalog1", 5);
-    removeCatalogAndExpectMap.put("test_metalake.test_catalog2", 8);
-    removeCatalogAndExpectMap.put("test_metalake.test_catalog3", 10);
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog1", 6);
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog2", 9);
+    removeCatalogAndExpectMap.put("test_metalake.test_catalog3", 11);
 
     for (Map.Entry<String, Integer> entry : removeCatalogAndExpectMap.entrySet()) {
       String key = entry.getKey();
@@ -498,16 +515,16 @@ public class TestSearchService {
         original.put(key, catalog);
       }
 
-      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 11);
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 12);
     }
 
     // Now test remove schema
     Map<String, EntityCombinedSchema> originalSchemas = gravitinoService.schemas;
     Map<String, Integer> removeSchemaAndExpectMap = Maps.newHashMap();
-    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema1", 8);
-    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema2", 9);
-    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema1", 10);
-    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema2", 10);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema1", 9);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog1.test_schema2", 10);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema1", 11);
+    removeSchemaAndExpectMap.put("test_metalake.test_catalog2.test_schema2", 11);
 
     for (Map.Entry<String, Integer> entry : removeSchemaAndExpectMap.entrySet()) {
       String key = entry.getKey();
@@ -519,15 +536,15 @@ public class TestSearchService {
         originalSchemas.put(key, schema);
       }
 
-      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 11);
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 12);
     }
 
     // Start to test table
     Map<String, EntityCombinedTable> originalTables = gravitinoService.tables;
     Map<String, Integer> removeTableAndExpectMap = Maps.newHashMap();
-    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table1", 10);
-    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table2", 10);
-    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema2.test_table2", 10);
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table1", 11);
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema1.test_table2", 11);
+    removeTableAndExpectMap.put("test_metalake.test_catalog1.test_schema2.test_table2", 11);
 
     for (Map.Entry<String, Integer> entry : removeTableAndExpectMap.entrySet()) {
       String key = entry.getKey();
@@ -539,7 +556,7 @@ public class TestSearchService {
         originalTables.put(key, table);
       }
 
-      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 11);
+      testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, 12);
     }
   }
 

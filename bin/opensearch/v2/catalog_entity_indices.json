@@ -168,6 +168,22 @@
           "permission": { "type": "keyword" }
         }
       },
+      "policy_names": {
+        "type": "text",
+        "analyzer": "ik_smart_analyzer",
+        "boost": 2.0,
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          },
+          "ngram": {
+            "type": "text",
+            "analyzer": "ngram_analyzer",
+            "search_analyzer": "ngram_analyzer"
+          }
+        }
+      },
       "entity_properties": {
         "type": "nested",
         "properties": {

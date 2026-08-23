@@ -81,6 +81,19 @@ class MetalakeSearchEntitySource extends ParentEntitySource {
               SearchEntitySource.toSearchEntityIdentifiers(
                   roleIdentifiers, Entity.EntityType.ROLE)));
     }
+    NameIdentifier[] policyIdentifiers =
+        Arrays.stream(
+                GravitinoEnv.getInstance()
+                    .policyDispatcher()
+                    .listPolicies(searchEntityIdentifier.metalake()))
+            .map(
+                policyName ->
+                    NameIdentifierUtil.ofPolicy(searchEntityIdentifier.metalake(), policyName))
+            .toArray(NameIdentifier[]::new);
+    sources.add(
+        new PolicySearchEntitySource(
+            SearchEntitySource.toSearchEntityIdentifiers(
+                policyIdentifiers, Entity.EntityType.POLICY)));
     return sources;
   }
 
