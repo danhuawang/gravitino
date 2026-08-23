@@ -12,6 +12,14 @@ import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
+import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
+import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
+import com.datastrato.gravitino.dto.file.ExtendedFilesetDTO;
+import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
+import com.datastrato.gravitino.dto.messaging.ExtendedTopicDTO;
+import com.datastrato.gravitino.dto.model.ExtendedModelDTO;
+import com.datastrato.gravitino.dto.rel.ExtendedTableDTO;
+import com.datastrato.gravitino.dto.rel.ExtendedViewDTO;
 import com.datastrato.gravitino.dto.responses.CatalogListResponse;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
 import com.datastrato.gravitino.dto.responses.ModelListResponse;
@@ -21,6 +29,7 @@ import com.datastrato.gravitino.dto.responses.TopicListResponse;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -28,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.DefaultValue;
@@ -41,6 +51,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.HasIdentifier;
+import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
@@ -53,24 +66,27 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.dto.AuditDTO;
-import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
+import org.apache.gravitino.dto.policy.PolicyDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.dto.rel.RepresentationDTO;
 import org.apache.gravitino.dto.rel.SQLRepresentationDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.rel.ViewDTO;
+import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.ModelEntity;
+import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.rel.types.Types;
@@ -81,6 +97,7 @@ import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
 import org.apache.gravitino.utils.HierarchicalSchemaUtil;
+import org.apache.gravitino.utils.MetadataObjectUtil;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
@@ -286,26 +303,74 @@ public class EntityOperations {
             .sorted(Comparator.comparing(Catalog::name))
             .limit(resultLimit)
             .toArray(Catalog[]::new);
-    CatalogDTO[] catalogDTOs =
-        Arrays.stream(selectedCatalogs).map(DTOConverters::toDTO).toArray(CatalogDTO[]::new);
 
-    Map<String, Long> directChildCounts =
-        listCatalogDirectChildCounts(namespace.level(0), selectedCatalogs);
-    Response response = Utils.ok(new CatalogListResponse(catalogDTOs, directChildCounts));
-    LOG.info("List {} catalog entities under namespace: {}", catalogDTOs.length, namespace);
+    String metalake = namespace.level(0);
+    List<MetadataObject> catalogObjects =
+        Arrays.stream(selectedCatalogs)
+            .map(c -> MetadataObjects.of(List.of(c.name()), MetadataObject.Type.CATALOG))
+            .collect(Collectors.toList());
+
+    TagPolicyEnrichmentHelper.Result tagPolicies =
+        getVisibleTagPoliciesWithInheritance(metalake, catalogObjects, new LinkedHashMap<>());
+    Map<MetadataObject, TagDTO[]> tagsMap = tagPolicies.tags();
+    Map<MetadataObject, PolicyDTO[]> policiesMap = tagPolicies.policies();
+
+    Map<String, Long> directChildCounts = listCatalogDirectChildCounts(metalake, selectedCatalogs);
+
+    ExtendedCatalogDTO[] extendedCatalogs = new ExtendedCatalogDTO[selectedCatalogs.length];
+    for (int i = 0; i < selectedCatalogs.length; i++) {
+      Catalog c = selectedCatalogs[i];
+      MetadataObject obj = catalogObjects.get(i);
+      TagDTO[] tags = tagsMap.getOrDefault(obj, new TagDTO[0]);
+      PolicyDTO[] policies = policiesMap.getOrDefault(obj, new PolicyDTO[0]);
+      // A missing entry means this count failed; preserve null instead of reporting a false zero.
+      Long count = directChildCounts.get(c.name());
+      extendedCatalogs[i] = new ExtendedCatalogDTO(DTOConverters.toDTO(c), tags, policies, count);
+    }
+
+    Response response = Utils.ok(new CatalogListResponse(extendedCatalogs));
+    LOG.info("List {} catalog entities under namespace: {}", extendedCatalogs.length, namespace);
     return response;
   }
 
   private Response listSchemas(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
-    SchemaDTO[] schemaDTOs = listSchemaDTOs(namespace, resultLimit);
+    String metalake = namespace.level(0);
+
+    Map<MetadataObject, Optional<Long>> knownEntityIds = new LinkedHashMap<>();
+    List<MetadataObject> schemaObjects = new ArrayList<>();
+    SchemaDTO[] schemaDTOs = listSchemaDTOs(namespace, resultLimit, knownEntityIds, schemaObjects);
     Map<String, Long> directChildCounts =
         listSchemaDirectChildCounts(namespace, catalogType, schemaDTOs);
-    Response response = Utils.ok(new SchemaListResponse(schemaDTOs, directChildCounts));
-    LOG.info("List {} schema entities under namespace: {}", schemaDTOs.length, namespace);
+
+    TagPolicyEnrichmentHelper.Result tagPolicies =
+        getVisibleTagPoliciesWithInheritance(metalake, schemaObjects, knownEntityIds);
+    Map<MetadataObject, TagDTO[]> tagsMap = tagPolicies.tags();
+    Map<MetadataObject, PolicyDTO[]> policiesMap = tagPolicies.policies();
+
+    ExtendedSchemaDTO[] extendedSchemas = new ExtendedSchemaDTO[schemaDTOs.length];
+    for (int i = 0; i < schemaDTOs.length; i++) {
+      SchemaDTO s = schemaDTOs[i];
+      MetadataObject obj = schemaObjects.get(i);
+      // A missing entry means this count failed; preserve null instead of reporting a false zero.
+      Long count = directChildCounts.get(s.name());
+      extendedSchemas[i] =
+          new ExtendedSchemaDTO(
+              s,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]),
+              count);
+    }
+
+    Response response = Utils.ok(new SchemaListResponse(extendedSchemas));
+    LOG.info("List {} schema entities under namespace: {}", extendedSchemas.length, namespace);
     return response;
   }
 
-  private SchemaDTO[] listSchemaDTOs(Namespace namespace, int resultLimit) {
+  private SchemaDTO[] listSchemaDTOs(
+      Namespace namespace,
+      int resultLimit,
+      Map<MetadataObject, Optional<Long>> knownEntityIds,
+      List<MetadataObject> schemaObjects) {
     NameIdentifier[] schemaIdents = listVisibleSchemaIdentifiers(namespace);
     // Schema entities are stored flat under the catalog namespace, even for parentSchema listings.
     Namespace schemaEntityNs = Namespace.of(namespace.level(0), namespace.level(1));
@@ -318,8 +383,23 @@ public class EntityOperations {
         .limit(resultLimit)
         .map(
             schemaIdent -> {
+              MetadataObject schemaObject =
+                  MetadataObjects.of(
+                      List.of(namespace.level(1), schemaIdent.name()), MetadataObject.Type.SCHEMA);
+              schemaObjects.add(schemaObject);
+              Optional<SchemaEntity> schemaEntity =
+                  Optional.ofNullable(nameToEntity.get(schemaIdent.name()));
+              knownEntityIds.put(schemaObject, schemaEntity.map(SchemaEntity::id));
+              MetadataObjectUtil.getParentMetadataObjects(schemaObject).stream()
+                  .filter(parent -> parent.type() == MetadataObject.Type.SCHEMA)
+                  .forEach(
+                      parent ->
+                          knownEntityIds.putIfAbsent(
+                              parent,
+                              Optional.ofNullable(nameToEntity.get(parent.name()))
+                                  .map(SchemaEntity::id)));
               SchemaDTO.Builder builder = SchemaDTO.builder().withName(schemaIdent.name());
-              return Optional.ofNullable(nameToEntity.get(schemaIdent.name()))
+              return schemaEntity
                   .map(s -> builder.withAudit(toDTO(s.auditInfo())).build())
                   .orElse(builder.withAudit(AuditDTO.builder().build()).build());
             })
@@ -327,6 +407,11 @@ public class EntityOperations {
   }
 
   private Response listTables(Namespace namespace, String parentSchema, int resultLimit) {
+    String metalake = namespace.level(0);
+    String catalogName = namespace.level(1);
+    String schemaName = namespace.level(2);
+    Map<MetadataObject, Optional<Long>> knownEntityIds = new LinkedHashMap<>();
+
     NameIdentifier[] tableIdents = listVisibleTableIdentifiers(namespace);
     List<TableEntity> tableEntities;
     try {
@@ -339,12 +424,22 @@ public class EntityOperations {
     ImmutableMap<String, TableEntity> nameToTableEntity =
         Maps.uniqueIndex(tableEntities, TableEntity::name);
 
+    List<MetadataObject> tableObjects = new ArrayList<>();
     TableDTO[] tableDTOs =
         Arrays.stream(tableIdents)
             .sorted(Comparator.comparing(NameIdentifier::name))
             .limit(resultLimit)
             .map(
                 tableIdent -> {
+                  MetadataObject object =
+                      MetadataObjects.of(
+                          List.of(catalogName, schemaName, tableIdent.name()),
+                          MetadataObject.Type.TABLE);
+                  tableObjects.add(object);
+                  knownEntityIds.put(
+                      object,
+                      Optional.ofNullable(nameToTableEntity.get(tableIdent.name()))
+                          .map(TableEntity::id));
                   TableDTO.Builder builder =
                       TableDTO.builder()
                           .withName(tableIdent.name())
@@ -357,30 +452,104 @@ public class EntityOperations {
                 })
             .toArray(TableDTO[]::new);
 
-    FunctionDTO[] functionDTOs = listFunctionDTOs(namespace, resultLimit);
-    ViewDTO[] viewDTOs = listViewDTOs(namespace, resultLimit);
+    List<MetadataObject> functionObjects = new ArrayList<>();
+    FunctionDTO[] functionDTOs =
+        listFunctionDTOs(namespace, resultLimit, knownEntityIds, functionObjects);
+    List<MetadataObject> viewObjects = new ArrayList<>();
+    ViewDTO[] viewDTOs = listViewDTOs(namespace, resultLimit, knownEntityIds, viewObjects);
 
     SchemaDTO[] schemaDTOs = new SchemaDTO[0];
+    List<MetadataObject> schemaObjects = new ArrayList<>();
     if (StringUtils.isNotBlank(parentSchema)) {
       Namespace childSchemaNs = Namespace.of(namespace.level(0), namespace.level(1), parentSchema);
       try {
-        schemaDTOs = listSchemaDTOs(childSchemaNs, resultLimit);
+        schemaDTOs = listSchemaDTOs(childSchemaNs, resultLimit, knownEntityIds, schemaObjects);
       } catch (Exception e) {
         LOG.warn("Failed to list child schemas under parentSchema: {}", parentSchema, e);
       }
     }
 
+    // Build MetadataObjects for batch fetch
+    List<MetadataObject> objectsToFetch = new ArrayList<>();
+    objectsToFetch.addAll(tableObjects);
+    objectsToFetch.addAll(functionObjects);
+    objectsToFetch.addAll(viewObjects);
+    objectsToFetch.addAll(schemaObjects);
+
+    TagPolicyEnrichmentHelper.Result tagPolicies =
+        getVisibleTagPoliciesWithInheritance(metalake, objectsToFetch, knownEntityIds);
+    Map<MetadataObject, TagDTO[]> tagsMap = tagPolicies.tags();
+    Map<MetadataObject, PolicyDTO[]> policiesMap = tagPolicies.policies();
+
+    ExtendedTableDTO[] extendedTables = new ExtendedTableDTO[tableDTOs.length];
+    for (int i = 0; i < tableDTOs.length; i++) {
+      TableDTO t = tableDTOs[i];
+      MetadataObject obj = tableObjects.get(i);
+      extendedTables[i] =
+          new ExtendedTableDTO(
+              t,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    ExtendedFunctionDTO[] extendedFunctions = new ExtendedFunctionDTO[functionDTOs.length];
+    for (int i = 0; i < functionDTOs.length; i++) {
+      FunctionDTO f = functionDTOs[i];
+      MetadataObject obj = functionObjects.get(i);
+      extendedFunctions[i] =
+          new ExtendedFunctionDTO(
+              f,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    ExtendedViewDTO[] extendedViews = new ExtendedViewDTO[viewDTOs.length];
+    for (int i = 0; i < viewDTOs.length; i++) {
+      ViewDTO v = viewDTOs[i];
+      MetadataObject obj = viewObjects.get(i);
+      extendedViews[i] =
+          new ExtendedViewDTO(
+              v,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    // Only relational catalogs expose tables, and Iceberg is currently the only catalog that
+    // supports hierarchical schemas.
+    Map<String, Long> childSchemaCounts =
+        listSchemaDirectChildCounts(namespace, Catalog.Type.RELATIONAL, schemaDTOs);
+    ExtendedSchemaDTO[] extendedSchemas = new ExtendedSchemaDTO[schemaDTOs.length];
+    for (int i = 0; i < schemaDTOs.length; i++) {
+      SchemaDTO s = schemaDTOs[i];
+      MetadataObject obj = schemaObjects.get(i);
+      // A missing entry means this count failed; preserve null instead of reporting a false zero.
+      Long count = childSchemaCounts.get(s.name());
+      extendedSchemas[i] =
+          new ExtendedSchemaDTO(
+              s,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]),
+              count);
+    }
+
     Response response =
-        Utils.ok(new TableListResponse(tableDTOs, functionDTOs, viewDTOs, schemaDTOs));
+        Utils.ok(
+            new TableListResponse(
+                extendedTables, extendedFunctions, extendedViews, extendedSchemas));
     LOG.info(
         "List {} table entities and {} child schemas under namespace: {}",
-        tableDTOs.length,
-        schemaDTOs.length,
+        extendedTables.length,
+        extendedSchemas.length,
         namespace);
     return response;
   }
 
   private Response listTopics(Namespace namespace, int resultLimit) {
+    String metalake = namespace.level(0);
+    String catalogName = namespace.level(1);
+    String schemaName = namespace.level(2);
+    Map<MetadataObject, Optional<Long>> knownEntityIds = new LinkedHashMap<>();
+
     NameIdentifier[] topicIdents = listVisibleTopicIdentifiers(namespace);
     List<TopicEntity> topicEntities;
     try {
@@ -410,76 +579,244 @@ public class EntityOperations {
                 })
             .toArray(TopicDTO[]::new);
 
-    Response response =
-        Utils.ok(new TopicListResponse(topicDTOs, listFunctionDTOs(namespace, resultLimit)));
-    LOG.info("List {} topic entities under namespace: {}", topicDTOs.length, namespace);
+    List<MetadataObject> functionObjects = new ArrayList<>();
+    FunctionDTO[] functionDTOs =
+        listFunctionDTOs(namespace, resultLimit, knownEntityIds, functionObjects);
+
+    List<MetadataObject> topicObjects = new ArrayList<>();
+    Arrays.stream(topicDTOs)
+        .forEach(
+            t -> {
+              MetadataObject object =
+                  MetadataObjects.of(
+                      List.of(catalogName, schemaName, t.name()), MetadataObject.Type.TOPIC);
+              topicObjects.add(object);
+              knownEntityIds.put(
+                  object,
+                  Optional.ofNullable(nameToTopicEntity.get(t.name())).map(TopicEntity::id));
+            });
+    List<MetadataObject> objectsToFetch = new ArrayList<>();
+    objectsToFetch.addAll(topicObjects);
+    objectsToFetch.addAll(functionObjects);
+
+    TagPolicyEnrichmentHelper.Result tagPolicies =
+        getVisibleTagPoliciesWithInheritance(metalake, objectsToFetch, knownEntityIds);
+    Map<MetadataObject, TagDTO[]> tagsMap = tagPolicies.tags();
+    Map<MetadataObject, PolicyDTO[]> policiesMap = tagPolicies.policies();
+
+    ExtendedTopicDTO[] extendedTopics = new ExtendedTopicDTO[topicDTOs.length];
+    for (int i = 0; i < topicDTOs.length; i++) {
+      TopicDTO t = topicDTOs[i];
+      MetadataObject obj = topicObjects.get(i);
+      extendedTopics[i] =
+          new ExtendedTopicDTO(
+              t,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    ExtendedFunctionDTO[] extendedFunctions = new ExtendedFunctionDTO[functionDTOs.length];
+    for (int i = 0; i < functionDTOs.length; i++) {
+      FunctionDTO f = functionDTOs[i];
+      MetadataObject obj = functionObjects.get(i);
+      extendedFunctions[i] =
+          new ExtendedFunctionDTO(
+              f,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    Response response = Utils.ok(new TopicListResponse(extendedTopics, extendedFunctions));
+    LOG.info("List {} topic entities under namespace: {}", extendedTopics.length, namespace);
     return response;
   }
 
   private Response listFilesets(Namespace namespace, int resultLimit) {
-    // since fileset is managed by Gravitino, we can directly list them from store
+    String metalake = namespace.level(0);
+    String catalogName = namespace.level(1);
+    String schemaName = namespace.level(2);
+    Map<MetadataObject, Optional<Long>> knownEntityIds = new LinkedHashMap<>();
+
     List<FilesetEntity> filesetEntities = listVisibleFilesetEntities(namespace);
+    List<MetadataObject> filesetObjects = new ArrayList<>();
     FilesetDTO[] filesetDTOs =
         filesetEntities.stream()
             .sorted(Comparator.comparing(FilesetEntity::name))
             .limit(resultLimit)
             .map(
-                e ->
-                    FilesetDTO.builder()
-                        .name(e.name())
-                        .comment(e.comment())
-                        .type(e.filesetType())
-                        .storageLocations(e.storageLocations())
-                        .properties(e.properties())
-                        .audit(toDTO(e.auditInfo()))
-                        .build())
+                e -> {
+                  MetadataObject object =
+                      MetadataObjects.of(
+                          List.of(catalogName, schemaName, e.name()), MetadataObject.Type.FILESET);
+                  filesetObjects.add(object);
+                  knownEntityIds.put(object, Optional.of(e.id()));
+                  return FilesetDTO.builder()
+                      .name(e.name())
+                      .comment(e.comment())
+                      .type(e.filesetType())
+                      .storageLocations(e.storageLocations())
+                      .properties(e.properties())
+                      .audit(toDTO(e.auditInfo()))
+                      .build();
+                })
             .toArray(FilesetDTO[]::new);
 
-    Response response =
-        Utils.ok(new FilesetListResponse(filesetDTOs, listFunctionDTOs(namespace, resultLimit)));
-    LOG.info("List {} fileset entities under namespace: {}", filesetDTOs.length, namespace);
+    List<MetadataObject> functionObjects = new ArrayList<>();
+    FunctionDTO[] functionDTOs =
+        listFunctionDTOs(namespace, resultLimit, knownEntityIds, functionObjects);
+
+    List<MetadataObject> objectsToFetch = new ArrayList<>();
+    objectsToFetch.addAll(filesetObjects);
+    objectsToFetch.addAll(functionObjects);
+
+    TagPolicyEnrichmentHelper.Result tagPolicies =
+        getVisibleTagPoliciesWithInheritance(metalake, objectsToFetch, knownEntityIds);
+    Map<MetadataObject, TagDTO[]> tagsMap = tagPolicies.tags();
+    Map<MetadataObject, PolicyDTO[]> policiesMap = tagPolicies.policies();
+
+    ExtendedFilesetDTO[] extendedFilesets = new ExtendedFilesetDTO[filesetDTOs.length];
+    for (int i = 0; i < filesetDTOs.length; i++) {
+      FilesetDTO f = filesetDTOs[i];
+      MetadataObject obj = filesetObjects.get(i);
+      extendedFilesets[i] =
+          new ExtendedFilesetDTO(
+              f,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    ExtendedFunctionDTO[] extendedFunctions = new ExtendedFunctionDTO[functionDTOs.length];
+    for (int i = 0; i < functionDTOs.length; i++) {
+      FunctionDTO f = functionDTOs[i];
+      MetadataObject obj = functionObjects.get(i);
+      extendedFunctions[i] =
+          new ExtendedFunctionDTO(
+              f,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    Response response = Utils.ok(new FilesetListResponse(extendedFilesets, extendedFunctions));
+    LOG.info("List {} fileset entities under namespace: {}", extendedFilesets.length, namespace);
     return response;
   }
 
   private Response listModels(Namespace namespace, int resultLimit) {
-    // since model is managed by Gravitino, we can directly list them from store
+    String metalake = namespace.level(0);
+    String catalogName = namespace.level(1);
+    String schemaName = namespace.level(2);
+    Map<MetadataObject, Optional<Long>> knownEntityIds = new LinkedHashMap<>();
+
     List<ModelEntity> modelEntities = listVisibleModelEntities(namespace);
+    List<MetadataObject> modelObjects = new ArrayList<>();
     ModelDTO[] modelDTOs =
         modelEntities.stream()
             .sorted(Comparator.comparing(ModelEntity::name))
             .limit(resultLimit)
             .map(
-                e ->
-                    ModelDTO.builder()
-                        .withName(e.name())
-                        .withComment(e.comment())
-                        .withLatestVersion(e.latestVersion())
-                        .withProperties(e.properties())
-                        .withAudit(toDTO(e.auditInfo()))
-                        .build())
+                e -> {
+                  MetadataObject object =
+                      MetadataObjects.of(
+                          List.of(catalogName, schemaName, e.name()), MetadataObject.Type.MODEL);
+                  modelObjects.add(object);
+                  knownEntityIds.put(object, Optional.of(e.id()));
+                  return ModelDTO.builder()
+                      .withName(e.name())
+                      .withComment(e.comment())
+                      .withLatestVersion(e.latestVersion())
+                      .withProperties(e.properties())
+                      .withAudit(toDTO(e.auditInfo()))
+                      .build();
+                })
             .toArray(ModelDTO[]::new);
 
-    Response response =
-        Utils.ok(new ModelListResponse(modelDTOs, listFunctionDTOs(namespace, resultLimit)));
-    LOG.info("List {} model entities under namespace: {}", modelDTOs.length, namespace);
+    List<MetadataObject> functionObjects = new ArrayList<>();
+    FunctionDTO[] functionDTOs =
+        listFunctionDTOs(namespace, resultLimit, knownEntityIds, functionObjects);
+
+    List<MetadataObject> objectsToFetch = new ArrayList<>();
+    objectsToFetch.addAll(modelObjects);
+    objectsToFetch.addAll(functionObjects);
+
+    TagPolicyEnrichmentHelper.Result tagPolicies =
+        getVisibleTagPoliciesWithInheritance(metalake, objectsToFetch, knownEntityIds);
+    Map<MetadataObject, TagDTO[]> tagsMap = tagPolicies.tags();
+    Map<MetadataObject, PolicyDTO[]> policiesMap = tagPolicies.policies();
+
+    ExtendedModelDTO[] extendedModels = new ExtendedModelDTO[modelDTOs.length];
+    for (int i = 0; i < modelDTOs.length; i++) {
+      ModelDTO m = modelDTOs[i];
+      MetadataObject obj = modelObjects.get(i);
+      extendedModels[i] =
+          new ExtendedModelDTO(
+              m,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    ExtendedFunctionDTO[] extendedFunctions = new ExtendedFunctionDTO[functionDTOs.length];
+    for (int i = 0; i < functionDTOs.length; i++) {
+      FunctionDTO f = functionDTOs[i];
+      MetadataObject obj = functionObjects.get(i);
+      extendedFunctions[i] =
+          new ExtendedFunctionDTO(
+              f,
+              tagsMap.getOrDefault(obj, new TagDTO[0]),
+              policiesMap.getOrDefault(obj, new PolicyDTO[0]));
+    }
+
+    Response response = Utils.ok(new ModelListResponse(extendedModels, extendedFunctions));
+    LOG.info("List {} model entities under namespace: {}", extendedModels.length, namespace);
     return response;
   }
 
-  private FunctionDTO[] listFunctionDTOs(Namespace namespace, int resultLimit) {
+  private TagPolicyEnrichmentHelper.Result getVisibleTagPoliciesWithInheritance(
+      String metalake,
+      List<MetadataObject> objects,
+      Map<MetadataObject, Optional<Long>> knownEntityIds) {
+    return TagPolicyEnrichmentHelper.getVisibleTagPoliciesWithInheritance(
+        metalake,
+        objects,
+        knownEntityIds,
+        tags -> filterTagsByAuth(metalake, tags),
+        policies -> filterPoliciesByAuth(metalake, policies));
+  }
+
+  private FunctionDTO[] listFunctionDTOs(
+      Namespace namespace,
+      int resultLimit,
+      Map<MetadataObject, Optional<Long>> knownEntityIds,
+      List<MetadataObject> functionObjects) {
     try {
       org.apache.gravitino.function.Function[] functions = listVisibleFunctions(namespace);
       return Arrays.stream(functions)
           .sorted(Comparator.comparing(org.apache.gravitino.function.Function::name))
           .limit(resultLimit)
-          .map(DTOConverters::toDTO)
+          .map(
+              function -> {
+                MetadataObject object =
+                    MetadataObjects.of(
+                        List.of(namespace.level(1), namespace.level(2), function.name()),
+                        MetadataObject.Type.FUNCTION);
+                functionObjects.add(object);
+                if (function instanceof HasIdentifier entity) {
+                  knownEntityIds.put(object, Optional.of(entity.id()));
+                }
+                return DTOConverters.toDTO(function);
+              })
           .toArray(FunctionDTO[]::new);
     } catch (Exception e) {
+      functionObjects.clear();
       LOG.warn("Failed to list functions under namespace: {}", namespace, e);
       return new FunctionDTO[0];
     }
   }
 
-  private ViewDTO[] listViewDTOs(Namespace namespace, int resultLimit) {
+  private ViewDTO[] listViewDTOs(
+      Namespace namespace,
+      int resultLimit,
+      Map<MetadataObject, Optional<Long>> knownEntityIds,
+      List<MetadataObject> viewObjects) {
     try {
       NameIdentifier[] viewIdents = listVisibleViewIdentifiers(namespace);
       List<ViewEntity> viewEntities;
@@ -498,6 +835,15 @@ public class EntityOperations {
           .limit(resultLimit)
           .map(
               viewIdent -> {
+                MetadataObject object =
+                    MetadataObjects.of(
+                        List.of(namespace.level(1), namespace.level(2), viewIdent.name()),
+                        MetadataObject.Type.VIEW);
+                viewObjects.add(object);
+                knownEntityIds.put(
+                    object,
+                    Optional.ofNullable(nameToViewEntity.get(viewIdent.name()))
+                        .map(ViewEntity::id));
                 ViewDTO.Builder builder =
                     ViewDTO.builder()
                         .withName(viewIdent.name())
@@ -509,6 +855,7 @@ public class EntityOperations {
               })
           .toArray(ViewDTO[]::new);
     } catch (Exception e) {
+      viewObjects.clear();
       LOG.warn("Failed to list views under namespace: {}", namespace, e);
       return new ViewDTO[0];
     }
@@ -705,6 +1052,30 @@ public class EntityOperations {
             model ->
                 NameIdentifierUtil.ofModel(
                     namespace.level(0), namespace.level(1), namespace.level(2), model.name())));
+  }
+
+  private TagEntity[] filterTagsByAuth(String metalake, TagEntity[] tags) {
+    if (tags.length == 0) {
+      return tags;
+    }
+    return filterByExpression(
+        metalake,
+        AuthorizationExpressionConstants.LOAD_TAG_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.TAG,
+        tags,
+        tag -> NameIdentifierUtil.ofTag(metalake, tag.name()));
+  }
+
+  private PolicyEntity[] filterPoliciesByAuth(String metalake, PolicyEntity[] policies) {
+    if (policies.length == 0) {
+      return policies;
+    }
+    return filterByExpression(
+        metalake,
+        AuthorizationExpressionConstants.LOAD_POLICY_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.POLICY,
+        policies,
+        policy -> NameIdentifierUtil.ofPolicy(metalake, policy.name()));
   }
 
   private NameIdentifier[] filterByNameIdentifier(

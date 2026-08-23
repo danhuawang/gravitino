@@ -4,59 +4,38 @@
  */
 package com.datastrato.gravitino.dto.responses;
 
+import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
-import java.util.Map;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
-/** Represents a response for a list of schemas with their information. */
+/** Represents a response for a list of extended schemas. */
 @Getter
 @ToString
 @EqualsAndHashCode(callSuper = true)
 public class SchemaListResponse extends BaseResponse {
 
   @JsonProperty("schemas")
-  private final SchemaDTO[] schemas;
-
-  @JsonProperty("directChildCounts")
-  private final Map<String, Long> directChildCounts;
+  private final ExtendedSchemaDTO[] schemas;
 
   /**
    * Creates a new SchemaListResponse.
    *
-   * @param schemas The list of schemas.
-   * @param directChildCounts The visible direct entity count keyed by schema name.
+   * @param schemas The list of extended schemas.
    */
-  public SchemaListResponse(SchemaDTO[] schemas, Map<String, Long> directChildCounts) {
+  public SchemaListResponse(ExtendedSchemaDTO[] schemas) {
     super(0);
     this.schemas = schemas;
-    this.directChildCounts = ImmutableMap.copyOf(directChildCounts);
   }
 
-  /**
-   * Creates a new SchemaListResponse.
-   *
-   * @param schemas The list of schemas.
-   */
-  public SchemaListResponse(SchemaDTO[] schemas) {
-    this(schemas, ImmutableMap.of());
-  }
-
-  /**
-   * This is the constructor that is used by Jackson deserializer to create an instance of
-   * SchemaListResponse.
-   */
+  /** Default constructor for Jackson deserialization. */
   public SchemaListResponse() {
     super();
     this.schemas = null;
-    this.directChildCounts = null;
   }
 
   @Override
@@ -65,14 +44,10 @@ public class SchemaListResponse extends BaseResponse {
 
     Preconditions.checkArgument(schemas != null, "\"schemas\" cannot be null");
     Arrays.stream(schemas)
-        .forEach(schema -> Preconditions.checkArgument(schema != null, "schema cannot be null"));
-    Preconditions.checkArgument(directChildCounts != null, "\"directChildCounts\" cannot be null");
-    directChildCounts.forEach(
-        (name, count) -> {
-          Preconditions.checkArgument(
-              StringUtils.isNotBlank(name), "direct child count name cannot be blank");
-          Preconditions.checkArgument(count != null, "direct child count cannot be null");
-          Preconditions.checkArgument(count >= 0, "direct child count cannot be negative");
-        });
+        .forEach(
+            schema -> {
+              Preconditions.checkArgument(schema != null, "schema cannot be null");
+              schema.validate();
+            });
   }
 }

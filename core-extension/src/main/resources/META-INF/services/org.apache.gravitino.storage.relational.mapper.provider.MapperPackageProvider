@@ -4,3 +4,4 @@
 #
 com.datastrato.gravitino.authorization.mapper.provider.DatastratoAuthorizationMapperPackageProvider
 com.datastrato.gravitino.policy.mapper.provider.DatastratoPolicyMapperPackageProvider
+com.datastrato.gravitino.tag.mapper.provider.DatastratoTagPolicyMapperPackageProvider

@@ -4,34 +4,34 @@
  */
 package com.datastrato.gravitino.dto.responses;
 
+import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
+import com.datastrato.gravitino.dto.messaging.ExtendedTopicDTO;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import org.apache.gravitino.dto.function.FunctionDTO;
-import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
-/** Represents a response for a list of topics with their information. */
+/** Represents a response for a list of extended topics with their information. */
 @Getter
 @ToString
 @EqualsAndHashCode(callSuper = true)
 public class TopicListResponse extends BaseResponse {
   @JsonProperty("topics")
-  private final TopicDTO[] topics;
+  private final ExtendedTopicDTO[] topics;
 
   @JsonProperty("functions")
-  private final FunctionDTO[] functions;
+  private final ExtendedFunctionDTO[] functions;
 
   /**
    * Creates a new TopicListResponse.
    *
-   * @param topics The list of topics.
-   * @param functions The list of functions.
+   * @param topics The list of extended topics.
+   * @param functions The list of extended functions.
    */
-  public TopicListResponse(TopicDTO[] topics, FunctionDTO[] functions) {
+  public TopicListResponse(ExtendedTopicDTO[] topics, ExtendedFunctionDTO[] functions) {
     super(0);
     this.topics = topics;
     this.functions = functions;
@@ -40,16 +40,13 @@ public class TopicListResponse extends BaseResponse {
   /**
    * Creates a new TopicListResponse.
    *
-   * @param topics The list of topics.
+   * @param topics The list of extended topics.
    */
-  public TopicListResponse(TopicDTO[] topics) {
-    this(topics, new FunctionDTO[0]);
+  public TopicListResponse(ExtendedTopicDTO[] topics) {
+    this(topics, new ExtendedFunctionDTO[0]);
   }
 
-  /**
-   * This is the constructor that is used by Jackson deserializer to create an instance of
-   * TopicListResponse.
-   */
+  /** Default constructor for Jackson deserialization. */
   public TopicListResponse() {
     super();
     this.topics = null;

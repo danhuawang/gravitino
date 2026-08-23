@@ -13,15 +13,19 @@ dependencies {
   implementation(project(":api"))
   implementation(project(":core"))
   implementation(project(":common"))
+  implementation(project(":common-extension"))
 
   implementation(libs.bundles.log4j)
   implementation(libs.commons.codec)
   implementation(libs.commons.dbcp2)
   implementation(libs.commons.lang3)
   implementation(libs.guava)
+  implementation(libs.jackson.annotations)
   implementation(libs.mybatis)
   implementation(libs.trino.jdbc)
 
+  annotationProcessor(libs.lombok)
+  compileOnly(libs.lombok)
   compileOnly(project(":plugins:idp-basic"))
   compileOnly(project(":plugins:scim"))
 

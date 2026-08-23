@@ -45,6 +45,7 @@ dependencies {
   }
   testImplementation(libs.mockito.core)
   testImplementation(libs.mockito.inline)
+  testImplementation(libs.mybatis)
   testImplementation(libs.junit.jupiter.api)
 
   testRuntimeOnly(libs.junit.jupiter.engine)

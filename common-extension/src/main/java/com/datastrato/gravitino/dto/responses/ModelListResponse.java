@@ -4,35 +4,35 @@
  */
 package com.datastrato.gravitino.dto.responses;
 
+import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
+import com.datastrato.gravitino.dto.model.ExtendedModelDTO;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import org.apache.gravitino.dto.function.FunctionDTO;
-import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
-/** Represents a response for a list of models with their information. */
+/** Represents a response for a list of extended models with their information. */
 @Getter
 @ToString
 @EqualsAndHashCode(callSuper = true)
 public class ModelListResponse extends BaseResponse {
 
   @JsonProperty("models")
-  private final ModelDTO[] models;
+  private final ExtendedModelDTO[] models;
 
   @JsonProperty("functions")
-  private final FunctionDTO[] functions;
+  private final ExtendedFunctionDTO[] functions;
 
   /**
    * Creates a new ModelListResponse.
    *
-   * @param models The list of models.
-   * @param functions The list of functions.
+   * @param models The list of extended models.
+   * @param functions The list of extended functions.
    */
-  public ModelListResponse(ModelDTO[] models, FunctionDTO[] functions) {
+  public ModelListResponse(ExtendedModelDTO[] models, ExtendedFunctionDTO[] functions) {
     super(0);
     this.models = models;
     this.functions = functions;
@@ -41,16 +41,13 @@ public class ModelListResponse extends BaseResponse {
   /**
    * Creates a new ModelListResponse.
    *
-   * @param models The list of models.
+   * @param models The list of extended models.
    */
-  public ModelListResponse(ModelDTO[] models) {
-    this(models, new FunctionDTO[0]);
+  public ModelListResponse(ExtendedModelDTO[] models) {
+    this(models, new ExtendedFunctionDTO[0]);
   }
 
-  /**
-   * This is the constructor that is used by Jackson deserializer to create an instance of
-   * ModelListResponse.
-   */
+  /** Default constructor for Jackson deserialization. */
   public ModelListResponse() {
     this.models = null;
     this.functions = null;

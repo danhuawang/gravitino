@@ -4,35 +4,35 @@
  */
 package com.datastrato.gravitino.dto.responses;
 
+import com.datastrato.gravitino.dto.file.ExtendedFilesetDTO;
+import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import org.apache.gravitino.dto.file.FilesetDTO;
-import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
-/** Represents a response for a list of filesets with their information. */
+/** Represents a response for a list of extended filesets with their information. */
 @Getter
 @ToString
 @EqualsAndHashCode(callSuper = true)
 public class FilesetListResponse extends BaseResponse {
 
   @JsonProperty("filesets")
-  private final FilesetDTO[] filesets;
+  private final ExtendedFilesetDTO[] filesets;
 
   @JsonProperty("functions")
-  private final FunctionDTO[] functions;
+  private final ExtendedFunctionDTO[] functions;
 
   /**
    * Creates a new FilesetListResponse.
    *
-   * @param filesets The list of filesets.
-   * @param functions The list of functions.
+   * @param filesets The list of extended filesets.
+   * @param functions The list of extended functions.
    */
-  public FilesetListResponse(FilesetDTO[] filesets, FunctionDTO[] functions) {
+  public FilesetListResponse(ExtendedFilesetDTO[] filesets, ExtendedFunctionDTO[] functions) {
     super(0);
     this.filesets = filesets;
     this.functions = functions;
@@ -41,16 +41,13 @@ public class FilesetListResponse extends BaseResponse {
   /**
    * Creates a new FilesetListResponse.
    *
-   * @param filesets The list of filesets.
+   * @param filesets The list of extended filesets.
    */
-  public FilesetListResponse(FilesetDTO[] filesets) {
-    this(filesets, new FunctionDTO[0]);
+  public FilesetListResponse(ExtendedFilesetDTO[] filesets) {
+    this(filesets, new ExtendedFunctionDTO[0]);
   }
 
-  /**
-   * This is the constructor that is used by Jackson deserializer to create an instance of
-   * FilesetListResponse.
-   */
+  /** Default constructor for Jackson deserialization. */
   public FilesetListResponse() {
     super();
     this.filesets = null;

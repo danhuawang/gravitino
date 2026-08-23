@@ -4,46 +4,49 @@
  */
 package com.datastrato.gravitino.dto.responses;
 
+import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
+import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
+import com.datastrato.gravitino.dto.rel.ExtendedTableDTO;
+import com.datastrato.gravitino.dto.rel.ExtendedViewDTO;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.Arrays;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import org.apache.gravitino.dto.SchemaDTO;
-import org.apache.gravitino.dto.function.FunctionDTO;
-import org.apache.gravitino.dto.rel.TableDTO;
-import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
-/** Represents a response for a list of tables with their information. */
+/** Represents a response for a list of extended tables with their information. */
 @Getter
 @ToString
 @EqualsAndHashCode(callSuper = true)
 public class TableListResponse extends BaseResponse {
 
   @JsonProperty("tables")
-  private final TableDTO[] tables;
+  private final ExtendedTableDTO[] tables;
 
   @JsonProperty("functions")
-  private final FunctionDTO[] functions;
+  private final ExtendedFunctionDTO[] functions;
 
   @JsonProperty("views")
-  private final ViewDTO[] views;
+  private final ExtendedViewDTO[] views;
 
   @JsonProperty("schemas")
-  private final SchemaDTO[] schemas;
+  private final ExtendedSchemaDTO[] schemas;
 
   /**
    * Create a new TableListResponse.
    *
-   * @param tables The list of tables.
-   * @param functions The list of functions.
-   * @param views The list of views.
-   * @param schemas The list of child schemas for hierarchical schema support.
+   * @param tables The list of extended tables.
+   * @param functions The list of extended functions.
+   * @param views The list of extended views.
+   * @param schemas The list of extended child schemas for hierarchical schema support.
    */
   public TableListResponse(
-      TableDTO[] tables, FunctionDTO[] functions, ViewDTO[] views, SchemaDTO[] schemas) {
+      ExtendedTableDTO[] tables,
+      ExtendedFunctionDTO[] functions,
+      ExtendedViewDTO[] views,
+      ExtendedSchemaDTO[] schemas) {
     super(0);
     this.tables = tables;
     this.functions = functions;
@@ -54,37 +57,35 @@ public class TableListResponse extends BaseResponse {
   /**
    * Create a new TableListResponse.
    *
-   * @param tables The list of tables.
-   * @param functions The list of functions.
-   * @param views The list of views.
+   * @param tables The list of extended tables.
+   * @param functions The list of extended functions.
+   * @param views The list of extended views.
    */
-  public TableListResponse(TableDTO[] tables, FunctionDTO[] functions, ViewDTO[] views) {
-    this(tables, functions, views, new SchemaDTO[0]);
+  public TableListResponse(
+      ExtendedTableDTO[] tables, ExtendedFunctionDTO[] functions, ExtendedViewDTO[] views) {
+    this(tables, functions, views, new ExtendedSchemaDTO[0]);
   }
 
   /**
    * Create a new TableListResponse.
    *
-   * @param tables The list of tables.
-   * @param functions The list of functions.
+   * @param tables The list of extended tables.
+   * @param functions The list of extended functions.
    */
-  public TableListResponse(TableDTO[] tables, FunctionDTO[] functions) {
-    this(tables, functions, new ViewDTO[0]);
+  public TableListResponse(ExtendedTableDTO[] tables, ExtendedFunctionDTO[] functions) {
+    this(tables, functions, new ExtendedViewDTO[0]);
   }
 
   /**
    * Create a new TableListResponse.
    *
-   * @param tables The list of tables.
+   * @param tables The list of extended tables.
    */
-  public TableListResponse(TableDTO[] tables) {
-    this(tables, new FunctionDTO[0], new ViewDTO[0]);
+  public TableListResponse(ExtendedTableDTO[] tables) {
+    this(tables, new ExtendedFunctionDTO[0], new ExtendedViewDTO[0]);
   }
 
-  /**
-   * This is the constructor that is used by Jackson deserializer to create an instance of
-   * TableListResponse.
-   */
+  /** Default constructor for Jackson deserialization. */
   public TableListResponse() {
     super();
     this.tables = null;

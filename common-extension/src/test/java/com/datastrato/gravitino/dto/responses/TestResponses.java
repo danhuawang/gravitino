@@ -7,7 +7,15 @@ package com.datastrato.gravitino.dto.responses;
 import static org.apache.gravitino.file.Fileset.Type.EXTERNAL;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
+import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
+import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
+import com.datastrato.gravitino.dto.file.ExtendedFilesetDTO;
+import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
+import com.datastrato.gravitino.dto.messaging.ExtendedTopicDTO;
+import com.datastrato.gravitino.dto.model.ExtendedModelDTO;
 import com.datastrato.gravitino.dto.policy.ExtendedPolicyDTO;
+import com.datastrato.gravitino.dto.rel.ExtendedTableDTO;
+import com.datastrato.gravitino.dto.rel.ExtendedViewDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -20,6 +28,7 @@ import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
+import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.policy.PolicyContentDTO;
 import org.apache.gravitino.dto.policy.PolicyDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
@@ -27,6 +36,7 @@ import org.apache.gravitino.dto.rel.RepresentationDTO;
 import org.apache.gravitino.dto.rel.SQLRepresentationDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.rel.ViewDTO;
+import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.json.JsonUtils;
@@ -46,9 +56,13 @@ public class TestResponses {
             .withProvider("provider")
             .withAudit(AuditDTO.builder().build())
             .build();
-    CatalogDTO[] catalogs = new CatalogDTO[] {catalog};
-    Map<String, Long> directChildCounts = ImmutableMap.of("catalog1", 2L);
-    CatalogListResponse response = new CatalogListResponse(catalogs, directChildCounts);
+    ExtendedCatalogDTO extendedCatalog =
+        new ExtendedCatalogDTO(catalog, new TagDTO[0], new PolicyDTO[0], 2L);
+    ExtendedCatalogDTO extendedCatalogWithUnavailableCount =
+        new ExtendedCatalogDTO(catalog, new TagDTO[0], new PolicyDTO[0], null);
+    ExtendedCatalogDTO[] catalogs =
+        new ExtendedCatalogDTO[] {extendedCatalog, extendedCatalogWithUnavailableCount};
+    CatalogListResponse response = new CatalogListResponse(catalogs);
     Assertions.assertDoesNotThrow(response::validate);
 
     String serJson = JsonUtils.objectMapper().writeValueAsString(response);
@@ -56,7 +70,7 @@ public class TestResponses {
         JsonUtils.objectMapper().readValue(serJson, CatalogListResponse.class);
     Assertions.assertEquals(response, deserialized);
     Assertions.assertArrayEquals(catalogs, deserialized.getCatalogs());
-    Assertions.assertEquals(directChildCounts, deserialized.getDirectChildCounts());
+    Assertions.assertNull(deserialized.getCatalogs()[1].getDirectChildCounts());
 
     CatalogListResponse illegalResp = new CatalogListResponse();
     Exception exception =
@@ -74,9 +88,12 @@ public class TestResponses {
             .build();
     SchemaDTO schema2 =
         SchemaDTO.builder().withName("schema2").withAudit(AuditDTO.builder().build()).build();
-    SchemaDTO[] schemas = new SchemaDTO[] {schema1, schema2};
-    Map<String, Long> directChildCounts = ImmutableMap.of("schema1", 3L, "schema2", 0L);
-    SchemaListResponse response = new SchemaListResponse(schemas, directChildCounts);
+    ExtendedSchemaDTO extendedSchema1 =
+        new ExtendedSchemaDTO(schema1, new TagDTO[0], new PolicyDTO[0], 3L);
+    ExtendedSchemaDTO extendedSchema2 =
+        new ExtendedSchemaDTO(schema2, new TagDTO[0], new PolicyDTO[0], null);
+    ExtendedSchemaDTO[] schemas = new ExtendedSchemaDTO[] {extendedSchema1, extendedSchema2};
+    SchemaListResponse response = new SchemaListResponse(schemas);
     Assertions.assertDoesNotThrow(response::validate);
 
     String serJson = JsonUtils.objectMapper().writeValueAsString(response);
@@ -84,7 +101,7 @@ public class TestResponses {
         JsonUtils.objectMapper().readValue(serJson, SchemaListResponse.class);
     Assertions.assertEquals(response, deserialized);
     Assertions.assertArrayEquals(schemas, deserialized.getSchemas());
-    Assertions.assertEquals(directChildCounts, deserialized.getDirectChildCounts());
+    Assertions.assertNull(deserialized.getSchemas()[1].getDirectChildCounts());
 
     SchemaListResponse illegalResp = new SchemaListResponse();
     Exception exception =
@@ -109,9 +126,11 @@ public class TestResponses {
                 new ColumnDTO[] {DTOConverters.toDTO(Column.of("b", Types.IntegerType.get()))})
             .withAudit(AuditDTO.builder().build())
             .build();
-    TableDTO[] tables = new TableDTO[] {table1, table2};
-    FunctionDTO[] functions = buildFunctions();
-    ViewDTO[] views = buildViews();
+    ExtendedTableDTO extTable1 = new ExtendedTableDTO(table1, new TagDTO[0], new PolicyDTO[0]);
+    ExtendedTableDTO extTable2 = new ExtendedTableDTO(table2, new TagDTO[0], new PolicyDTO[0]);
+    ExtendedTableDTO[] tables = new ExtendedTableDTO[] {extTable1, extTable2};
+    ExtendedFunctionDTO[] functions = buildFunctions();
+    ExtendedViewDTO[] views = buildViews();
     TableListResponse response = new TableListResponse(tables, functions, views);
     Assertions.assertDoesNotThrow(response::validate);
 
@@ -146,7 +165,11 @@ public class TestResponses {
             .audit(AuditDTO.builder().build())
             .storageLocations(ImmutableMap.of("location", "location2"))
             .build();
-    FilesetDTO[] filesets = new FilesetDTO[] {fileset1, fileset2};
+    ExtendedFilesetDTO extFileset1 =
+        new ExtendedFilesetDTO(fileset1, new TagDTO[0], new PolicyDTO[0]);
+    ExtendedFilesetDTO extFileset2 =
+        new ExtendedFilesetDTO(fileset2, new TagDTO[0], new PolicyDTO[0]);
+    ExtendedFilesetDTO[] filesets = new ExtendedFilesetDTO[] {extFileset1, extFileset2};
     FilesetListResponse response = new FilesetListResponse(filesets);
     Assertions.assertDoesNotThrow(response::validate);
 
@@ -172,7 +195,9 @@ public class TestResponses {
             .build();
     TopicDTO topic2 =
         TopicDTO.builder().withName("topic2").withAudit(AuditDTO.builder().build()).build();
-    TopicDTO[] topics = new TopicDTO[] {topic1, topic2};
+    ExtendedTopicDTO extTopic1 = new ExtendedTopicDTO(topic1, new TagDTO[0], new PolicyDTO[0]);
+    ExtendedTopicDTO extTopic2 = new ExtendedTopicDTO(topic2, new TagDTO[0], new PolicyDTO[0]);
+    ExtendedTopicDTO[] topics = new ExtendedTopicDTO[] {extTopic1, extTopic2};
     TopicListResponse response = new TopicListResponse(topics);
     Assertions.assertDoesNotThrow(response::validate);
 
@@ -186,6 +211,26 @@ public class TestResponses {
     Exception exception =
         Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
     Assertions.assertEquals("\"topics\" cannot be null", exception.getMessage());
+  }
+
+  @Test
+  public void testModelListResponse() throws JsonProcessingException {
+    ModelDTO model1 =
+        ModelDTO.builder()
+            .withName("model1")
+            .withComment("comment1")
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    ExtendedModelDTO extModel1 = new ExtendedModelDTO(model1, new TagDTO[0], new PolicyDTO[0]);
+    ExtendedModelDTO[] models = new ExtendedModelDTO[] {extModel1};
+    ModelListResponse response = new ModelListResponse(models);
+    Assertions.assertDoesNotThrow(response::validate);
+
+    String serJson = JsonUtils.objectMapper().writeValueAsString(response);
+    ModelListResponse deserialized =
+        JsonUtils.objectMapper().readValue(serJson, ModelListResponse.class);
+    Assertions.assertEquals(response, deserialized);
+    Assertions.assertArrayEquals(models, deserialized.getModels());
   }
 
   @Test
@@ -209,31 +254,34 @@ public class TestResponses {
     Assertions.assertEquals("\"message\" can't be blank", exception.getMessage());
   }
 
-  private FunctionDTO[] buildFunctions() {
-    return new FunctionDTO[] {
-      FunctionDTO.builder()
-          .withName("test_function")
-          .withFunctionType(FunctionType.SCALAR)
-          .withDeterministic(true)
-          .withComment("test function")
-          .withAudit(AuditDTO.builder().build())
-          .build()
+  private ExtendedFunctionDTO[] buildFunctions() {
+    FunctionDTO function =
+        FunctionDTO.builder()
+            .withName("test_function")
+            .withFunctionType(FunctionType.SCALAR)
+            .withDeterministic(true)
+            .withComment("test function")
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    return new ExtendedFunctionDTO[] {
+      new ExtendedFunctionDTO(function, new TagDTO[0], new PolicyDTO[0])
     };
   }
 
-  private ViewDTO[] buildViews() {
-    return new ViewDTO[] {
-      ViewDTO.builder()
-          .withName("test_view")
-          .withComment("test view")
-          .withColumns(new ColumnDTO[] {DTOConverters.toDTO(Column.of("a", Types.ByteType.get()))})
-          .withRepresentations(
-              new RepresentationDTO[] {
-                SQLRepresentationDTO.builder().withDialect("spark").withSql("SELECT 1").build()
-              })
-          .withAudit(AuditDTO.builder().build())
-          .build()
-    };
+  private ExtendedViewDTO[] buildViews() {
+    ViewDTO view =
+        ViewDTO.builder()
+            .withName("test_view")
+            .withComment("test view")
+            .withColumns(
+                new ColumnDTO[] {DTOConverters.toDTO(Column.of("a", Types.ByteType.get()))})
+            .withRepresentations(
+                new RepresentationDTO[] {
+                  SQLRepresentationDTO.builder().withDialect("spark").withSql("SELECT 1").build()
+                })
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    return new ExtendedViewDTO[] {new ExtendedViewDTO(view, new TagDTO[0], new PolicyDTO[0])};
   }
 
   @Test

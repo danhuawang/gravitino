@@ -7,12 +7,14 @@ package com.datastrato.gravitino.server.web.rest;
 import static org.apache.gravitino.Configs.CACHE_ENABLED;
 import static org.apache.gravitino.Configs.ENABLE_AUTHORIZATION;
 import static org.apache.gravitino.Configs.GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE;
+import static org.apache.gravitino.Configs.SCHEMA_SEPARATOR;
 import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.apache.gravitino.file.Fileset.LOCATION_NAME_UNKNOWN;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -27,12 +29,23 @@ import com.datastrato.gravitino.catalog.DatastratoSchemaOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
+import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
+import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
+import com.datastrato.gravitino.dto.file.ExtendedFilesetDTO;
+import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
+import com.datastrato.gravitino.dto.messaging.ExtendedTopicDTO;
+import com.datastrato.gravitino.dto.model.ExtendedModelDTO;
+import com.datastrato.gravitino.dto.rel.ExtendedTableDTO;
+import com.datastrato.gravitino.dto.rel.ExtendedViewDTO;
 import com.datastrato.gravitino.dto.responses.CatalogListResponse;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
 import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
 import com.datastrato.gravitino.dto.responses.TopicListResponse;
+import com.datastrato.gravitino.tag.mapper.DatastratoTagPolicyMetadataObjectMapper;
+import com.datastrato.gravitino.tag.po.DatastratoPolicyRelPO;
+import com.datastrato.gravitino.tag.po.DatastratoTagRelPO;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
@@ -40,8 +53,11 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.Application;
@@ -50,6 +66,8 @@ import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Entity;
+import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
@@ -66,19 +84,21 @@ import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
-import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
+import org.apache.gravitino.dto.policy.PolicyDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
+import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.function.Function;
 import org.apache.gravitino.function.FunctionType;
+import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.CatalogEntity;
@@ -89,6 +109,9 @@ import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.ViewEntity;
+import org.apache.gravitino.policy.Policy;
+import org.apache.gravitino.policy.PolicyContents;
+import org.apache.gravitino.policy.PolicyDispatcher;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Representation;
 import org.apache.gravitino.rel.SQLRepresentation;
@@ -96,11 +119,17 @@ import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.GravitinoAuthorizerProvider;
 import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
+import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
+import org.apache.gravitino.tag.TagDispatcher;
 import org.apache.gravitino.utils.PrincipalUtils;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.session.TransactionIsolationLevel;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -108,6 +137,12 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 public class TestEntityOperations extends JerseyTest {
+
+  private static EntityStore previousEntityStore;
+  private static SqlSessionFactory previousSqlSessionFactory;
+  private static EntityStore entityStore;
+  private static DatastratoTagPolicyMetadataObjectMapper tagPolicyMapper;
+
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
     @Override
     public HttpServletRequest get() {
@@ -145,6 +180,8 @@ public class TestEntityOperations extends JerseyTest {
   private final DatastratoModelDispatcher modelDispatcher = mock(DatastratoModelDispatcher.class);
   private final FunctionDispatcher functionDispatcher = mock(FunctionDispatcher.class);
   private final DatastratoViewDispatcher viewDispatcher = mock(DatastratoViewDispatcher.class);
+  private final TagDispatcher tagDispatcher = mock(TagDispatcher.class);
+  private final PolicyDispatcher policyDispatcher = mock(PolicyDispatcher.class);
 
   @BeforeAll
   public static void setup() throws IllegalAccessException {
@@ -153,6 +190,33 @@ public class TestEntityOperations extends JerseyTest {
     Mockito.doReturn(1000L).when(config).get(TREE_LOCK_MIN_NODE_IN_MEMORY);
     Mockito.doReturn(36000L).when(config).get(TREE_LOCK_CLEAN_INTERVAL);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
+
+    previousEntityStore =
+        (EntityStore) FieldUtils.readField(GravitinoEnv.getInstance(), "entityStore", true);
+    entityStore = mock(EntityStore.class);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "entityStore", entityStore, true);
+
+    previousSqlSessionFactory =
+        (SqlSessionFactory)
+            FieldUtils.readStaticField(SqlSessionFactoryHelper.class, "sqlSessionFactory", true);
+    SqlSessionFactory mockSqlSessionFactory = mock(SqlSessionFactory.class);
+    SqlSession mockSqlSession = mock(SqlSession.class);
+    when(mockSqlSessionFactory.openSession(any(TransactionIsolationLevel.class)))
+        .thenReturn(mockSqlSession);
+    when(mockSqlSessionFactory.openSession(anyBoolean())).thenReturn(mockSqlSession);
+    when(mockSqlSessionFactory.openSession()).thenReturn(mockSqlSession);
+    tagPolicyMapper = mock(DatastratoTagPolicyMetadataObjectMapper.class);
+    when(mockSqlSession.getMapper(DatastratoTagPolicyMetadataObjectMapper.class))
+        .thenReturn(tagPolicyMapper);
+    FieldUtils.writeStaticField(
+        SqlSessionFactoryHelper.class, "sqlSessionFactory", mockSqlSessionFactory, true);
+  }
+
+  @AfterAll
+  public static void tearDownClass() throws IllegalAccessException {
+    FieldUtils.writeStaticField(
+        SqlSessionFactoryHelper.class, "sqlSessionFactory", previousSqlSessionFactory, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "entityStore", previousEntityStore, true);
   }
 
   @Override
@@ -178,6 +242,8 @@ public class TestEntityOperations extends JerseyTest {
             bind(modelDispatcher).to(ModelDispatcher.class).ranked(2);
             bind(functionDispatcher).to(FunctionDispatcher.class).ranked(2);
             bind(viewDispatcher).to(ViewDispatcher.class).ranked(2);
+            bind(tagDispatcher).to(TagDispatcher.class).ranked(2);
+            bind(policyDispatcher).to(PolicyDispatcher.class).ranked(2);
             bindFactory(TestEntityOperations.MockServletRequestFactory.class)
                 .to(HttpServletRequest.class);
           }
@@ -317,12 +383,11 @@ public class TestEntityOperations extends JerseyTest {
     CatalogListResponse catalogResponse = resp.readEntity(CatalogListResponse.class);
     Assertions.assertEquals(0, catalogResponse.getCode());
 
-    CatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
+    ExtendedCatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
     Assertions.assertEquals(2, catalogDTOs.length);
     assertCatalogs(catalogDTOs);
-    Assertions.assertEquals(
-        ImmutableMap.of("relCatalog1", 0L, "relCatalog2", 0L),
-        catalogResponse.getDirectChildCounts());
+    Assertions.assertEquals(0L, catalogDTOs[0].getDirectChildCounts());
+    Assertions.assertEquals(0L, catalogDTOs[1].getDirectChildCounts());
 
     // test list all catalogs
     when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
@@ -417,7 +482,8 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0, schemaResp.getCode());
     Assertions.assertEquals(1, schemaResp.getSchemas().length);
     Assertions.assertEquals("level1:level2:child", schemaResp.getSchemas()[0].name());
-    Assertions.assertEquals("creator", schemaResp.getSchemas()[0].auditInfo().creator());
+    Assertions.assertEquals(
+        "creator", schemaResp.getSchemas()[0].getSchemaDTO().auditInfo().creator());
 
     // test list tables with parentSchema: returns tables + sub-schemas
     Namespace tableNs = Namespace.of("testMetalake", "relCatalog", "level1:level2");
@@ -448,7 +514,8 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(1, tableResp.getViews().length);
     Assertions.assertEquals(1, tableResp.getSchemas().length);
     Assertions.assertEquals("level1:level2:child", tableResp.getSchemas()[0].name());
-    Assertions.assertEquals("creator", tableResp.getSchemas()[0].auditInfo().creator());
+    Assertions.assertEquals(
+        "creator", tableResp.getSchemas()[0].getSchemaDTO().auditInfo().creator());
     Mockito.verify(schemaDispatcher, Mockito.never()).listEntities(parentSchemaNs);
 
     // test list tables with schema not found in store
@@ -468,11 +535,13 @@ public class TestEntityOperations extends JerseyTest {
     tableResp = resp.readEntity(TableListResponse.class);
     Assertions.assertEquals(0, tableResp.getCode());
     Assertions.assertEquals(1, tableResp.getTables().length);
-    TableDTO tableDTO = tableResp.getTables()[0];
+    ExtendedTableDTO tableDTO = tableResp.getTables()[0];
     Assertions.assertEquals("relTable", tableDTO.name());
-    Assertions.assertNull(tableDTO.comment());
-    Assertions.assertNull(tableDTO.properties());
-    Assertions.assertNull(tableDTO.auditInfo().creator());
+    Assertions.assertNull(tableDTO.getTableDTO().comment());
+    Assertions.assertNull(tableDTO.getTableDTO().properties());
+    Assertions.assertNull(tableDTO.getTableDTO().auditInfo().creator());
+    Assertions.assertEquals(0, tableDTO.getTags().length);
+    Assertions.assertEquals(0, tableDTO.getPolicies().length);
     Assertions.assertEquals(1, tableResp.getViews().length);
     assertViews(tableResp.getViews());
 
@@ -492,13 +561,15 @@ public class TestEntityOperations extends JerseyTest {
 
     tableResp = resp.readEntity(TableListResponse.class);
     Assertions.assertEquals(1, tableResp.getViews().length);
-    ViewDTO fallbackView = tableResp.getViews()[0];
+    ExtendedViewDTO fallbackView = tableResp.getViews()[0];
     Assertions.assertEquals("testView", fallbackView.name());
-    Assertions.assertNull(fallbackView.comment());
-    Assertions.assertNull(fallbackView.auditInfo().creator());
-    Assertions.assertEquals(1, fallbackView.representations().length);
-    Assertions.assertInstanceOf(SQLRepresentation.class, fallbackView.representations()[0]);
-    SQLRepresentation representation = (SQLRepresentation) fallbackView.representations()[0];
+    Assertions.assertNull(fallbackView.getViewDTO().comment());
+    Assertions.assertNull(fallbackView.getViewDTO().auditInfo().creator());
+    Assertions.assertEquals(1, fallbackView.getViewDTO().representations().length);
+    Assertions.assertInstanceOf(
+        SQLRepresentation.class, fallbackView.getViewDTO().representations()[0]);
+    SQLRepresentation representation =
+        (SQLRepresentation) fallbackView.getViewDTO().representations()[0];
     Assertions.assertEquals("unavailable", representation.dialect());
     Assertions.assertEquals("UNAVAILABLE", representation.sql());
 
@@ -546,11 +617,11 @@ public class TestEntityOperations extends JerseyTest {
     topicResp = resp.readEntity(TopicListResponse.class);
     Assertions.assertEquals(0, topicResp.getCode());
     Assertions.assertEquals(1, topicResp.getTopics().length);
-    TopicDTO topicDTO = topicResp.getTopics()[0];
+    ExtendedTopicDTO topicDTO = topicResp.getTopics()[0];
     Assertions.assertEquals("messagingTopic", topicDTO.name());
-    Assertions.assertNull(topicDTO.comment());
-    Assertions.assertNull(topicDTO.properties());
-    Assertions.assertNull(topicDTO.auditInfo().creator());
+    Assertions.assertNull(topicDTO.getTopicDTO().comment());
+    Assertions.assertNull(topicDTO.getTopicDTO().properties());
+    Assertions.assertNull(topicDTO.getTopicDTO().auditInfo().creator());
 
     // test list filesets
     namespace = Namespace.of("testMetalake", "filesetCatalog", "filesetSchema");
@@ -603,6 +674,285 @@ public class TestEntityOperations extends JerseyTest {
   }
 
   @Test
+  public void testHierarchicalSchemaInheritsTagsAndPoliciesFromAllAncestors() throws Exception {
+    String metalake = "inheritanceMetalake";
+    String catalog = "inheritanceCatalog";
+    Namespace metalakeNamespace = Namespace.of(metalake);
+    Namespace catalogNamespace = Namespace.of(metalake, catalog);
+    Namespace parentSchemaNamespace = Namespace.of(metalake, catalog, "a:b");
+    Namespace childSchemaNamespace = Namespace.of(metalake, catalog, "a:b:c");
+
+    NameIdentifier childSchemaIdentifier = NameIdentifier.of(catalogNamespace, "a:b:c");
+    NameIdentifier parentSchemaIdentifier = NameIdentifier.of(catalogNamespace, "a:b");
+    NameIdentifier outerSchemaIdentifier = NameIdentifier.of(catalogNamespace, "a");
+    List<NameIdentifier> schemaIdentifiers =
+        List.of(childSchemaIdentifier, parentSchemaIdentifier, outerSchemaIdentifier);
+
+    List<SchemaEntity> schemaEntities =
+        List.of(
+            buildSchemaEntity(30L, childSchemaIdentifier),
+            buildSchemaEntity(20L, parentSchemaIdentifier),
+            buildSchemaEntity(10L, outerSchemaIdentifier));
+    CatalogEntity catalogEntity =
+        CatalogEntity.builder()
+            .withId(40L)
+            .withName(catalog)
+            .withNamespace(metalakeNamespace)
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("test")
+            .withProperties(Collections.emptyMap())
+            .withAuditInfo(
+                AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+            .build();
+
+    when(schemaDispatcher.listSchemas(parentSchemaNamespace))
+        .thenReturn(new NameIdentifier[] {childSchemaIdentifier});
+    when(schemaDispatcher.listEntities(catalogNamespace)).thenReturn(schemaEntities);
+    when(schemaDispatcher.supportsHierarchicalSchema(catalogNamespace)).thenReturn(true);
+    when(schemaDispatcher.listSchemas(childSchemaNamespace)).thenReturn(new NameIdentifier[0]);
+    when(tableDispatcher.listTables(childSchemaNamespace)).thenReturn(new NameIdentifier[0]);
+    when(functionDispatcher.listFunctionInfos(childSchemaNamespace)).thenReturn(new Function[0]);
+    when(viewDispatcher.listViews(childSchemaNamespace)).thenReturn(new NameIdentifier[0]);
+
+    when(entityStore.batchGet(
+            List.of(NameIdentifier.of(metalakeNamespace, catalog)),
+            Entity.EntityType.CATALOG,
+            CatalogEntity.class))
+        .thenReturn(List.of(catalogEntity));
+
+    List<DatastratoTagRelPO> schemaTagRelations =
+        List.of(
+            mockTagRelation(30L, 301L, "child-tag", "child"),
+            mockTagRelation(20L, 201L, "parent-tag", "parent"),
+            mockTagRelation(20L, 999L, "shared-tag", "parent-shared"),
+            mockTagRelation(10L, 101L, "outer-tag", "outer"),
+            mockTagRelation(10L, 999L, "shared-tag", "outer-shared"));
+    List<DatastratoTagRelPO> catalogTagRelations =
+        List.of(
+            mockTagRelation(40L, 401L, "catalog-tag", "catalog", MetadataObject.Type.CATALOG),
+            mockTagRelation(
+                40L, 999L, "shared-tag", "catalog-shared", MetadataObject.Type.CATALOG));
+    List<Long> metadataObjectIds = List.of(30L, 20L, 10L, 40L);
+    when(tagPolicyMapper.batchListTagRelPOsByMetadataObjectIds(metadataObjectIds))
+        .thenReturn(
+            ImmutableList.<DatastratoTagRelPO>builder()
+                .addAll(schemaTagRelations)
+                .addAll(catalogTagRelations)
+                .build());
+
+    List<DatastratoPolicyRelPO> schemaPolicyRelations =
+        List.of(
+            mockPolicyRelation(30L, 301L, "child-policy", "child"),
+            mockPolicyRelation(20L, 201L, "parent-policy", "parent"),
+            mockPolicyRelation(20L, 999L, "shared-policy", "parent-shared"),
+            mockPolicyRelation(10L, 101L, "outer-policy", "outer"),
+            mockPolicyRelation(10L, 999L, "shared-policy", "outer-shared"));
+    List<DatastratoPolicyRelPO> catalogPolicyRelations =
+        List.of(
+            mockPolicyRelation(40L, 401L, "catalog-policy", "catalog", MetadataObject.Type.CATALOG),
+            mockPolicyRelation(
+                40L, 999L, "shared-policy", "catalog-shared", MetadataObject.Type.CATALOG));
+    when(tagPolicyMapper.batchListPolicyRelPOsByMetadataObjectIds(metadataObjectIds))
+        .thenReturn(
+            ImmutableList.<DatastratoPolicyRelPO>builder()
+                .addAll(schemaPolicyRelations)
+                .addAll(catalogPolicyRelations)
+                .build());
+
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Config config = mock(Config.class);
+    when(config.get(ENABLE_AUTHORIZATION)).thenReturn(false);
+    when(config.get(SCHEMA_SEPARATOR)).thenReturn(":");
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
+      Response response =
+          target("/web/entities")
+              .queryParam("namespace", metalake + "." + catalog)
+              .queryParam("catalogType", "relational")
+              .queryParam("parentSchema", "a:b")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .get();
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      SchemaListResponse schemaResponse = response.readEntity(SchemaListResponse.class);
+      Assertions.assertEquals(1, schemaResponse.getSchemas().length);
+      ExtendedSchemaDTO childSchema = schemaResponse.getSchemas()[0];
+
+      Map<String, TagDTO> tags =
+          Arrays.stream(childSchema.getTags()).collect(Collectors.toMap(TagDTO::name, tag -> tag));
+      Assertions.assertEquals(5, tags.size());
+      Assertions.assertTrue(tags.get("catalog-tag").inherited().orElseThrow());
+      Assertions.assertTrue(tags.get("outer-tag").inherited().orElseThrow());
+      Assertions.assertTrue(tags.get("parent-tag").inherited().orElseThrow());
+      Assertions.assertFalse(tags.get("child-tag").inherited().orElseThrow());
+      Assertions.assertEquals("parent-shared", tags.get("shared-tag").comment());
+      Assertions.assertTrue(tags.get("shared-tag").inherited().orElseThrow());
+
+      Map<String, PolicyDTO> policies =
+          Arrays.stream(childSchema.getPolicies())
+              .collect(Collectors.toMap(PolicyDTO::name, policy -> policy));
+      Assertions.assertEquals(5, policies.size());
+      Assertions.assertTrue(policies.get("catalog-policy").inherited().orElseThrow());
+      Assertions.assertTrue(policies.get("outer-policy").inherited().orElseThrow());
+      Assertions.assertTrue(policies.get("parent-policy").inherited().orElseThrow());
+      Assertions.assertFalse(policies.get("child-policy").inherited().orElseThrow());
+      Assertions.assertEquals("parent-shared", policies.get("shared-policy").comment());
+      Assertions.assertTrue(policies.get("shared-policy").inherited().orElseThrow());
+      Mockito.verify(entityStore, Mockito.never())
+          .batchGet(schemaIdentifiers, Entity.EntityType.SCHEMA, SchemaEntity.class);
+      Mockito.verify(tagPolicyMapper).batchListTagRelPOsByMetadataObjectIds(metadataObjectIds);
+      Mockito.verify(tagPolicyMapper).batchListPolicyRelPOsByMetadataObjectIds(metadataObjectIds);
+    } finally {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+    }
+  }
+
+  @Test
+  public void testTagAndPolicyAuthorizationIsDeduplicatedByName() throws Throwable {
+    String metalake = "dedupMetalake";
+    String catalog = "dedupCatalog";
+    Namespace metalakeNamespace = Namespace.of(metalake);
+    Namespace catalogNamespace = Namespace.of(metalake, catalog);
+    NameIdentifier schema1Identifier = NameIdentifier.of(catalogNamespace, "schema1");
+    NameIdentifier schema2Identifier = NameIdentifier.of(catalogNamespace, "schema2");
+    List<SchemaEntity> schemaEntities =
+        List.of(
+            buildSchemaEntity(101L, schema1Identifier), buildSchemaEntity(102L, schema2Identifier));
+    CatalogEntity catalogEntity =
+        CatalogEntity.builder()
+            .withId(200L)
+            .withName(catalog)
+            .withNamespace(metalakeNamespace)
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("test")
+            .withProperties(Collections.emptyMap())
+            .withAuditInfo(
+                AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+            .build();
+
+    when(schemaDispatcher.listSchemas(catalogNamespace))
+        .thenReturn(new NameIdentifier[] {schema1Identifier, schema2Identifier});
+    when(schemaDispatcher.listEntities(catalogNamespace)).thenReturn(schemaEntities);
+    when(schemaDispatcher.supportsHierarchicalSchema(catalogNamespace)).thenReturn(false);
+    for (String schema : List.of("schema1", "schema2")) {
+      Namespace schemaNamespace = Namespace.of(metalake, catalog, schema);
+      when(tableDispatcher.listTables(schemaNamespace)).thenReturn(new NameIdentifier[0]);
+      when(functionDispatcher.listFunctionInfos(schemaNamespace)).thenReturn(new Function[0]);
+      when(viewDispatcher.listViews(schemaNamespace)).thenReturn(new NameIdentifier[0]);
+    }
+    when(entityStore.batchGet(
+            List.of(NameIdentifier.of(metalakeNamespace, catalog)),
+            Entity.EntityType.CATALOG,
+            CatalogEntity.class))
+        .thenReturn(List.of(catalogEntity));
+    List<DatastratoTagRelPO> tagRelations =
+        List.of(
+            mockTagRelation(101L, 501L, "shared-tag", "schema1"),
+            mockTagRelation(102L, 501L, "shared-tag", "schema2"));
+    List<Long> metadataObjectIds = List.of(101L, 102L, 200L);
+    when(tagPolicyMapper.batchListTagRelPOsByMetadataObjectIds(metadataObjectIds))
+        .thenReturn(tagRelations);
+    List<DatastratoPolicyRelPO> policyRelations =
+        List.of(
+            mockPolicyRelation(101L, 601L, "shared-policy", "schema1"),
+            mockPolicyRelation(102L, 601L, "shared-policy", "schema2"));
+    when(tagPolicyMapper.batchListPolicyRelPOsByMetadataObjectIds(metadataObjectIds))
+        .thenReturn(policyRelations);
+
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(mockConfig.get(CACHE_ENABLED)).thenReturn(false);
+    when(mockConfig.get(GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
+    when(mockConfig.get(SCHEMA_SEPARATOR)).thenReturn(":");
+
+    AtomicInteger tagOwnerChecks = new AtomicInteger();
+    AtomicInteger policyOwnerChecks = new AtomicInteger();
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    lenient()
+        .when(mockAuthorizer.authorize(any(), eq(metalake), any(), any(), any()))
+        .thenReturn(true);
+    lenient().when(mockAuthorizer.deny(any(), eq(metalake), any(), any(), any())).thenReturn(false);
+    lenient()
+        .when(mockAuthorizer.hasDenyPolicy(any(), eq(metalake), anySet(), any()))
+        .thenReturn(false);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq(metalake), any())).thenReturn(true);
+    lenient()
+        .when(mockAuthorizer.isOwner(any(), eq(metalake), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              MetadataObject object = invocation.getArgument(2);
+              if (object.type() == MetadataObject.Type.TAG) {
+                tagOwnerChecks.incrementAndGet();
+                return true;
+              }
+              if (object.type() == MetadataObject.Type.POLICY) {
+                policyOwnerChecks.incrementAndGet();
+                return true;
+              }
+              return false;
+            });
+
+    GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizer oldProviderAuthorizer = null;
+    Executor oldMetadataAuthzExecutor = null;
+    TestFailureTracker failureTracker = new TestFailureTracker();
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      oldMetadataAuthzExecutor = replaceMetadataAuthzExecutor(Runnable::run);
+      GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+      oldProviderAuthorizer =
+          (GravitinoAuthorizer)
+              FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", mockAuthorizer, true);
+      try (MockedStatic<PrincipalUtils> principalUtilsStatic = mockStatic(PrincipalUtils.class)) {
+        principalUtilsStatic
+            .when(PrincipalUtils::getCurrentPrincipal)
+            .thenReturn(new UserPrincipal("tester"));
+        principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response response =
+            target("/web/entities")
+                .queryParam("namespace", metalake + "." + catalog)
+                .queryParam("catalogType", "relational")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+        SchemaListResponse schemaResponse = response.readEntity(SchemaListResponse.class);
+        Assertions.assertEquals(2, schemaResponse.getSchemas().length);
+        Arrays.stream(schemaResponse.getSchemas())
+            .forEach(
+                schema -> {
+                  Assertions.assertEquals(1, schema.getTags().length);
+                  Assertions.assertEquals("shared-tag", schema.getTags()[0].name());
+                  Assertions.assertEquals(1, schema.getPolicies().length);
+                  Assertions.assertEquals("shared-policy", schema.getPolicies()[0].name());
+                });
+        Assertions.assertEquals(1, tagOwnerChecks.get());
+        Assertions.assertEquals(1, policyOwnerChecks.get());
+      }
+    } catch (Throwable failure) {
+      failureTracker.record(failure);
+      throw failure;
+    } finally {
+      try {
+        restoreMetadataAuthzExecutor(oldMetadataAuthzExecutor);
+        GravitinoEnv.getInstance().setGravitinoAuthorizer(oldGravitinoAuthorizer);
+        GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+        FieldUtils.writeField(
+            authorizerProvider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+        FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+      } catch (IllegalAccessException restoreFailure) {
+        failureTracker.handleRestoreFailure(restoreFailure);
+      }
+    }
+  }
+
+  @Test
   public void testListDirectChildCounts() {
     String metalake = "testMetalake";
     String catalog = "relCatalog";
@@ -647,8 +997,7 @@ public class TestEntityOperations extends JerseyTest {
             .get();
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), catalogResponse.getStatus());
     CatalogListResponse catalogListResponse = catalogResponse.readEntity(CatalogListResponse.class);
-    Assertions.assertEquals(
-        ImmutableMap.of(catalog, 2L), catalogListResponse.getDirectChildCounts());
+    Assertions.assertEquals(2L, catalogListResponse.getCatalogs()[0].getDirectChildCounts());
 
     Response schemaResponse =
         target("/web/entities")
@@ -659,8 +1008,8 @@ public class TestEntityOperations extends JerseyTest {
             .get();
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), schemaResponse.getStatus());
     SchemaListResponse schemaListResponse = schemaResponse.readEntity(SchemaListResponse.class);
-    Assertions.assertEquals(
-        ImmutableMap.of("schema1", 5L, "schema2", 0L), schemaListResponse.getDirectChildCounts());
+    Assertions.assertEquals(5L, schemaListResponse.getSchemas()[0].getDirectChildCounts());
+    Assertions.assertEquals(0L, schemaListResponse.getSchemas()[1].getDirectChildCounts());
 
     Response limitedSchemaResponse =
         target("/web/entities")
@@ -674,8 +1023,31 @@ public class TestEntityOperations extends JerseyTest {
     SchemaListResponse limitedSchemaListResponse =
         limitedSchemaResponse.readEntity(SchemaListResponse.class);
     Assertions.assertEquals(1, limitedSchemaListResponse.getSchemas().length);
-    Assertions.assertEquals(
-        ImmutableMap.of("schema1", 5L), limitedSchemaListResponse.getDirectChildCounts());
+    Assertions.assertEquals(5L, limitedSchemaListResponse.getSchemas()[0].getDirectChildCounts());
+  }
+
+  @Test
+  public void testListCatalogDirectChildCountUnavailable() {
+    String metalake = "testMetalake";
+    String catalog = "relCatalog";
+    Namespace metalakeNamespace = Namespace.of(metalake);
+    Namespace catalogNamespace = Namespace.of(metalake, catalog);
+    when(catalogDispatcher.listCatalogsInfo(metalakeNamespace))
+        .thenReturn(new Catalog[] {buildCatalog(metalake, catalog)});
+    when(schemaDispatcher.listSchemas(catalogNamespace))
+        .thenThrow(new IllegalStateException("Schema count is unavailable"));
+
+    Response response =
+        target("/web/entities")
+            .queryParam("namespace", metalake)
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    CatalogListResponse catalogResponse = response.readEntity(CatalogListResponse.class);
+    Assertions.assertNull(catalogResponse.getCatalogs()[0].getDirectChildCounts());
   }
 
   @Test
@@ -693,8 +1065,7 @@ public class TestEntityOperations extends JerseyTest {
     when(functionDispatcher.listFunctionInfos(messagingSchemaNs))
         .thenReturn(buildFunctionInfos(messagingSchemaNs));
     Assertions.assertEquals(
-        ImmutableMap.of("messagingSchema", 3L),
-        listSchemas(messagingCatalogNs, "messaging").getDirectChildCounts());
+        3L, listSchemas(messagingCatalogNs, "messaging").getSchemas()[0].getDirectChildCounts());
 
     Namespace filesetCatalogNs = Namespace.of(metalake, "filesetCatalog");
     Namespace filesetSchemaNs = mockSchemaListing(filesetCatalogNs, "filesetSchema");
@@ -708,8 +1079,7 @@ public class TestEntityOperations extends JerseyTest {
     when(functionDispatcher.listFunctionInfos(filesetSchemaNs))
         .thenReturn(buildFunctionInfos(filesetSchemaNs));
     Assertions.assertEquals(
-        ImmutableMap.of("filesetSchema", 3L),
-        listSchemas(filesetCatalogNs, "fileset").getDirectChildCounts());
+        3L, listSchemas(filesetCatalogNs, "fileset").getSchemas()[0].getDirectChildCounts());
 
     Namespace modelCatalogNs = Namespace.of(metalake, "modelCatalog");
     Namespace modelSchemaNs = mockSchemaListing(modelCatalogNs, "modelSchema");
@@ -723,8 +1093,7 @@ public class TestEntityOperations extends JerseyTest {
     when(functionDispatcher.listFunctionInfos(modelSchemaNs))
         .thenReturn(buildFunctionInfos(modelSchemaNs));
     Assertions.assertEquals(
-        ImmutableMap.of("modelSchema", 3L),
-        listSchemas(modelCatalogNs, "model").getDirectChildCounts());
+        3L, listSchemas(modelCatalogNs, "model").getSchemas()[0].getDirectChildCounts());
 
     Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(messagingSchemaNs);
     Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(filesetSchemaNs);
@@ -740,7 +1109,7 @@ public class TestEntityOperations extends JerseyTest {
 
     SchemaListResponse response = listSchemas(catalogNamespace, "relational");
 
-    Assertions.assertTrue(response.getDirectChildCounts().isEmpty());
+    Assertions.assertNull(response.getSchemas()[0].getDirectChildCounts());
     Mockito.verify(tableDispatcher, Mockito.never()).listTables(schemaNamespace);
   }
 
@@ -773,7 +1142,8 @@ public class TestEntityOperations extends JerseyTest {
     SchemaListResponse response = listSchemas(catalogNamespace, "relational");
 
     Assertions.assertEquals(2, response.getSchemas().length);
-    Assertions.assertTrue(response.getDirectChildCounts().isEmpty());
+    Assertions.assertNull(response.getSchemas()[0].getDirectChildCounts());
+    Assertions.assertNull(response.getSchemas()[1].getDirectChildCounts());
   }
 
   @Test
@@ -854,11 +1224,10 @@ public class TestEntityOperations extends JerseyTest {
         Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
         CatalogListResponse catalogResponse = resp.readEntity(CatalogListResponse.class);
         Assertions.assertEquals(0, catalogResponse.getCode());
-        CatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
+        ExtendedCatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
         Assertions.assertEquals(1, catalogDTOs.length);
         Assertions.assertEquals("relCatalog1", catalogDTOs[0].name());
-        Assertions.assertEquals(
-            ImmutableMap.of("relCatalog1", 1L), catalogResponse.getDirectChildCounts());
+        Assertions.assertEquals(1L, catalogDTOs[0].getDirectChildCounts());
       }
     } catch (Throwable failure) {
       failureTracker.record(failure);
@@ -952,8 +1321,7 @@ public class TestEntityOperations extends JerseyTest {
         Assertions.assertEquals(0, schemaResp.getCode());
         Assertions.assertEquals(1, schemaResp.getSchemas().length);
         Assertions.assertEquals("relSchema1", schemaResp.getSchemas()[0].name());
-        Assertions.assertEquals(
-            ImmutableMap.of("relSchema1", 1L), schemaResp.getDirectChildCounts());
+        Assertions.assertEquals(1L, schemaResp.getSchemas()[0].getDirectChildCounts());
         Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(visibleSchemaNs);
         Mockito.verify(tableDispatcher, Mockito.never())
             .listTables(Namespace.of("testMetalake", "relCatalog", "relSchema2"));
@@ -1047,7 +1415,7 @@ public class TestEntityOperations extends JerseyTest {
         Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
         CatalogListResponse catalogResponse = resp.readEntity(CatalogListResponse.class);
         Assertions.assertEquals(0, catalogResponse.getCode());
-        CatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
+        ExtendedCatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
         Assertions.assertEquals(2, catalogDTOs.length);
         assertCatalogs(catalogDTOs);
         Mockito.verify(mockAuthorizer, Mockito.never())
@@ -1457,9 +1825,9 @@ public class TestEntityOperations extends JerseyTest {
     }
   }
 
-  private void assertViews(ViewDTO[] views) {
-    ViewDTO viewDTO = views[0];
-    Assertions.assertEquals("testView", viewDTO.name());
+  private void assertViews(ExtendedViewDTO[] views) {
+    ViewDTO viewDTO = views[0].getViewDTO();
+    Assertions.assertEquals("testView", views[0].name());
     Assertions.assertNull(viewDTO.comment());
     Assertions.assertTrue(viewDTO.properties().isEmpty());
     Assertions.assertEquals("creator", viewDTO.auditInfo().creator());
@@ -1470,27 +1838,27 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals("UNAVAILABLE", representation.sql());
   }
 
-  private void assertModels(ModelDTO[] models) {
-    ModelDTO modelDTO = models[0];
-    Assertions.assertEquals("model", modelDTO.name());
+  private void assertModels(ExtendedModelDTO[] models) {
+    ModelDTO modelDTO = models[0].getModelDTO();
+    Assertions.assertEquals("model", models[0].name());
     Assertions.assertEquals("comment", modelDTO.comment());
     Assertions.assertEquals(1, modelDTO.latestVersion());
     Assertions.assertEquals("creator", modelDTO.auditInfo().creator());
     Assertions.assertEquals("value", modelDTO.properties().get("key"));
   }
 
-  private void assertFunctions(FunctionDTO[] functions) {
-    FunctionDTO functionDTO = functions[0];
-    Assertions.assertEquals("testFunction", functionDTO.name());
+  private void assertFunctions(ExtendedFunctionDTO[] functions) {
+    FunctionDTO functionDTO = functions[0].getFunctionDTO();
+    Assertions.assertEquals("testFunction", functions[0].name());
     Assertions.assertEquals(FunctionType.SCALAR, functionDTO.functionType());
     Assertions.assertTrue(functionDTO.deterministic());
     Assertions.assertEquals("test function comment", functionDTO.comment());
     Assertions.assertEquals("creator", functionDTO.auditInfo().creator());
   }
 
-  private void assertFilesets(FilesetDTO[] filesets) {
-    FilesetDTO filesetDTO = filesets[0];
-    Assertions.assertEquals("fileset", filesetDTO.name());
+  private void assertFilesets(ExtendedFilesetDTO[] filesets) {
+    FilesetDTO filesetDTO = filesets[0].getFilesetDTO();
+    Assertions.assertEquals("fileset", filesets[0].name());
     Assertions.assertEquals("comment", filesetDTO.comment());
     Assertions.assertEquals("location", filesetDTO.storageLocation());
     Assertions.assertEquals(MANAGED, filesetDTO.type());
@@ -1498,9 +1866,9 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals("creator", filesetDTO.auditInfo().creator());
   }
 
-  private void assertTopics(TopicDTO[] topics) {
-    TopicDTO topicDTO = topics[0];
-    Assertions.assertEquals("messagingTopic", topicDTO.name());
+  private void assertTopics(ExtendedTopicDTO[] topics) {
+    TopicDTO topicDTO = topics[0].getTopicDTO();
+    Assertions.assertEquals("messagingTopic", topics[0].name());
     Assertions.assertEquals("comment", topicDTO.comment());
     Assertions.assertNull(topicDTO.properties());
     Assertions.assertEquals("creator", topicDTO.auditInfo().creator());
@@ -1539,38 +1907,40 @@ public class TestEntityOperations extends JerseyTest {
     return response.readEntity(SchemaListResponse.class);
   }
 
-  private void assertTables(TableDTO[] tableDTOs) {
-    TableDTO tableDTO = tableDTOs[0];
-    Assertions.assertEquals("relTable", tableDTO.name());
+  private void assertTables(ExtendedTableDTO[] tableDTOs) {
+    TableDTO tableDTO = tableDTOs[0].getTableDTO();
+    Assertions.assertEquals("relTable", tableDTOs[0].name());
     Assertions.assertNull(tableDTO.comment());
     Assertions.assertNull(tableDTO.properties());
     Assertions.assertEquals("creator", tableDTO.auditInfo().creator());
   }
 
-  private void assertSchemas(SchemaDTO[] schemaDTOs) {
-    SchemaDTO schemaDTO = schemaDTOs[0];
-    Assertions.assertEquals("relSchema", schemaDTO.name());
+  private void assertSchemas(ExtendedSchemaDTO[] schemaDTOs) {
+    SchemaDTO schemaDTO = schemaDTOs[0].getSchemaDTO();
+    Assertions.assertEquals("relSchema", schemaDTOs[0].name());
     Assertions.assertNull(schemaDTO.comment());
     Assertions.assertNull(schemaDTO.properties());
     Assertions.assertEquals("creator", schemaDTO.auditInfo().creator());
   }
 
-  private void assertCatalogs(CatalogDTO[] catalogDTOs) {
-    CatalogDTO catalogDTO1 = catalogDTOs[0];
+  private void assertCatalogs(ExtendedCatalogDTO[] catalogDTOs) {
+    ExtendedCatalogDTO catalogDTO1 = catalogDTOs[0];
     Assertions.assertEquals("relCatalog1", catalogDTO1.name());
-    Assertions.assertEquals(Catalog.Type.RELATIONAL, catalogDTO1.type());
-    Assertions.assertEquals("comment", catalogDTO1.comment());
+    Assertions.assertEquals(Catalog.Type.RELATIONAL, catalogDTO1.getCatalogDTO().type());
+    Assertions.assertEquals("comment", catalogDTO1.getCatalogDTO().comment());
     Assertions.assertEquals(
-        ImmutableMap.of("key", "value", "in-use", "true"), catalogDTO1.properties());
-    Assertions.assertEquals("creator", catalogDTO1.auditInfo().creator());
+        ImmutableMap.of("key", "value", "in-use", "true"),
+        catalogDTO1.getCatalogDTO().properties());
+    Assertions.assertEquals("creator", catalogDTO1.getCatalogDTO().auditInfo().creator());
 
-    CatalogDTO catalogDTO2 = catalogDTOs[1];
+    ExtendedCatalogDTO catalogDTO2 = catalogDTOs[1];
     Assertions.assertEquals("relCatalog2", catalogDTO2.name());
-    Assertions.assertEquals(Catalog.Type.RELATIONAL, catalogDTO2.type());
-    Assertions.assertEquals("comment", catalogDTO2.comment());
+    Assertions.assertEquals(Catalog.Type.RELATIONAL, catalogDTO2.getCatalogDTO().type());
+    Assertions.assertEquals("comment", catalogDTO2.getCatalogDTO().comment());
     Assertions.assertEquals(
-        ImmutableMap.of("key", "value", "in-use", "true"), catalogDTO2.properties());
-    Assertions.assertEquals("creator", catalogDTO2.auditInfo().creator());
+        ImmutableMap.of("key", "value", "in-use", "true"),
+        catalogDTO2.getCatalogDTO().properties());
+    Assertions.assertEquals("creator", catalogDTO2.getCatalogDTO().auditInfo().creator());
   }
 
   private Function[] buildFunctionInfos(Namespace namespace) {
@@ -1732,6 +2102,102 @@ public class TestEntityOperations extends JerseyTest {
                                 .build()))
                     .build())
         .collect(Collectors.toList());
+  }
+
+  private DatastratoTagRelPO mockTagRelation(
+      long metadataObjectId, long tagId, String tagName, String comment) throws IOException {
+    return mockTagRelation(metadataObjectId, tagId, tagName, comment, MetadataObject.Type.SCHEMA);
+  }
+
+  private DatastratoTagRelPO mockTagRelation(
+      long metadataObjectId,
+      long tagId,
+      String tagName,
+      String comment,
+      MetadataObject.Type metadataObjectType)
+      throws IOException {
+    DatastratoTagRelPO relation = mock(DatastratoTagRelPO.class);
+    when(relation.getMetadataObjectId()).thenReturn(metadataObjectId);
+    when(relation.getMetadataObjectType()).thenReturn(metadataObjectType.name());
+    when(relation.getTagId()).thenReturn(tagId);
+    when(relation.getTagName()).thenReturn(tagName);
+    when(relation.getMetalakeId()).thenReturn(1L);
+    when(relation.getComment()).thenReturn(comment);
+    when(relation.getProperties())
+        .thenReturn(JsonUtils.anyFieldMapper().writeValueAsString(Map.of("source", comment)));
+    when(relation.getAuditInfo())
+        .thenReturn(
+            JsonUtils.anyFieldMapper()
+                .writeValueAsString(
+                    AuditInfo.builder()
+                        .withCreator("creator")
+                        .withCreateTime(Instant.now())
+                        .build()));
+    when(relation.getCurrentVersion()).thenReturn(1L);
+    when(relation.getLastVersion()).thenReturn(1L);
+    when(relation.getDeletedAt()).thenReturn(0L);
+    return relation;
+  }
+
+  private DatastratoPolicyRelPO mockPolicyRelation(
+      long metadataObjectId, long policyId, String policyName, String comment) throws IOException {
+    return mockPolicyRelation(
+        metadataObjectId, policyId, policyName, comment, MetadataObject.Type.SCHEMA);
+  }
+
+  private DatastratoPolicyRelPO mockPolicyRelation(
+      long metadataObjectId,
+      long policyId,
+      String policyName,
+      String comment,
+      MetadataObject.Type metadataObjectType)
+      throws IOException {
+    DatastratoPolicyRelPO relation = mock(DatastratoPolicyRelPO.class);
+    when(relation.getMetadataObjectId()).thenReturn(metadataObjectId);
+    when(relation.getMetadataObjectType()).thenReturn(metadataObjectType.name());
+    when(relation.getPolicyId()).thenReturn(policyId);
+    when(relation.getPolicyName()).thenReturn(policyName);
+    when(relation.getMetalakeId()).thenReturn(1L);
+    when(relation.getPolicyType()).thenReturn(Policy.BuiltInType.CUSTOM.policyType());
+    when(relation.getAuditInfo())
+        .thenReturn(
+            JsonUtils.anyFieldMapper()
+                .writeValueAsString(
+                    AuditInfo.builder()
+                        .withCreator("creator")
+                        .withCreateTime(Instant.now())
+                        .build()));
+    when(relation.getCurrentVersion()).thenReturn(1L);
+    when(relation.getLastVersion()).thenReturn(1L);
+    when(relation.getDeletedAt()).thenReturn(0L);
+    when(relation.getVersionId()).thenReturn(policyId);
+    when(relation.getVersionMetalakeId()).thenReturn(1L);
+    when(relation.getVersionPolicyId()).thenReturn(policyId);
+    when(relation.getVersion()).thenReturn(1L);
+    when(relation.getPolicyComment()).thenReturn(comment);
+    when(relation.getEnabled()).thenReturn(true);
+    when(relation.getContent())
+        .thenReturn(
+            JsonUtils.anyFieldMapper()
+                .writeValueAsString(
+                    PolicyContents.custom(
+                        Collections.emptyMap(),
+                        Set.of(MetadataObject.Type.SCHEMA),
+                        Collections.emptyMap())));
+    when(relation.getVersionDeletedAt()).thenReturn(0L);
+    return relation;
+  }
+
+  private SchemaEntity buildSchemaEntity(long id, NameIdentifier schemaIdent) {
+    return SchemaEntity.builder()
+        .withId(id)
+        .withName(schemaIdent.name())
+        .withComment("comment")
+        .withNamespace(schemaIdent.namespace())
+        .withProperties(ImmutableMap.of("key", "value"))
+        .withAuditInfo(
+            AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+        .build();
   }
 
   private List<SchemaEntity> buildSchemaEntity(NameIdentifier[] schemaIdents) {

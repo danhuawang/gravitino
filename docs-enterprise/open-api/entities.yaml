@@ -77,6 +77,146 @@ paths:
 
 components:
   schemas:
+    ExtendedCatalog:
+      allOf:
+        - $ref: "../../docs/open-api/catalogs.yaml#/components/schemas/Catalog"
+        - type: object
+          properties:
+            tags:
+              type: array
+              description: Associated tags
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+            policies:
+              type: array
+              description: Associated policies
+              items:
+                $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+            directChildCounts:
+              type: integer
+              format: int64
+              minimum: 0
+              nullable: true
+              description: The visible direct schema count, or null when the count is unavailable
+
+    ExtendedSchema:
+      allOf:
+        - $ref: "../../docs/open-api/schemas.yaml#/components/schemas/Schema"
+        - type: object
+          properties:
+            tags:
+              type: array
+              description: Associated tags
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+            policies:
+              type: array
+              description: Associated policies
+              items:
+                $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+            directChildCounts:
+              type: integer
+              format: int64
+              minimum: 0
+              nullable: true
+              description: The visible direct entity count, or null when the count is unavailable
+
+    ExtendedTable:
+      allOf:
+        - $ref: "../../docs/open-api/tables.yaml#/components/schemas/Table"
+        - type: object
+          properties:
+            tags:
+              type: array
+              description: Associated tags
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+            policies:
+              type: array
+              description: Associated policies
+              items:
+                $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+
+    ExtendedFileset:
+      allOf:
+        - $ref: "../../docs/open-api/filesets.yaml#/components/schemas/Fileset"
+        - type: object
+          properties:
+            tags:
+              type: array
+              description: Associated tags
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+            policies:
+              type: array
+              description: Associated policies
+              items:
+                $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+
+    ExtendedTopic:
+      allOf:
+        - $ref: "../../docs/open-api/topics.yaml#/components/schemas/Topic"
+        - type: object
+          properties:
+            tags:
+              type: array
+              description: Associated tags
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+            policies:
+              type: array
+              description: Associated policies
+              items:
+                $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+
+    ExtendedModel:
+      allOf:
+        - $ref: "../../docs/open-api/models.yaml#/components/schemas/Model"
+        - type: object
+          properties:
+            tags:
+              type: array
+              description: Associated tags
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+            policies:
+              type: array
+              description: Associated policies
+              items:
+                $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+
+    ExtendedFunction:
+      allOf:
+        - $ref: "../../docs/open-api/functions.yaml#/components/schemas/Function"
+        - type: object
+          properties:
+            tags:
+              type: array
+              description: Associated tags
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+            policies:
+              type: array
+              description: Associated policies
+              items:
+                $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+
+    ExtendedView:
+      allOf:
+        - $ref: "../../docs/open-api/views.yaml#/components/schemas/View"
+        - type: object
+          properties:
+            tags:
+              type: array
+              description: Associated tags
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+            policies:
+              type: array
+              description: Associated policies
+              items:
+                $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+
     CatalogListResponse:
       type: object
       properties:
@@ -88,18 +228,9 @@ components:
             - 0
         catalogs:
           type: array
-          description: A list of catalog objects
+          description: A list of extended catalog objects
           items:
-            $ref: "../../docs/open-api/catalogs.yaml#/components/schemas/Catalog"
-        directChildCounts:
-          type: object
-          description: |
-            The visible direct schema count keyed by catalog name. A missing key means that the
-            count could not be retrieved.
-          additionalProperties:
-            type: integer
-            format: int64
-            minimum: 0
+            $ref: "#/components/schemas/ExtendedCatalog"
 
     SchemaListResponse:
       type: object
@@ -112,18 +243,9 @@ components:
             - 0
         schemas:
           type: array
-          description: A list of schema objects
+          description: A list of extended schema objects
           items:
-            $ref: "../../docs/open-api/schemas.yaml#/components/schemas/Schema"
-        directChildCounts:
-          type: object
-          description: |
-            The visible direct entity count keyed by schema name. A missing key means that the
-            count could not be retrieved.
-          additionalProperties:
-            type: integer
-            format: int64
-            minimum: 0
+            $ref: "#/components/schemas/ExtendedSchema"
 
     TableListResponse:
       type: object
@@ -136,14 +258,24 @@ components:
             - 0
         tables:
           type: array
-          description: A list of table objects
+          description: A list of extended table objects
           items:
-            $ref: "../../docs/open-api/tables.yaml#/components/schemas/Table"
+            $ref: "#/components/schemas/ExtendedTable"
+        functions:
+          type: array
+          description: A list of extended function objects
+          items:
+            $ref: "#/components/schemas/ExtendedFunction"
+        views:
+          type: array
+          description: A list of extended view objects
+          items:
+            $ref: "#/components/schemas/ExtendedView"
         schemas:
           type: array
-          description: A list of child schema objects for hierarchical schema support
+          description: A list of extended child schema objects for hierarchical schema support
           items:
-            $ref: "../../docs/open-api/schemas.yaml#/components/schemas/Schema"
+            $ref: "#/components/schemas/ExtendedSchema"
 
     FilesetListResponse:
       type: object
@@ -156,9 +288,14 @@ components:
             - 0
         filesets:
           type: array
-          description: A list of fileset objects
+          description: A list of extended fileset objects
           items:
-            $ref: "../../docs/open-api/filesets.yaml#/components/schemas/Fileset"
+            $ref: "#/components/schemas/ExtendedFileset"
+        functions:
+          type: array
+          description: A list of extended function objects
+          items:
+            $ref: "#/components/schemas/ExtendedFunction"
 
     TopicListResponse:
       type: object
@@ -171,9 +308,14 @@ components:
             - 0
         topics:
           type: array
-          description: A list of topic objects
+          description: A list of extended topic objects
           items:
-            $ref: "../../docs/open-api/topics.yaml#/components/schemas/Topic"
+            $ref: "#/components/schemas/ExtendedTopic"
+        functions:
+          type: array
+          description: A list of extended function objects
+          items:
+            $ref: "#/components/schemas/ExtendedFunction"
 
     ModelListResponse:
       type: object
@@ -186,6 +328,11 @@ components:
             - 0
         models:
           type: array
-          description: A list of model objects
+          description: A list of extended model objects
           items:
-            $ref: "../../docs/open-api/models.yaml#/components/schemas/Model"
+            $ref: "#/components/schemas/ExtendedModel"
+        functions:
+          type: array
+          description: A list of extended function objects
+          items:
+            $ref: "#/components/schemas/ExtendedFunction"
