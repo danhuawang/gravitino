@@ -104,6 +104,7 @@ class ScimTokenRESTApiIT extends BaseIT {
           Assertions.assertTrue(byName.containsKey(empty));
           Assertions.assertTrue(byName.get(METALAKE).getTokenCount() >= 2L);
           Assertions.assertEquals(0L, byName.get(empty).getTokenCount());
+          Assertions.assertEquals(0L, byName.get(empty).getLastUsedAt());
         });
   }
 
@@ -127,7 +128,9 @@ class ScimTokenRESTApiIT extends BaseIT {
           var byName = index(list.getTokens(), t -> t.getTokenName());
           Assertions.assertTrue(byName.containsKey("list-a"));
           Assertions.assertEquals("valid", byName.get("list-a").getStatus());
+          Assertions.assertEquals(0L, byName.get("list-a").getLastUsedAt());
           Assertions.assertTrue(byName.get("list-b").getExpiresAt() > 0L);
+          Assertions.assertEquals(0L, byName.get("list-b").getLastUsedAt());
           assertError(
               404,
               get("/metalakes/" + MISSING_METALAKE + "/scim/tokens", OWNER),

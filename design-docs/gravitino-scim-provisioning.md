@@ -1693,16 +1693,17 @@ loads **`scim-server/libs`** (SCIMple + Jersey 3) via `gravitino.scim.classpath`
 `gravitino.scim.*` entries from **`conf/gravitino.conf`** into `ScimRESTService.serviceInit()` (stripped
 to short keys such as `httpPort` and `userMapper`). Do **not** place application properties under `scim-server/conf`.
 
-| Key                                        | Description                                                                                                                       | Default   | Required |
-|--------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|-----------|----------|
-| `gravitino.auxService.names`               | Include `scim` (comma-separated with other auxiliary services if needed)                                                          | (none)    | Yes      |
-| `gravitino.scim.classpath`                 | Directory with SCIM jars, e.g. `scim-server/libs` (libs only; not a `.conf` directory)                                            | (none)    | Yes      |
-| `gravitino.scim.host`                      | SCIM HTTP listener host                                                                                                           | `0.0.0.0` | No       |
-| `gravitino.scim.httpPort`                  | SCIM HTTP listener port                                                                                                           | `9201`    | No       |
-| `gravitino.scim.userMapper`                | Map SCIM `userName` → `user_meta.user_name` before create/filter. Built-in: `regex`; or FQCN implementing **`PrincipalMapper`**.  | `regex`   | No       |
-| `gravitino.scim.userMapper.regex.pattern`  | Regex pattern when `userMapper=regex`; first capture group is stored.                                                             | `^(.*)$`  | No       |
-| `gravitino.scim.groupMapper`               | Map SCIM `displayName` → `group_meta.group_name` before create/filter. Built-in: `regex`; or FQCN implementing **`GroupMapper`**. | `regex`   | No       |
-| `gravitino.scim.groupMapper.regex.pattern` | Regex pattern when `groupMapper=regex`; first capture group is stored.                                                            | `^(.*)$`  | No       |
+| Key                                         | Description                                                                                                                                                                | Default   | Required |
+|---------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|----------|
+| `gravitino.auxService.names`                | Include `scim` (comma-separated with other auxiliary services if needed)                                                                                                   | (none)    | Yes      |
+| `gravitino.scim.classpath`                  | Directory with SCIM jars, e.g. `scim-server/libs` (libs only; not a `.conf` directory)                                                                                     | (none)    | Yes      |
+| `gravitino.scim.host`                       | SCIM HTTP listener host                                                                                                                                                    | `0.0.0.0` | No       |
+| `gravitino.scim.httpPort`                   | SCIM HTTP listener port                                                                                                                                                    | `9201`    | No       |
+| `gravitino.scim.userMapper`                 | Map SCIM `userName` → `user_meta.user_name` before create/filter. Built-in: `regex`; or FQCN implementing **`PrincipalMapper`**.                                           | `regex`   | No       |
+| `gravitino.scim.userMapper.regex.pattern`   | Regex pattern when `userMapper=regex`; first capture group is stored.                                                                                                      | `^(.*)$`  | No       |
+| `gravitino.scim.groupMapper`                | Map SCIM `displayName` → `group_meta.group_name` before create/filter. Built-in: `regex`; or FQCN implementing **`GroupMapper`**.                                          | `regex`   | No       |
+| `gravitino.scim.groupMapper.regex.pattern`  | Regex pattern when `groupMapper=regex`; first capture group is stored.                                                                                                     | `^(.*)$`  | No       |
+| `gravitino.scim.errorHistory.retentionDays` | Days to retain failed IdP-facing Users/Groups protocol calls in `scim_error_history`. Must be a **positive integer**. A dedicated cleaner deletes older rows once per day. | `30`      | No       |
 
 Example:
 
@@ -1744,12 +1745,12 @@ startup (see **OAuth login group membership**):
 
 ### 10.4 Configuration key namespaces
 
-| Namespace                               | Examples                                                                                                                                                                                                                       | Role                                                                                                             |
-|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|
-| **SCIM auxiliary** (`gravitino.scim.*`) | `classpath`, `httpPort`, `userMapper`, `groupMapper`                                                                                                                                                                           | SCIM auxiliary listener and name mapping — same convention as other `gravitino.{shortName}.*` auxiliary services |
-| **Upstream Gravitino**                  | `gravitino.auxService.names`, `gravitino.server.rest.extensionPackages`, `gravitino.authenticators`, `gravitino.authenticator.oauth.*`, `gravitino.server.webserver.customFilters`, `gravitino.entity.store.deleteAfterTimeMs` | Shared server mechanisms; OAuth and entity-store keys are not under `gravitino.scim.*`                           |
-| **OAuth SCIM (8090)**                   | `principalMapper`, `groupsFields`, `customFilters`                                                                                                                                                                             | Required when SCIM extension package is enabled — see §10.3                                                      |
-| **Extension package value**             | `com.datastrato.gravitino.scim.web.rest.feature`                                                                                                                                                                               | Jersey `Feature` package scanned on **8090** (same pattern as `org.apache.gravitino.idp.web.rest.feature`)       |
+| Namespace                               | Examples                                                                                                                                                                                                                       | Role                                                                                                                                                |
+|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| **SCIM auxiliary** (`gravitino.scim.*`) | `classpath`, `httpPort`, `userMapper`, `groupMapper`, `errorHistory.retentionDays`                                                                                                                                             | SCIM auxiliary listener, name mapping, and protocol error-history retention — same convention as other `gravitino.{shortName}.*` auxiliary services |
+| **Upstream Gravitino**                  | `gravitino.auxService.names`, `gravitino.server.rest.extensionPackages`, `gravitino.authenticators`, `gravitino.authenticator.oauth.*`, `gravitino.server.webserver.customFilters`, `gravitino.entity.store.deleteAfterTimeMs` | Shared server mechanisms; OAuth and entity-store keys are not under `gravitino.scim.*`                                                              |
+| **OAuth SCIM (8090)**                   | `principalMapper`, `groupsFields`, `customFilters`                                                                                                                                                                             | Required when SCIM extension package is enabled — see §10.3                                                                                         |
+| **Extension package value**             | `com.datastrato.gravitino.scim.web.rest.feature`                                                                                                                                                                               | Jersey `Feature` package scanned on **8090** (same pattern as `org.apache.gravitino.idp.web.rest.feature`)                                          |
 
 `gravitino.scim.*` keys are collected by `AuxiliaryServiceManager` for `shortName=scim` and forwarded to
 `ScimRESTService.serviceInit()` → `ScimConfig`.
@@ -1757,6 +1758,10 @@ startup (see **OAuth login group membership**):
 Token GC retention intentionally reuses **`gravitino.entity.store.deleteAfterTimeMs`** (no separate
 `gravitino.scim.*` GC key in v1). Token expiry enforcement is per-row `expires_at` in
 `scim_token`, not a global config default.
+
+SCIM protocol error history retention uses **`gravitino.scim.errorHistory.retentionDays`** (default
+**30**; must be a positive integer). A dedicated cleaner deletes `scim_error_history` rows older
+than that window once per day. HTTP **404** Users/Groups failures are not recorded.
 
 ---
 

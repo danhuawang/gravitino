@@ -5,6 +5,8 @@
 
 package com.datastrato.gravitino.scim.integration.test;
 
+import static org.awaitility.Awaitility.await;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -12,6 +14,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -108,6 +111,66 @@ class ScimProvisioningRESTApiIT {
     var after = environment.readScimTokenMeta(METALAKE, tokenName);
     Assertions.assertTrue(after.getLastUsedAt() > 0L);
     Assertions.assertEquals(before.getUpdatedAt(), after.getUpdatedAt());
+  }
+
+  @Test
+  void testErrorHistoryRecordsUsersAndGroupsFailures() throws Exception {
+    // Dedicated metalake so async writes from other tests cannot change the expected count.
+    String metalake = "scimErrorHistoryMetalake";
+    String tokenName = "error-history-it";
+    environment.adminClient().createMetalake(metalake, "", new HashMap<>());
+    String token = environment.mintScimBearerToken(metalake, tokenName, TOKEN_CREATOR);
+    try {
+      Assertions.assertEquals(0L, environment.countScimErrorHistory(metalake));
+
+      Map<String, Object> missingUserName = new HashMap<>();
+      missingUserName.put("schemas", new String[] {SCIM_USER_SCHEMA});
+      missingUserName.put("externalId", "error-history-missing-user-name");
+      assertStatus(400, post(scimPath(metalake, "/Users"), missingUserName, token));
+
+      String userExternalId = "error-history-dup-user-ext";
+      String userName = "error-history-dup-user";
+      HttpResponse<String> createdUser =
+          post(scimPath(metalake, "/Users"), userBody(userExternalId, userName, true), token);
+      assertStatus(201, createdUser);
+      assertStatus(
+          409, post(scimPath(metalake, "/Users"), userBody(userExternalId, userName, true), token));
+      String userId = JsonUtils.objectMapper().readTree(createdUser.body()).get("id").asText();
+      assertStatus(404, get(scimPath(metalake, "/Users/" + userId + "-missing"), token));
+
+      Map<String, Object> missingDisplayName = new HashMap<>();
+      missingDisplayName.put("schemas", new String[] {SCIM_GROUP_SCHEMA});
+      missingDisplayName.put("externalId", "error-history-missing-display-name");
+      assertStatus(400, post(scimPath(metalake, "/Groups"), missingDisplayName, token));
+
+      String groupExternalId = "error-history-dup-group-ext";
+      String groupDisplayName = "error-history-dup-group";
+      HttpResponse<String> createdGroup =
+          post(
+              scimPath(metalake, "/Groups"),
+              groupBody(groupExternalId, groupDisplayName, List.of()),
+              token);
+      assertStatus(201, createdGroup);
+      assertStatus(
+          409,
+          post(
+              scimPath(metalake, "/Groups"),
+              groupBody(groupExternalId, groupDisplayName, List.of()),
+              token));
+      String groupId = JsonUtils.objectMapper().readTree(createdGroup.body()).get("id").asText();
+      assertStatus(404, get(scimPath(metalake, "/Groups/" + groupId + "-missing"), token));
+
+      // 400+409 for Users and Groups are persisted; 404 probes are skipped.
+      await()
+          .atMost(Duration.ofSeconds(10))
+          .untilAsserted(
+              () -> Assertions.assertEquals(4L, environment.countScimErrorHistory(metalake)));
+
+      assertStatus(204, delete(scimPath(metalake, "/Users/" + userId), token));
+      assertStatus(204, delete(scimPath(metalake, "/Groups/" + groupId), token));
+    } finally {
+      environment.adminClient().dropMetalake(metalake, true);
+    }
   }
 
   @Test
@@ -452,7 +515,11 @@ class ScimProvisioningRESTApiIT {
   }
 
   private static String scimPath(String suffix) {
-    return "/scim/v2/metalakes/" + METALAKE + suffix;
+    return scimPath(METALAKE, suffix);
+  }
+
+  private static String scimPath(String metalake, String suffix) {
+    return "/scim/v2/metalakes/" + metalake + suffix;
   }
 
   private static Map<String, Object> userBody(String externalId, String userName, boolean active) {

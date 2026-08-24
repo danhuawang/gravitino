@@ -8,6 +8,7 @@ package com.datastrato.gravitino.scim.integration.test;
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_PATH;
 import static org.apache.gravitino.server.GravitinoServer.WEBSERVER_CONF_PREFIX;
 
+import com.datastrato.gravitino.scim.ScimErrorHistoryManager;
 import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.model.CreatedScimToken;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
@@ -137,6 +138,17 @@ final class ScimServiceITEnvironment implements AutoCloseable {
     ensureTokenManagerInitialized();
     return ScimTokenMetaService.getInstance()
         .getScimTokenMetaByMetalakeAndName(metalakeName, tokenName);
+  }
+
+  /**
+   * Counts persisted SCIM protocol error-history rows for a metalake.
+   *
+   * @param metalakeName target metalake name
+   * @return row count
+   */
+  long countScimErrorHistory(String metalakeName) {
+    ensureTokenManagerInitialized();
+    return ScimErrorHistoryManager.getInstance().countScimErrorHistory(metalakeName);
   }
 
   private void ensureTokenManagerInitialized() {
