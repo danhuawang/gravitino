@@ -7,6 +7,7 @@ package com.datastrato.gravitino.dto.responses;
 import static org.apache.gravitino.file.Fileset.Type.EXTERNAL;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
+import com.datastrato.gravitino.dto.ConnectionDTO;
 import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
 import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
 import com.datastrato.gravitino.dto.file.ExtendedFilesetDTO;
@@ -282,6 +283,41 @@ public class TestResponses {
             .withAudit(AuditDTO.builder().build())
             .build();
     return new ExtendedViewDTO[] {new ExtendedViewDTO(view, new TagDTO[0], new PolicyDTO[0])};
+  }
+
+  @Test
+  public void testConnectionListResponse() throws JsonProcessingException {
+    ConnectionDTO connection =
+        new ConnectionDTO(
+            "sales_catalog", "Iceberg REST", "https://irc.acme.internal/iceberg/", "s3-token", 4L);
+    Assertions.assertDoesNotThrow(connection::validate);
+
+    ConnectionDTO connectionWithUnavailableCount =
+        new ConnectionDTO(
+            "events", "Iceberg REST", "https://irc.acme.internal/iceberg/", "s3-token", null);
+    Assertions.assertNull(connectionWithUnavailableCount.getSchemaCount());
+    Assertions.assertDoesNotThrow(connectionWithUnavailableCount::validate);
+
+    ConnectionDTO connectionWithInvalidCount =
+        new ConnectionDTO("invalid", "Hive", "thrift://hive:9083", "kerberos-keytab", -1L);
+    Assertions.assertThrows(IllegalArgumentException.class, connectionWithInvalidCount::validate);
+
+    ConnectionDTO[] connections = new ConnectionDTO[] {connection};
+    ConnectionListResponse response = new ConnectionListResponse(connections, 1, 1);
+    Assertions.assertDoesNotThrow(response::validate);
+
+    String serJson = JsonUtils.objectMapper().writeValueAsString(response);
+    ConnectionListResponse deserialized =
+        JsonUtils.objectMapper().readValue(serJson, ConnectionListResponse.class);
+    Assertions.assertEquals(response, deserialized);
+    Assertions.assertArrayEquals(connections, deserialized.getConnections());
+    Assertions.assertEquals(1, deserialized.getCatalogCount());
+    Assertions.assertEquals(1, deserialized.getSystemCount());
+
+    ConnectionListResponse illegalResp = new ConnectionListResponse();
+    Exception exception =
+        Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
+    Assertions.assertEquals("\"connections\" cannot be null", exception.getMessage());
   }
 
   @Test

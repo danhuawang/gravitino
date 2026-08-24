@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import static com.datastrato.gravitino.server.web.rest.MetadataListingHelper.filterByExpression;
 import static org.apache.gravitino.dto.util.DTOConverters.toDTO;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
@@ -36,7 +37,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -50,7 +50,6 @@ import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
-import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
@@ -90,7 +89,6 @@ import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.rel.types.Types;
-import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.server.web.Utils;
@@ -979,13 +977,7 @@ public class EntityOperations {
   }
 
   private NameIdentifier[] listVisibleSchemaIdentifiers(Namespace namespace) {
-    NameIdentifier[] schemaIdents = schemaDispatcher.listSchemas(namespace);
-    return filterByExpression(
-        namespace.level(0),
-        AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
-        Entity.EntityType.SCHEMA,
-        schemaIdents,
-        schemaIdent -> schemaIdent);
+    return MetadataListingHelper.listVisibleSchemaIdentifiers(schemaDispatcher, namespace);
   }
 
   private NameIdentifier[] listVisibleTableIdentifiers(Namespace namespace) {
@@ -1084,50 +1076,5 @@ public class EntityOperations {
       Entity.EntityType entityType,
       NameIdentifier[] identifiers) {
     return filterByExpression(metalake, expression, entityType, identifiers, id -> id);
-  }
-
-  private NameIdentifier[] filterByExpression(
-      String metalake,
-      String expression,
-      Entity.EntityType entityType,
-      NameIdentifier[] identifiers,
-      Function<NameIdentifier, NameIdentifier> toNameIdentifier) {
-    try {
-      return MetadataAuthzHelper.filterByExpression(
-          metalake, expression, entityType, identifiers, toNameIdentifier);
-    } catch (IllegalArgumentException e) {
-      if (!isMetadataAuthorizationReady()) {
-        LOG.warn(
-            "Skip metadata authorization filtering for {} due to uninitialized GravitinoEnv.",
-            entityType);
-        return identifiers;
-      }
-      throw e;
-    }
-  }
-
-  private <E> E[] filterByExpression(
-      String metalake,
-      String expression,
-      Entity.EntityType entityType,
-      E[] entities,
-      Function<E, NameIdentifier> toNameIdentifier) {
-    try {
-      return MetadataAuthzHelper.filterByExpression(
-          metalake, expression, entityType, entities, toNameIdentifier);
-    } catch (IllegalArgumentException e) {
-      if (!isMetadataAuthorizationReady()) {
-        LOG.warn(
-            "Skip metadata authorization filtering for {} due to uninitialized GravitinoEnv.",
-            entityType);
-        return entities;
-      }
-      throw e;
-    }
-  }
-
-  private boolean isMetadataAuthorizationReady() {
-    return GravitinoEnv.getInstance().config() != null
-        && GravitinoEnv.getInstance().accessControlDispatcher() != null;
   }
 }

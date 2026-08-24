@@ -1,0 +1,239 @@
+/*
+ * Copyright 2026 Datastrato Pvt Ltd.
+ */
+package com.datastrato.gravitino.server.web.rest;
+
+import static com.datastrato.gravitino.server.web.rest.MetadataListingHelper.filterByExpression;
+
+import com.datastrato.gravitino.dto.ConnectionDTO;
+import com.datastrato.gravitino.dto.responses.ConnectionListResponse;
+import com.datastrato.gravitino.server.web.rest.converter.ConnectionConverter;
+import java.security.Principal;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.inject.Inject;
+import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.Response;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.gravitino.Catalog;
+import org.apache.gravitino.Entity;
+import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.AuthorizationUtils;
+import org.apache.gravitino.catalog.CatalogDispatcher;
+import org.apache.gravitino.catalog.SchemaDispatcher;
+import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.credential.CredentialConstants;
+import org.apache.gravitino.exceptions.ForbiddenException;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
+import org.apache.gravitino.server.web.Utils;
+import org.apache.gravitino.server.web.rest.ExceptionHandlers;
+import org.apache.gravitino.server.web.rest.OperationType;
+import org.apache.gravitino.utils.NameIdentifierUtil;
+import org.apache.gravitino.utils.NamespaceUtil;
+import org.apache.gravitino.utils.PrincipalUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/** REST operations for listing connections in Web Connect UI. */
+@Path("/web/metalakes/{metalake}/connections")
+public class ConnectionOperations {
+
+  private static final Logger LOG = LoggerFactory.getLogger(ConnectionOperations.class);
+  private static final int MAX_SCHEMA_COUNT_THREADS = 8;
+  private static final long SCHEMA_COUNT_THREAD_KEEP_ALIVE_SECONDS = 60L;
+  private static final AtomicInteger SCHEMA_COUNT_THREAD_COUNTER = new AtomicInteger();
+  private static final ExecutorService SCHEMA_COUNT_EXECUTOR =
+      new ThreadPoolExecutor(
+          0,
+          MAX_SCHEMA_COUNT_THREADS,
+          SCHEMA_COUNT_THREAD_KEEP_ALIVE_SECONDS,
+          TimeUnit.SECONDS,
+          new SynchronousQueue<>(),
+          runnable -> {
+            Thread thread =
+                new Thread(
+                    runnable,
+                    "connection-schema-count-" + SCHEMA_COUNT_THREAD_COUNTER.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+          },
+          new ThreadPoolExecutor.CallerRunsPolicy());
+
+  private final CatalogDispatcher catalogDispatcher;
+  private final SchemaDispatcher schemaDispatcher;
+
+  @Context private HttpServletRequest httpRequest;
+
+  /**
+   * Constructs a new ConnectionOperations.
+   *
+   * @param catalogDispatcher The catalog dispatcher.
+   * @param schemaDispatcher The schema dispatcher.
+   */
+  @Inject
+  public ConnectionOperations(
+      CatalogDispatcher catalogDispatcher, SchemaDispatcher schemaDispatcher) {
+    this.catalogDispatcher = catalogDispatcher;
+    this.schemaDispatcher = schemaDispatcher;
+  }
+
+  /**
+   * Lists all connections under the given metalake.
+   *
+   * @param metalake The metalake name.
+   * @return The response containing connections and summary statistics.
+   */
+  @GET
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "")
+  public Response listConnections(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake) {
+    LOG.info("Received request to list connections for metalake: {}", metalake);
+
+    if (StringUtils.isBlank(metalake)) {
+      return Utils.illegalArguments(
+          "Path param metalake cannot be blank", new IllegalArgumentException());
+    }
+
+    try {
+      AuthorizationUtils.checkCurrentUser(metalake, PrincipalUtils.getCurrentUserName());
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
+    }
+
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            Namespace catalogNS = NamespaceUtil.ofCatalog(metalake);
+            Catalog[] catalogs = catalogDispatcher.listCatalogsInfo(catalogNS);
+            catalogs =
+                filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.CATALOG,
+                    catalogs,
+                    catalog -> NameIdentifierUtil.ofCatalog(metalake, catalog.name()));
+
+            Map<String, String> credentialProviders =
+                resolveCredentialProviders(metalake, catalogs);
+            Map<String, Long> schemaCounts = listCatalogDirectChildCounts(metalake, catalogs);
+            ConnectionDTO[] connections =
+                ConnectionConverter.toConnectionDTOs(catalogs, schemaCounts, credentialProviders);
+            int catalogCount = connections.length;
+            int systemCount = ConnectionConverter.calculateSystemCount(connections);
+
+            LOG.info(
+                "Listed {} connections across {} systems under metalake: {}",
+                catalogCount,
+                systemCount,
+                metalake);
+            return Utils.ok(new ConnectionListResponse(connections, catalogCount, systemCount));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleCatalogException(OperationType.LIST, "", metalake, e);
+    } catch (Throwable throwable) {
+      return Utils.internalError("Unexpected error while listing connections", throwable);
+    }
+  }
+
+  private Map<String, String> resolveCredentialProviders(String metalake, Catalog[] catalogs) {
+    Map<String, String> credentialProviders = new LinkedHashMap<>();
+    for (Catalog catalog : catalogs) {
+      Map<String, String> publicProperties = catalog.properties();
+      if (publicProperties != null
+          && StringUtils.isNotBlank(
+              publicProperties.get(CredentialConstants.CREDENTIAL_PROVIDERS))) {
+        continue;
+      }
+
+      try {
+        Catalog loadedCatalog =
+            catalogDispatcher.loadCatalog(NameIdentifierUtil.ofCatalog(metalake, catalog.name()));
+        if (!(loadedCatalog instanceof BaseCatalog)) {
+          continue;
+        }
+
+        String providers =
+            ((BaseCatalog<?>) loadedCatalog)
+                .propertiesWithCredentialProviders()
+                .get(CredentialConstants.CREDENTIAL_PROVIDERS);
+        if (StringUtils.isNotBlank(providers)) {
+          credentialProviders.put(catalog.name(), providers);
+        }
+      } catch (RuntimeException e) {
+        LOG.warn(
+            "Failed to resolve credential providers for catalog {} under metalake {}; "
+                + "the credential type will be unavailable",
+            catalog.name(),
+            metalake);
+      }
+    }
+    return credentialProviders;
+  }
+
+  private Map<String, Long> listCatalogDirectChildCounts(String metalake, Catalog[] catalogs) {
+    Principal principal = PrincipalUtils.getCurrentPrincipal();
+    Map<String, Future<Long>> pendingCounts = new LinkedHashMap<>();
+    for (Catalog catalog : catalogs) {
+      Namespace catalogNamespace = Namespace.of(metalake, catalog.name());
+      pendingCounts.put(
+          catalog.name(),
+          SCHEMA_COUNT_EXECUTOR.submit(() -> listVisibleSchemaCount(principal, catalogNamespace)));
+    }
+
+    Map<String, Long> directChildCounts = new LinkedHashMap<>();
+    for (Map.Entry<String, Future<Long>> pendingCount : pendingCounts.entrySet()) {
+      try {
+        directChildCounts.put(pendingCount.getKey(), pendingCount.getValue().get());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        pendingCounts.values().forEach(future -> future.cancel(true));
+        LOG.warn(
+            "Interrupted while retrieving schema counts under metalake {}; "
+                + "remaining counts will be unavailable",
+            metalake,
+            e);
+        break;
+      } catch (ExecutionException e) {
+        LOG.warn(
+            "Failed to retrieve the schema count for catalog {} under metalake {}; "
+                + "the count will be unavailable",
+            pendingCount.getKey(),
+            metalake,
+            e.getCause());
+      }
+    }
+    return directChildCounts;
+  }
+
+  private long listVisibleSchemaCount(Principal principal, Namespace catalogNamespace)
+      throws Exception {
+    if (principal == PrincipalUtils.getCurrentPrincipal()) {
+      return MetadataListingHelper.listVisibleSchemaIdentifiers(schemaDispatcher, catalogNamespace)
+          .length;
+    }
+    return PrincipalUtils.doAs(
+        principal,
+        () ->
+            (long)
+                MetadataListingHelper.listVisibleSchemaIdentifiers(
+                        schemaDispatcher, catalogNamespace)
+                    .length);
+  }
+}
