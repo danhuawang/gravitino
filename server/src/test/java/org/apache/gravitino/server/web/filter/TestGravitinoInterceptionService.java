@@ -304,6 +304,27 @@ public class TestGravitinoInterceptionService {
     Mockito.when(enterpriseExtendedTagOperationsDescriptor.getImplementation())
         .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedTagOperations");
 
+    Descriptor authorizationOverviewOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(authorizationOverviewOperationsDescriptor.getImplementation())
+        .thenReturn(
+            "com.datastrato.gravitino.server.web.rest.ExtendedAuthorizationOverviewOperations");
+
+    Descriptor extendedPolicyOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(extendedPolicyOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedPolicyOperations");
+
+    Descriptor credentialProviderOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(credentialProviderOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.CredentialProviderOperations");
+
+    Descriptor dataPreviewOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(dataPreviewOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.DataPreviewOperations");
+
+    Descriptor enterpriseNonOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(enterpriseNonOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.ServletRequestFactoryBase");
+
     Assertions.assertTrue(filter.matches(enterpriseCreationWithTagsDescriptor));
     Assertions.assertTrue(filter.matches(enterpriseEntityOperationsDescriptor));
     Assertions.assertTrue(filter.matches(extendedUserOperationsDescriptor));
@@ -311,6 +332,11 @@ public class TestGravitinoInterceptionService {
     Assertions.assertTrue(filter.matches(extendedRoleOperationsDescriptor));
     Assertions.assertTrue(filter.matches(extendedMetadataObjectRoleOperationsDescriptor));
     Assertions.assertTrue(filter.matches(enterpriseExtendedTagOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(authorizationOverviewOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(extendedPolicyOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(credentialProviderOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(dataPreviewOperationsDescriptor));
+    Assertions.assertFalse(filter.matches(enterpriseNonOperationsDescriptor));
   }
 
   /**

@@ -113,12 +113,16 @@ public class GravitinoInterceptionService implements InterceptionService {
             JobOperations.class.getName(),
             MetadataObjectCredentialOperations.class.getName(),
             "com.datastrato.gravitino.server.web.rest.CreationWithTagsOperations",
+            "com.datastrato.gravitino.server.web.rest.CredentialProviderOperations",
+            "com.datastrato.gravitino.server.web.rest.DataPreviewOperations",
             "com.datastrato.gravitino.server.web.rest.EntityOperations",
-            "com.datastrato.gravitino.server.web.rest.ExtendedUserOperations",
+            "com.datastrato.gravitino.server.web.rest.ExtendedAuthorizationOverviewOperations",
             "com.datastrato.gravitino.server.web.rest.ExtendedGroupOperations",
-            "com.datastrato.gravitino.server.web.rest.ExtendedRoleOperations",
             "com.datastrato.gravitino.server.web.rest.ExtendedMetadataObjectRoleOperations",
-            "com.datastrato.gravitino.server.web.rest.ExtendedTagOperations"));
+            "com.datastrato.gravitino.server.web.rest.ExtendedPolicyOperations",
+            "com.datastrato.gravitino.server.web.rest.ExtendedRoleOperations",
+            "com.datastrato.gravitino.server.web.rest.ExtendedTagOperations",
+            "com.datastrato.gravitino.server.web.rest.ExtendedUserOperations"));
   }
 
   @Override

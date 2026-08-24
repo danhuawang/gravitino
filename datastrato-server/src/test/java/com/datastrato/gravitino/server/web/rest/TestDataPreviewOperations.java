@@ -19,6 +19,8 @@ import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.dto.responses.DataPreviewResponse;
 import com.datastrato.gravitino.preview.DataPreviewSensitiveTableException;
 import java.io.IOException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.Application;
@@ -26,7 +28,9 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.dto.responses.ErrorConstants;
@@ -36,6 +40,9 @@ import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -89,6 +96,33 @@ public class TestDataPreviewOperations extends JerseyTest {
         });
 
     return resourceConfig;
+  }
+
+  @Test
+  public void testAuthorizationAnnotations() throws NoSuchMethodException {
+    Method method =
+        DataPreviewOperations.class.getMethod(
+            "previewTable", String.class, String.class, String.class, String.class, int.class);
+    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+    Assertions.assertNotNull(expression);
+    Assertions.assertEquals(
+        AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION,
+        expression.expression());
+    Assertions.assertEquals(MetadataObject.Type.TABLE, expression.accessMetadataType());
+
+    Parameter[] parameters = method.getParameters();
+    Entity.EntityType[] expectedTypes =
+        new Entity.EntityType[] {
+          Entity.EntityType.METALAKE,
+          Entity.EntityType.CATALOG,
+          Entity.EntityType.SCHEMA,
+          Entity.EntityType.TABLE
+        };
+    for (int i = 0; i < expectedTypes.length; i++) {
+      AuthorizationMetadata metadata = parameters[i].getAnnotation(AuthorizationMetadata.class);
+      Assertions.assertNotNull(metadata);
+      Assertions.assertEquals(expectedTypes[i], metadata.type());
+    }
   }
 
   @Test

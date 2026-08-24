@@ -98,6 +98,9 @@ paths:
   /web/security/metalakes/{metalake}/objects/roles:
     $ref: "./roles.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1objects~1roles"
 
+  /web/security/metalakes/{metalake}/authorization/overview:
+    $ref: "./roles.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1authorization~1overview"
+
   /metalakes/{metalake}/objects/{metadataObjectType}/{metadataObjectFullName}/credentials:
     $ref: "./credentials.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1objects~1%7BmetadataObjectType%7D~1%7BmetadataObjectFullName%7D~1credentials"
 
