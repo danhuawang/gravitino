@@ -9,6 +9,7 @@ import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
 import com.datastrato.gravitino.dto.ConnectionDTO;
 import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
+import com.datastrato.gravitino.dto.ExtendedMetalakeDTO;
 import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
 import com.datastrato.gravitino.dto.file.ExtendedFilesetDTO;
 import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
@@ -25,6 +26,7 @@ import org.apache.gravitino.Catalog;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.CatalogDTO;
+import org.apache.gravitino.dto.MetalakeDTO;
 import org.apache.gravitino.dto.SchemaDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
@@ -47,6 +49,36 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class TestResponses {
+
+  @Test
+  public void testMetalakeListResponse() throws JsonProcessingException {
+    MetalakeDTO metalake =
+        MetalakeDTO.builder().withName("metalake1").withAudit(AuditDTO.builder().build()).build();
+    ExtendedMetalakeDTO extendedMetalake = new ExtendedMetalakeDTO(metalake, 2L);
+    ExtendedMetalakeDTO extendedMetalakeWithUnavailableCount =
+        new ExtendedMetalakeDTO(metalake, null);
+    ExtendedMetalakeDTO[] metalakes =
+        new ExtendedMetalakeDTO[] {extendedMetalake, extendedMetalakeWithUnavailableCount};
+    MetalakeListResponse response = new MetalakeListResponse(metalakes);
+    Assertions.assertDoesNotThrow(response::validate);
+
+    String serialized = JsonUtils.objectMapper().writeValueAsString(response);
+    MetalakeListResponse deserialized =
+        JsonUtils.objectMapper().readValue(serialized, MetalakeListResponse.class);
+    Assertions.assertEquals(response, deserialized);
+    Assertions.assertArrayEquals(metalakes, deserialized.getMetalakes());
+    Assertions.assertNull(deserialized.getMetalakes()[1].getDirectChildCounts());
+
+    MetalakeListResponse illegalResponse = new MetalakeListResponse();
+    Exception exception =
+        Assertions.assertThrows(IllegalArgumentException.class, illegalResponse::validate);
+    Assertions.assertEquals("\"metalakes\" cannot be null", exception.getMessage());
+
+    ExtendedMetalakeDTO negativeCountMetalake = new ExtendedMetalakeDTO(metalake, -1L);
+    exception =
+        Assertions.assertThrows(IllegalArgumentException.class, negativeCountMetalake::validate);
+    Assertions.assertEquals("directChildCounts cannot be negative", exception.getMessage());
+  }
 
   @Test
   public void testCatalogListResponse() throws JsonProcessingException {

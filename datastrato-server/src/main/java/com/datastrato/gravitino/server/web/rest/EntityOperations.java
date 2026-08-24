@@ -14,6 +14,7 @@ import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
 import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
+import com.datastrato.gravitino.dto.ExtendedMetalakeDTO;
 import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
 import com.datastrato.gravitino.dto.file.ExtendedFilesetDTO;
 import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
@@ -23,6 +24,7 @@ import com.datastrato.gravitino.dto.rel.ExtendedTableDTO;
 import com.datastrato.gravitino.dto.rel.ExtendedViewDTO;
 import com.datastrato.gravitino.dto.responses.CatalogListResponse;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
+import com.datastrato.gravitino.dto.responses.MetalakeListResponse;
 import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
@@ -53,6 +55,7 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
+import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
@@ -88,7 +91,9 @@ import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.ViewEntity;
+import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.rel.types.Types;
+import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.server.web.Utils;
@@ -108,6 +113,7 @@ public class EntityOperations {
 
   @Context private HttpServletRequest httpRequest;
 
+  private final MetalakeDispatcher metalakeDispatcher;
   private final CatalogDispatcher catalogDispatcher;
   private final DatastratoSchemaDispatcher schemaDispatcher;
   private final DatastratoTableDispatcher tableDispatcher;
@@ -119,6 +125,7 @@ public class EntityOperations {
 
   @Inject
   public EntityOperations(
+      MetalakeDispatcher metalakeDispatcher,
       CatalogDispatcher catalogDispatcher,
       SchemaDispatcher schemaDispatcher,
       TableDispatcher tableDispatcher,
@@ -127,6 +134,7 @@ public class EntityOperations {
       ModelDispatcher modelDispatcher,
       FunctionDispatcher functionDispatcher,
       ViewDispatcher viewDispatcher) {
+    this.metalakeDispatcher = metalakeDispatcher;
     this.catalogDispatcher = catalogDispatcher;
     this.schemaDispatcher = (DatastratoSchemaDispatcher) schemaDispatcher;
     this.tableDispatcher = (DatastratoTableDispatcher) tableDispatcher;
@@ -149,20 +157,30 @@ public class EntityOperations {
         "Received request to list entities for namespace: {}, parentSchema: {}",
         namespace,
         parentSchema);
-    if (namespace == null || namespace.isEmpty()) {
+    if (resultLimit <= 0) {
       return Utils.illegalArguments(
-          "Query param namespace cannot be empty", new IllegalArgumentException());
+          "Result limit should be greater than 0", new IllegalArgumentException());
+    }
+
+    if (namespace == null || namespace.isEmpty()) {
+      if (catalogType != null || StringUtils.isNotBlank(parentSchema)) {
+        return Utils.illegalArguments(
+            "Query params catalogType and parentSchema cannot be set when namespace is empty",
+            new IllegalArgumentException());
+      }
+
+      try {
+        return Utils.doAs(httpRequest, () -> listMetalakes(resultLimit));
+      } catch (Exception e) {
+        return ExceptionHandlers.handleMetalakeException(
+            OperationType.LIST, Namespace.empty().toString(), e);
+      }
     }
 
     if (catalogType == null && namespace.length() != 1) {
       // catalogType is required except for listing catalogs
       return Utils.illegalArguments(
           "Query param catalogType cannot be empty", new IllegalArgumentException());
-    }
-
-    if (resultLimit <= 0) {
-      return Utils.illegalArguments(
-          "Result limit should be greater than 0", new IllegalArgumentException());
     }
 
     try {
@@ -284,6 +302,31 @@ public class EntityOperations {
                 parentSchema, separator));
       }
     }
+  }
+
+  private Response listMetalakes(int resultLimit) {
+    Metalake[] metalakes =
+        MetadataAuthzHelper.filterMetalakes(
+            metalakeDispatcher.listMetalakes(),
+            AuthorizationExpressionConstants.LOAD_METALAKE_AUTHORIZATION_EXPRESSION);
+    Metalake[] selectedMetalakes =
+        Arrays.stream(metalakes)
+            .sorted(Comparator.comparing(Metalake::name))
+            .limit(resultLimit)
+            .toArray(Metalake[]::new);
+    Map<String, Long> directChildCounts = listMetalakeDirectChildCounts(selectedMetalakes);
+
+    ExtendedMetalakeDTO[] extendedMetalakes =
+        Arrays.stream(selectedMetalakes)
+            .map(
+                metalake ->
+                    new ExtendedMetalakeDTO(
+                        DTOConverters.toDTO(metalake), directChildCounts.get(metalake.name())))
+            .toArray(ExtendedMetalakeDTO[]::new);
+
+    Response response = Utils.ok(new MetalakeListResponse(extendedMetalakes));
+    LOG.info("List {} Metalake entities", extendedMetalakes.length);
+    return response;
   }
 
   private Response listCatalogs(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
@@ -892,6 +935,19 @@ public class EntityOperations {
     return directChildCounts;
   }
 
+  private Map<String, Long> listMetalakeDirectChildCounts(Metalake[] metalakes) {
+    Map<String, Long> directChildCounts = new LinkedHashMap<>();
+    for (Metalake metalake : metalakes) {
+      try {
+        long count = listVisibleCatalogIdentifiers(metalake.name()).length;
+        directChildCounts.put(metalake.name(), count);
+      } catch (Exception e) {
+        LOG.warn("Failed to count direct child catalogs under Metalake: {}", metalake.name(), e);
+      }
+    }
+    return directChildCounts;
+  }
+
   private Map<String, Long> listSchemaDirectChildCounts(
       Namespace namespace, Catalog.Type catalogType, SchemaDTO[] schemas) {
     Map<String, Long> directChildCounts = new LinkedHashMap<>();
@@ -974,6 +1030,15 @@ public class EntityOperations {
       LOG.warn("Failed to count views under namespace: {}", namespace, e);
       return 0;
     }
+  }
+
+  private NameIdentifier[] listVisibleCatalogIdentifiers(String metalake) {
+    NameIdentifier[] catalogIdents = catalogDispatcher.listCatalogs(Namespace.of(metalake));
+    return filterByNameIdentifier(
+        metalake,
+        AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.CATALOG,
+        catalogIdents);
   }
 
   private NameIdentifier[] listVisibleSchemaIdentifiers(Namespace namespace) {

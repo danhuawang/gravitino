@@ -30,6 +30,7 @@ import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
 import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
+import com.datastrato.gravitino.dto.ExtendedMetalakeDTO;
 import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
 import com.datastrato.gravitino.dto.file.ExtendedFilesetDTO;
 import com.datastrato.gravitino.dto.function.ExtendedFunctionDTO;
@@ -39,6 +40,7 @@ import com.datastrato.gravitino.dto.rel.ExtendedTableDTO;
 import com.datastrato.gravitino.dto.rel.ExtendedViewDTO;
 import com.datastrato.gravitino.dto.responses.CatalogListResponse;
 import com.datastrato.gravitino.dto.responses.FilesetListResponse;
+import com.datastrato.gravitino.dto.responses.MetalakeListResponse;
 import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
@@ -70,6 +72,7 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.UserPrincipal;
@@ -101,14 +104,17 @@ import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
+import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.SchemaEntity;
+import org.apache.gravitino.meta.SchemaVersion;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.ViewEntity;
+import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.policy.Policy;
 import org.apache.gravitino.policy.PolicyContents;
 import org.apache.gravitino.policy.PolicyDispatcher;
@@ -170,6 +176,7 @@ public class TestEntityOperations extends JerseyTest {
     }
   }
 
+  private final MetalakeDispatcher metalakeDispatcher = mock(MetalakeDispatcher.class);
   private final CatalogDispatcher catalogDispatcher = mock(CatalogManager.class);
   private final DatastratoSchemaOperationDispatcher schemaDispatcher =
       mock(DatastratoSchemaOperationDispatcher.class);
@@ -234,6 +241,7 @@ public class TestEntityOperations extends JerseyTest {
         new AbstractBinder() {
           @Override
           protected void configure() {
+            bind(metalakeDispatcher).to(MetalakeDispatcher.class).ranked(2);
             bind(catalogDispatcher).to(CatalogDispatcher.class).ranked(2);
             bind(schemaDispatcher).to(SchemaDispatcher.class).ranked(2);
             bind(tableDispatcher).to(TableDispatcher.class).ranked(2);
@@ -253,10 +261,85 @@ public class TestEntityOperations extends JerseyTest {
   }
 
   @Test
+  public void testListMetalakes() {
+    BaseMetalake metalakeZ = buildMetalake(1L, "metalake-z");
+    BaseMetalake metalakeA = buildMetalake(2L, "metalake-a");
+    BaseMetalake metalakeM = buildMetalake(3L, "metalake-m");
+    when(metalakeDispatcher.listMetalakes())
+        .thenReturn(new Metalake[] {metalakeZ, metalakeA, metalakeM});
+
+    Namespace metalakeANamespace = Namespace.of("metalake-a");
+    when(catalogDispatcher.listCatalogs(metalakeANamespace))
+        .thenReturn(
+            new NameIdentifier[] {
+              NameIdentifier.of(metalakeANamespace, "catalog-a1"),
+              NameIdentifier.of(metalakeANamespace, "catalog-a2")
+            });
+    when(catalogDispatcher.listCatalogs(Namespace.of("metalake-m")))
+        .thenReturn(new NameIdentifier[0]);
+
+    Response response =
+        target("/web/entities")
+            .queryParam("resultLimit", 2)
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
+    MetalakeListResponse metalakeResponse = response.readEntity(MetalakeListResponse.class);
+    Assertions.assertEquals(0, metalakeResponse.getCode());
+    ExtendedMetalakeDTO[] metalakes = metalakeResponse.getMetalakes();
+    Assertions.assertEquals(2, metalakes.length);
+    Assertions.assertEquals("metalake-a", metalakes[0].name());
+    Assertions.assertEquals(2L, metalakes[0].getDirectChildCounts());
+    Assertions.assertEquals("metalake-m", metalakes[1].name());
+    Assertions.assertEquals(0L, metalakes[1].getDirectChildCounts());
+
+    Response emptyNamespaceResponse =
+        target("/web/entities")
+            .queryParam("namespace", "")
+            .queryParam("resultLimit", 2)
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), emptyNamespaceResponse.getStatus());
+    MetalakeListResponse emptyNamespaceMetalakeResponse =
+        emptyNamespaceResponse.readEntity(MetalakeListResponse.class);
+    Assertions.assertArrayEquals(metalakes, emptyNamespaceMetalakeResponse.getMetalakes());
+    Mockito.verify(catalogDispatcher, Mockito.never()).listCatalogs(Namespace.of("metalake-z"));
+  }
+
+  @Test
+  public void testListMetalakeDirectChildCountUnavailable() {
+    BaseMetalake metalakeA = buildMetalake(1L, "metalake-a");
+    BaseMetalake metalakeB = buildMetalake(2L, "metalake-b");
+    when(metalakeDispatcher.listMetalakes()).thenReturn(new Metalake[] {metalakeA, metalakeB});
+    when(catalogDispatcher.listCatalogs(Namespace.of("metalake-a")))
+        .thenThrow(new IllegalStateException("Catalog count is unavailable"));
+    Namespace metalakeBNamespace = Namespace.of("metalake-b");
+    when(catalogDispatcher.listCatalogs(metalakeBNamespace))
+        .thenReturn(new NameIdentifier[] {NameIdentifier.of(metalakeBNamespace, "catalog-b")});
+
+    Response response =
+        target("/web/entities")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    MetalakeListResponse metalakeResponse = response.readEntity(MetalakeListResponse.class);
+    Assertions.assertNull(metalakeResponse.getMetalakes()[0].getDirectChildCounts());
+    Assertions.assertEquals(1L, metalakeResponse.getMetalakes()[1].getDirectChildCounts());
+  }
+
+  @Test
   public void testListEntitiesException() {
-    // test namespace error
+    // test root-level-only query parameters without a namespace
     Response resp =
         target("/web/entities")
+            .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -267,7 +350,27 @@ public class TestEntityOperations extends JerseyTest {
     ErrorResponse errorResp = resp.readEntity(ErrorResponse.class);
     Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, errorResp.getCode());
     Assertions.assertEquals(IllegalArgumentException.class.getSimpleName(), errorResp.getType());
-    Assertions.assertEquals("Query param namespace cannot be empty", errorResp.getMessage());
+    Assertions.assertEquals(
+        "Query params catalogType and parentSchema cannot be set when namespace is empty",
+        errorResp.getMessage());
+
+    // test parentSchema without a namespace
+    resp =
+        target("/web/entities")
+            .queryParam("parentSchema", "parent")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
+
+    errorResp = resp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, errorResp.getCode());
+    Assertions.assertEquals(IllegalArgumentException.class.getSimpleName(), errorResp.getType());
+    Assertions.assertEquals(
+        "Query params catalogType and parentSchema cannot be set when namespace is empty",
+        errorResp.getMessage());
 
     // test namespace does not exist
     doThrow(new NoSuchSchemaException("Schema metalake.catalog.schema does not exist"))
@@ -1179,12 +1282,23 @@ public class TestEntityOperations extends JerseyTest {
         .when(mockAuthorizer.isOwner(any(), eq("testMetalake"), any(), any()))
         .thenReturn(false);
     lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+    lenient().when(mockAuthorizer.isMetalakeUser(eq("hiddenMetalake"), any())).thenReturn(false);
 
+    BaseMetalake visibleMetalake = buildMetalake(1L, "testMetalake");
+    BaseMetalake hiddenMetalake = buildMetalake(2L, "hiddenMetalake");
+    when(metalakeDispatcher.listMetalakes())
+        .thenReturn(new Metalake[] {hiddenMetalake, visibleMetalake});
     TestCatalog catalog1 = buildCatalog("testMetalake", "relCatalog1");
     TestCatalog catalog2 = buildCatalog("testMetalake", "relCatalog2");
     TestCatalog[] mockedCatalogs = new TestCatalog[] {catalog1, catalog2};
-    when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
-        .thenReturn(mockedCatalogs);
+    Namespace metalakeNamespace = Namespace.of("testMetalake");
+    when(catalogDispatcher.listCatalogsInfo(metalakeNamespace)).thenReturn(mockedCatalogs);
+    when(catalogDispatcher.listCatalogs(metalakeNamespace))
+        .thenReturn(
+            new NameIdentifier[] {
+              NameIdentifier.of(metalakeNamespace, "relCatalog1"),
+              NameIdentifier.of(metalakeNamespace, "relCatalog2")
+            });
     Namespace visibleCatalogNs = Namespace.of("testMetalake", "relCatalog1");
     when(schemaDispatcher.listSchemas(visibleCatalogNs))
         .thenReturn(
@@ -1211,6 +1325,20 @@ public class TestEntityOperations extends JerseyTest {
             .when(PrincipalUtils::getCurrentPrincipal)
             .thenReturn(new UserPrincipal("tester"));
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
+
+        Response metalakeResponse =
+            target("/web/entities")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get();
+
+        Assertions.assertEquals(Response.Status.OK.getStatusCode(), metalakeResponse.getStatus());
+        MetalakeListResponse metalakeListResponse =
+            metalakeResponse.readEntity(MetalakeListResponse.class);
+        ExtendedMetalakeDTO[] metalakeDTOs = metalakeListResponse.getMetalakes();
+        Assertions.assertEquals(1, metalakeDTOs.length);
+        Assertions.assertEquals("testMetalake", metalakeDTOs[0].name());
+        Assertions.assertEquals(1L, metalakeDTOs[0].getDirectChildCounts());
 
         Response resp =
             target("/web/entities")
@@ -2217,6 +2345,16 @@ public class TestEntityOperations extends JerseyTest {
                             .build())
                     .build())
         .collect(Collectors.toList());
+  }
+
+  private BaseMetalake buildMetalake(long id, String name) {
+    return BaseMetalake.builder()
+        .withId(id)
+        .withName(name)
+        .withAuditInfo(
+            AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+        .withVersion(SchemaVersion.V_0_1)
+        .build();
   }
 
   private TestCatalog buildCatalog(String metalake, String catalogName) {

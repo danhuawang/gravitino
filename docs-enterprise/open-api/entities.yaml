@@ -25,16 +25,18 @@ paths:
       operationId: listEntities
       description: |
         List entities under the specified namespace, this endpoint is used for display tree in Web UI.
+        When namespace is omitted, list Metalakes and their visible direct Catalog counts.
       parameters:
         - name: namespace
           in: query
-          description: The namespace of the entity
-          required: true
+          description: |
+            The namespace of the entity. Omit it or pass an empty value to list Metalakes.
+          required: false
           schema:
             type: string
         - name: catalogType
           in: query
-          description: The catalog type of the entity
+          description: The catalog type of the entity. It cannot be set when listing Metalakes.
           required: false
           schema:
             type: string
@@ -46,24 +48,29 @@ paths:
             child schemas under the provided parent schema.
             When namespace is the schema namespace (metalake.catalog.schema),
             returns tables along with child schemas under the parent schema.
+            It cannot be set when namespace is omitted or empty.
           required: false
           schema:
             type: string
         - name: resultLimit
           in: query
-          description: The maximum number of entities to return
+          description: The maximum number of entities to return. It must be greater than 0.
           required: false
           schema:
             type: integer
             format: int32
+            minimum: 1
             default: 1000
       responses:
         "200":
-          description: Returns the list of entities under the specified namespace
+          description: |
+            Returns the list of entities under the specified namespace, or Metalakes when namespace
+            is omitted.
           content:
             application/vnd.gravitino.v1+json:
               schema:
                 oneOf:
+                  - $ref: "#/components/schemas/MetalakeListResponse"
                   - $ref: "#/components/schemas/CatalogListResponse"
                   - $ref: "#/components/schemas/SchemaListResponse"
                   - $ref: "#/components/schemas/TableListResponse"
@@ -77,6 +84,18 @@ paths:
 
 components:
   schemas:
+    ExtendedMetalake:
+      allOf:
+        - $ref: "../../docs/open-api/metalakes.yaml#/components/schemas/Metalake"
+        - type: object
+          properties:
+            directChildCounts:
+              type: integer
+              format: int64
+              minimum: 0
+              nullable: true
+              description: The visible direct Catalog count, or null when the count is unavailable
+
     ExtendedCatalog:
       allOf:
         - $ref: "../../docs/open-api/catalogs.yaml#/components/schemas/Catalog"
@@ -217,8 +236,29 @@ components:
               items:
                 $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
 
+    MetalakeListResponse:
+      type: object
+      required:
+        - metalakes
+      additionalProperties: false
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        metalakes:
+          type: array
+          description: A list of extended Metalake objects
+          items:
+            $ref: "#/components/schemas/ExtendedMetalake"
+
     CatalogListResponse:
       type: object
+      required:
+        - catalogs
+      additionalProperties: false
       properties:
         code:
           type: integer
@@ -234,6 +274,9 @@ components:
 
     SchemaListResponse:
       type: object
+      required:
+        - schemas
+      additionalProperties: false
       properties:
         code:
           type: integer
@@ -249,6 +292,9 @@ components:
 
     TableListResponse:
       type: object
+      required:
+        - tables
+      additionalProperties: false
       properties:
         code:
           type: integer
@@ -279,6 +325,9 @@ components:
 
     FilesetListResponse:
       type: object
+      required:
+        - filesets
+      additionalProperties: false
       properties:
         code:
           type: integer
@@ -299,6 +348,9 @@ components:
 
     TopicListResponse:
       type: object
+      required:
+        - topics
+      additionalProperties: false
       properties:
         code:
           type: integer
@@ -319,6 +371,9 @@ components:
 
     ModelListResponse:
       type: object
+      required:
+        - models
+      additionalProperties: false
       properties:
         code:
           type: integer
