@@ -212,7 +212,7 @@ class TestIndexTemplateMappings {
   private static Path binDirectory() {
     Path userDirectory = Paths.get(System.getProperty("user.dir"));
     Path localBin = userDirectory.resolve("bin");
-    if (Files.isDirectory(localBin)) {
+    if (Files.isDirectory(localBin.resolve("opensearch"))) {
       return localBin;
     }
     return userDirectory.resolve("..").resolve("bin").normalize();
