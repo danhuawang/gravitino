@@ -47,6 +47,10 @@ CLICKHOUSE_JDBC_VERSION=${CLICKHOUSE_JDBC_VERSION:-"0.7.1"}
 CLICKHOUSE_JDBC_DRIVER_NAME="clickhouse-jdbc-${CLICKHOUSE_JDBC_VERSION}-all.jar"
 CLICKHOUSE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/clickhouse/clickhouse-jdbc/${CLICKHOUSE_JDBC_VERSION}/${CLICKHOUSE_JDBC_DRIVER_NAME}"
 
+OCEANBASE_JDBC_VERSION=${OCEANBASE_JDBC_VERSION:-"2.4.18"}
+OCEANBASE_JDBC_DRIVER_NAME="oceanbase-client-${OCEANBASE_JDBC_VERSION}.jar"
+OCEANBASE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/oceanbase/oceanbase-client/${OCEANBASE_JDBC_VERSION}/${OCEANBASE_JDBC_DRIVER_NAME}"
+
 # Prepare compile Gravitino packages
 "${gravitino_home}"/gradlew clean
 "${gravitino_home}"/gradlew compileDistribution -x test -x :docs:build -x :docs-enterprise:build -x :clients:client-python:build
@@ -77,26 +81,29 @@ mkdir -p "${jdbc_driver_dir}"
 gcs_connector_dir="${gravitino_dir}/packages/gravitino/gcs-connector"
 mkdir -p "${gcs_connector_dir}"
 
-# Download JDBC drivers to dedicated directory
-if [ ! -f "${jdbc_driver_dir}/${MYSQL_JDBC_DRIVER_NAME}" ]; then
-  curl -L -s -o "${jdbc_driver_dir}/${MYSQL_JDBC_DRIVER_NAME}" "${MYSQL_JDBC_DRIVER_DOWNLOAD_URL}"
-fi
+# Helper: download a file with validation. Downloads to a .tmp file first,
+# then moves into place only on success. Prevents caching corrupt/partial files
+# when HTTP errors (4xx/5xx) occur.
+download_file() {
+  local target_file="$1"
+  local url="$2"
+  if [ ! -f "${target_file}" ]; then
+    curl -L --fail --show-error -o "${target_file}.tmp" "${url}"
+    mv "${target_file}.tmp" "${target_file}"
+  fi
+}
 
-if [ ! -f "${jdbc_driver_dir}/${POSTGRESQL_JDBC_DRIVER_NAME}" ]; then
-  curl -L -s -o "${jdbc_driver_dir}/${POSTGRESQL_JDBC_DRIVER_NAME}" "${POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL}"
-fi
+# Download JDBC drivers to dedicated directory
+download_file "${jdbc_driver_dir}/${MYSQL_JDBC_DRIVER_NAME}" "${MYSQL_JDBC_DRIVER_DOWNLOAD_URL}"
+download_file "${jdbc_driver_dir}/${POSTGRESQL_JDBC_DRIVER_NAME}" "${POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL}"
 
 # Download GCS connector to dedicated directory
-if [ ! -f "${gcs_connector_dir}/${GCS_CONNECTOR_NAME}" ]; then
-  curl -L -s -o "${gcs_connector_dir}/${GCS_CONNECTOR_NAME}" "${GCS_CONNECTOR_DOWNLOAD_URL}"
-fi
+download_file "${gcs_connector_dir}/${GCS_CONNECTOR_NAME}" "${GCS_CONNECTOR_DOWNLOAD_URL}"
 
 # Download and install BigQuery Simba JDBC driver
 gravitino_bigquery_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-bigquery/libs"
 simba_tmp_dir="${gravitino_dir}/packages/simba-bigquery-tmp"
-if [ ! -f "${gravitino_dir}/packages/${SIMBA_BIGQUERY_ZIP_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${SIMBA_BIGQUERY_ZIP_NAME}" "${SIMBA_BIGQUERY_DOWNLOAD_URL}"
-fi
+download_file "${gravitino_dir}/packages/${SIMBA_BIGQUERY_ZIP_NAME}" "${SIMBA_BIGQUERY_DOWNLOAD_URL}"
 if [ -d "${simba_tmp_dir}" ]; then
   rm -rf "${simba_tmp_dir}"
 fi
@@ -111,17 +118,18 @@ fi
 
 # Download and install MaxCompute ODPS JDBC driver
 gravitino_maxcompute_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-maxcompute/libs"
-if [ ! -f "${gravitino_dir}/packages/${ODPS_JDBC_DRIVER_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${ODPS_JDBC_DRIVER_NAME}" "${ODPS_JDBC_DOWNLOAD_URL}"
-fi
+download_file "${gravitino_dir}/packages/${ODPS_JDBC_DRIVER_NAME}" "${ODPS_JDBC_DOWNLOAD_URL}"
 cp "${gravitino_dir}/packages/${ODPS_JDBC_DRIVER_NAME}" "${gravitino_maxcompute_catalog_dir}"
 
 # Download and install ClickHouse JDBC driver
 gravitino_clickhouse_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-clickhouse/libs"
-if [ ! -f "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" ]; then
-  curl -L -s -o "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${CLICKHOUSE_JDBC_DOWNLOAD_URL}"
-fi
+download_file "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${CLICKHOUSE_JDBC_DOWNLOAD_URL}"
 cp "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${gravitino_clickhouse_catalog_dir}"
+
+# Download and install OceanBase JDBC driver (supports com.oceanbase.jdbc.Driver)
+gravitino_oceanbase_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-oceanbase/libs"
+download_file "${gravitino_dir}/packages/${OCEANBASE_JDBC_DRIVER_NAME}" "${OCEANBASE_JDBC_DOWNLOAD_URL}"
+cp "${gravitino_dir}/packages/${OCEANBASE_JDBC_DRIVER_NAME}" "${gravitino_oceanbase_catalog_dir}"
 
 # Keeping the container running at all times
 cat <<EOF >> "${gravitino_dir}/packages/gravitino/bin/gravitino.sh"
