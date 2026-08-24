@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Locale;
 import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.client.Entity;
@@ -251,6 +252,114 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
     Assertions.assertEquals(
         TagAlreadyAssociatedException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testCreateJdbcCatalogWithTagSetsDriverProperty() {
+    Map<String, String> jdbcDriverClassNames =
+        ImmutableMap.<String, String>builder()
+            .put("jdbc-bigquery", "com.simba.googlebigquery.jdbc42.Driver")
+            .put("jdbc-clickhouse", "com.clickhouse.jdbc.ClickHouseDriver")
+            .put("jdbc-doris", "com.mysql.cj.jdbc.Driver")
+            .put("jdbc-hologres", "org.postgresql.Driver")
+            .put("jdbc-maxcompute", "com.aliyun.odps.jdbc.OdpsDriver")
+            .put("jdbc-mysql", "com.mysql.cj.jdbc.Driver")
+            .put("jdbc-oceanbase", "com.mysql.cj.jdbc.Driver")
+            .put("jdbc-oracle", "oracle.jdbc.OracleDriver")
+            .put("jdbc-postgresql", "org.postgresql.Driver")
+            .put("jdbc-sqlserver", "com.microsoft.sqlserver.jdbc.SQLServerDriver")
+            .put("jdbc-starrocks", "com.mysql.cj.jdbc.Driver")
+            .build();
+
+    jdbcDriverClassNames.forEach(
+        (provider, jdbcDriver) -> {
+          reset(catalogDispatcher, tagDispatcher);
+          CatalogWithTagsCreateRequest request =
+              new CatalogWithTagsCreateRequest(
+                  "catalog",
+                  Catalog.Type.RELATIONAL,
+                  provider.toUpperCase(Locale.ROOT),
+                  "comment",
+                  ImmutableMap.of("key", "value"),
+                  null);
+          when(catalogDispatcher.createCatalog(any(), any(), any(), any(), any()))
+              .thenReturn(buildCatalog("metalake", "catalog"));
+
+          Response response =
+              target("/web/with-tags/metalakes/metalake/catalogs")
+                  .request(MediaType.APPLICATION_JSON_TYPE)
+                  .accept("application/vnd.gravitino.v1+json")
+                  .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
+
+          Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+          Mockito.verify(catalogDispatcher)
+              .createCatalog(
+                  any(),
+                  eq(Catalog.Type.RELATIONAL),
+                  eq(provider.toUpperCase(Locale.ROOT)),
+                  eq("comment"),
+                  eq(ImmutableMap.of("key", "value", "jdbc-driver", jdbcDriver)));
+        });
+  }
+
+  @Test
+  public void testCreateJdbcCatalogWithTagKeepsExplicitDriverProperty() {
+    reset(catalogDispatcher, tagDispatcher);
+    CatalogWithTagsCreateRequest request =
+        new CatalogWithTagsCreateRequest(
+            "catalog",
+            Catalog.Type.RELATIONAL,
+            "jdbc-mysql",
+            "comment",
+            ImmutableMap.of("jdbc-driver", "custom.Driver"),
+            null);
+    when(catalogDispatcher.createCatalog(any(), any(), any(), any(), any()))
+        .thenReturn(buildCatalog("metalake", "catalog"));
+
+    Response response =
+        target("/web/with-tags/metalakes/metalake/catalogs")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    Mockito.verify(catalogDispatcher)
+        .createCatalog(
+            any(),
+            eq(Catalog.Type.RELATIONAL),
+            eq("jdbc-mysql"),
+            eq("comment"),
+            eq(ImmutableMap.of("jdbc-driver", "custom.Driver")));
+  }
+
+  @Test
+  public void testCreateNonJdbcCatalogWithTagDoesNotSetDriverProperty() {
+    reset(catalogDispatcher, tagDispatcher);
+    CatalogWithTagsCreateRequest request =
+        new CatalogWithTagsCreateRequest(
+            "catalog",
+            Catalog.Type.RELATIONAL,
+            "test",
+            "comment",
+            ImmutableMap.of("key", "value"),
+            null);
+    when(catalogDispatcher.createCatalog(any(), any(), any(), any(), any()))
+        .thenReturn(buildCatalog("metalake", "catalog"));
+
+    Response response =
+        target("/web/with-tags/metalakes/metalake/catalogs")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    Mockito.verify(catalogDispatcher)
+        .createCatalog(
+            any(),
+            eq(Catalog.Type.RELATIONAL),
+            eq("test"),
+            eq("comment"),
+            eq(ImmutableMap.of("key", "value")));
   }
 
   @Test

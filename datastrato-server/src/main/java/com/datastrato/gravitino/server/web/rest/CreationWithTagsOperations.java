@@ -30,6 +30,7 @@ import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -89,6 +90,21 @@ import org.slf4j.LoggerFactory;
 public class CreationWithTagsOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(CreationWithTagsOperations.class);
+  private static final String JDBC_DRIVER_PROPERTY = "jdbc-driver";
+  private static final Map<String, String> JDBC_DRIVER_CLASS_NAMES =
+      ImmutableMap.<String, String>builder()
+          .put("jdbc-bigquery", "com.simba.googlebigquery.jdbc42.Driver")
+          .put("jdbc-clickhouse", "com.clickhouse.jdbc.ClickHouseDriver")
+          .put("jdbc-doris", "com.mysql.cj.jdbc.Driver")
+          .put("jdbc-hologres", "org.postgresql.Driver")
+          .put("jdbc-maxcompute", "com.aliyun.odps.jdbc.OdpsDriver")
+          .put("jdbc-mysql", "com.mysql.cj.jdbc.Driver")
+          .put("jdbc-oceanbase", "com.mysql.cj.jdbc.Driver")
+          .put("jdbc-oracle", "oracle.jdbc.OracleDriver")
+          .put("jdbc-postgresql", "org.postgresql.Driver")
+          .put("jdbc-sqlserver", "com.microsoft.sqlserver.jdbc.SQLServerDriver")
+          .put("jdbc-starrocks", "com.mysql.cj.jdbc.Driver")
+          .build();
 
   @Context private HttpServletRequest httpRequest;
 
@@ -602,13 +618,18 @@ public class CreationWithTagsOperations {
 
   private CatalogDTO createCatalog(String metalake, CatalogWithTagsCreateRequest request) {
     NameIdentifier ident = NameIdentifierUtil.ofCatalog(metalake, request.getName());
+    Map<String, String> properties = request.getProperties();
+    String jdbcDriver = JDBC_DRIVER_CLASS_NAMES.get(request.getProvider().toLowerCase(Locale.ROOT));
+    if (jdbcDriver != null) {
+      properties =
+          new HashMap<>(
+              Optional.ofNullable(request.getProperties()).orElse(Collections.emptyMap()));
+      properties.putIfAbsent(JDBC_DRIVER_PROPERTY, jdbcDriver);
+    }
+
     Catalog catalog =
         catalogDispatcher.createCatalog(
-            ident,
-            request.getType(),
-            request.getProvider(),
-            request.getComment(),
-            request.getProperties());
+            ident, request.getType(), request.getProvider(), request.getComment(), properties);
     CatalogDTO catalogDTO = DTOConverters.toDTO(catalog);
     LOG.info("Catalog created: {}.{}", metalake, catalog.name());
     return catalogDTO;
