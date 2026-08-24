@@ -12,7 +12,7 @@ import org.apache.gravitino.storage.relational.JDBCBackend.JDBCBackendType;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.ibatis.annotations.Param;
 
-/** SQL provider factory for enterprise batch user_meta updates. */
+/** SQL provider factory for enterprise user_meta reads/updates and IdP origin checks. */
 public class DatastratoUserMetaSQLProviderFactory {
 
   private static final Map<JDBCBackendType, DatastratoUserMetaBaseSQLProvider> PROVIDERS =
@@ -23,31 +23,43 @@ public class DatastratoUserMetaSQLProviderFactory {
 
   private DatastratoUserMetaSQLProviderFactory() {}
 
-  /**
-   * Builds the list-users-by-names SQL.
-   *
-   * @param metalakeName The metalake name.
-   * @param userNames Distinct user names.
-   * @return MyBatis script SQL.
-   */
   public static String listUserMetasByMetalakeNameAndNames(
       @Param("metalakeName") String metalakeName, @Param("userNames") List<String> userNames) {
     return getProvider().listUserMetasByMetalakeNameAndNames(metalakeName, userNames);
   }
 
-  /**
-   * Builds the batch update enabled SQL.
-   *
-   * @param metalakeName The metalake name.
-   * @param userNames Distinct user names.
-   * @param enabled Target enabled value.
-   * @return MyBatis script SQL.
-   */
   public static String batchUpdateEnabledByMetalakeNameAndNames(
       @Param("metalakeName") String metalakeName,
       @Param("userNames") List<String> userNames,
       @Param("enabled") boolean enabled) {
     return getProvider().batchUpdateEnabledByMetalakeNameAndNames(metalakeName, userNames, enabled);
+  }
+
+  public static String listUsersWithMetalakeStatus(@Param("metalakeName") String metalakeName) {
+    return getProvider().listUsersWithMetalakeStatus(metalakeName);
+  }
+
+  public static String getUserByMetalakeWithOrigin(
+      @Param("metalakeName") String metalakeName, @Param("userName") String userName) {
+    return getProvider().getUserByMetalakeWithOrigin(metalakeName, userName);
+  }
+
+  public static String listUsersByMetalakeWithOrigin(@Param("metalakeName") String metalakeName) {
+    return getProvider().listUsersByMetalakeWithOrigin(metalakeName);
+  }
+
+  public static String listUsersByMetalakeAndNamesWithOrigin(
+      @Param("metalakeName") String metalakeName, @Param("userNames") List<String> userNames) {
+    return getProvider().listUsersByMetalakeAndNamesWithOrigin(metalakeName, userNames);
+  }
+
+  public static String listUsersForMetalakeGroupWithOrigin(
+      @Param("metalakeName") String metalakeName, @Param("groupName") String groupName) {
+    return getProvider().listUsersForMetalakeGroupWithOrigin(metalakeName, groupName);
+  }
+
+  public static String countUsersByEnabledByMetalake(@Param("metalakeName") String metalakeName) {
+    return getProvider().countUsersByEnabledByMetalake(metalakeName);
   }
 
   private static DatastratoUserMetaBaseSQLProvider getProvider() {
@@ -63,5 +75,10 @@ public class DatastratoUserMetaSQLProviderFactory {
 
   static class DatastratoUserMetaH2Provider extends DatastratoUserMetaBaseSQLProvider {}
 
-  static class DatastratoUserMetaPostgreSQLProvider extends DatastratoUserMetaBaseSQLProvider {}
+  static class DatastratoUserMetaPostgreSQLProvider extends DatastratoUserMetaBaseSQLProvider {
+    @Override
+    protected String jsonArrayAgg(String expr) {
+      return "JSON_AGG(" + expr + ")";
+    }
+  }
 }

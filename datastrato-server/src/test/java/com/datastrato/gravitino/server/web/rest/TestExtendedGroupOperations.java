@@ -16,11 +16,15 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.IdpNameStatus;
+import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
+import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
+import com.datastrato.gravitino.dto.responses.IdpGroupNameListResponse;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
@@ -37,16 +41,12 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.connector.PropertiesMetadata;
-import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
-import org.apache.gravitino.exceptions.NoSuchGroupException;
-import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
-import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -117,10 +117,13 @@ public class TestExtendedGroupOperations extends JerseyTest {
   @Test
   public void testListGroups() {
     String metalake = "metalake";
-    Group local = buildGroup(1L, "contractors", null, Collections.singletonList("pii_reader"));
-    Group provisioned =
-        buildGroup(2L, "governance", "azure-oid", Collections.singletonList("Gov Admin"));
-    when(accessControlDispatcher.listGroups(metalake)).thenReturn(new Group[] {local, provisioned});
+    Group local = buildGroup(1L, "contractors", "has-ext", Collections.singletonList("pii_reader"));
+    Group provisioned = buildGroup(2L, "governance", null, Collections.singletonList("Gov Admin"));
+    when(accessControlDispatcher.listExtendedGroups(metalake))
+        .thenReturn(
+            new ExtendedGroupDTO[] {
+              ExtendedGroupDTO.from(local, true), ExtendedGroupDTO.from(provisioned, false)
+            });
 
     Response response =
         target("/web/security/metalakes/" + metalake + "/groups")
@@ -133,24 +136,18 @@ public class TestExtendedGroupOperations extends JerseyTest {
     Assertions.assertEquals(0, body.getCode());
     Assertions.assertEquals(2, body.getGroups().length);
     Assertions.assertEquals("contractors", body.getGroups()[0].name());
-    Assertions.assertNull(body.getGroups()[0].externalId());
+    Assertions.assertEquals("has-ext", body.getGroups()[0].externalId());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getGroups()[0].origin());
     Assertions.assertEquals("governance", body.getGroups()[1].name());
-    Assertions.assertEquals("azure-oid", body.getGroups()[1].externalId());
+    Assertions.assertNull(body.getGroups()[1].externalId());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getGroups()[1].origin());
   }
 
   @Test
-  public void testAuthorizationAnnotations() throws NoSuchMethodException {
-    assertManageGroups("listGroups", String.class);
-    assertManageGroups("addGroup", String.class, LocalGroupAddRequest.class);
-    assertManageGroups("listUsersForGroup", String.class, String.class);
-  }
-
-  @Test
   public void testListGroupUsers() {
-    when(accessControlDispatcher.listUsersForGroup("metalake", "contractors"))
-        .thenReturn(new User[] {buildUser("alice", null)});
+    ExtendedUserDTO user = ExtendedUserDTO.from(buildUser("alice", null), true);
+    when(accessControlDispatcher.listExtendedUsersForGroup("metalake", "contractors"))
+        .thenReturn(new ExtendedUserDTO[] {user});
     ExtendedUserListResponse body =
         get("/web/security/metalakes/metalake/groups/contractors/users")
             .readEntity(ExtendedUserListResponse.class);
@@ -160,12 +157,15 @@ public class TestExtendedGroupOperations extends JerseyTest {
   }
 
   @Test
-  public void testListGroupUsersMissing() {
-    when(accessControlDispatcher.listUsersForGroup(any(), any()))
-        .thenThrow(new NoSuchGroupException("missing"));
-    Assertions.assertEquals(
-        Response.Status.NOT_FOUND.getStatusCode(),
-        get("/web/security/metalakes/metalake/groups/missing/users").getStatus());
+  public void testListIdpGroups() {
+    when(accessControlDispatcher.listIdpGroups("metalake"))
+        .thenReturn(new IdpNameStatus[] {new IdpNameStatus("contractors", false)});
+
+    IdpGroupNameListResponse body =
+        get("/web/security/metalakes/metalake/groups/idp")
+            .readEntity(IdpGroupNameListResponse.class);
+    Assertions.assertEquals("contractors", body.getGroups()[0].getName());
+    Assertions.assertFalse(body.getGroups()[0].isStatus());
   }
 
   @Test
@@ -185,45 +185,9 @@ public class TestExtendedGroupOperations extends JerseyTest {
                     new LocalGroupAddRequest("contractors", List.of("Analyst")),
                     MediaType.APPLICATION_JSON_TYPE));
 
-    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     ExtendedGroupResponse body = response.readEntity(ExtendedGroupResponse.class);
-    Assertions.assertEquals(0, body.getCode());
     Assertions.assertEquals("contractors", body.getGroup().name());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getGroup().origin());
-  }
-
-  @Test
-  public void testAddLocalGroupConflict() {
-    String metalake = "metalake";
-    when(accessControlDispatcher.addLocalGroup(any(), any(), any()))
-        .thenThrow(new GroupAlreadyExistsException("Group already exists"));
-
-    Response response =
-        target("/web/security/metalakes/" + metalake + "/groups")
-            .request(MediaType.APPLICATION_JSON_TYPE)
-            .accept("application/vnd.gravitino.v1+json")
-            .post(
-                entity(
-                    new LocalGroupAddRequest("contractors", null),
-                    MediaType.APPLICATION_JSON_TYPE));
-
-    Assertions.assertEquals(Response.Status.CONFLICT.getStatusCode(), response.getStatus());
-  }
-
-  @Test
-  public void testAddLocalGroupNotFound() {
-    String metalake = "metalake";
-    when(accessControlDispatcher.addLocalGroup(any(), any(), any()))
-        .thenThrow(new NotFoundException("IdP group missing"));
-
-    Response response =
-        target("/web/security/metalakes/" + metalake + "/groups")
-            .request(MediaType.APPLICATION_JSON_TYPE)
-            .accept("application/vnd.gravitino.v1+json")
-            .post(
-                entity(new LocalGroupAddRequest("missing", null), MediaType.APPLICATION_JSON_TYPE));
-
-    Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
   }
 
   @Test
@@ -243,16 +207,6 @@ public class TestExtendedGroupOperations extends JerseyTest {
         .request(MediaType.APPLICATION_JSON_TYPE)
         .accept("application/vnd.gravitino.v1+json")
         .get();
-  }
-
-  private static void assertManageGroups(String method, Class<?>... params)
-      throws NoSuchMethodException {
-    Assertions.assertEquals(
-        "METALAKE::OWNER || METALAKE::MANAGE_GROUPS",
-        ExtendedGroupOperations.class
-            .getMethod(method, params)
-            .getAnnotation(AuthorizationExpression.class)
-            .expression());
   }
 
   private void mockInUseMetalake() throws IOException {

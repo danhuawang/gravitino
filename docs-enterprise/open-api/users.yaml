@@ -27,8 +27,9 @@ paths:
       description: |
         List users under a metalake for the enterprise security Users page.
 
-        Returns OSS user fields plus `origin`. `origin` is `Local` when `externalId` is blank and
-        `Provisioned` when `externalId` is present. `enabled` maps to Active / Suspended in the UI.
+        Returns OSS user fields plus `origin`. `origin` is `Local` when the username exists in the
+        built-in IdP (`idp_user_meta`) and `Provisioned` otherwise. `enabled` maps to Active /
+        Suspended in the UI.
 
       responses:
         "200":
@@ -156,8 +157,8 @@ paths:
       description: |
         Get a metalake user for the enterprise security user Overview page.
 
-        Returns OSS user fields plus `origin`. `origin` is `Local` when `externalId` is blank and
-        `Provisioned` when `externalId` is present.
+        Returns OSS user fields plus `origin`. `origin` is `Local` when the username exists in the
+        built-in IdP (`idp_user_meta`) and `Provisioned` otherwise.
 
       responses:
         "200":
@@ -216,13 +217,46 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/security/metalakes/{metalake}/users/idp:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+    get:
+      tags:
+        - users
+      summary: List built-in IdP users with metalake membership status
+      operationId: listSecurityIdpUsers
+      description: |
+        List built-in IdP users for the security UI picker used when adding a local user.
+
+        Each item has `name` and `status`. `status` is `true` when that username is already in
+        this metalake.
+
+      responses:
+        "200":
+          description: Returns the list of IdP users
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/IdpUserNameListResponse"
+        "404":
+          description: Not Found - The target metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
 components:
   schemas:
     IdentitySource:
       type: string
       description: |
-        Source of the identity. Serialized as `origin`. `Local` when `externalId` is blank;
-        `Provisioned` when `externalId` is present.
+        Source of the identity. Serialized as `origin`. `Local` when the name exists in the
+        built-in IdP (`idp_user_meta`) and `Provisioned` otherwise.
       enum:
         - Local
         - Provisioned
@@ -236,6 +270,36 @@ components:
           properties:
             origin:
               $ref: "#/components/schemas/IdentitySource"
+
+    IdpNameStatus:
+      type: object
+      required:
+        - name
+        - status
+      properties:
+        name:
+          type: string
+          description: Built-in IdP username or group name
+        status:
+          type: boolean
+          description: >
+            Whether the identity is already added to this metalake. `true` means it already exists
+            in the metalake.
+
+    IdpUserNameListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        users:
+          type: array
+          description: Built-in IdP users with metalake membership status
+          items:
+            $ref: "#/components/schemas/IdpNameStatus"
 
     ExtendedUserListResponse:
       type: object

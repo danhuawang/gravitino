@@ -6,13 +6,14 @@ package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
-import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.authorization.IdpNameStatusDTO;
 import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
+import com.datastrato.gravitino.dto.responses.IdpUserNameListResponse;
 import com.google.common.collect.Lists;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
@@ -37,8 +38,8 @@ import org.apache.gravitino.server.web.rest.OperationType;
  * Enterprise REST APIs for metalake user administration.
  *
  * <p>Follows the same thin style as {@link ExtendedRoleOperations}: list via dispatcher {@code
- * listUsers} and {@link ExtendedUserListResponse} (OSS user fields plus {@code origin}); add local
- * user delegates to {@link DatastratoAccessControlDispatcher#addLocalUser}; batch enabled uses
+ * listExtendedUsers} and {@link ExtendedUserListResponse} (OSS user fields plus {@code origin});
+ * add user delegates to {@link DatastratoAccessControlDispatcher#addLocalUser}; batch enabled uses
  * enterprise MetaService SQL behind the dispatcher.
  */
 @NameBindings.AccessControlInterfaces
@@ -60,7 +61,7 @@ public class ExtendedUserOperations {
 
   /**
    * Lists users under a metalake for the security UI, including {@code origin} ({@code Local} vs
-   * {@code Provisioned}) derived from {@code externalId}.
+   * {@code Provisioned}) from a JOIN to {@code idp_user_meta}.
    *
    * @param metalake The metalake name.
    * @return Users.
@@ -77,8 +78,34 @@ public class ExtendedUserOperations {
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
             return Utils.ok(
-                new ExtendedUserListResponse(
-                    ExtendedUserDTO.from(accessControlDispatcher.listUsers(metalake))));
+                new ExtendedUserListResponse(accessControlDispatcher.listExtendedUsers(metalake)));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleUserException(OperationType.LIST, "", metalake, e);
+    }
+  }
+
+  /**
+   * Lists built-in IdP users and whether each is already added to the metalake.
+   *
+   * @param metalake The metalake name.
+   * @return IdP usernames with {@code status}.
+   */
+  @GET
+  @Path("idp")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  public Response listIdpUsers(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            MetalakeManager.checkMetalakeInUse(metalake);
+            return Utils.ok(
+                new IdpUserNameListResponse(
+                    IdpNameStatusDTO.from(accessControlDispatcher.listIdpUsers(metalake))));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.LIST, "", metalake, e);
@@ -109,10 +136,8 @@ public class ExtendedUserOperations {
                 new ExtendedUserResponse(
                     ExtendedUserDTO.from(
                         accessControlDispatcher.addLocalUser(
-                            metalake,
-                            request.getName(),
-                            request.getRoles(),
-                            request.getEnabled()))));
+                            metalake, request.getName(), request.getRoles(), request.getEnabled()),
+                        true)));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(
@@ -141,8 +166,7 @@ public class ExtendedUserOperations {
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
             return Utils.ok(
-                new ExtendedUserResponse(
-                    ExtendedUserDTO.from(accessControlDispatcher.getUser(metalake, user))));
+                new ExtendedUserResponse(accessControlDispatcher.getExtendedUser(metalake, user)));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.GET, user, metalake, e);
@@ -174,8 +198,7 @@ public class ExtendedUserOperations {
             MetalakeManager.checkMetalakeInUse(metalake);
             return Utils.ok(
                 new ExtendedGroupListResponse(
-                    ExtendedGroupDTO.from(
-                        accessControlDispatcher.listGroupsForUser(metalake, user))));
+                    accessControlDispatcher.listExtendedGroupsForUser(metalake, user)));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.LIST, user, metalake, e);

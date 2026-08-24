@@ -27,8 +27,8 @@ paths:
       description: |
         List groups under a metalake for the enterprise security Groups page.
 
-        Returns OSS group fields plus `origin`. `origin` is `Local` when `externalId` is blank and
-        `Provisioned` when `externalId` is present.
+        Returns OSS group fields plus `origin`. `origin` is `Local` when the group name exists in
+        the built-in IdP (`idp_group_meta`) and `Provisioned` otherwise.
 
       responses:
         "200":
@@ -136,13 +136,46 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/security/metalakes/{metalake}/groups/idp:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+    get:
+      tags:
+        - groups
+      summary: List built-in IdP groups with metalake membership status
+      operationId: listSecurityIdpGroups
+      description: |
+        List built-in IdP groups for the security UI picker used when adding a local group.
+
+        Each item has `name` and `status`. `status` is `true` when that group name is already in
+        this metalake.
+
+      responses:
+        "200":
+          description: Returns the list of IdP groups
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/IdpGroupNameListResponse"
+        "404":
+          description: Not Found - The target metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
 components:
   schemas:
     IdentitySource:
       type: string
       description: |
-        Source of the identity. Serialized as `origin`. `Local` when `externalId` is blank;
-        `Provisioned` when `externalId` is present.
+        Source of the identity. Serialized as `origin`. `Local` when the name exists in the
+        built-in IdP (`idp_group_meta`) and `Provisioned` otherwise.
       enum:
         - Local
         - Provisioned
@@ -156,6 +189,36 @@ components:
           properties:
             origin:
               $ref: "#/components/schemas/IdentitySource"
+
+    IdpNameStatus:
+      type: object
+      required:
+        - name
+        - status
+      properties:
+        name:
+          type: string
+          description: Built-in IdP group name
+        status:
+          type: boolean
+          description: >
+            Whether the group is already added to this metalake. `true` means it already exists
+            in the metalake.
+
+    IdpGroupNameListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        groups:
+          type: array
+          description: Built-in IdP groups with metalake membership status
+          items:
+            $ref: "#/components/schemas/IdpNameStatus"
 
     ExtendedGroupListResponse:
       type: object

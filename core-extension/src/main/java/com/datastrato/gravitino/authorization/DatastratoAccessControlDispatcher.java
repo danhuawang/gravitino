@@ -4,19 +4,20 @@
  */
 package com.datastrato.gravitino.authorization;
 
-import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
-import com.datastrato.gravitino.scim.storage.po.ScimGroupMemberPO;
+import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
+import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
+import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
+import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
@@ -55,6 +56,7 @@ import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.storage.relational.service.DatastratoRoleMetaService;
 import org.apache.gravitino.storage.relational.service.DatastratoUserMetaService;
+import org.apache.gravitino.storage.relational.utils.SessionUtils;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,7 +67,6 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   private final AccessControlDispatcher accessControlDispatcher;
   private final EntityStore entityStore;
   private final IdpUserGroupManager idpUserGroupManager;
-  private final ScimUserGroupRelManager scimUserGroupRelManager;
 
   /**
    * Creates the enterprise access-control dispatcher.
@@ -73,17 +74,14 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @param accessControlDispatcher The wrapped OSS dispatcher.
    * @param entityStore The entity store.
    * @param idpUserGroupManager The built-in IdP user and group manager.
-   * @param scimUserGroupRelManager The SCIM user-group membership manager.
    */
   public DatastratoAccessControlDispatcher(
       AccessControlDispatcher accessControlDispatcher,
       EntityStore entityStore,
-      IdpUserGroupManager idpUserGroupManager,
-      ScimUserGroupRelManager scimUserGroupRelManager) {
+      IdpUserGroupManager idpUserGroupManager) {
     this.accessControlDispatcher = accessControlDispatcher;
     this.entityStore = entityStore;
     this.idpUserGroupManager = Preconditions.checkNotNull(idpUserGroupManager);
-    this.scimUserGroupRelManager = Preconditions.checkNotNull(scimUserGroupRelManager);
   }
 
   @Override
@@ -368,6 +366,164 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
+   * Lists built-in IdP users and whether each is already added to the metalake.
+   *
+   * <p>One JOIN from {@code metalake_meta} to {@code idp_user_meta} and {@code user_meta}.
+   *
+   * @param metalake The metalake name.
+   * @return IdP usernames with metalake membership status.
+   * @throws NoSuchMetalakeException If the metalake does not exist.
+   */
+  public IdpNameStatus[] listIdpUsers(String metalake) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    List<IdpNameStatusPO> rows =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class, mapper -> mapper.listUsersWithMetalakeStatus(metalake));
+    return IdpNameStatus.fromJoinResult(IdpNameStatusPO.toStatuses(rows), metalake);
+  }
+
+  /**
+   * Lists built-in IdP groups and whether each is already added to the metalake.
+   *
+   * <p>One JOIN from {@code metalake_meta} to {@code idp_group_meta} and {@code group_meta}.
+   *
+   * @param metalake The metalake name.
+   * @return IdP group names with metalake membership status.
+   * @throws NoSuchMetalakeException If the metalake does not exist.
+   */
+  public IdpNameStatus[] listIdpGroups(String metalake) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    List<IdpNameStatusPO> rows =
+        SessionUtils.getWithoutCommit(
+            DatastratoGroupMetaMapper.class,
+            mapper -> mapper.listGroupsWithMetalakeStatus(metalake));
+    return IdpNameStatus.fromJoinResult(IdpNameStatusPO.toStatuses(rows), metalake);
+  }
+
+  /**
+   * Loads metalake user totals split by {@code enabled} in one query against {@code user_meta}.
+   *
+   * @param metalake The metalake name.
+   * @return User enabled counts.
+   */
+  public UserEnabledCounts countUsersByEnabled(String metalake) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    return toUserEnabledCounts(
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class,
+            mapper -> mapper.countUsersByEnabledByMetalake(metalake)));
+  }
+
+  /**
+   * Loads metalake group totals and empty-group count in one query against {@code group_meta}.
+   *
+   * @param metalake The metalake name.
+   * @return Group membership counts.
+   */
+  public GroupMembershipCounts countGroupsWithEmpty(String metalake) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    return toGroupMembershipCounts(
+        SessionUtils.getWithoutCommit(
+            DatastratoGroupMetaMapper.class,
+            mapper -> mapper.countGroupsWithEmptyByMetalake(metalake)));
+  }
+
+  private static UserEnabledCounts toUserEnabledCounts(IdpNameStatusPO.UserEnabledCountsRow row) {
+    if (row == null) {
+      return UserEnabledCounts.empty();
+    }
+    return new UserEnabledCounts(
+        zeroIfNull(row.getTotal()), zeroIfNull(row.getActive()), zeroIfNull(row.getSuspended()));
+  }
+
+  private static GroupMembershipCounts toGroupMembershipCounts(
+      IdpNameStatusPO.GroupMembershipCountsRow row) {
+    if (row == null) {
+      return GroupMembershipCounts.zero();
+    }
+    return new GroupMembershipCounts(zeroIfNull(row.getTotal()), zeroIfNull(row.getEmpty()));
+  }
+
+  private static long zeroIfNull(Long value) {
+    return value == null ? 0L : value;
+  }
+
+  /**
+   * Gets a metalake user with roles and {@code origin} in one JOIN to {@code idp_user_meta}.
+   *
+   * @param metalake The metalake name.
+   * @param username The username.
+   * @return Extended user DTO for the security UI.
+   * @throws NoSuchUserException If the metalake user does not exist.
+   */
+  public ExtendedUserDTO getExtendedUser(String metalake, String username) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    Preconditions.checkArgument(StringUtils.isNotBlank(username), "username cannot be blank");
+    IdpNameStatusPO.UserWithOrigin row =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class,
+            mapper -> mapper.getUserByMetalakeWithOrigin(metalake, username));
+    if (row == null || row.getUserId() == null) {
+      throw new NoSuchUserException(
+          "User %s does not exist in the metalake %s", username, metalake);
+    }
+    return IdpNameStatusPO.toExtendedUser(row, metalake);
+  }
+
+  /**
+   * Lists metalake users with roles and {@code origin} in one JOIN to {@code idp_user_meta}.
+   *
+   * @param metalake The metalake name.
+   * @return Extended user DTOs for the security UI.
+   * @throws NoSuchMetalakeException If the metalake does not exist.
+   */
+  public ExtendedUserDTO[] listExtendedUsers(String metalake) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    List<IdpNameStatusPO.UserWithOrigin> rows =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class,
+            mapper -> mapper.listUsersByMetalakeWithOrigin(metalake));
+    return IdpNameStatusPO.toExtendedUsersByMetalake(metalake, rows);
+  }
+
+  /**
+   * Lists metalake groups with roles and {@code origin} in one JOIN to {@code idp_group_meta}.
+   *
+   * @param metalake The metalake name.
+   * @return Extended group DTOs for the security UI.
+   * @throws NoSuchMetalakeException If the metalake does not exist.
+   */
+  public ExtendedGroupDTO[] listExtendedGroups(String metalake) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    List<IdpNameStatusPO.GroupWithOrigin> rows =
+        SessionUtils.getWithoutCommit(
+            DatastratoGroupMetaMapper.class,
+            mapper -> mapper.listGroupsByMetalakeWithOrigin(metalake));
+    return IdpNameStatusPO.toExtendedGroupsByMetalake(metalake, rows);
+  }
+
+  /**
+   * Lists metalake groups the user belongs to, including {@code origin}.
+   *
+   * <p>Local users ({@code externalId} blank) use built-in IdP membership. Provisioned users use
+   * SCIM membership. Names that are not metalake groups are skipped.
+   *
+   * @param metalake The metalake name.
+   * @param username The username.
+   * @return Metalake groups the user belongs to.
+   * @throws NoSuchUserException If the metalake user does not exist.
+   */
+  public ExtendedGroupDTO[] listExtendedGroupsForUser(String metalake, String username) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    Preconditions.checkArgument(StringUtils.isNotBlank(username), "username cannot be blank");
+    List<IdpNameStatusPO.GroupWithOrigin> rows =
+        SessionUtils.getWithoutCommit(
+            DatastratoGroupMetaMapper.class,
+            mapper -> mapper.listGroupsForMetalakeUserWithOrigin(metalake, username));
+    return IdpNameStatusPO.toExtendedGroupsForMetalakeUser(metalake, username, rows);
+  }
+
+  /**
    * Lists metalake groups the user belongs to.
    *
    * <p>Local users ({@code externalId} blank) use built-in IdP membership. Provisioned users use
@@ -379,14 +535,28 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @throws NoSuchUserException If the metalake user does not exist.
    */
   public Group[] listGroupsForUser(String metalake, String username) {
-    User user = accessControlDispatcher.getUser(metalake, username);
-    List<String> groupNames;
-    if (isLocalIdentity(user.externalId())) {
-      groupNames = idpUserGroupManager.getUser(username).groupNames();
-    } else {
-      groupNames = scimUserGroupRelManager.listGroupNamesForUser(metalake, username);
-    }
-    return resolveMetalakeGroups(metalake, groupNames);
+    return listExtendedGroupsForUser(metalake, username);
+  }
+
+  /**
+   * Lists metalake users that belong to the group, including {@code origin}.
+   *
+   * <p>Local groups ({@code externalId} blank) use built-in IdP membership. Provisioned groups use
+   * SCIM membership. Names that are not metalake users are skipped.
+   *
+   * @param metalake The metalake name.
+   * @param groupName The group name.
+   * @return Metalake users in the group.
+   * @throws NoSuchGroupException If the metalake group does not exist.
+   */
+  public ExtendedUserDTO[] listExtendedUsersForGroup(String metalake, String groupName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    Preconditions.checkArgument(StringUtils.isNotBlank(groupName), "group name cannot be blank");
+    List<IdpNameStatusPO.UserWithOrigin> rows =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class,
+            mapper -> mapper.listUsersForMetalakeGroupWithOrigin(metalake, groupName));
+    return IdpNameStatusPO.toExtendedUsersForMetalakeGroup(metalake, groupName, rows);
   }
 
   /**
@@ -401,19 +571,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @throws NoSuchGroupException If the metalake group does not exist.
    */
   public User[] listUsersForGroup(String metalake, String groupName) {
-    Group group = accessControlDispatcher.getGroup(metalake, groupName);
-    List<String> usernames;
-    if (isLocalIdentity(group.externalId())) {
-      usernames = idpUserGroupManager.getGroup(groupName).usernames();
-    } else {
-      Long groupId = group.id();
-      Preconditions.checkNotNull(groupId, "group id cannot be null");
-      usernames =
-          scimUserGroupRelManager.listMembersForGroup(metalake, groupId).stream()
-              .map(ScimGroupMemberPO::getUserName)
-              .collect(Collectors.toList());
-    }
-    return resolveMetalakeUsers(metalake, usernames);
+    return listExtendedUsersForGroup(metalake, groupName);
   }
 
   /**
@@ -646,42 +804,6 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
             throw new RuntimeException(ioe);
           }
         });
-  }
-
-  private static boolean isLocalIdentity(String externalId) {
-    return StringUtils.isBlank(externalId);
-  }
-
-  private Group[] resolveMetalakeGroups(String metalake, List<String> groupNames) {
-    List<String> names = groupNames == null ? List.of() : groupNames;
-    List<Group> groups = new ArrayList<>();
-    for (String groupName : names) {
-      if (StringUtils.isBlank(groupName)) {
-        continue;
-      }
-      try {
-        groups.add(accessControlDispatcher.getGroup(metalake, groupName));
-      } catch (NoSuchGroupException e) {
-        LOG.debug("Skipping group {} not present in metalake {}", groupName, metalake);
-      }
-    }
-    return groups.toArray(new Group[0]);
-  }
-
-  private User[] resolveMetalakeUsers(String metalake, List<String> usernames) {
-    List<String> names = usernames == null ? List.of() : usernames;
-    List<User> users = new ArrayList<>();
-    for (String username : names) {
-      if (StringUtils.isBlank(username)) {
-        continue;
-      }
-      try {
-        users.add(accessControlDispatcher.getUser(metalake, username));
-      } catch (NoSuchUserException e) {
-        LOG.debug("Skipping user {} not present in metalake {}", username, metalake);
-      }
-    }
-    return users.toArray(new User[0]);
   }
 
   private static class AuthorizationPluginCallbackWrapper {

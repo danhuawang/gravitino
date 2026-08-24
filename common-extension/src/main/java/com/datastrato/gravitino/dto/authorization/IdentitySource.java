@@ -6,17 +6,19 @@ package com.datastrato.gravitino.dto.authorization;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
-import org.apache.commons.lang3.StringUtils;
 
 /**
  * Source of a metalake user or group identity for the security UI. Serialized as JSON {@code
- * origin}: {@code Provisioned} when {@code externalId} is set, otherwise {@code Local}.
+ * origin}.
+ *
+ * <p>{@code Local} when the name exists in the built-in IdP ({@code idp_user_meta} / {@code
+ * idp_group_meta}), otherwise {@code Provisioned}.
  */
 public enum IdentitySource {
-  /** Created in Gravitino (no {@code externalId}). */
+  /** Present in the built-in IdP. */
   LOCAL("Local"),
 
-  /** Provisioned from an IdP / SCIM ({@code externalId} present). */
+  /** Not present in the built-in IdP (typically SCIM-provisioned). */
   PROVISIONED("Provisioned");
 
   private final String value;
@@ -50,12 +52,13 @@ public enum IdentitySource {
   }
 
   /**
-   * Derives identity source from {@code externalId}.
+   * Derives identity source from built-in IdP membership.
    *
-   * @param externalId External identifier; blank means local.
+   * @param inBuiltInIdp {@code true} when the name exists in {@code idp_user_meta} or {@code
+   *     idp_group_meta}.
    * @return {@link #LOCAL} or {@link #PROVISIONED}.
    */
-  public static IdentitySource fromExternalId(String externalId) {
-    return StringUtils.isBlank(externalId) ? LOCAL : PROVISIONED;
+  public static IdentitySource fromIdpMembership(boolean inBuiltInIdp) {
+    return inBuiltInIdp ? LOCAL : PROVISIONED;
   }
 }

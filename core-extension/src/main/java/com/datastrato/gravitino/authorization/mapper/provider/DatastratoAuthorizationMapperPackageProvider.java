@@ -4,6 +4,7 @@
  */
 package com.datastrato.gravitino.authorization.mapper.provider;
 
+import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoSecurableObjectMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.google.common.collect.ImmutableList;
@@ -19,6 +20,9 @@ public class DatastratoAuthorizationMapperPackageProvider implements MapperPacka
    */
   @Override
   public List<Class<?>> getMapperClasses() {
-    return ImmutableList.of(DatastratoSecurableObjectMapper.class, DatastratoUserMetaMapper.class);
+    return ImmutableList.of(
+        DatastratoSecurableObjectMapper.class,
+        DatastratoUserMetaMapper.class,
+        DatastratoGroupMetaMapper.class);
   }
 }

@@ -7,11 +7,12 @@ package com.datastrato.gravitino.server.web.rest;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
-import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.authorization.IdpNameStatusDTO;
 import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
+import com.datastrato.gravitino.dto.responses.IdpGroupNameListResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -33,9 +34,8 @@ import org.apache.gravitino.server.web.rest.OperationType;
  * Enterprise REST APIs for metalake group administration.
  *
  * <p>Follows the same thin style as {@link ExtendedRoleOperations}: call {@link
- * DatastratoAccessControlDispatcher#listGroups(String)} and map to {@link ExtendedGroupDTO} with
- * {@code origin}; add local group delegates to {@link
- * DatastratoAccessControlDispatcher#addLocalGroup}.
+ * DatastratoAccessControlDispatcher#listExtendedGroups(String)}; add local group delegates to
+ * {@link DatastratoAccessControlDispatcher#addLocalGroup}.
  */
 @NameBindings.AccessControlInterfaces
 @Path("/web/security/metalakes/{metalake}/groups")
@@ -56,7 +56,7 @@ public class ExtendedGroupOperations {
 
   /**
    * Lists groups under a metalake for the security UI, including {@code origin} ({@code Local} vs
-   * {@code Provisioned}) derived from {@code externalId}.
+   * {@code Provisioned}) from a JOIN to {@code idp_group_meta}.
    *
    * @param metalake The metalake name.
    * @return Groups.
@@ -74,7 +74,34 @@ public class ExtendedGroupOperations {
             MetalakeManager.checkMetalakeInUse(metalake);
             return Utils.ok(
                 new ExtendedGroupListResponse(
-                    ExtendedGroupDTO.from(accessControlDispatcher.listGroups(metalake))));
+                    accessControlDispatcher.listExtendedGroups(metalake)));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(OperationType.LIST, "", metalake, e);
+    }
+  }
+
+  /**
+   * Lists built-in IdP groups and whether each is already added to the metalake.
+   *
+   * @param metalake The metalake name.
+   * @return IdP group names with {@code status}.
+   */
+  @GET
+  @Path("idp")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  public Response listIdpGroups(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            MetalakeManager.checkMetalakeInUse(metalake);
+            return Utils.ok(
+                new IdpGroupNameListResponse(
+                    IdpNameStatusDTO.from(accessControlDispatcher.listIdpGroups(metalake))));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.LIST, "", metalake, e);
@@ -105,7 +132,8 @@ public class ExtendedGroupOperations {
                 new ExtendedGroupResponse(
                     ExtendedGroupDTO.from(
                         accessControlDispatcher.addLocalGroup(
-                            metalake, request.getName(), request.getRoles()))));
+                            metalake, request.getName(), request.getRoles()),
+                        true)));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(
@@ -138,8 +166,7 @@ public class ExtendedGroupOperations {
             MetalakeManager.checkMetalakeInUse(metalake);
             return Utils.ok(
                 new ExtendedUserListResponse(
-                    ExtendedUserDTO.from(
-                        accessControlDispatcher.listUsersForGroup(metalake, group))));
+                    accessControlDispatcher.listExtendedUsersForGroup(metalake, group)));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.LIST, group, metalake, e);

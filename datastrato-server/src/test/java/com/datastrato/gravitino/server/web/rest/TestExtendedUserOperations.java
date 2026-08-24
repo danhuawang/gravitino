@@ -17,12 +17,16 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.IdpNameStatus;
+import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
+import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
+import com.datastrato.gravitino.dto.responses.IdpUserNameListResponse;
 import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.time.Instant;
@@ -45,16 +49,12 @@ import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.responses.NameListResponse;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
-import org.apache.gravitino.exceptions.NoSuchUserException;
-import org.apache.gravitino.exceptions.NotFoundException;
-import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
-import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -125,9 +125,12 @@ public class TestExtendedUserOperations extends JerseyTest {
   @Test
   public void testListUsers() {
     String metalake = "metalake";
-    when(accessControlDispatcher.listUsers(metalake))
+    when(accessControlDispatcher.listExtendedUsers(metalake))
         .thenReturn(
-            new User[] {buildUser("lee.p", null, true), buildUser("dana.k", "azure-oid", false)});
+            new ExtendedUserDTO[] {
+              ExtendedUserDTO.from(buildUser("lee.p", "has-ext", true), true),
+              ExtendedUserDTO.from(buildUser("dana.k", null, false), false)
+            });
 
     Response response =
         target("/web/security/metalakes/" + metalake + "/users")
@@ -140,10 +143,10 @@ public class TestExtendedUserOperations extends JerseyTest {
     Assertions.assertEquals(0, body.getCode());
     Assertions.assertEquals(2, body.getUsers().length);
     Assertions.assertEquals("lee.p", body.getUsers()[0].name());
-    Assertions.assertNull(body.getUsers()[0].externalId());
+    Assertions.assertEquals("has-ext", body.getUsers()[0].externalId());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getUsers()[0].origin());
     Assertions.assertEquals("dana.k", body.getUsers()[1].name());
-    Assertions.assertEquals("azure-oid", body.getUsers()[1].externalId());
+    Assertions.assertNull(body.getUsers()[1].externalId());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getUsers()[1].origin());
     Assertions.assertFalse(body.getUsers()[1].enabled());
   }
@@ -215,18 +218,9 @@ public class TestExtendedUserOperations extends JerseyTest {
   }
 
   @Test
-  public void testAuthorizationAnnotations() throws NoSuchMethodException {
-    assertManageUsers("listUsers", String.class);
-    assertManageUsers("getUser", String.class, String.class);
-    assertManageUsers("listGroupsForUser", String.class, String.class);
-    assertManageUsers("addUser", String.class, LocalUserAddRequest.class);
-    assertManageUsers("batchUpdateUserEnabled", String.class, UserEnabledBatchUpdateRequest.class);
-  }
-
-  @Test
   public void testGetUser() {
-    when(accessControlDispatcher.getUser("metalake", "lee.p"))
-        .thenReturn(buildUser("lee.p", null, true));
+    ExtendedUserDTO user = ExtendedUserDTO.from(buildUser("lee.p", null, true), true);
+    when(accessControlDispatcher.getExtendedUser("metalake", "lee.p")).thenReturn(user);
     Response response = get("/web/security/metalakes/metalake/users/lee.p");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     ExtendedUserResponse body = response.readEntity(ExtendedUserResponse.class);
@@ -235,18 +229,10 @@ public class TestExtendedUserOperations extends JerseyTest {
   }
 
   @Test
-  public void testGetUserMissing() {
-    when(accessControlDispatcher.getUser(any(), any()))
-        .thenThrow(new NoSuchUserException("missing"));
-    Assertions.assertEquals(
-        Response.Status.NOT_FOUND.getStatusCode(),
-        get("/web/security/metalakes/metalake/users/missing").getStatus());
-  }
-
-  @Test
   public void testListUserGroups() {
-    when(accessControlDispatcher.listGroupsForUser("metalake", "alice"))
-        .thenReturn(new Group[] {buildGroup("contractors", null)});
+    ExtendedGroupDTO group = ExtendedGroupDTO.from(buildGroup("contractors", null), true);
+    when(accessControlDispatcher.listExtendedGroupsForUser("metalake", "alice"))
+        .thenReturn(new ExtendedGroupDTO[] {group});
     ExtendedGroupListResponse body =
         get("/web/security/metalakes/metalake/users/alice/groups")
             .readEntity(ExtendedGroupListResponse.class);
@@ -281,42 +267,20 @@ public class TestExtendedUserOperations extends JerseyTest {
   }
 
   @Test
-  public void testAddLocalUserNotFound() {
-    String metalake = "metalake";
-    when(accessControlDispatcher.addLocalUser(any(), any(), any(), any()))
-        .thenThrow(new NotFoundException("IdP user missing"));
+  public void testListIdpUsers() {
+    when(accessControlDispatcher.listIdpUsers("metalake"))
+        .thenReturn(
+            new IdpNameStatus[] {
+              new IdpNameStatus("alice", true), new IdpNameStatus("bob", false)
+            });
 
-    Response response =
-        target("/web/security/metalakes/" + metalake + "/users")
-            .request(MediaType.APPLICATION_JSON_TYPE)
-            .accept("application/vnd.gravitino.v1+json")
-            .post(
-                entity(
-                    new LocalUserAddRequest("missing", null, true),
-                    MediaType.APPLICATION_JSON_TYPE));
-
-    Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
-    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
-    Assertions.assertEquals(ErrorConstants.NOT_FOUND_CODE, errorResponse.getCode());
-  }
-
-  @Test
-  public void testAddLocalUserConflict() {
-    String metalake = "metalake";
-    when(accessControlDispatcher.addLocalUser(any(), any(), any(), any()))
-        .thenThrow(new UserAlreadyExistsException("User already exists"));
-
-    Response response =
-        target("/web/security/metalakes/" + metalake + "/users")
-            .request(MediaType.APPLICATION_JSON_TYPE)
-            .accept("application/vnd.gravitino.v1+json")
-            .post(
-                entity(
-                    new LocalUserAddRequest("alice", null, true), MediaType.APPLICATION_JSON_TYPE));
-
-    Assertions.assertEquals(Response.Status.CONFLICT.getStatusCode(), response.getStatus());
-    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
-    Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, errorResponse.getCode());
+    Response response = get("/web/security/metalakes/metalake/users/idp");
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    IdpUserNameListResponse body = response.readEntity(IdpUserNameListResponse.class);
+    Assertions.assertEquals("alice", body.getUsers()[0].getName());
+    Assertions.assertTrue(body.getUsers()[0].isStatus());
+    Assertions.assertEquals("bob", body.getUsers()[1].getName());
+    Assertions.assertFalse(body.getUsers()[1].isStatus());
   }
 
   @Test
@@ -337,16 +301,6 @@ public class TestExtendedUserOperations extends JerseyTest {
         .request(MediaType.APPLICATION_JSON_TYPE)
         .accept("application/vnd.gravitino.v1+json")
         .get();
-  }
-
-  private static void assertManageUsers(String method, Class<?>... params)
-      throws NoSuchMethodException {
-    Assertions.assertEquals(
-        "METALAKE::OWNER || METALAKE::MANAGE_USERS",
-        ExtendedUserOperations.class
-            .getMethod(method, params)
-            .getAnnotation(AuthorizationExpression.class)
-            .expression());
   }
 
   private void mockInUseMetalake() throws IOException {

@@ -5,8 +5,8 @@
 package com.datastrato.gravitino.authorization;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 
-import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.datastrato.gravitino.storage.InMemoryEntityStore;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -21,6 +21,7 @@ import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.AccessControlManager;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.Role;
@@ -126,8 +127,7 @@ public class TestDatastratoAccessControlDispatcher {
         new DatastratoAccessControlDispatcher(
             new AccessControlManager(entityStore, new RandomIdGenerator(), config),
             entityStore,
-            Mockito.mock(IdpUserGroupManager.class),
-            Mockito.mock(ScimUserGroupRelManager.class));
+            Mockito.mock(IdpUserGroupManager.class));
 
     FieldUtils.writeField(GravitinoEnv.getInstance(), "entityStore", entityStore, true);
     FieldUtils.writeField(
@@ -197,5 +197,35 @@ public class TestDatastratoAccessControlDispatcher {
         NoSuchRoleException.class,
         () ->
             accessControlManager.updatePrivilegesForRole(METALAKE, notExist, Lists.newArrayList()));
+  }
+
+  @Test
+  public void testExtendedSecurityBlankMetalakeValidation() {
+    DatastratoAccessControlDispatcher dispatcher =
+        new DatastratoAccessControlDispatcher(
+            mock(AccessControlDispatcher.class),
+            mock(EntityStore.class),
+            mock(IdpUserGroupManager.class));
+
+    Assertions.assertThrows(IllegalArgumentException.class, () -> dispatcher.listIdpUsers(" "));
+    Assertions.assertThrows(IllegalArgumentException.class, () -> dispatcher.listIdpGroups(""));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.getExtendedUser(" ", "alice"));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.listExtendedGroupsForUser("", "alice"));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.listExtendedUsersForGroup(" ", "g"));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.listGroupsForUser(" ", "alice"));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.listUsersForGroup("", "g"));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.listExtendedUsers(" "));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.listExtendedGroups(""));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.countUsersByEnabled(""));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.countGroupsWithEmpty(" "));
   }
 }

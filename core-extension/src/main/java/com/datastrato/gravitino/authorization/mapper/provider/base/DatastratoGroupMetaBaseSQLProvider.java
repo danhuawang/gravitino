@@ -1,0 +1,232 @@
+/*
+ * Copyright 2026 Datastrato Pvt Ltd.
+ */
+package com.datastrato.gravitino.authorization.mapper.provider.base;
+
+import static org.apache.gravitino.storage.relational.mapper.GroupMetaMapper.GROUP_ROLE_RELATION_TABLE_NAME;
+import static org.apache.gravitino.storage.relational.mapper.GroupMetaMapper.GROUP_TABLE_NAME;
+import static org.apache.gravitino.storage.relational.mapper.RoleMetaMapper.ROLE_TABLE_NAME;
+
+import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
+import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import java.util.List;
+import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
+import org.apache.gravitino.storage.relational.mapper.UserMetaMapper;
+import org.apache.ibatis.annotations.Param;
+
+/** Base SQL for enterprise group_meta reads with built-in IdP origin checks. */
+public class DatastratoGroupMetaBaseSQLProvider {
+
+  /**
+   * Lists active IdP group names with whether each is already in the metalake.
+   *
+   * @param metalakeName The metalake name.
+   * @return JOIN SQL.
+   */
+  public String listGroupsWithMetalakeStatus(@Param("metalakeName") String metalakeName) {
+    return "SELECT ig.group_name AS name,"
+        + " CASE WHEN gt.group_name IS NOT NULL THEN 1 ELSE 0 END AS status"
+        + " FROM "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mt LEFT JOIN "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig ON ig.deleted_at = 0 LEFT JOIN "
+        + GROUP_TABLE_NAME
+        + " gt ON gt.group_name = ig.group_name AND gt.deleted_at = 0"
+        + " AND gt.metalake_id = mt.metalake_id"
+        + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
+        + " ORDER BY ig.group_name";
+  }
+
+  /**
+   * Lists metalake groups with roles and whether each name exists in the built-in IdP.
+   *
+   * @param metalakeName The metalake name.
+   * @return JOIN SQL.
+   */
+  public String listGroupsByMetalakeWithOrigin(@Param("metalakeName") String metalakeName) {
+    return groupsWithOriginSelectAndFrom(false, null) + " GROUP BY gt.group_id";
+  }
+
+  /**
+   * Loads metalake groups by name with roles and built-in IdP membership in one JOIN.
+   *
+   * @param metalakeName The metalake name.
+   * @param groupNames Group names to load.
+   * @return JOIN SQL.
+   */
+  public String listGroupsByMetalakeAndNamesWithOrigin(
+      @Param("metalakeName") String metalakeName, @Param("groupNames") List<String> groupNames) {
+    return "<script>"
+        + groupsWithOriginSelectAndFrom(true, " AND gt.group_name IN " + groupNameInClause())
+        + " GROUP BY gt.group_id"
+        + "</script>";
+  }
+
+  /**
+   * Lists metalake groups for a user with roles and built-in IdP membership in one JOIN.
+   *
+   * @param metalakeName The metalake name.
+   * @param userName The username.
+   * @return JOIN SQL.
+   */
+  public String listGroupsForMetalakeUserWithOrigin(
+      @Param("metalakeName") String metalakeName, @Param("userName") String userName) {
+    return groupsForMetalakeUserSelectAndFrom() + " GROUP BY gt.group_id, ut.user_id";
+  }
+
+  /**
+   * Loads metalake group totals and empty-group count.
+   *
+   * @param metalakeName The metalake name.
+   * @return Aggregate SQL returning one row.
+   */
+  public String countGroupsWithEmptyByMetalake(@Param("metalakeName") String metalakeName) {
+    return "SELECT COUNT(*) AS total,"
+        + " COALESCE(SUM(CASE WHEN NOT ("
+        + localGroupHasMemberExists()
+        + " OR "
+        + scimGroupHasMemberExists()
+        + ") THEN 1 ELSE 0 END), 0) AS empty"
+        + " FROM "
+        + GROUP_TABLE_NAME
+        + " gt INNER JOIN "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mt ON gt.metalake_id = mt.metalake_id AND mt.deleted_at = 0"
+        + " WHERE mt.metalake_name = #{metalakeName} AND gt.deleted_at = 0";
+  }
+
+  private String localGroupHasMemberExists() {
+    return "EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig INNER JOIN "
+        + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+        + " iugr ON iugr.group_id = ig.group_id AND iugr.deleted_at = 0"
+        + " INNER JOIN "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " ium ON ium.user_id = iugr.user_id AND ium.deleted_at = 0"
+        + " INNER JOIN "
+        + UserMetaMapper.USER_TABLE_NAME
+        + " ut ON ut.metalake_id = gt.metalake_id AND ut.user_name = ium.user_name"
+        + " AND ut.deleted_at = 0"
+        + " WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0"
+        + " AND (gt.external_id IS NULL OR gt.external_id = ''))";
+  }
+
+  private String scimGroupHasMemberExists() {
+    return "EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
+        + " sur INNER JOIN "
+        + UserMetaMapper.USER_TABLE_NAME
+        + " ut ON ut.user_id = sur.user_id AND ut.metalake_id = gt.metalake_id AND ut.deleted_at = 0"
+        + " WHERE sur.group_id = gt.group_id AND sur.metalake_id = gt.metalake_id AND sur.deleted_at = 0"
+        + " AND gt.external_id IS NOT NULL AND gt.external_id <> '')";
+  }
+
+  private String groupsForMetalakeUserSelectAndFrom() {
+    return "SELECT gt.group_id as groupId, gt.group_name as groupName,"
+        + " gt.metalake_id as metalakeId,"
+        + " gt.external_id as externalId,"
+        + " gt.audit_info as auditInfo,"
+        + " gt.current_version as currentVersion, gt.last_version as lastVersion,"
+        + " gt.deleted_at as deletedAt,"
+        + " "
+        + jsonArrayAgg("rot.role_name")
+        + " as roleNames,"
+        + " "
+        + jsonArrayAgg("rot.role_id")
+        + " as roleIds,"
+        + " MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) as inBuiltInIdp"
+        + " FROM "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mt INNER JOIN "
+        + UserMetaMapper.USER_TABLE_NAME
+        + " ut ON ut.metalake_id = mt.metalake_id AND ut.deleted_at = 0"
+        + " AND ut.user_name = #{userName}"
+        + membershipGroupsJoinForUser()
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 LEFT OUTER JOIN ("
+        + " SELECT * FROM "
+        + GROUP_ROLE_RELATION_TABLE_NAME
+        + " WHERE deleted_at = 0)"
+        + " AS rt ON rt.group_id = gt.group_id LEFT OUTER JOIN ("
+        + " SELECT * FROM "
+        + ROLE_TABLE_NAME
+        + " WHERE deleted_at = 0)"
+        + " AS rot ON rot.role_id = rt.role_id"
+        + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0";
+  }
+
+  private String membershipGroupsJoinForUser() {
+    return " LEFT JOIN "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0"
+        + " AND (ut.external_id IS NULL OR ut.external_id = '')"
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+        + " iugr ON iugr.user_id = iu.user_id AND iugr.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " igm ON igm.group_id = iugr.group_id AND igm.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
+        + " sur ON sur.metalake_id = mt.metalake_id AND sur.user_id = ut.user_id AND sur.deleted_at = 0"
+        + " AND ut.external_id IS NOT NULL AND ut.external_id <> ''"
+        + " LEFT JOIN "
+        + GROUP_TABLE_NAME
+        + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0"
+        + " AND (((ut.external_id IS NULL OR ut.external_id = '') AND gt.group_name = igm.group_name)"
+        + " OR (ut.external_id IS NOT NULL AND ut.external_id <> '' AND gt.group_id = sur.group_id))";
+  }
+
+  private String groupsWithOriginSelectAndFrom(boolean innerJoinGroup, String extraFilter) {
+    String groupJoin =
+        innerJoinGroup
+            ? " mt INNER JOIN "
+                + GROUP_TABLE_NAME
+                + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0"
+            : " mt LEFT JOIN "
+                + GROUP_TABLE_NAME
+                + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0";
+    return "SELECT gt.group_id as groupId, gt.group_name as groupName,"
+        + " gt.metalake_id as metalakeId,"
+        + " gt.external_id as externalId,"
+        + " gt.audit_info as auditInfo,"
+        + " gt.current_version as currentVersion, gt.last_version as lastVersion,"
+        + " gt.deleted_at as deletedAt,"
+        + " "
+        + jsonArrayAgg("rot.role_name")
+        + " as roleNames,"
+        + " "
+        + jsonArrayAgg("rot.role_id")
+        + " as roleIds,"
+        + " MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) as inBuiltInIdp"
+        + " FROM "
+        + MetalakeMetaMapper.TABLE_NAME
+        + groupJoin
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 LEFT OUTER JOIN ("
+        + " SELECT * FROM "
+        + GROUP_ROLE_RELATION_TABLE_NAME
+        + " WHERE deleted_at = 0)"
+        + " AS rt ON rt.group_id = gt.group_id LEFT OUTER JOIN ("
+        + " SELECT * FROM "
+        + ROLE_TABLE_NAME
+        + " WHERE deleted_at = 0)"
+        + " AS rot ON rot.role_id = rt.role_id"
+        + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
+        + (extraFilter == null ? "" : extraFilter);
+  }
+
+  protected String jsonArrayAgg(String expr) {
+    return "JSON_ARRAYAGG(" + expr + ")";
+  }
+
+  protected String groupNameInClause() {
+    return "<foreach collection='groupNames' item='groupName' open='(' separator=',' close=')'>"
+        + "#{groupName}"
+        + "</foreach>";
+  }
+}

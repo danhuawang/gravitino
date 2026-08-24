@@ -16,7 +16,7 @@ import org.apache.gravitino.dto.util.DTOConverters;
 
 /**
  * Enterprise user DTO for the security Users page. Extends OSS {@link UserDTO} with {@link
- * IdentitySource} derived from {@code externalId} and serialized as {@code origin}.
+ * IdentitySource} serialized as {@code origin}.
  */
 public class ExtendedUserDTO extends UserDTO {
 
@@ -46,12 +46,18 @@ public class ExtendedUserDTO extends UserDTO {
   }
 
   /**
-   * Builds an {@link ExtendedUserDTO} from a {@link User}.
+   * Builds an {@link ExtendedUserDTO} from a {@link User}, deriving {@code origin} from built-in
+   * IdP membership.
    *
    * @param user The metalake user.
+   * @param inBuiltInIdp {@code true} when the name exists in {@code idp_user_meta}.
    * @return The extended user DTO.
    */
-  public static ExtendedUserDTO from(User user) {
+  public static ExtendedUserDTO from(User user, boolean inBuiltInIdp) {
+    return from(user, IdentitySource.fromIdpMembership(inBuiltInIdp));
+  }
+
+  private static ExtendedUserDTO from(User user, IdentitySource origin) {
     Preconditions.checkArgument(user != null, "user cannot be null");
     Preconditions.checkArgument(StringUtils.isNotBlank(user.name()), "user name cannot be blank");
     List<String> roles = user.roles() == null ? Collections.emptyList() : user.roles();
@@ -62,21 +68,6 @@ public class ExtendedUserDTO extends UserDTO {
         roles,
         DTOConverters.toDTO(user.auditInfo()),
         user.enabled(),
-        IdentitySource.fromExternalId(user.externalId()));
-  }
-
-  /**
-   * Converts users to extended DTOs.
-   *
-   * @param users The users.
-   * @return Extended user DTOs.
-   */
-  public static ExtendedUserDTO[] from(User[] users) {
-    Preconditions.checkArgument(users != null, "users cannot be null");
-    ExtendedUserDTO[] result = new ExtendedUserDTO[users.length];
-    for (int i = 0; i < users.length; i++) {
-      result[i] = from(users[i]);
-    }
-    return result;
+        origin);
   }
 }

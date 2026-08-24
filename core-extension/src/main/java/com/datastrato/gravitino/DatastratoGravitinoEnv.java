@@ -198,16 +198,14 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         new DatastratoAccessControlDispatcher(
             GravitinoEnv.getInstance().accessControlDispatcher(),
             entityStore(),
-            idpUserGroupManager(),
-            scimUserGroupRelManager());
+            idpUserGroupManager());
 
     // initialize internal access control dispatcher
     this.internalDatastratoAccessControlDispatcher =
         new DatastratoAccessControlDispatcher(
             GravitinoEnv.getInstance().internalAccessControlDispatcher(),
             entityStore(),
-            idpUserGroupManager(),
-            scimUserGroupRelManager());
+            idpUserGroupManager());
 
     LOG.info("Datastrato Gravitino Environment initialized.");
   }
