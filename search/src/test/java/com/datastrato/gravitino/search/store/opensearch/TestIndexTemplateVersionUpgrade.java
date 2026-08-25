@@ -5,13 +5,21 @@
 
 package com.datastrato.gravitino.search.store.opensearch;
 
+import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
 import static com.datastrato.gravitino.test.OpenSearchContainer.DEFAULT_PASSWORD;
 import static com.datastrato.gravitino.test.OpenSearchContainer.DEFAULT_USERNAME;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
+import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.datastrato.gravitino.search.po.SearchTableEntityPO;
+import com.datastrato.gravitino.search.store.WriteContext;
+import com.datastrato.gravitino.search.utils.SearchEntityCodec;
 import com.datastrato.gravitino.test.OpenSearchContainer;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +31,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.integration.test.util.CommandExecutor;
 import org.apache.gravitino.integration.test.util.CommandExecutor.IGNORE_ERRORS;
 import org.apache.gravitino.integration.test.util.ProcessData;
@@ -93,6 +102,7 @@ class TestIndexTemplateVersionUpgrade {
 
   @BeforeEach
   void resetCluster() throws Exception {
+    curl("-X", "DELETE", container.getOpenSearchUrl() + "/*_entity_index*");
     curl(
         "-X",
         "DELETE",
@@ -117,6 +127,75 @@ class TestIndexTemplateVersionUpgrade {
 
     assertTemplatesExist(V2_PATTERNS, "v2");
     assertTemplatesMissing(V1_PATTERNS, "v1");
+  }
+
+  @Test
+  void testV1DataCanBeQueriedAndRebuiltAfterV2Upgrade() throws Exception {
+    String metalake = "upgrade-data-test";
+    SearchTableEntityPO v1Table =
+        SearchTableEntityPO.SearchTableEntityPOBuilder.builder()
+            .withEntityId(100)
+            .withEntityName("legacy_orders")
+            .withFullQualifiedName("catalog.schema.legacy_orders")
+            .withEntityType(Entity.EntityType.TABLE)
+            .withMetalake(metalake)
+            .withCatalogName("catalog")
+            .withColumns(
+                ImmutableList.of(
+                    SearchTableEntityPO.SearchColumn.builder().withColumnName("order_id").build()))
+            .build();
+
+    assertEquals(0, runIndexScript("init", "v1"));
+    assertTemplatesExist(V1_PATTERNS, "v1");
+    createV1TableIndexAndDocument(v1Table);
+
+    assertEquals(0, runIndexScript("upgrade", "v2"));
+    assertTemplatesExist(V2_PATTERNS, "v2");
+    assertTemplatesMissing(V1_PATTERNS, "v1");
+
+    try (OpenSearchStorage storage = createStorage()) {
+      SearchEntitiesDTO oldData =
+          assertEntityFound(storage, metalake, "legacy_orders", Entity.EntityType.TABLE);
+      assertEquals(
+          v1Table.getFullQualifiedName(), oldData.getEntities().get(0).getFullQualifiedName());
+
+      long transactionId = storage.beginTransaction(metalake);
+      SearchTableEntityPO rebuiltTable =
+          SearchTableEntityPO.SearchTableEntityPOBuilder.builder()
+              .withEntityId(100)
+              .withEntityName("legacy_orders")
+              .withFullQualifiedName("catalog.schema.legacy_orders")
+              .withEntityType(Entity.EntityType.TABLE)
+              .withMetalake(metalake)
+              .withCatalogName("catalog")
+              .withPolicyNames(ImmutableList.of("retention_policy"))
+              .withColumns(
+                  ImmutableList.of(
+                      SearchTableEntityPO.SearchColumn.builder()
+                          .withColumnName("order_id")
+                          .build()))
+              .build();
+      SearchEntityPO newV2Tag =
+          SearchEntityPO.SearchEntityPOBuilder.builder()
+              .withEntityId(101)
+              .withEntityName("sensitive")
+              .withFullQualifiedName("sensitive")
+              .withEntityType(Entity.EntityType.TAG)
+              .withMetalake(metalake)
+              .build();
+
+      storage.write(
+          ImmutableList.of(rebuiltTable, newV2Tag),
+          WriteContext.builder().withTransactionId(transactionId).build());
+      storage.commit(transactionId);
+
+      assertEntityFound(storage, metalake, "retention_policy", Entity.EntityType.TABLE);
+      assertEntityFound(storage, metalake, "sensitive", Entity.EntityType.TAG);
+      assertEquals(
+          404,
+          curl("-X", "GET", container.getOpenSearchUrl() + "/" + v1TableIndexName(metalake)),
+          "the rebuild should remove the v1 physical index");
+    }
   }
 
   @Test
@@ -270,6 +349,74 @@ class TestIndexTemplateVersionUpgrade {
             "--data-binary",
             request,
             templateUrl(templateName("view_entity_index", "v2"))));
+  }
+
+  private void createV1TableIndexAndDocument(SearchTableEntityPO table) throws Exception {
+    String indexName = v1TableIndexName(table.getMetalake());
+    String aliasName = tableIndexAliasName(table.getMetalake());
+    String aliasRequest =
+        String.format(
+            "{\"actions\":[{\"add\":{\"index\":\"%s\",\"alias\":\"%s\",\"is_write_index\":true}}]}",
+            indexName, aliasName);
+
+    assertEquals(200, curl("-X", "PUT", container.getOpenSearchUrl() + "/" + indexName));
+    assertEquals(
+        200,
+        curl(
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            aliasRequest,
+            container.getOpenSearchUrl() + "/_aliases"));
+    assertEquals(
+        201,
+        curl(
+            "-X",
+            "PUT",
+            "-H",
+            "Content-Type: application/json",
+            "--data-binary",
+            SearchEntityCodec.INSTANCE.serialize(table),
+            container.getOpenSearchUrl()
+                + "/"
+                + indexName
+                + "/_doc/"
+                + table.getEntityId()
+                + "?refresh=true"));
+  }
+
+  private OpenSearchStorage createStorage() {
+    OpenSearchStorage storage = new OpenSearchStorage();
+    storage.initialize(
+        new OpenSearchConfig(
+            ImmutableMap.of(
+                OpenSearchConfig.OPEN_SEARCH_URL_KEY,
+                container.getOpenSearchUrl(),
+                OpenSearchConfig.OPEN_SEARCH_USERNAME_KEY,
+                DEFAULT_USERNAME,
+                OpenSearchConfig.OPEN_SEARCH_PASSWORD_KEY,
+                DEFAULT_PASSWORD)));
+    return storage;
+  }
+
+  private SearchEntitiesDTO assertEntityFound(
+      OpenSearchStorage storage, String metalake, String keyword, Entity.EntityType entityType) {
+    SearchEntitiesDTO result =
+        getSearchEntitiesDTOByType(
+            storage.search(metalake, keyword, null, ImmutableList.of(), 10, 0), entityType);
+    assertNotNull(result, "No " + entityType + " matched " + keyword);
+    assertEquals(1, result.getTotalSize(), "Unexpected hits for " + keyword);
+    return result;
+  }
+
+  private static String v1TableIndexName(String metalake) {
+    return tableIndexAliasName(metalake) + "_0";
+  }
+
+  private static String tableIndexAliasName(String metalake) {
+    return metalake + "_table_entity_index";
   }
 
   private String templateUrl(String template) {

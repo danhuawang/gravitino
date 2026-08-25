@@ -273,7 +273,7 @@ Each entity type has its own index template, which defines the mapping and setti
 Index template files are stored in:
 
 ```text
-${PROJECT_GRAVITINO}/search/bin/opensearch
+${PROJECT_GRAVITINO}/bin/opensearch
 ```
 When we package the Gravitino server, the index templates are copied to:
 
@@ -300,6 +300,8 @@ v2/
 ```
 
 If we are going to upgrade the index definitions, we can create a new version directory (e.g., `v3/`) with updated templates.
+See [Set Up and Upgrade OpenSearch Index Templates](./opensearch-index-template-upgrade.md) for the
+steps for a new install, an upgrade, a rebuild, and a normal restart.
 
 ## Metadata Synchronization
 
@@ -342,7 +344,7 @@ curl -X POST -H "Content-Type: application/json" http://127.0.0.1:8090/api/searc
 
 ## Command-Line Index Management
 
-The Gravitino server provides a CLI tool to manage indexes. It can be used to initialize, upgrade, delete, and show index details.
+The Gravitino server provides a CLI tool for OpenSearch templates and indexes.
 
 ```bash
 gravitino-server$ bin/index.sh
@@ -352,52 +354,41 @@ Usage: bin/index.sh {init|upgrade|delete|version|rebuild|show} [version] [option
 
 ### Options
 
-| Option             | Description          |
-|--------------------|----------------------|
-| `--opensearch_uri` | OpenSearch URI       |
-| `--username`       | OpenSearch username  |
-| `--password`       | OpenSearch password  |
-| `--gravitino_uri`  | Gravitino server URI |
-| `--help`           | Show help message    |
+| Option               | Description          |
+|----------------------|----------------------|
+| `--opensearch_uri`   | OpenSearch URI       |
+| `--username`         | OpenSearch username  |
+| `--password`         | OpenSearch password  |
+| `--gravitino_uri`    | Gravitino server URI |
+| `--help`             | Show help message    |
 
-If no options are provided, the script will use the default configuration from `GRAVITINO_HOME/conf/gravitino.properties`.
+If no options are provided, the script will use the configuration from
+`GRAVITINO_HOME/conf/gravitino.conf`.
 
 ### Supported Commands
 
-| Command   | Description                                      |
-|-----------|--------------------------------------------------|
-| `init`    | Initialize OpenSearch indexes (optional version) |
-| `upgrade` | Upgrade index templates to a specified version   |
-| `delete`  | Delete indexes with a specified version          |
-| `version` | Show current index version                       |
-| `rebuild` | Rebuild current version of the indexes           |
-| `show`    | Show index and template details                  |
+| Command             | Description                                      |
+|---------------------|--------------------------------------------------|
+| `init [version]`    | Create templates for a new install               |
+| `upgrade <version>` | Create new templates for an existing install     |
+| `delete <version>`  | Delete the templates for one version             |
+| `version`           | Show the version of each template                |
+| `rebuild`           | Create new indexes and move aliases to them      |
+| `show`              | Show aliases, indexes, and their templates       |
 
-When the Gravitino server starts, it automatically runs the init command to create the necessary indexes if they do not already exist, using the latest version of the index templates.
+Use `init` only when no Gravitino template exists. Use `upgrade` when templates already exist.
+These commands do not change old indexes. After a version upgrade, start the new Gravitino server
+and run `rebuild`.
 
-If you upgrade the index templates and want to apply the changes to existing indexes, you can run the `upgrade` command to update them to the new version.
-When you upgraded the index templates, you can run the `rebuild` command to rebuild the indexes with the latest version of the templates.
+`bin/gravitino.sh start` tries to run `init`. `bin/gravitino.sh run` does not. The Docker entrypoint
+uses `run`, so Docker and Kubernetes installs must create the templates before the Gravitino
+container starts. Read
+[Set Up and Upgrade OpenSearch Index Templates](./opensearch-index-template-upgrade.md) before you
+choose a command.
 
-### Example
+### Check the current setup
 
 ```text
-# Initial Gravitino search index, it will use the latest version of the template to create indices
-# if the indices do not exist
-gravitino-server$ bin/index.sh init
-
-# Upgrade index templates to version 2, it will create new indexes with the new version and update the index aliases,
-# and it will delete the old indexes of the previous version
-gravitino-server$ bin/index.sh upgrade v2
-
-# Upgrading to the version the cluster is already on reconciles the templates instead: a release
-# that adds a new entity type ships an extra template within the same version, and this creates the
-# templates that are missing without touching the ones already in place. Run it after upgrading
-# the server, before restarting it, otherwise startup fails on the missing template.
-gravitino-server$ bin/index.sh upgrade v1
-
-# Rebuild current version of the indexes and run background sync tasks
-gravitino-server$ bin/index.sh rebuild
-
 # show current index version
 gravitino-server$ bin/index.sh version
 

@@ -213,7 +213,7 @@ public class OpenSearchStorage implements SearchStorage {
     String indicesName = createEntityIndices(indicesAliasName, 0);
     updateIndexAlias(indicesName, indicesAliasName);
     createdIndicesAlias.add(indicesAliasName);
-    return indicesName;
+    return indicesAliasName;
   }
 
   protected String getIndicesAliasName(EntityType entityType, String metalakeName) {

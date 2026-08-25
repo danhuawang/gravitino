@@ -18,6 +18,7 @@ import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchPolicyEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
+import com.datastrato.gravitino.search.store.WriteContext;
 import com.datastrato.gravitino.test.OpenSearchContainer;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -265,12 +266,68 @@ public class TestOpenSearchStorage {
     assertViewFound("incremental");
   }
 
+  @Test
+  void testRebuildTransactionPreservesExistingAndNewEntityTypes() {
+    String metalake = "upgrade-test";
+    SearchTableEntityPO existingTable =
+        SearchTableEntityPO.SearchTableEntityPOBuilder.builder()
+            .withEntityId(600)
+            .withEntityName("orders")
+            .withFullQualifiedName("catalog.schema.orders")
+            .withEntityType(Entity.EntityType.TABLE)
+            .withMetalake(metalake)
+            .withCatalogName("catalog")
+            .withColumns(
+                ImmutableList.of(
+                    SearchTableEntityPO.SearchColumn.builder().withColumnName("id").build()))
+            .build();
+    storage.write(ImmutableList.of(existingTable), true);
+
+    long transactionId = storage.beginTransaction(metalake);
+    SearchTableEntityPO rebuiltTable =
+        SearchTableEntityPO.SearchTableEntityPOBuilder.builder()
+            .withEntityId(600)
+            .withEntityName("orders")
+            .withFullQualifiedName("catalog.schema.orders")
+            .withEntityType(Entity.EntityType.TABLE)
+            .withMetalake(metalake)
+            .withCatalogName("catalog")
+            .withPolicyNames(ImmutableList.of("retention_policy"))
+            .withColumns(
+                ImmutableList.of(
+                    SearchTableEntityPO.SearchColumn.builder().withColumnName("id").build()))
+            .build();
+    SearchEntityPO newTag =
+        SearchEntityPO.SearchEntityPOBuilder.builder()
+            .withEntityId(601)
+            .withEntityName("sensitive")
+            .withFullQualifiedName("sensitive")
+            .withEntityType(Entity.EntityType.TAG)
+            .withMetalake(metalake)
+            .build();
+    storage.write(
+        ImmutableList.of(rebuiltTable, newTag),
+        WriteContext.builder().withTransactionId(transactionId).build());
+    storage.commit(transactionId);
+
+    assertEntityFound(metalake, "retention_policy", Entity.EntityType.TABLE);
+    assertEntityFound(metalake, "sensitive", Entity.EntityType.TAG);
+  }
+
   private void assertViewFound(String keyword) {
     SearchEntitiesDTO dto =
         getSearchEntitiesDTOByType(
             storage.search("view-metalake", keyword, null, ImmutableList.of(), 10, 0),
             Entity.EntityType.VIEW);
     Assertions.assertNotNull(dto, "No view matched the keyword " + keyword);
+    Assertions.assertEquals(1, dto.getTotalSize(), "Unexpected hits for the keyword " + keyword);
+  }
+
+  private void assertEntityFound(String metalake, String keyword, Entity.EntityType entityType) {
+    SearchEntitiesDTO dto =
+        getSearchEntitiesDTOByType(
+            storage.search(metalake, keyword, null, ImmutableList.of(), 10, 0), entityType);
+    Assertions.assertNotNull(dto, "No " + entityType + " matched the keyword " + keyword);
     Assertions.assertEquals(1, dto.getTotalSize(), "Unexpected hits for the keyword " + keyword);
   }
 
