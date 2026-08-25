@@ -33,7 +33,9 @@ def _make_deserialize_datetime(field_name: str):
         if value is None or isinstance(value, datetime):
             return value
         if not isinstance(value, str):
-            raise TypeError(f"{field_name} must be an ISO-8601 string, got {type(value)}")
+            raise TypeError(
+                f"{field_name} must be an ISO-8601 string, got {type(value)}"
+            )
 
         normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
         # Match Python 3.11+ by truncating nanoseconds to microsecond precision.
@@ -51,7 +53,9 @@ def _make_serialize_datetime(field_name: str):
         if not isinstance(value, datetime):
             raise TypeError(f"{field_name} must be a datetime, got {type(value)}")
 
-        normalized = value.astimezone(timezone.utc) if value.tzinfo is not None else value
+        normalized = (
+            value.astimezone(timezone.utc) if value.tzinfo is not None else value
+        )
         return normalized.isoformat().replace("+00:00", "Z")
 
     return _serialize
