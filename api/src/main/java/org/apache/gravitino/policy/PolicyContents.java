@@ -19,10 +19,12 @@
 package org.apache.gravitino.policy;
 
 import com.google.common.collect.ImmutableSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.encryption.kms.KmsReference;
 
 /** Utility class for creating instances of {@link PolicyContent}. */
 public class PolicyContents {
@@ -101,6 +103,42 @@ public class PolicyContents {
         deleteFileNumberWeight,
         maxPartitionNum,
         rewriteOptions);
+  }
+
+  /**
+   * Creates Iceberg encryption policy content with default requirement and enforcement values.
+   *
+   * @param schemaVersion policy content schema version
+   * @param allowedKeys allowed KMS keys as {@code {provider, keyId}}
+   * @return Iceberg encryption policy content
+   */
+  public static PolicyContent icebergEncryption(int schemaVersion, List<KmsReference> allowedKeys) {
+    return icebergEncryption(
+        schemaVersion,
+        IcebergEncryptionContent.DEFAULT_REQUIRED,
+        allowedKeys,
+        IcebergEncryptionContent.DEFAULT_ENFORCEMENT);
+  }
+
+  /**
+   * Creates Iceberg encryption policy content.
+   *
+   * @param schemaVersion policy content schema version
+   * @param required whether encryption is required
+   * @param allowedKeys allowed KMS keys as {@code {provider, keyId}}
+   * @param enforcement enforcement behavior
+   * @return Iceberg encryption policy content
+   */
+  public static PolicyContent icebergEncryption(
+      int schemaVersion,
+      boolean required,
+      List<KmsReference> allowedKeys,
+      IcebergEncryptionContent.Enforcement enforcement) {
+    return new IcebergEncryptionContent(
+        schemaVersion,
+        required,
+        allowedKeys,
+        Objects.requireNonNull(enforcement, "enforcement cannot be null"));
   }
 
   private PolicyContents() {}

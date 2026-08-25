@@ -20,13 +20,22 @@
 package org.apache.gravitino.policy;
 
 import com.google.common.collect.ImmutableSet;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.encryption.kms.KmsReference;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class TestPolicyContents {
+
+  private static final String AWS_PROD = "aws-prod";
+  private static final String OPENBAO_PRODUCTION = "openbao-production";
+  private static final String OPENBAO_DR = "openbao-dr";
 
   @Test
   void testIcebergCompactionContentUsesDefaults() {
@@ -117,6 +126,126 @@ public class TestPolicyContents {
     IllegalArgumentException exception =
         Assertions.assertThrows(IllegalArgumentException.class, content::validate);
     Assertions.assertTrue(exception.getMessage().contains("maxPartitionNum"));
+  }
+
+  @Test
+  void testIcebergEncryptionContentUsesDefaultsAndPreservesExactValues() {
+    List<KmsReference> allowedKeys =
+        new ArrayList<>(
+            Arrays.asList(allowedKey(AWS_PROD, "Key-A"), allowedKey(OPENBAO_PRODUCTION, "Key-A")));
+
+    IcebergEncryptionContent content =
+        (IcebergEncryptionContent) PolicyContents.icebergEncryption(1, allowedKeys);
+    allowedKeys.add(allowedKey(OPENBAO_DR, "mutated-after-construction"));
+
+    Assertions.assertEquals(1, content.schemaVersion());
+    Assertions.assertTrue(content.required());
+    Assertions.assertEquals(
+        Arrays.asList(allowedKey(AWS_PROD, "Key-A"), allowedKey(OPENBAO_PRODUCTION, "Key-A")),
+        content.allowedKeys());
+    Assertions.assertEquals(IcebergEncryptionContent.Enforcement.REPORT, content.enforcement());
+    Assertions.assertEquals(
+        ImmutableSet.of(
+            MetadataObject.Type.CATALOG, MetadataObject.Type.SCHEMA, MetadataObject.Type.TABLE),
+        content.supportedObjectTypes());
+    Assertions.assertFalse(content.rules().containsKey("selector"));
+    Assertions.assertEquals(content.allowedKeys(), content.rules().get("allowedKeys"));
+    Assertions.assertDoesNotThrow(content::validate);
+    Assertions.assertThrows(
+        UnsupportedOperationException.class,
+        () -> content.allowedKeys().add(allowedKey(AWS_PROD, "another-key")));
+  }
+
+  @Test
+  void testIcebergEncryptionContentSupportsExplicitBehavior() {
+    IcebergEncryptionContent content =
+        (IcebergEncryptionContent)
+            PolicyContents.icebergEncryption(
+                1,
+                false,
+                Collections.emptyList(),
+                IcebergEncryptionContent.Enforcement.DENY_CREATE);
+
+    Assertions.assertFalse(content.required());
+    Assertions.assertTrue(content.allowedKeys().isEmpty());
+    Assertions.assertEquals(
+        IcebergEncryptionContent.Enforcement.DENY_CREATE, content.enforcement());
+    Assertions.assertDoesNotThrow(content::validate);
+  }
+
+  @Test
+  void testIcebergEncryptionContentRejectsInvalidContent() {
+    assertInvalidIcebergEncryptionContent(
+        PolicyContents.icebergEncryption(
+            2, Collections.singletonList(allowedKey(AWS_PROD, "key-a"))),
+        "schemaVersion");
+    assertInvalidIcebergEncryptionContent(
+        PolicyContents.icebergEncryption(1, Collections.emptyList()), "allowedKeys");
+    assertInvalidIcebergEncryptionContent(
+        PolicyContents.icebergEncryption(
+            1, Arrays.asList(allowedKey(AWS_PROD, "key-a"), allowedKey(AWS_PROD, "key-a"))),
+        "duplicate");
+  }
+
+  @Test
+  void testIcebergEncryptionContentValueObjects() {
+    KmsReference key = allowedKey(AWS_PROD, "key-a");
+    KmsReference equalKey = allowedKey(AWS_PROD, "key-a");
+
+    Assertions.assertEquals(key, equalKey);
+    Assertions.assertEquals(key.hashCode(), equalKey.hashCode());
+    Assertions.assertNotEquals(key, allowedKey(OPENBAO_PRODUCTION, "key-a"));
+    Assertions.assertNotEquals(key, allowedKey(AWS_PROD, "key-b"));
+    Assertions.assertTrue(key.toString().contains(AWS_PROD));
+
+    IcebergEncryptionContent first =
+        (IcebergEncryptionContent)
+            PolicyContents.icebergEncryption(1, Collections.singletonList(key));
+    IcebergEncryptionContent second =
+        (IcebergEncryptionContent)
+            PolicyContents.icebergEncryption(1, Collections.singletonList(equalKey));
+    Assertions.assertEquals(first, second);
+    Assertions.assertEquals(first.hashCode(), second.hashCode());
+    Assertions.assertTrue(first.toString().contains("allowedKeys"));
+  }
+
+  @Test
+  void testIcebergEncryptionContentRejectsInvalidProviderNames() {
+    assertInvalidIcebergEncryptionContent(
+        PolicyContents.icebergEncryption(
+            1, Collections.singletonList(new KmsReference("-openbao", "key"))),
+        "KMS provider must match");
+    assertInvalidIcebergEncryptionContent(
+        PolicyContents.icebergEncryption(
+            1, Collections.singletonList(new KmsReference("openbao/production", "key"))),
+        "KMS provider must match");
+  }
+
+  @Test
+  void testIcebergEncryptionWireValuesAreCaseSensitive() {
+    Assertions.assertEquals(
+        IcebergEncryptionContent.Enforcement.REPORT,
+        IcebergEncryptionContent.Enforcement.fromValue("report"));
+    Assertions.assertEquals(
+        IcebergEncryptionContent.Enforcement.DENY_CREATE,
+        IcebergEncryptionContent.Enforcement.fromValue("deny-create"));
+
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> IcebergEncryptionContent.Enforcement.fromValue("REPORT"));
+  }
+
+  private static KmsReference allowedKey(String provider, String keyId) {
+    return new KmsReference(provider, keyId);
+  }
+
+  private static void assertInvalidIcebergEncryptionContent(
+      PolicyContent content, String expectedMessage) {
+    IllegalArgumentException exception =
+        Assertions.assertThrows(IllegalArgumentException.class, content::validate);
+    Assertions.assertTrue(
+        exception.getMessage().contains(expectedMessage),
+        () -> "Expected message containing '" + expectedMessage + "' but was " + exception);
   }
 
   private static Map<String, String> mapOf(String key, String value) {
