@@ -5,7 +5,9 @@ package com.datastrato.gravitino.integration.test;
 
 import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
 import static java.util.Collections.emptyMap;
+import static org.apache.gravitino.Entity.EntityType.CATALOG;
 import static org.apache.gravitino.Entity.EntityType.POLICY;
+import static org.apache.gravitino.Entity.EntityType.SCHEMA;
 import static org.apache.gravitino.Entity.EntityType.TABLE;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
@@ -21,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.Catalog;
+import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Schema;
@@ -88,9 +91,15 @@ public class TestPolicySyncOnOpenSearch extends BaseIT {
 
     client.createMetalake(METALAKE_NAME, "comment", emptyMap());
     metalake = client.loadMetalake(METALAKE_NAME);
+
+    // Creation events are synchronized asynchronously. Wait at each hierarchy level so a late
+    // parent sync cannot overwrite a child entity or its subsequent policy association.
     Catalog catalog = createMySQLCatalog();
+    awaitEntityIndexed(CATALOG_NAME, CATALOG);
     Schema schema = catalog.asSchemas().createSchema(SCHEMA_NAME, "", emptyMap());
+    awaitEntityIndexed(SCHEMA_NAME, SCHEMA);
     table = createTable(catalog, schema.name());
+    awaitEntityIndexed(TABLE_NAME, TABLE);
 
     metalake.createPolicy(
         POLICY_NAME,
@@ -257,6 +266,19 @@ public class TestPolicySyncOnOpenSearch extends BaseIT {
     Assertions.assertNotNull(policies, "No policy matched " + keyword);
     Assertions.assertEquals(1, policies.getEntities().size());
     return (SearchPolicyEntityDTO) policies.getEntities().get(0);
+  }
+
+  private void awaitEntityIndexed(String keyword, EntityType entityType) {
+    Awaitility.await()
+        .atMost(Duration.ofSeconds(180))
+        .pollInterval(Duration.ofSeconds(1))
+        .untilAsserted(
+            () -> {
+              List<SearchEntitiesDTO> result = searchClient.search(keyword, METALAKE_NAME);
+              SearchEntitiesDTO entities = getSearchEntitiesDTOByType(result, entityType);
+              Assertions.assertNotNull(entities, "No " + entityType + " matched " + keyword);
+              Assertions.assertEquals(1, entities.getEntities().size());
+            });
   }
 
   private SearchEntityDTO querySingleTable() throws Exception {
