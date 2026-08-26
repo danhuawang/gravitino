@@ -65,14 +65,12 @@ public class TestDatastratoModelOperationDispatcher extends TestDatastratoOperat
     Model model = modelOperationDispatcher.registerModel(modelIdent, "comment", props);
     Assertions.assertEquals(modelName, model.name());
     Assertions.assertEquals("comment", model.comment());
-    Assertions.assertEquals(props, model.properties());
-    Assertions.assertFalse(model.properties().containsKey(ID_KEY));
+    testProperties(props, model.properties());
 
     Model registeredModel = modelOperationDispatcher.getModel(modelIdent);
     Assertions.assertEquals(modelName, registeredModel.name());
     Assertions.assertEquals("comment", registeredModel.comment());
-    Assertions.assertEquals(props, registeredModel.properties());
-    Assertions.assertFalse(registeredModel.properties().containsKey(ID_KEY));
+    testProperties(props, registeredModel.properties());
 
     // Test register model with illegal property
     Map<String, String> illegalProps = ImmutableMap.of("k1", "v1", ID_KEY, "test");
@@ -150,8 +148,7 @@ public class TestDatastratoModelOperationDispatcher extends TestDatastratoOperat
     Assertions.assertEquals("path", linkedModelVersion.uri());
     Assertions.assertArrayEquals(aliases, linkedModelVersion.aliases());
     Assertions.assertEquals("comment", linkedModelVersion.comment());
-    Assertions.assertEquals(props, linkedModelVersion.properties());
-    Assertions.assertFalse(linkedModelVersion.properties().containsKey(ID_KEY));
+    testProperties(props, linkedModelVersion.properties());
 
     // Test get model version with alias
     ModelVersion linkedModelVersionWithAlias =
@@ -159,14 +156,14 @@ public class TestDatastratoModelOperationDispatcher extends TestDatastratoOperat
     Assertions.assertEquals(0, linkedModelVersionWithAlias.version());
     Assertions.assertEquals("path", linkedModelVersionWithAlias.uri());
     Assertions.assertArrayEquals(aliases, linkedModelVersionWithAlias.aliases());
-    Assertions.assertFalse(linkedModelVersionWithAlias.properties().containsKey(ID_KEY));
+    testProperties(props, linkedModelVersionWithAlias.properties());
 
     ModelVersion linkedModelVersionWithAlias2 =
         modelOperationDispatcher.getModelVersion(modelIdent, "alias2");
     Assertions.assertEquals(0, linkedModelVersionWithAlias2.version());
     Assertions.assertEquals("path", linkedModelVersionWithAlias2.uri());
     Assertions.assertArrayEquals(aliases, linkedModelVersionWithAlias2.aliases());
-    Assertions.assertFalse(linkedModelVersionWithAlias2.properties().containsKey(ID_KEY));
+    testProperties(props, linkedModelVersionWithAlias2.properties());
 
     // Test Link model version with illegal property
     Map<String, String> illegalProps = ImmutableMap.of("k1", "v1", ID_KEY, "test");

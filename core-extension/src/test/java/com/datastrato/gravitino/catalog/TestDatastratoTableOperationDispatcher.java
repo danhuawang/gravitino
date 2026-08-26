@@ -39,6 +39,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.catalog.SchemaDispatcher;
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.lock.LockManager;
@@ -128,7 +129,9 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
     Assertions.assertNotNull(tableEntity);
     Assertions.assertEquals("table1", tableEntity.name());
 
-    Assertions.assertFalse(table1.properties().containsKey(ID_KEY));
+    Assertions.assertTrue(
+        !table1.properties().containsKey(ID_KEY)
+            || HiddenPropertyMaskUtils.MASKED_VALUE.equals(table1.properties().get(ID_KEY)));
 
     // test listTables
     Optional<NameIdentifier> ident1 =

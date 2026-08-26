@@ -26,6 +26,7 @@ import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.StringIdentifier;
 import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
@@ -105,8 +106,13 @@ public class TestDatastratoOperationDispatcher {
         (k, v) -> {
           Assertions.assertEquals(v, testProps.get(k));
         });
-    Assertions.assertFalse(testProps.containsKey(StringIdentifier.ID_KEY));
-    Assertions.assertFalse(testProps.containsKey(TEST_FILESET_HIDDEN_KEY));
+    Assertions.assertEquals(
+        HiddenPropertyMaskUtils.MASKED_VALUE,
+        testProps.get(StringIdentifier.ID_KEY),
+        "`gravitino.identifier` should be returned as a masked placeholder");
+    Assertions.assertTrue(
+        !testProps.containsKey(TEST_FILESET_HIDDEN_KEY)
+            || HiddenPropertyMaskUtils.MASKED_VALUE.equals(testProps.get(TEST_FILESET_HIDDEN_KEY)));
   }
 
   void testPropertyException(Executable operation, String... errorMessage) {
