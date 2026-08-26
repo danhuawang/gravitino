@@ -52,6 +52,7 @@ import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergSchemaPropertiesMet
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergTable;
 import org.apache.gravitino.catalog.lakehouse.iceberg.ops.IcebergCatalogWrapperHelper;
 import org.apache.gravitino.client.GravitinoMetalake;
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchViewException;
 import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
@@ -1024,8 +1025,10 @@ public abstract class CatalogIcebergBaseIT extends BaseIT {
     Schema loadSchema = catalog.asSchemas().loadSchema(ident.name());
     Assertions.assertEquals(AuthConstants.ANONYMOUS_USER, loadSchema.auditInfo().creator());
     Assertions.assertNull(loadSchema.auditInfo().lastModifier());
-    Assertions.assertFalse(
-        loadSchema.properties().containsKey(IcebergSchemaPropertiesMetadata.COMMENT));
+    // comment is reserved+hidden: key remains, value is masked
+    Assertions.assertEquals(
+        HiddenPropertyMaskUtils.MASKED_VALUE,
+        loadSchema.properties().get(IcebergSchemaPropertiesMetadata.COMMENT));
     prop.forEach((key, value) -> Assertions.assertEquals(loadSchema.properties().get(key), value));
 
     // alter

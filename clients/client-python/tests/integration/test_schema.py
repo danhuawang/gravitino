@@ -147,7 +147,7 @@ class TestSchema(IntegrationTestEnv):
         schema = self.create_schema()
         self.assertEqual(schema.name(), self.schema_name)
         self.assertEqual(schema.comment(), self.schema_comment)
-        self.assertEqual(schema.properties(), self.schema_properties)
+        self.assert_properties_equal(self.schema_properties, schema.properties())
         self.assertEqual(schema.audit_info().creator(), "anonymous")
 
     def test_failed_create_schema(self):
@@ -177,7 +177,7 @@ class TestSchema(IntegrationTestEnv):
         self.assertIsNotNone(schema)
         self.assertEqual(schema.name(), self.schema_name)
         self.assertEqual(schema.comment(), self.schema_comment)
-        self.assertEqual(schema.properties(), self.schema_properties)
+        self.assert_properties_equal(self.schema_properties, schema.properties())
         self.assertEqual(schema.audit_info().creator(), "anonymous")
 
     def test_failed_load_schema(self):

@@ -47,6 +47,7 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.Schema;
 import org.apache.gravitino.SchemaChange;
 import org.apache.gravitino.auth.AuthConstants;
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
@@ -410,6 +411,23 @@ public class TestSchemaOperationDispatcher extends TestOperationDispatcher {
     Assertions.assertTrue(dispatcher.dropSchema(leaf, false));
     Assertions.assertTrue(entityStore.exists(parentAb, SCHEMA));
     Assertions.assertTrue(entityStore.exists(ancestorA, SCHEMA));
+  }
+
+  @Test
+  public void testCreateAndAlterSchemaRejectMaskedPlaceholder() {
+    NameIdentifier schemaIdent = NameIdentifier.of(metalake, catalog, "schema_masked");
+    Map<String, String> createProps =
+        ImmutableMap.of("k1", HiddenPropertyMaskUtils.MASKED_VALUE, "k2", "v2");
+    testMaskedPlaceholderRejected(
+        () -> dispatcher.createSchema(schemaIdent, "comment", createProps), "k1");
+
+    Map<String, String> props = ImmutableMap.of("k1", "v1", "k2", "v2");
+    dispatcher.createSchema(schemaIdent, "comment", props);
+    testMaskedPlaceholderRejected(
+        () ->
+            dispatcher.alterSchema(
+                schemaIdent, SchemaChange.setProperty("k3", HiddenPropertyMaskUtils.MASKED_VALUE)),
+        "k3");
   }
 
   private void putSchemaEntity(NameIdentifier ident) throws IOException {

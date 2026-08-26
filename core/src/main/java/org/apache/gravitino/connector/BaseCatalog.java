@@ -455,11 +455,9 @@ public abstract class BaseCatalog<T extends BaseCatalog>
     if (properties == null) {
       synchronized (this) {
         if (properties == null) {
-          Preconditions.checkArgument(entity != null, ENTITY_IS_NOT_SET);
-          Map<String, String> tempProperties = Maps.newHashMap(entity.getProperties());
-          tempProperties
-              .entrySet()
-              .removeIf(entry -> catalogPropertiesMetadata().isHiddenProperty(entry.getKey()));
+          Map<String, String> tempProperties =
+              HiddenPropertyMaskUtils.maskHiddenProperties(
+                  entity.getProperties(), catalogPropertiesMetadata());
           tempProperties.putIfAbsent(
               PROPERTY_IN_USE,
               catalogPropertiesMetadata().getDefaultValue(PROPERTY_IN_USE).toString());
@@ -471,6 +469,8 @@ public abstract class BaseCatalog<T extends BaseCatalog>
     if (!shouldBackfillCredential()) {
       return properties;
     }
+    // Escape hatch for legacy connectors: intentionally return plaintext credentials when
+    // gravitino.catalog.credential.backfillToProperties=true. Do not remask here.
     Map<String, String> result = Maps.newHashMap(properties);
     result.putAll(propertiesWithCredentialProviders());
     return result;
