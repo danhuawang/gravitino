@@ -46,13 +46,6 @@ val venvPython = when {
     venvDir.resolve("bin/python").absolutePath
 }
 
-val venvIsort = when {
-  System.getProperty("os.name").contains("win", ignoreCase = true) ->
-    venvDir.resolve("Scripts/isort.exe").absolutePath
-  else ->
-    venvDir.resolve("bin/isort").absolutePath
-}
-
 tasks {
   register<Exec>("installUv") {
     group = "python"
@@ -167,7 +160,7 @@ tasks {
     workingDir(pythonProjectDir)
 
     doFirst {
-      commandLine(getUvExecutable(), "pip", "install", "--python", venvPython, "black", "isort")
+      commandLine(getUvExecutable(), "pip", "install", "--python", venvPython, "black", "isort==6.0.1")
     }
 
     doLast {
@@ -220,7 +213,7 @@ tasks {
       // Apply isort
       exec {
         workingDir = pythonProjectDir
-        commandLine(venvIsort, "mcp_server", "tests")
+        commandLine(venvPython, "-m", "isort", "mcp_server", "tests")
       }
 
       // Apply Black
@@ -241,7 +234,7 @@ tasks {
     doLast {
       val isortExitCode = exec {
         workingDir = pythonProjectDir
-        commandLine(venvIsort, "--check", "mcp_server", "tests")
+        commandLine(venvPython, "-m", "isort", "--check", "mcp_server", "tests")
         isIgnoreExitValue = false
       }.exitValue
 
