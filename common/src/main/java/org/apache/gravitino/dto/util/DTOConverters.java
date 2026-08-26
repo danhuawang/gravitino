@@ -20,7 +20,9 @@ package org.apache.gravitino.dto.util;
 
 import static org.apache.gravitino.rel.expressions.transforms.Transforms.NAME_OF_IDENTITY;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang3.ArrayUtils;
@@ -49,6 +51,7 @@ import org.apache.gravitino.dto.authorization.RoleDTO;
 import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
 import org.apache.gravitino.dto.authorization.UserDTO;
 import org.apache.gravitino.dto.credential.CredentialDTO;
+import org.apache.gravitino.dto.encryption.kms.KmsReferenceDTO;
 import org.apache.gravitino.dto.file.FileInfoDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
@@ -91,6 +94,7 @@ import org.apache.gravitino.dto.rel.partitions.RangePartitionDTO;
 import org.apache.gravitino.dto.stats.StatisticDTO;
 import org.apache.gravitino.dto.tag.MetadataObjectDTO;
 import org.apache.gravitino.dto.tag.TagDTO;
+import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.file.FileInfo;
 import org.apache.gravitino.file.Fileset;
 import org.apache.gravitino.function.Function;
@@ -101,6 +105,7 @@ import org.apache.gravitino.messaging.Topic;
 import org.apache.gravitino.model.Model;
 import org.apache.gravitino.model.ModelVersion;
 import org.apache.gravitino.policy.IcebergDataCompactionContent;
+import org.apache.gravitino.policy.IcebergEncryptionContent;
 import org.apache.gravitino.policy.PolicyContent;
 import org.apache.gravitino.policy.PolicyContents;
 import org.apache.gravitino.rel.Column;
@@ -649,6 +654,20 @@ public class DTOConverters {
           .withDeleteFileNumberWeight(icebergCompactionContent.deleteFileNumberWeight())
           .withMaxPartitionNum(icebergCompactionContent.maxPartitionNum())
           .withRewriteOptions(icebergCompactionContent.rewriteOptions())
+          .build();
+    }
+
+    if (policyContent instanceof IcebergEncryptionContent) {
+      IcebergEncryptionContent content = (IcebergEncryptionContent) policyContent;
+      List<KmsReferenceDTO> allowedKeys = new ArrayList<>();
+      for (KmsReference allowedKey : content.allowedKeys()) {
+        allowedKeys.add(KmsReferenceDTO.fromKmsReference(allowedKey));
+      }
+      return PolicyContentDTO.IcebergEncryptionContentDTO.builder()
+          .withSchemaVersion(content.schemaVersion())
+          .withRequired(content.required())
+          .withAllowedKeys(allowedKeys)
+          .withEnforcement(content.enforcement())
           .build();
     }
 
@@ -1425,6 +1444,17 @@ public class DTOConverters {
           icebergCompactionContentDTO.deleteFileNumberWeight(),
           icebergCompactionContentDTO.maxPartitionNum(),
           icebergCompactionContentDTO.rewriteOptions());
+    }
+
+    if (policyContentDTO instanceof PolicyContentDTO.IcebergEncryptionContentDTO) {
+      PolicyContentDTO.IcebergEncryptionContentDTO contentDTO =
+          (PolicyContentDTO.IcebergEncryptionContentDTO) policyContentDTO;
+      List<KmsReference> allowedKeys = new ArrayList<>();
+      for (KmsReferenceDTO allowedKeyDTO : contentDTO.allowedKeys()) {
+        allowedKeys.add(allowedKeyDTO == null ? null : allowedKeyDTO.toKmsReference());
+      }
+      return PolicyContents.icebergEncryption(
+          contentDTO.schemaVersion(), contentDTO.required(), allowedKeys, contentDTO.enforcement());
     }
 
     throw new IllegalArgumentException(

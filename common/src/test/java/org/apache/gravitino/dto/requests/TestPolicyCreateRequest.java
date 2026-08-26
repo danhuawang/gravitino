@@ -19,11 +19,14 @@
 package org.apache.gravitino.dto.requests;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.dto.encryption.kms.KmsReferenceDTO;
 import org.apache.gravitino.dto.policy.PolicyContentDTO;
 import org.apache.gravitino.json.JsonUtils;
+import org.apache.gravitino.policy.IcebergEncryptionContent;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -71,5 +74,56 @@ public class TestPolicyCreateRequest {
 
     Exception e = Assertions.assertThrows(IllegalArgumentException.class, request::validate);
     Assertions.assertEquals("supportedObjectTypes cannot be empty", e.getMessage());
+  }
+
+  @Test
+  public void testIcebergEncryptionPolicyCreateRequestSerDe() throws JsonProcessingException {
+    PolicyContentDTO.IcebergEncryptionContentDTO content = encryptionContent("aws-prod", "key-a");
+    PolicyCreateRequest request =
+        new PolicyCreateRequest(
+            "customer-data-encryption",
+            "system_iceberg_encryption",
+            "Require an approved key",
+            true,
+            content);
+
+    String json = JsonUtils.objectMapper().writeValueAsString(request);
+    PolicyCreateRequest deserialized =
+        JsonUtils.objectMapper().readValue(json, PolicyCreateRequest.class);
+
+    Assertions.assertEquals(request, deserialized);
+    Assertions.assertInstanceOf(
+        PolicyContentDTO.IcebergEncryptionContentDTO.class, deserialized.getPolicyContent());
+    Assertions.assertDoesNotThrow(deserialized::validate);
+  }
+
+  @Test
+  public void testIcebergEncryptionPolicyCreateRequestRejectsDuplicateKeys() {
+    KmsReferenceDTO key = allowedKey("aws-prod", "key-a");
+    PolicyContentDTO.IcebergEncryptionContentDTO content =
+        PolicyContentDTO.IcebergEncryptionContentDTO.builder()
+            .withSchemaVersion(1)
+            .withAllowedKeys(ImmutableList.of(key, key))
+            .build();
+    PolicyCreateRequest request =
+        new PolicyCreateRequest(
+            "customer-data-encryption", "system_iceberg_encryption", null, true, content);
+
+    IllegalArgumentException exception =
+        Assertions.assertThrows(IllegalArgumentException.class, request::validate);
+    Assertions.assertTrue(exception.getMessage().contains("duplicate"));
+  }
+
+  private static PolicyContentDTO.IcebergEncryptionContentDTO encryptionContent(
+      String provider, String keyId) {
+    return PolicyContentDTO.IcebergEncryptionContentDTO.builder()
+        .withSchemaVersion(1)
+        .withAllowedKeys(ImmutableList.of(allowedKey(provider, keyId)))
+        .withEnforcement(IcebergEncryptionContent.Enforcement.DENY_CREATE)
+        .build();
+  }
+
+  private static KmsReferenceDTO allowedKey(String provider, String keyId) {
+    return KmsReferenceDTO.builder().withProvider(provider).withKeyId(keyId).build();
   }
 }

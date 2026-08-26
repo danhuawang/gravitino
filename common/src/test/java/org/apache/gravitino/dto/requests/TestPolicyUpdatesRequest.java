@@ -22,8 +22,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.util.List;
+import org.apache.gravitino.dto.encryption.kms.KmsReferenceDTO;
 import org.apache.gravitino.dto.policy.PolicyContentDTO;
 import org.apache.gravitino.json.JsonUtils;
+import org.apache.gravitino.policy.IcebergEncryptionContent;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -90,5 +92,33 @@ public class TestPolicyUpdatesRequest {
         JsonUtils.objectMapper().readValue(serJson, PolicyUpdatesRequest.class);
     Assertions.assertEquals(policyUpdatesRequest, deserRequest);
     Assertions.assertEquals(updates, deserRequest.getUpdates());
+  }
+
+  @Test
+  public void testIcebergEncryptionPolicyUpdateRequestSerDe() throws JsonProcessingException {
+    PolicyContentDTO.IcebergEncryptionContentDTO content =
+        PolicyContentDTO.IcebergEncryptionContentDTO.builder()
+            .withSchemaVersion(1)
+            .withRequired(true)
+            .withAllowedKeys(
+                ImmutableList.of(
+                    KmsReferenceDTO.builder()
+                        .withProvider("openbao-production")
+                        .withKeyId("customer-pii-v1")
+                        .build()))
+            .withEnforcement(IcebergEncryptionContent.Enforcement.DENY_CREATE)
+            .build();
+    PolicyUpdateRequest.UpdatePolicyContentRequest request =
+        new PolicyUpdateRequest.UpdatePolicyContentRequest("system_iceberg_encryption", content);
+
+    String json = JsonUtils.objectMapper().writeValueAsString(request);
+    PolicyUpdateRequest.UpdatePolicyContentRequest deserialized =
+        JsonUtils.objectMapper()
+            .readValue(json, PolicyUpdateRequest.UpdatePolicyContentRequest.class);
+
+    Assertions.assertEquals(request, deserialized);
+    Assertions.assertInstanceOf(
+        PolicyContentDTO.IcebergEncryptionContentDTO.class, deserialized.getNewContent());
+    Assertions.assertDoesNotThrow(deserialized::validate);
   }
 }
