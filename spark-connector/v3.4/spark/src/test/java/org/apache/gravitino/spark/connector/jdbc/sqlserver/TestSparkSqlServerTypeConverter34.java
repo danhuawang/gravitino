@@ -1,6 +1,5 @@
 /*
  * Copyright 2026 Datastrato Pvt Ltd.
- * This software is licensed under the Apache License version 2.
  */
 package org.apache.gravitino.spark.connector.jdbc.sqlserver;
 
