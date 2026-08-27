@@ -5,8 +5,13 @@
 package org.apache.gravitino.server;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
+import com.datastrato.gravitino.catalog.connection.CatalogConnectionTestGarbageCollector;
+import com.datastrato.gravitino.catalog.connection.CatalogConnectionTestMetaService;
+import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.license.rest.LicenseStatusResource;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
+import java.io.IOException;
+import javax.annotation.Nullable;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
@@ -15,6 +20,8 @@ import org.slf4j.LoggerFactory;
 
 public class DatastratoGravitinoServer extends GravitinoServer {
   private static final Logger LOG = LoggerFactory.getLogger(DatastratoGravitinoServer.class);
+
+  @Nullable private CatalogConnectionTestGarbageCollector connectionTestGarbageCollector;
 
   public DatastratoGravitinoServer(ServerConfig config, GravitinoEnv gravitinoEnv) {
     super(config, gravitinoEnv);
@@ -70,6 +77,13 @@ public class DatastratoGravitinoServer extends GravitinoServer {
     boolean enableAuthorization = serverConfig().get(Configs.ENABLE_AUTHORIZATION);
     MetricDataService metricDataService = MetricDataService.getInstance();
     metricDataService.initialize(enableAuthorization);
+    ConnectionTestStore connectionTestStore = CatalogConnectionTestMetaService.getInstance();
+    if (Configs.RELATIONAL_ENTITY_STORE.equalsIgnoreCase(serverConfig().get(Configs.ENTITY_STORE))
+        && Configs.DEFAULT_ENTITY_RELATIONAL_STORE.equalsIgnoreCase(
+            serverConfig().get(Configs.ENTITY_RELATIONAL_STORE))) {
+      connectionTestGarbageCollector =
+          new CatalogConnectionTestGarbageCollector(connectionTestStore, serverConfig());
+    }
 
     // initialize extra rest api resources
     register(
@@ -77,6 +91,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
           @Override
           protected void configure() {
             bind(metricDataService).to(MetricDataService.class).ranked(1);
+            bind(connectionTestStore).to(ConnectionTestStore.class).ranked(1);
           }
         });
     register(LicenseStatusResource.class);
@@ -85,5 +100,17 @@ public class DatastratoGravitinoServer extends GravitinoServer {
   @Override
   public void start() throws Exception {
     super.start();
+    if (connectionTestGarbageCollector != null) {
+      connectionTestGarbageCollector.start();
+    }
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public void stop() throws IOException {
+    if (connectionTestGarbageCollector != null) {
+      connectionTestGarbageCollector.close();
+    }
+    super.stop();
   }
 }

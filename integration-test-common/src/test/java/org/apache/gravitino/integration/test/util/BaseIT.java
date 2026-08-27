@@ -261,17 +261,10 @@ public class BaseIT {
       statement.execute("create schema " + randomSchemaName);
       statement.execute("set search_path to " + randomSchemaName);
       String gravitinoHome = System.getenv("GRAVITINO_ROOT_DIR");
-      String mysqlContent =
-          FileUtils.readFileToString(
-              new File(
-                  gravitinoHome
-                      + String.format(
-                          "/scripts/postgresql/schema-%s-postgresql.sql",
-                          ConfigConstants.CURRENT_SCRIPT_VERSION)),
-              "UTF-8");
+      String pgContent = loadBackendSchemaContent(gravitinoHome, "postgresql");
 
       String[] initPGBackendSqls =
-          Arrays.stream(mysqlContent.split(";"))
+          Arrays.stream(pgContent.split(";"))
               .map(String::trim)
               .filter(s -> !s.isEmpty())
               .toArray(String[]::new);
@@ -307,14 +300,7 @@ public class BaseIT {
       statement.execute("drop database if exists " + META_DATA);
       statement.execute("create database " + META_DATA);
       String gravitinoHome = System.getenv("GRAVITINO_ROOT_DIR");
-      String mysqlContent =
-          FileUtils.readFileToString(
-              new File(
-                  gravitinoHome
-                      + String.format(
-                          "/scripts/mysql/schema-%s-mysql.sql",
-                          ConfigConstants.CURRENT_SCRIPT_VERSION)),
-              "UTF-8");
+      String mysqlContent = loadBackendSchemaContent(gravitinoHome, "mysql");
 
       String[] initMySQLBackendSqls =
           Arrays.stream(mysqlContent.split(";"))
@@ -669,6 +655,27 @@ public class BaseIT {
       }
     }
     return null;
+  }
+
+  private static String loadBackendSchemaContent(String gravitinoHome, String databaseType)
+      throws IOException {
+    String version = ConfigConstants.CURRENT_SCRIPT_VERSION;
+    Path ossSchema =
+        Path.of(
+            gravitinoHome,
+            "scripts",
+            databaseType,
+            String.format("schema-%s-%s.sql", version, databaseType));
+    Path enterpriseSchema =
+        Path.of(
+            gravitinoHome,
+            "scripts",
+            "enterprise",
+            databaseType,
+            String.format("enterprise-schema-%s-%s.sql", version, databaseType));
+    return Files.readString(ossSchema, StandardCharsets.UTF_8)
+        + System.lineSeparator()
+        + Files.readString(enterpriseSchema, StandardCharsets.UTF_8);
   }
 
   protected String getIcebergRestServiceUri() {

@@ -50,3 +50,13 @@ CREATE TABLE IF NOT EXISTS `scim_error_history` (
     KEY `idx_seh_mid_created` (`metalake_id`, `created_at`),
     KEY `idx_seh_created` (`created_at`)
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `catalog_connection_test_meta` (
+    `catalog_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'catalog id',
+    `type` VARCHAR(256) NOT NULL COMMENT 'Catalog or credential connection test type',
+    `catalog_version` INT UNSIGNED NOT NULL COMMENT 'tested catalog version',
+    `test_status` VARCHAR(16) NOT NULL COMMENT 'completed connection test status',
+    `last_tested_at` BIGINT(20) UNSIGNED NOT NULL COMMENT 'test completion time in ms',
+    `error_message` VARCHAR(4096) DEFAULT NULL COMMENT 'safe connection failure message',
+    PRIMARY KEY (`catalog_id`, `type`)
+) ENGINE=InnoDB;

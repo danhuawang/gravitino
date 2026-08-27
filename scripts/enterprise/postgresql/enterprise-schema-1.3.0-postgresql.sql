@@ -84,3 +84,21 @@ COMMENT ON COLUMN scim_error_history.scim_type IS 'RFC 7644 scimType when presen
 COMMENT ON COLUMN scim_error_history.error_detail IS 'truncated SCIM error detail';
 COMMENT ON COLUMN scim_error_history.principal IS 'authenticated SCIM token name';
 COMMENT ON COLUMN scim_error_history.created_at IS 'created at in ms';
+
+CREATE TABLE IF NOT EXISTS catalog_connection_test_meta (
+    catalog_id BIGINT NOT NULL,
+    type VARCHAR(256) NOT NULL,
+    catalog_version INT NOT NULL,
+    test_status VARCHAR(16) NOT NULL,
+    last_tested_at BIGINT NOT NULL,
+    error_message VARCHAR(4096) DEFAULT NULL,
+    PRIMARY KEY (catalog_id, type)
+);
+
+COMMENT ON TABLE catalog_connection_test_meta IS 'catalog connection test results';
+COMMENT ON COLUMN catalog_connection_test_meta.catalog_id IS 'catalog id';
+COMMENT ON COLUMN catalog_connection_test_meta.type IS 'Catalog or credential connection test type';
+COMMENT ON COLUMN catalog_connection_test_meta.catalog_version IS 'tested catalog version';
+COMMENT ON COLUMN catalog_connection_test_meta.test_status IS 'completed connection test status';
+COMMENT ON COLUMN catalog_connection_test_meta.last_tested_at IS 'test completion time in ms';
+COMMENT ON COLUMN catalog_connection_test_meta.error_message IS 'safe connection failure message';

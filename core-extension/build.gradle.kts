@@ -35,6 +35,10 @@ dependencies {
   testImplementation(libs.commons.lang3)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.mockito.core)
+  testImplementation(libs.mysql.driver)
+  testImplementation(libs.postgresql.driver)
+  testImplementation(libs.testcontainers.mysql)
+  testImplementation(libs.testcontainers.postgresql)
   testAnnotationProcessor(libs.lombok)
   testCompileOnly(libs.lombok)
 

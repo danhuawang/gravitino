@@ -5,12 +5,22 @@ package com.datastrato.gravitino.server.web.rest;
 
 import static com.datastrato.gravitino.server.web.rest.MetadataListingHelper.filterByExpression;
 
+import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
+import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
+import com.datastrato.gravitino.catalog.connection.ConnectionTestSupportResolver;
+import com.datastrato.gravitino.catalog.connection.ConnectionTestType;
 import com.datastrato.gravitino.dto.ConnectionDTO;
+import com.datastrato.gravitino.dto.ConnectionOverviewDTO;
+import com.datastrato.gravitino.dto.ConnectionTestErrorDTO;
+import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
 import com.datastrato.gravitino.dto.responses.ConnectionListResponse;
+import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
 import com.datastrato.gravitino.server.web.rest.converter.ConnectionConverter;
 import java.security.Principal;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -29,12 +39,16 @@ import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.credential.CredentialConstants;
+import org.apache.gravitino.dto.responses.ErrorConstants;
+import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -56,6 +70,8 @@ public class ConnectionOperations {
   private static final int MAX_SCHEMA_COUNT_THREADS = 8;
   private static final long SCHEMA_COUNT_THREAD_KEEP_ALIVE_SECONDS = 60L;
   private static final AtomicInteger SCHEMA_COUNT_THREAD_COUNTER = new AtomicInteger();
+  private static final ConnectionTestSupportResolver CONNECTION_TEST_SUPPORT_RESOLVER =
+      new ConnectionTestSupportResolver();
   private static final ExecutorService SCHEMA_COUNT_EXECUTOR =
       new ThreadPoolExecutor(
           0,
@@ -75,6 +91,7 @@ public class ConnectionOperations {
 
   private final CatalogDispatcher catalogDispatcher;
   private final SchemaDispatcher schemaDispatcher;
+  private final ConnectionTestStore connectionTestStore;
 
   @Context private HttpServletRequest httpRequest;
 
@@ -83,12 +100,16 @@ public class ConnectionOperations {
    *
    * @param catalogDispatcher The catalog dispatcher.
    * @param schemaDispatcher The schema dispatcher.
+   * @param connectionTestStore The persistent connection test store.
    */
   @Inject
   public ConnectionOperations(
-      CatalogDispatcher catalogDispatcher, SchemaDispatcher schemaDispatcher) {
+      CatalogDispatcher catalogDispatcher,
+      SchemaDispatcher schemaDispatcher,
+      ConnectionTestStore connectionTestStore) {
     this.catalogDispatcher = catalogDispatcher;
     this.schemaDispatcher = schemaDispatcher;
+    this.connectionTestStore = connectionTestStore;
   }
 
   /**
@@ -150,6 +171,68 @@ public class ConnectionOperations {
     } catch (Throwable throwable) {
       return Utils.internalError("Unexpected error while listing connections", throwable);
     }
+  }
+
+  /**
+   * Loads a single Catalog as a Connect overview with its latest valid manual test result.
+   *
+   * @param metalake The metalake name.
+   * @param connection The Catalog name used as the connection name.
+   * @return The connection overview response.
+   */
+  @GET
+  @Path("{connection}")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
+      accessMetadataType = MetadataObject.Type.CATALOG)
+  public Response loadConnection(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("connection") @AuthorizationMetadata(type = Entity.EntityType.CATALOG)
+          String connection) {
+    LOG.info("Received request to load connection overview: {}.{}", metalake, connection);
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, connection);
+            Catalog catalog = catalogDispatcher.loadCatalog(identifier);
+            ConnectionTestStatusDTO status = resolveTestStatus(identifier, catalog.provider());
+            ConnectionOverviewDTO overview =
+                ConnectionConverter.toConnectionOverviewDTO(catalog, status);
+            return Utils.ok(new ConnectionOverviewResponse(overview));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleCatalogException(OperationType.LOAD, connection, metalake, e);
+    } catch (Throwable throwable) {
+      return Utils.internalError("Unexpected error while loading connection overview", throwable);
+    }
+  }
+
+  private ConnectionTestStatusDTO resolveTestStatus(NameIdentifier identifier, String provider) {
+    if (!CONNECTION_TEST_SUPPORT_RESOLVER.supports(provider)) {
+      return new ConnectionTestStatusDTO(false, null, null, null);
+    }
+
+    Optional<ConnectionTestResult> stored =
+        connectionTestStore.getValidTestResult(identifier, ConnectionTestType.CATALOG);
+    if (stored.isEmpty()) {
+      return new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null);
+    }
+
+    ConnectionTestResult result = stored.get();
+    Instant lastTestedAt = Instant.ofEpochMilli(result.lastTestedAt());
+    if (result.status() == ConnectionTestResult.Status.PASSED) {
+      return new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.PASSED, lastTestedAt, null);
+    }
+
+    ConnectionTestErrorDTO error =
+        new ConnectionTestErrorDTO(
+            ErrorConstants.CONNECTION_FAILED_CODE,
+            ConnectionFailedException.class.getSimpleName(),
+            result.errorMessage());
+    return new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.FAILED, lastTestedAt, error);
   }
 
   private Map<String, String> resolveCredentialProviders(String metalake, Catalog[] catalogs) {

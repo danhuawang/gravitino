@@ -43,6 +43,51 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/metalakes/{metalake}/connections/{connection}:
+    get:
+      tags:
+        - connection
+      summary: Load a connection overview
+      operationId: loadConnection
+      description: |
+        Load one Catalog as a Connect overview, including the latest valid manual connection test result.
+      parameters:
+        - name: metalake
+          in: path
+          description: The metalake name
+          required: true
+          schema:
+            type: string
+        - name: connection
+          in: path
+          description: The Catalog name used as the connection name
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Returns the selected connection overview
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ConnectionOverviewResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "403":
+          description: Forbidden - The caller cannot use or own the requested Catalog
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "404":
+          description: Not Found - The specified metalake or Catalog does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
 components:
   schemas:
     ConnectionListResponse:
@@ -100,3 +145,113 @@ components:
           nullable: true
           description: |
             The number of schemas in this connection, or null if the count could not be retrieved.
+
+    ConnectionOverviewResponse:
+      type: object
+      required:
+        - code
+        - connection
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        connection:
+          $ref: "#/components/schemas/ConnectionOverview"
+
+    ConnectionOverview:
+      type: object
+      description: Whitelisted Catalog fields required by the Connect overview page
+      required:
+        - name
+        - type
+        - provider
+        - audit
+        - endpoint
+        - testStatus
+      properties:
+        name:
+          type: string
+          description: The Catalog name used as the connection name
+        type:
+          type: string
+          description: The Catalog type
+          enum:
+            - relational
+            - fileset
+            - messaging
+            - model
+        provider:
+          type: string
+          description: The Catalog provider
+        comment:
+          type: string
+          nullable: true
+          description: The Catalog comment
+        cloudName:
+          type: string
+          nullable: true
+          description: The configured cloud.name value, when present
+        cloudRegionCode:
+          type: string
+          nullable: true
+          description: The configured cloud.region-code value, when present
+        audit:
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
+        endpoint:
+          type: string
+          description: Safe Connect display endpoint, or -- when it cannot be resolved
+        testStatus:
+          $ref: "#/components/schemas/ConnectionTestStatus"
+
+    ConnectionTestStatus:
+      type: object
+      required:
+        - supported
+        - status
+        - lastTestedAt
+        - error
+      properties:
+        supported:
+          type: boolean
+          description: Whether the Catalog provider supports a real connection probe
+        status:
+          type: string
+          nullable: true
+          description: Latest valid manual test state; null when unsupported
+          enum:
+            - NOT_TESTED
+            - PASSED
+            - FAILED
+        lastTestedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: UTC completion time; null when not tested or unsupported
+        error:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ConnectionTestError"
+
+    ConnectionTestError:
+      type: object
+      required:
+        - code
+        - type
+        - message
+      properties:
+        code:
+          type: integer
+          format: int32
+          enum:
+            - 1007
+        type:
+          type: string
+          enum:
+            - ConnectionFailedException
+        message:
+          type: string
+          description: Safe failure message without stack, cause, or connection properties

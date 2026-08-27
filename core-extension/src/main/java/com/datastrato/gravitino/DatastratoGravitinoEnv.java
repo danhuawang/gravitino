@@ -5,6 +5,7 @@
 package com.datastrato.gravitino;
 
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.catalog.DatastratoCatalogDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetHookDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetNormalizeDispatcher;
@@ -28,6 +29,7 @@ import com.datastrato.gravitino.catalog.DatastratoTopicOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewOperationDispatcher;
+import com.datastrato.gravitino.catalog.connection.CatalogConnectionTestMetaService;
 import com.datastrato.gravitino.listener.DatastratoFilesetEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoModelEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
@@ -72,6 +74,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   private static final DatastratoGravitinoEnv INSTANCE = new DatastratoGravitinoEnv();
 
   private DatastratoSchemaDispatcher datastratoSchemaDispatcher;
+  private DatastratoCatalogDispatcher datastratoCatalogDispatcher;
   private DatastratoTableDispatcher datastratoTableDispatcher;
   private DatastratoFilesetDispatcher datastratoFilesetDispatcher;
   private DatastratoTopicDispatcher datastratoTopicDispatcher;
@@ -95,8 +98,14 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   public void initializeFullComponents(Config config) {
     // Avoid calling super.initializeFullComponents() to prevent double initialization.
     GravitinoEnv.getInstance().initializeFullComponents(config);
+    EnterpriseSchemaInitializer.initialize(config);
 
     LOG.info("Initializing Datastrato Gravitino Environment...");
+
+    this.datastratoCatalogDispatcher =
+        new DatastratoCatalogDispatcher(
+            GravitinoEnv.getInstance().catalogDispatcher(),
+            CatalogConnectionTestMetaService.getInstance());
 
     // initialize schema dispatcher
     DatastratoSchemaDispatcher schemaOperationDispatcher =
@@ -212,7 +221,9 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
 
   @Override
   public CatalogDispatcher catalogDispatcher() {
-    return GravitinoEnv.getInstance().catalogDispatcher();
+    return datastratoCatalogDispatcher != null
+        ? datastratoCatalogDispatcher
+        : GravitinoEnv.getInstance().catalogDispatcher();
   }
 
   @Override

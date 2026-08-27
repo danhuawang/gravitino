@@ -9,8 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.datastrato.gravitino.dto.ConnectionDTO;
+import com.datastrato.gravitino.dto.ConnectionOverviewDTO;
+import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
 import com.google.common.collect.ImmutableMap;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.dto.AuditDTO;
@@ -18,6 +21,168 @@ import org.apache.gravitino.dto.CatalogDTO;
 import org.junit.jupiter.api.Test;
 
 public class TestConnectionConverter {
+
+  @Test
+  void testToConnectionOverviewDTOUsesWhitelistedCatalogFields() {
+    Map<String, String> properties = new LinkedHashMap<>();
+    properties.put(
+        "jdbc-url",
+        "jdbc:mysql://url-user:url-secret@mysql.example.com:3306/sales"
+            + "?password=query-secret&accessToken=query-token");
+    properties.put(Catalog.CLOUD_NAME, "aws");
+    properties.put(Catalog.CLOUD_REGION_CODE, "us-east-1");
+    properties.put("warehouse", "s3a://warehouse-user:warehouse-secret@bucket/path");
+    CatalogDTO catalog =
+        CatalogDTO.builder()
+            .withName("mysql_prod")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("jdbc-mysql")
+            .withProperties(properties)
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    ConnectionTestStatusDTO status =
+        new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null);
+
+    ConnectionOverviewDTO overview = ConnectionConverter.toConnectionOverviewDTO(catalog, status);
+
+    assertEquals("jdbc:mysql://mysql.example.com:3306/sales", overview.getEndpoint());
+    assertEquals("mysql_prod", overview.getName());
+    assertEquals(Catalog.Type.RELATIONAL, overview.getType());
+    assertEquals("jdbc-mysql", overview.getProvider());
+    assertEquals("aws", overview.getCloudName());
+    assertEquals("us-east-1", overview.getCloudRegionCode());
+    assertEquals(
+        "jdbc:mysql://url-user:url-secret@mysql.example.com:3306/sales"
+            + "?password=query-secret&accessToken=query-token",
+        catalog.properties().get("jdbc-url"));
+  }
+
+  @Test
+  void testToConnectionOverviewDTOSanitizesNestedJdbcEndpointProperties() {
+    ConnectionTestStatusDTO status =
+        new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null);
+    CatalogDTO iceberg =
+        CatalogDTO.builder()
+            .withName("iceberg_jdbc")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("lakehouse-iceberg")
+            .withProperties(
+                ImmutableMap.of(
+                    "catalog-backend",
+                    "jdbc",
+                    "uri",
+                    "jdbc:postgresql://user:secret@iceberg.example.com:5432/catalog"
+                        + "?password=query-secret"))
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    CatalogDTO paimon =
+        CatalogDTO.builder()
+            .withName("paimon_jdbc")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("lakehouse-paimon")
+            .withProperties(
+                ImmutableMap.of(
+                    "catalog-backend",
+                    "jdbc",
+                    "uri",
+                    "jdbc:mysql://user:secret@paimon.example.com:3306/catalog"
+                        + "?password=query-secret"))
+            .withAudit(AuditDTO.builder().build())
+            .build();
+
+    ConnectionOverviewDTO icebergOverview =
+        ConnectionConverter.toConnectionOverviewDTO(iceberg, status);
+    ConnectionOverviewDTO paimonOverview =
+        ConnectionConverter.toConnectionOverviewDTO(paimon, status);
+
+    assertEquals(
+        "jdbc:postgresql://iceberg.example.com:5432/catalog", icebergOverview.getEndpoint());
+    assertEquals("jdbc:mysql://paimon.example.com:3306/catalog", paimonOverview.getEndpoint());
+  }
+
+  @Test
+  void testToConnectionOverviewDTOSanitizesNonJdbcEndpointProperties() {
+    ConnectionTestStatusDTO status =
+        new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null);
+    CatalogDTO iceberg =
+        CatalogDTO.builder()
+            .withName("iceberg_rest")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("lakehouse-iceberg")
+            .withProperties(
+                ImmutableMap.of(
+                    "catalog-backend",
+                    "rest",
+                    "uri",
+                    "https://rest-user:rest-secret@iceberg.example.com/v1/catalog"
+                        + "?token=query-secret#fragment"))
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    CatalogDTO hive =
+        CatalogDTO.builder()
+            .withName("hive")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("hive")
+            .withProperties(
+                ImmutableMap.of(
+                    "metastore.uris",
+                    "thrift://hive-user:hive-secret@hive-1.example.com:9083"
+                        + "?token=query-secret,"
+                        + "thrift://hive-2.example.com:9083/catalog#fragment"))
+            .withAudit(AuditDTO.builder().build())
+            .build();
+
+    ConnectionOverviewDTO icebergOverview =
+        ConnectionConverter.toConnectionOverviewDTO(iceberg, status);
+    ConnectionOverviewDTO hiveOverview = ConnectionConverter.toConnectionOverviewDTO(hive, status);
+
+    String expectedIcebergEndpoint = "https://iceberg.example.com/v1/catalog";
+    String expectedHiveEndpoint =
+        "thrift://hive-1.example.com:9083,thrift://hive-2.example.com:9083/catalog";
+    assertEquals(expectedIcebergEndpoint, icebergOverview.getEndpoint());
+    assertEquals(expectedHiveEndpoint, hiveOverview.getEndpoint());
+    assertEquals(
+        expectedIcebergEndpoint, ConnectionConverter.toConnectionDTO(iceberg, null).getEndpoint());
+    assertEquals(
+        expectedHiveEndpoint, ConnectionConverter.toConnectionDTO(hive, null).getEndpoint());
+  }
+
+  @Test
+  void testToConnectionOverviewDTOUsesFallbackForUnsafeNonJdbcEndpoint() {
+    CatalogDTO catalog =
+        CatalogDTO.builder()
+            .withName("invalid_iceberg_rest")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("lakehouse-iceberg")
+            .withProperties(
+                ImmutableMap.of("catalog-backend", "rest", "uri", "not-a-uri?token=query-secret"))
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    ConnectionTestStatusDTO status =
+        new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null);
+
+    ConnectionOverviewDTO overview = ConnectionConverter.toConnectionOverviewDTO(catalog, status);
+
+    assertEquals("--", overview.getEndpoint());
+  }
+
+  @Test
+  void testToConnectionOverviewDTOUsesFallbackForUnsafeUnparseableJdbcUrl() {
+    CatalogDTO catalog =
+        CatalogDTO.builder()
+            .withName("invalid_jdbc")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("jdbc-mysql")
+            .withProperties(ImmutableMap.of("jdbc-url", "not-a-jdbc-url-with-secret"))
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    ConnectionTestStatusDTO status =
+        new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null);
+
+    ConnectionOverviewDTO overview = ConnectionConverter.toConnectionOverviewDTO(catalog, status);
+
+    assertEquals("--", overview.getEndpoint());
+  }
 
   @Test
   public void testResolveDisplayType() {
@@ -198,6 +363,10 @@ public class TestConnectionConverter {
         ConnectionConverter.resolveEndpoint(
             "kafka", ImmutableMap.of("bootstrap.servers", "kafka1:9092,kafka2:9092")));
     assertEquals(
+        "[::1]:9092,[2001:db8::1]:9093",
+        ConnectionConverter.resolveEndpoint(
+            "kafka", ImmutableMap.of("bootstrap.servers", "[::1]:9092,[2001:db8::1]:9093")));
+    assertEquals(
         "glue.us-east-1.amazonaws.com",
         ConnectionConverter.resolveEndpoint("glue", ImmutableMap.of("aws-region", "us-east-1")));
 
@@ -229,6 +398,95 @@ public class TestConnectionConverter {
     assertEquals("--", ConnectionConverter.resolveEndpoint("hive", null));
     assertEquals(
         "--", ConnectionConverter.resolveEndpoint(null, ImmutableMap.of("metastore.uris", "x")));
+  }
+
+  @Test
+  public void testResolveEndpointAcceptsUnderscoreHostnamesWithoutSecrets() {
+    String hiveEndpoint =
+        ConnectionConverter.resolveEndpoint(
+            "hive",
+            ImmutableMap.of(
+                "metastore.uris",
+                "thrift://hive-user:hive-secret@hive_metastore:9083/catalog"
+                    + ";password=path-secret"
+                    + "?token=query-secret#fragment-secret"));
+    String kafkaEndpoint =
+        ConnectionConverter.resolveEndpoint(
+            "kafka",
+            ImmutableMap.of(
+                "bootstrap.servers",
+                "kafka-user:kafka-secret@kafka_broker_1:9092,kafka_broker_2:9093"));
+    String hudiEndpoint =
+        ConnectionConverter.resolveEndpoint(
+            "lakehouse-hudi",
+            ImmutableMap.of(
+                "uri",
+                "https://hudi-user:hudi-secret@hudi_service:8080/catalog"
+                    + ";password=path-secret/v1;token=segment-secret"
+                    + "?token=query-secret#fragment-secret"));
+    String paimonEndpoint =
+        ConnectionConverter.resolveEndpoint(
+            "lakehouse-paimon",
+            ImmutableMap.of(
+                "catalog-backend",
+                "hive",
+                "uri",
+                "thrift://paimon-user:paimon-secret@paimon_metastore:9083"));
+
+    assertEquals("thrift://hive_metastore:9083/catalog", hiveEndpoint);
+    assertEquals("kafka_broker_1:9092,kafka_broker_2:9093", kafkaEndpoint);
+    assertEquals("https://hudi_service:8080/catalog/v1", hudiEndpoint);
+    assertEquals("thrift://paimon_metastore:9083", paimonEndpoint);
+    assertEquals(
+        "kafka-broker:65536",
+        ConnectionConverter.resolveEndpoint(
+            "kafka", ImmutableMap.of("bootstrap.servers", "kafka-broker:65536")));
+    assertEquals(
+        "kafka_broker:65536",
+        ConnectionConverter.resolveEndpoint(
+            "kafka", ImmutableMap.of("bootstrap.servers", "kafka_broker:65536")));
+    for (String endpoint :
+        new String[] {hiveEndpoint, kafkaEndpoint, hudiEndpoint, paimonEndpoint}) {
+      assertFalse(endpoint.contains("user"));
+      assertFalse(endpoint.contains("secret"));
+      assertFalse(endpoint.contains("token"));
+    }
+
+    assertEquals(
+        "--",
+        ConnectionConverter.resolveEndpoint(
+            "kafka",
+            ImmutableMap.of("bootstrap.servers", "kafka_broker_1:9092;password=authority-secret")));
+  }
+
+  @Test
+  public void testResolveEndpointAcceptsSchemeLessFilesystemLocations() {
+    assertEquals(
+        "/data/warehouse",
+        ConnectionConverter.resolveEndpoint(
+            "fileset", ImmutableMap.of("location", "/data/warehouse")));
+    assertEquals(
+        "/data/warehouse",
+        ConnectionConverter.resolveEndpoint(
+            "hadoop", ImmutableMap.of("location", "/data/warehouse")));
+    assertEquals(
+        "/data/warehouse",
+        ConnectionConverter.resolveEndpoint(
+            "lakehouse-generic", ImmutableMap.of("location", "/data/warehouse")));
+    assertEquals(
+        "relative/warehouse",
+        ConnectionConverter.resolveEndpoint(
+            "lakehouse-paimon",
+            ImmutableMap.of("catalog-backend", "filesystem", "warehouse", "relative/warehouse")));
+
+    assertEquals(
+        "--",
+        ConnectionConverter.resolveEndpoint(
+            "fileset", ImmutableMap.of("location", "//user:secret@host/data")));
+    assertEquals(
+        "--",
+        ConnectionConverter.resolveEndpoint(
+            "fileset", ImmutableMap.of("location", "/data/warehouse?token=secret")));
   }
 
   @Test

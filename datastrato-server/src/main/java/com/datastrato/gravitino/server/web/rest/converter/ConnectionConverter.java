@@ -4,6 +4,9 @@
 package com.datastrato.gravitino.server.web.rest.converter;
 
 import com.datastrato.gravitino.dto.ConnectionDTO;
+import com.datastrato.gravitino.dto.ConnectionOverviewDTO;
+import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
+import com.google.common.base.Preconditions;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -24,6 +27,7 @@ import org.apache.gravitino.catalog.hive.HiveConstants;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.catalog.lakehouse.paimon.PaimonConstants;
 import org.apache.gravitino.credential.CredentialConstants;
+import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.storage.AzureProperties;
 import org.apache.gravitino.storage.GCSProperties;
@@ -51,8 +55,36 @@ public class ConnectionConverter {
       Pattern.compile("\\(\\s*SERVICE_NAME\\s*=\\s*([^()]*)\\)", Pattern.CASE_INSENSITIVE);
   private static final Pattern ORACLE_TNS_SID_PATTERN =
       Pattern.compile("\\(\\s*SID\\s*=\\s*([^()]*)\\)", Pattern.CASE_INSENSITIVE);
+  private static final Pattern SAFE_RAW_AUTHORITY_PATTERN =
+      Pattern.compile("^([A-Za-z0-9._-]+)(?::[0-9]+)?$");
 
   private ConnectionConverter() {}
+
+  /**
+   * Converts a Catalog to a whitelisted Connect overview DTO without exposing its property map.
+   *
+   * @param catalog The catalog entity or DTO.
+   * @param testStatus The latest valid manual connection test status.
+   * @return The converted Connection overview DTO.
+   */
+  public static ConnectionOverviewDTO toConnectionOverviewDTO(
+      Catalog catalog, ConnectionTestStatusDTO testStatus) {
+    Preconditions.checkArgument(catalog != null, "catalog cannot be null");
+    Preconditions.checkArgument(testStatus != null, "testStatus cannot be null");
+
+    Map<String, String> properties = catalog.properties();
+    String endpoint = resolveEndpoint(catalog.provider(), properties);
+    return new ConnectionOverviewDTO(
+        catalog.name(),
+        catalog.type(),
+        catalog.provider(),
+        catalog.comment(),
+        getProperty(properties, Catalog.CLOUD_NAME),
+        getProperty(properties, Catalog.CLOUD_REGION_CODE),
+        DTOConverters.toDTO(catalog.auditInfo()),
+        endpoint,
+        testStatus);
+  }
 
   /**
    * Converts a Catalog and its schema count to a ConnectionDTO.
@@ -230,11 +262,11 @@ public class ConnectionConverter {
   }
 
   /**
-   * Resolves the endpoint string from the catalog provider and properties.
+   * Resolves a sanitized display endpoint from the catalog provider and properties.
    *
    * @param provider The catalog provider.
    * @param properties The catalog properties.
-   * @return The resolved endpoint string, or "--" if not found.
+   * @return The sanitized endpoint string, or "--" if it is absent or cannot be exposed safely.
    */
   public static String resolveEndpoint(String provider, Map<String, String> properties) {
     if (StringUtils.isBlank(provider) || properties == null || properties.isEmpty()) {
@@ -258,28 +290,28 @@ public class ConnectionConverter {
             getProperty(properties, IcebergConstants.URI),
             getProperty(properties, IcebergConstants.GRAVITINO_JDBC_DRIVER));
       }
-      return endpointOrDefault(getProperty(properties, IcebergConstants.URI));
+      return sanitizeUriListEndpoint(getProperty(properties, IcebergConstants.URI));
     }
 
     switch (lowerProvider) {
       case "hive":
-        return endpointOrDefault(getProperty(properties, HiveConstants.METASTORE_URIS));
+        return sanitizeUriListEndpoint(getProperty(properties, HiveConstants.METASTORE_URIS));
       case "glue":
         return resolveGlueEndpoint(properties);
       case "kafka":
-        return endpointOrDefault(getProperty(properties, "bootstrap.servers"));
+        return sanitizeAuthorityListEndpoint(getProperty(properties, "bootstrap.servers"));
       case "fileset":
       case "hadoop":
       case "lakehouse-generic":
-        return endpointOrDefault(getProperty(properties, Catalog.PROPERTY_LOCATION));
+        return sanitizeFilesystemLocation(getProperty(properties, Catalog.PROPERTY_LOCATION));
       case "lakehouse-hudi":
       case "hudi":
-        return endpointOrDefault(getProperty(properties, "uri"));
+        return sanitizeUriListEndpoint(getProperty(properties, "uri"));
       case "lakehouse-paimon":
       case "paimon":
         String backend = getProperty(properties, PaimonConstants.CATALOG_BACKEND);
         if (StringUtils.equalsIgnoreCase(backend, "filesystem")) {
-          return endpointOrDefault(getProperty(properties, PaimonConstants.WAREHOUSE));
+          return sanitizeFilesystemLocation(getProperty(properties, PaimonConstants.WAREHOUSE));
         }
         if (StringUtils.equalsIgnoreCase(backend, "jdbc")) {
           return resolveJdbcEndpoint(
@@ -287,7 +319,7 @@ public class ConnectionConverter {
               getProperty(properties, PaimonConstants.URI),
               getProperty(properties, PaimonConstants.GRAVITINO_JDBC_DRIVER));
         }
-        return endpointOrDefault(getProperty(properties, PaimonConstants.URI));
+        return sanitizeUriListEndpoint(getProperty(properties, PaimonConstants.URI));
       default:
         return DEFAULT_VALUE;
     }
@@ -630,22 +662,163 @@ public class ConnectionConverter {
   private static String sanitizeHierarchicalUri(String endpoint) {
     try {
       URI uri = URI.create(endpoint);
-      if (StringUtils.isBlank(uri.getScheme()) || StringUtils.isBlank(uri.getHost())) {
+      String authority = sanitizeAuthority(uri);
+      if (StringUtils.isBlank(uri.getScheme()) || DEFAULT_VALUE.equals(authority)) {
         return DEFAULT_VALUE;
       }
 
       StringBuilder builder = new StringBuilder();
-      builder.append(uri.getScheme()).append("://").append(uri.getHost());
-      if (uri.getPort() >= 0) {
-        builder.append(':').append(uri.getPort());
-      }
+      builder.append(uri.getScheme()).append("://").append(authority);
       if (uri.getRawPath() != null) {
-        builder.append(uri.getRawPath());
+        builder.append(stripUriPathParameters(uri.getRawPath()));
       }
       return builder.toString();
     } catch (IllegalArgumentException e) {
       return DEFAULT_VALUE;
     }
+  }
+
+  private static String sanitizeUriEndpoint(String endpoint) {
+    if (StringUtils.isBlank(endpoint)) {
+      return DEFAULT_VALUE;
+    }
+
+    String trimmedEndpoint = endpoint.trim();
+    String sanitized = sanitizeHierarchicalUri(trimmedEndpoint);
+    if (!DEFAULT_VALUE.equals(sanitized)) {
+      return sanitized;
+    }
+
+    try {
+      URI uri = URI.create(trimmedEndpoint);
+      if (StringUtils.isBlank(uri.getScheme())
+          || uri.isOpaque()
+          || uri.getRawAuthority() != null
+          || StringUtils.isBlank(uri.getRawPath())) {
+        return DEFAULT_VALUE;
+      }
+      String prefix =
+          startsWithIgnoreCase(trimmedEndpoint, uri.getScheme() + "://")
+              ? uri.getScheme() + "://"
+              : uri.getScheme() + ":";
+      return prefix + stripUriPathParameters(uri.getRawPath());
+    } catch (IllegalArgumentException e) {
+      return DEFAULT_VALUE;
+    }
+  }
+
+  private static String stripUriPathParameters(String rawPath) {
+    StringBuilder sanitized = new StringBuilder(rawPath.length());
+    boolean inParameter = false;
+    for (int index = 0; index < rawPath.length(); index++) {
+      char character = rawPath.charAt(index);
+      if (character == ';') {
+        inParameter = true;
+      } else if (character == '/') {
+        inParameter = false;
+        sanitized.append(character);
+      } else if (!inParameter) {
+        sanitized.append(character);
+      }
+    }
+    return sanitized.toString();
+  }
+
+  private static String sanitizeFilesystemLocation(String location) {
+    if (StringUtils.isBlank(location)) {
+      return DEFAULT_VALUE;
+    }
+
+    String trimmedLocation = location.trim();
+    String sanitized = sanitizeUriEndpoint(trimmedLocation);
+    if (!DEFAULT_VALUE.equals(sanitized)) {
+      return sanitized;
+    }
+
+    try {
+      URI uri = URI.create(trimmedLocation);
+      if (uri.getScheme() != null
+          || uri.isOpaque()
+          || uri.getRawAuthority() != null
+          || uri.getRawQuery() != null
+          || uri.getRawFragment() != null
+          || StringUtils.isBlank(uri.getRawPath())) {
+        return DEFAULT_VALUE;
+      }
+      return uri.getRawPath();
+    } catch (IllegalArgumentException e) {
+      return DEFAULT_VALUE;
+    }
+  }
+
+  private static String sanitizeUriListEndpoint(String endpoint) {
+    if (StringUtils.isBlank(endpoint)) {
+      return DEFAULT_VALUE;
+    }
+
+    StringJoiner sanitizedEndpoints = new StringJoiner(",");
+    for (String candidate : endpoint.split(",", -1)) {
+      String sanitized = sanitizeUriEndpoint(candidate);
+      if (DEFAULT_VALUE.equals(sanitized)) {
+        return DEFAULT_VALUE;
+      }
+      sanitizedEndpoints.add(sanitized);
+    }
+    return sanitizedEndpoints.toString();
+  }
+
+  private static String sanitizeAuthorityListEndpoint(String endpoint) {
+    if (StringUtils.isBlank(endpoint)) {
+      return DEFAULT_VALUE;
+    }
+
+    StringJoiner sanitizedAuthorities = new StringJoiner(",");
+    for (String authority : endpoint.split(",", -1)) {
+      try {
+        URI uri = URI.create("//" + authority.trim());
+        if (StringUtils.isNotBlank(uri.getRawPath()) && !"/".equals(uri.getRawPath())) {
+          return DEFAULT_VALUE;
+        }
+
+        String sanitizedAuthority = sanitizeAuthority(uri);
+        if (DEFAULT_VALUE.equals(sanitizedAuthority)) {
+          return DEFAULT_VALUE;
+        }
+        sanitizedAuthorities.add(sanitizedAuthority);
+      } catch (IllegalArgumentException e) {
+        return DEFAULT_VALUE;
+      }
+    }
+    return sanitizedAuthorities.toString();
+  }
+
+  private static String sanitizeAuthority(URI uri) {
+    String host = uri.getHost();
+    if (StringUtils.isNotBlank(host)) {
+      StringBuilder builder = new StringBuilder();
+      if (host.indexOf(':') >= 0 && !(host.startsWith("[") && host.endsWith("]"))) {
+        builder.append('[').append(host).append(']');
+      } else {
+        builder.append(host);
+      }
+      if (uri.getPort() >= 0) {
+        builder.append(':').append(uri.getPort());
+      }
+      return builder.toString();
+    }
+
+    String rawAuthority = uri.getRawAuthority();
+    if (StringUtils.isBlank(rawAuthority)) {
+      return DEFAULT_VALUE;
+    }
+
+    int userInfoEnd = rawAuthority.lastIndexOf('@');
+    String authority = rawAuthority.substring(userInfoEnd + 1);
+    Matcher matcher = SAFE_RAW_AUTHORITY_PATTERN.matcher(authority);
+    if (!matcher.matches()) {
+      return DEFAULT_VALUE;
+    }
+    return authority;
   }
 
   private static String stripJdbcProperties(String jdbcUrl) {
@@ -756,17 +929,14 @@ public class ConnectionConverter {
   private static String resolveGlueEndpoint(Map<String, String> properties) {
     String endpoint = getProperty(properties, GlueConstants.AWS_GLUE_ENDPOINT);
     if (StringUtils.isNotBlank(endpoint)) {
-      return endpoint.trim();
+      String sanitized = sanitizeUriEndpoint(endpoint);
+      return DEFAULT_VALUE.equals(sanitized) ? sanitizeAuthorityListEndpoint(endpoint) : sanitized;
     }
 
     String region = getProperty(properties, GlueConstants.AWS_REGION);
     return StringUtils.isNotBlank(region)
-        ? String.format("glue.%s.amazonaws.com", region.trim())
+        ? sanitizeAuthorityListEndpoint(String.format("glue.%s.amazonaws.com", region.trim()))
         : DEFAULT_VALUE;
-  }
-
-  private static String endpointOrDefault(String endpoint) {
-    return StringUtils.isNotBlank(endpoint) ? endpoint.trim() : DEFAULT_VALUE;
   }
 
   private static boolean usesCommonKerberosProperties(Map<String, String> properties) {
