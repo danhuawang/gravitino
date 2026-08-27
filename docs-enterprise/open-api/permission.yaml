@@ -71,6 +71,74 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/security/metalakes/{metalake}/roles/{role}/users:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/role"
+    get:
+      tags:
+        - permissions
+      summary: List users associated with a role
+      operationId: listUsersByRole
+      description: Lists users associated with a specific role in a metalake.
+      responses:
+        "200":
+          description: Returns the users associated with the role
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/users.yaml#/components/responses/UserListResponse"
+              examples:
+                UserListResponse:
+                  $ref: "../../docs/open-api/users.yaml#/components/examples/UserListResponse"
+        "404":
+          description: Not Found - The target metalake or role does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchRoleException:
+                  $ref: "../../docs/open-api/roles.yaml#/components/examples/NoSuchRoleException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/metalakes/{metalake}/roles/{role}/groups:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/role"
+    get:
+      tags:
+        - permissions
+      summary: List groups associated with a role
+      operationId: listGroupsByRole
+      description: Lists groups associated with a specific role in a metalake.
+      responses:
+        "200":
+          description: Returns the groups associated with the role
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/groups.yaml#/components/responses/GroupListResponse"
+              examples:
+                GroupListResponse:
+                  $ref: "../../docs/open-api/groups.yaml#/components/examples/GroupListResponse"
+        "404":
+          description: Not Found - The target metalake or role does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchRoleException:
+                  $ref: "../../docs/open-api/roles.yaml#/components/examples/NoSuchRoleException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
 components:
   schemas:
     PermissionUpdateRequest:

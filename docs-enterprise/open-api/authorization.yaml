@@ -1,0 +1,344 @@
+# Copyright 2026 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+paths:
+
+  /web/security/metalakes/{metalake}/objects/roles:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+
+    get:
+      tags:
+        - access control
+      summary: List metadata objects with role privileges
+      operationId: listObjectRolePrivileges
+      description: |
+        Lists metadata objects under a metalake that have role privilege bindings,
+        together with each object's associated roles and privileges.
+      responses:
+        "200":
+          description: Returns metadata objects grouped with their role privileges
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ObjectRolePrivilegeListResponse"
+              examples:
+                ObjectRolePrivilegeListResponse:
+                  $ref: "#/components/examples/ObjectRolePrivilegeListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The specified metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5XX":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/metalakes/{metalake}/authorization/overview:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+
+    get:
+      tags:
+        - access control
+      summary: Get the metalake authorization overview
+      operationId: getAuthorizationOverview
+      description: |
+        Returns metadata objects grouped by catalog, users and groups associated
+        through roles, privileged principal share, and all visible
+        roles with their direct members.
+
+        A member is one directly assigned user or group; users contained in a group
+        are not expanded. Privileged is the share of catalog principals holding an allowed
+        write or admin privilege; denied and read-only privileges are excluded.
+      responses:
+        "200":
+          description: Returns the authorization overview
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/AuthorizationOverviewResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The specified metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5XX":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+
+  schemas:
+
+    MetadataObject:
+      type: object
+      description: A metadata object
+      required:
+        - fullName
+        - type
+      properties:
+        fullName:
+          type: string
+          description: The full name of the metadata object
+        type:
+          type: string
+          description: The type of the metadata object
+          enum:
+            - "METALAKE"
+            - "CATALOG"
+            - "SCHEMA"
+            - "FILESET"
+            - "TABLE"
+            - "VIEW"
+            - "TOPIC"
+            - "COLUMN"
+            - "ROLE"
+            - "MODEL"
+            - "TAG"
+            - "POLICY"
+            - "JOB"
+            - "JOB_TEMPLATE"
+            - "FUNCTION"
+
+    RolePrivilege:
+      type: object
+      required:
+        - role
+        - privileges
+      properties:
+        role:
+          type: string
+          description: The role name
+        privileges:
+          type: array
+          description: The privileges granted to the role
+          items:
+            $ref: "../../docs/open-api/roles.yaml#/components/schemas/Privilege"
+
+    ObjectRolePrivilege:
+      type: object
+      required:
+        - metadataObject
+        - rolePrivileges
+      properties:
+        metadataObject:
+          $ref: "#/components/schemas/MetadataObject"
+        rolePrivileges:
+          type: array
+          description: The role privileges associated with the metadata object
+          items:
+            $ref: "#/components/schemas/RolePrivilege"
+
+    ObjectAuthorization:
+      type: object
+      required:
+        - metadataObject
+        - rolePrivileges
+      properties:
+        metadataObject:
+          $ref: "#/components/schemas/MetadataObject"
+        rolePrivileges:
+          type: array
+          description: Explicit role privileges associated with the metadata object
+          items:
+            $ref: "#/components/schemas/RolePrivilege"
+
+    CatalogAuthorization:
+      type: object
+      required:
+        - catalog
+        - objects
+        - roles
+        - users
+        - groups
+        - memberCount
+        - privilegedPrincipalCount
+        - privileged
+      properties:
+        catalog:
+          type: string
+          description: The catalog name
+        objects:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectAuthorization"
+        roles:
+          type: array
+          items:
+            type: string
+        users:
+          type: array
+          description: Distinct users associated with the catalog through its roles
+          items:
+            type: string
+        groups:
+          type: array
+          description: Distinct groups associated with the catalog through its roles
+          items:
+            type: string
+        memberCount:
+          type: integer
+          format: int32
+          description: Distinct user count plus distinct group count for the catalog
+        privilegedPrincipalCount:
+          type: integer
+          format: int32
+          description: Number of distinct catalog principals holding an allowed write or admin privilege
+        privileged:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: Share of catalog principals holding an allowed write or admin privilege
+
+    RoleMembership:
+      type: object
+      required:
+        - role
+        - users
+        - groups
+        - userCount
+        - groupCount
+        - memberCount
+        - assigned
+        - catalogs
+        - objectCount
+        - privilegeCount
+      properties:
+        role:
+          type: string
+        users:
+          type: array
+          items:
+            type: string
+        groups:
+          type: array
+          items:
+            type: string
+        userCount:
+          type: integer
+          format: int32
+        groupCount:
+          type: integer
+          format: int32
+        memberCount:
+          type: integer
+          format: int32
+          description: Direct user assignments plus direct group assignments
+        assigned:
+          type: boolean
+          description: Whether the role is assigned to at least one user or group
+        catalogs:
+          type: array
+          items:
+            type: string
+        objectCount:
+          type: integer
+          format: int32
+          description: Number of objects with explicit privileges in the role
+        privilegeCount:
+          type: integer
+          format: int32
+          description: Number of explicit privilege entries in the role
+
+    ObjectRolePrivilegeListResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        objectRolePrivileges:
+          type: array
+          description: Metadata objects with their associated role privileges
+          items:
+            $ref: "#/components/schemas/ObjectRolePrivilege"
+
+    AuthorizationOverviewResponse:
+      type: object
+      required:
+        - code
+        - catalogs
+        - roles
+        - unassignedRoles
+      properties:
+        code:
+          type: integer
+          format: int32
+          enum:
+            - 0
+        catalogs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogAuthorization"
+        roles:
+          type: array
+          description: All visible roles, including roles with no members
+          items:
+            $ref: "#/components/schemas/RoleMembership"
+        unassignedRoles:
+          type: array
+          description: Roles that are not assigned to a user or group
+          items:
+            type: string
+
+  examples:
+
+    ObjectRolePrivilegeListResponse:
+      value: {
+        "code": 0,
+        "objectRolePrivileges": [
+          {
+            "metadataObject": {
+              "fullName": "catalog1.schema1.table1",
+              "type": "TABLE"
+            },
+            "rolePrivileges": [
+              {
+                "role": "role1",
+                "privileges": [
+                  {
+                    "name": "SELECT_TABLE",
+                    "condition": "ALLOW"
+                  }
+                ]
+              },
+              {
+                "role": "role2",
+                "privileges": [
+                  {
+                    "name": "SELECT_TABLE",
+                    "condition": "DENY"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
