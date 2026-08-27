@@ -50,6 +50,48 @@ import org.junit.jupiter.api.Test;
 
 public class TestResponses {
 
+  /** Tests metalake summary validation and JSON serialization. */
+  @Test
+  public void testMetalakeSummaryResponse() throws JsonProcessingException {
+    MetalakeSummaryResponse response = new MetalakeSummaryResponse(2L, 3L, 1L);
+    Assertions.assertDoesNotThrow(response::validate);
+
+    String serialized = JsonUtils.objectMapper().writeValueAsString(response);
+    MetalakeSummaryResponse deserialized =
+        JsonUtils.objectMapper().readValue(serialized, MetalakeSummaryResponse.class);
+    Assertions.assertEquals(response, deserialized);
+
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> new MetalakeSummaryResponse(null, 0L, 0L));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> new MetalakeSummaryResponse(-1L, 0L, 0L));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> new MetalakeSummaryResponse(0L, -1L, 0L));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> new MetalakeSummaryResponse(0L, 0L, -1L));
+
+    Assertions.assertThrows(
+        JsonProcessingException.class,
+        () ->
+            JsonUtils.objectMapper()
+                .readValue(
+                    "{\"code\":0,\"catalogCount\":-1,\"userCount\":0,\"roleCount\":0}",
+                    MetalakeSummaryResponse.class));
+    Assertions.assertThrows(
+        JsonProcessingException.class,
+        () ->
+            JsonUtils.objectMapper()
+                .readValue(
+                    "{\"code\":0,\"catalogCount\":null,\"userCount\":0,\"roleCount\":0}",
+                    MetalakeSummaryResponse.class));
+    Assertions.assertThrows(
+        JsonProcessingException.class,
+        () ->
+            JsonUtils.objectMapper()
+                .readValue(
+                    "{\"code\":0,\"userCount\":0,\"roleCount\":0}", MetalakeSummaryResponse.class));
+  }
+
   @Test
   public void testMetalakeListResponse() throws JsonProcessingException {
     MetalakeDTO metalake =

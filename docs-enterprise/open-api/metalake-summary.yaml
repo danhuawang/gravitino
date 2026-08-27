@@ -1,0 +1,95 @@
+# Copyright 2026 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+paths:
+
+  /web/metalakes/{metalake}/summary:
+    get:
+      tags:
+        - metalake
+      summary: Get metalake summary
+      operationId: getMetalakeSummary
+      description: |
+        Return aggregate metadata counts for the specified metalake. The counts come from Gravitino
+        itself rather than from the search index, so they are available regardless of the search
+        configuration and do not depend on asynchronous index updates. The endpoint requires
+        metalake ownership and returns complete counts without per-object visibility filtering.
+      parameters:
+        - name: metalake
+          in: path
+          description: The metalake name
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Returns the summary of the specified metalake
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/MetalakeSummaryResponse"
+        "404":
+          description: Not Found - The specified metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "403":
+          description: Forbidden - The caller is not an owner of the specified metalake
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    MetalakeSummaryResponse:
+      type: object
+      required:
+        - code
+        - catalogCount
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        catalogCount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The number of catalogs in the metalake
+        userCount:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: |
+            The number of users in the metalake. Null when access control is disabled because user
+            data is unavailable.
+        roleCount:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: |
+            The number of roles in the metalake. Null when access control is disabled because role
+            data is unavailable.
