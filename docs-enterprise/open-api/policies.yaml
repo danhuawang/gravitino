@@ -1,0 +1,83 @@
+# Copyright 2026 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+paths:
+  /web/metalakes/{metalake}/policies:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+    get:
+      tags:
+        - policy
+      summary: List policies with enterprise details
+      operationId: listExtendedPolicies
+      description: |
+        Lists policy names when `details` is false. When `details` is true, lists policy
+        information together with the number of directly associated metadata objects visible
+        to the caller.
+      parameters:
+        - $ref: "../../docs/open-api/policies.yaml#/components/parameters/details"
+      responses:
+        "200":
+          description: Returns policy names or detailed policy objects with associated object counts
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                oneOf:
+                  - $ref: "../../docs/open-api/openapi.yaml#/components/schemas/NameListResponse"
+                  - $ref: "#/components/schemas/ExtendedPolicyListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The specified metalake does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    ExtendedPolicy:
+      allOf:
+        - $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
+        - type: object
+          required:
+            - associatedObjectsCount
+          properties:
+            associatedObjectsCount:
+              type: integer
+              format: int32
+              minimum: 0
+              description: The number of directly associated metadata objects visible to the caller
+
+    ExtendedPolicyListResponse:
+      type: object
+      required:
+        - code
+        - policies
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        policies:
+          type: array
+          description: A list of policies with directly associated metadata object counts
+          items:
+            $ref: "#/components/schemas/ExtendedPolicy"
