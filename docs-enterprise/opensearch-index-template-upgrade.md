@@ -141,6 +141,93 @@ If `GRAVITINO_HOME` points to the new package, `index.sh` reads the OpenSearch U
 `conf/gravitino.conf`. You can also pass `--opensearch_uri`, `--username`, and `--password` on the
 command line.
 
+### Rebuild with Gravitino authentication
+
+When Gravitino authentication is enabled, the `rebuild` command must authenticate both the
+metalake listing request and every rebuild request. For Basic Auth, set the credentials in the
+environment before running the command:
+
+```bash
+export GRAVITINO_USERNAME=admin
+export GRAVITINO_PASSWORD='replace-with-the-password'
+bin/index.sh rebuild --gravitino_uri=http://127.0.0.1:8090
+```
+
+For an automated OAuth deployment, register a dedicated confidential client with the identity
+provider and use the `client_credentials` grant:
+
+```bash
+export GRAVITINO_OAUTH_TOKEN_URI='https://identity.example.com/oauth2/token'
+export GRAVITINO_OAUTH_CLIENT_ID='gravitino-index-rebuild'
+export GRAVITINO_OAUTH_CLIENT_SECRET='replace-with-the-client-secret'
+# Optional; set this only when the identity provider requires a scope.
+export GRAVITINO_OAUTH_SCOPE='api://gravitino/.default'
+bin/index.sh rebuild --gravitino_uri=http://127.0.0.1:8090
+```
+
+The script requests a bearer token before it lists metalakes. If Gravitino returns HTTP 401, the
+script requests a fresh token and retries that request once. OAuth scope is optional; when supplied,
+it must produce a token whose `aud` claim matches
+`gravitino.authenticator.oauth.serviceAudience`. The token's principal must be authorized to list
+every metalake that should be rebuilt. Add that principal to the required metalakes and grant the
+required roles; add it to
+`gravitino.authorization.serviceAdmins` too if it performs service-administration operations.
+
+When `GRAVITINO_HOME/conf/gravitino.conf` defines both
+`gravitino.authenticator.oauth.serverUri` and `gravitino.authenticator.oauth.tokenPath`, the script
+uses their combination as the token URI. In that case, `GRAVITINO_OAUTH_TOKEN_URI` can be omitted.
+Set it explicitly for configurations that validate tokens through JWKS and do not define those
+properties.
+
+For a one-off manual run, an already-issued token is still supported:
+
+```bash
+export GRAVITINO_TOKEN='replace-with-the-access-token'
+bin/index.sh rebuild --gravitino_uri=http://127.0.0.1:8090
+```
+
+The script cannot refresh a token supplied through `GRAVITINO_TOKEN`. The equivalent command-line
+options are `--gravitino_username`, `--gravitino_password`, `--gravitino_token`,
+`--gravitino_oauth_token_uri`, `--gravitino_oauth_client_id`,
+`--gravitino_oauth_client_secret`, and `--gravitino_oauth_scope`. Environment variables are
+preferable in automated deployments because command-line arguments may be visible in process
+listings. The script sends authentication values to `curl` through standard input, so they do not
+appear in the child `curl` process arguments. Authentication precedence is an already-issued bearer
+token, complete OAuth client credentials, Basic Auth, and then no authentication. If both a bearer
+token and complete OAuth client credentials are configured, the script warns that the static token
+takes precedence and cannot be refreshed.
+
+For a Kubernetes lifecycle hook, inject the environment variables from a Secret. The Gravitino Helm
+chart's `env` value accepts standard container environment entries, for example:
+
+```yaml
+env:
+  - name: GRAVITINO_OAUTH_TOKEN_URI
+    valueFrom:
+      secretKeyRef:
+        name: gravitino-rebuild-auth
+        key: token-uri
+  - name: GRAVITINO_OAUTH_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: gravitino-rebuild-auth
+        key: client-id
+  - name: GRAVITINO_OAUTH_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: gravitino-rebuild-auth
+        key: client-secret
+  # Optional; omit this entry when the identity provider does not require a scope.
+  - name: GRAVITINO_OAUTH_SCOPE
+    valueFrom:
+      secretKeyRef:
+        name: gravitino-rebuild-auth
+        key: scope
+```
+
+An exec-based `postStart` hook inherits these variables, so it does not need to put credentials in
+the `index.sh` command line.
+
 ## Restart without an upgrade
 
 If all templates are already on `v2` and search works, a restart needs no `init`, no `upgrade`, and

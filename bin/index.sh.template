@@ -13,6 +13,12 @@ DELETE_SCRIPT="opensearch/delete_indices_template.sh"
 # non-zero status means part of the bundle may already be installed.
 CREATE_REJECTED=2
 
+# Gravitino request state. These globals let OAuth token refreshes performed inside a request remain
+# available to subsequent requests in the same rebuild command.
+GRAVITINO_AUTH_MODE="none"
+GRAVITINO_HTTP_CODE=""
+GRAVITINO_RESPONSE_BODY=""
+
 # Show usage information
 show_usage() {
     cat <<EOF
@@ -22,6 +28,13 @@ Options:
   --username=USERNAME                   OpenSearch username
   --password=PASSWORD                   OpenSearch password
   --gravitino_uri=GRAVITINO_URI         Gravitino server connection URI
+  --gravitino_username=USERNAME         Gravitino Basic Auth username
+  --gravitino_password=PASSWORD         Gravitino Basic Auth password
+  --gravitino_token=TOKEN               Gravitino OAuth bearer token
+  --gravitino_oauth_token_uri=URI        Gravitino OAuth token endpoint URI
+  --gravitino_oauth_client_id=CLIENT_ID  Gravitino OAuth client ID
+  --gravitino_oauth_client_secret=SECRET Gravitino OAuth client secret
+  --gravitino_oauth_scope=SCOPE          Optional Gravitino OAuth scope
   --help                                Show this help message
 EOF
     exit 1
@@ -66,6 +79,15 @@ load_config() {
             USERNAME=$(grep '^gravitino.datastrato.search.opensearch.username' "$conf_file" | cut -d '=' -f2- | xargs)
             PASSWORD=$(grep '^gravitino.datastrato.search.opensearch.password' "$conf_file" | cut -d '=' -f2- | xargs)
             GRAVITINO_URI="http://127.0.0.1:$(grep '^gravitino.server.webserver.httpPort' "$conf_file" | cut -d '=' -f2- | xargs)"
+            if [[ -z "$GRAVITINO_OAUTH_TOKEN_URI" ]]; then
+                local oauth_server_uri
+                local oauth_token_path
+                oauth_server_uri=$(grep '^gravitino.authenticator.oauth.serverUri' "$conf_file" | cut -d '=' -f2- | xargs)
+                oauth_token_path=$(grep '^gravitino.authenticator.oauth.tokenPath' "$conf_file" | cut -d '=' -f2- | xargs)
+                if [[ -n "$oauth_server_uri" ]] && [[ -n "$oauth_token_path" ]]; then
+                    GRAVITINO_OAUTH_TOKEN_URI="${oauth_server_uri%/}/${oauth_token_path#/}"
+                fi
+            fi
             echo "[INFO] Loaded OpenSearch config from $conf_file"
         else
             echo "[WARN] Config file not found: $conf_file. Skipping OpenSearch config init."
@@ -81,6 +103,13 @@ parse_arguments() {
             --username=*) USERNAME="${arg#*=}" ;;
             --password=*) PASSWORD="${arg#*=}" ;;
             --gravitino_uri=*) GRAVITINO_URI="${arg#*=}" ;;
+            --gravitino_username=*) GRAVITINO_USERNAME="${arg#*=}" ;;
+            --gravitino_password=*) GRAVITINO_PASSWORD="${arg#*=}" ;;
+            --gravitino_token=*) GRAVITINO_TOKEN="${arg#*=}" ;;
+            --gravitino_oauth_token_uri=*) GRAVITINO_OAUTH_TOKEN_URI="${arg#*=}" ;;
+            --gravitino_oauth_client_id=*) GRAVITINO_OAUTH_CLIENT_ID="${arg#*=}" ;;
+            --gravitino_oauth_client_secret=*) GRAVITINO_OAUTH_CLIENT_SECRET="${arg#*=}" ;;
+            --gravitino_oauth_scope=*) GRAVITINO_OAUTH_SCOPE="${arg#*=}" ;;
             --help) show_usage ;;
             *) VERSION="$arg" ;;
         esac
@@ -188,6 +217,146 @@ get_all_index_template_versions() {
     | sort -u
 }
 
+escape_curl_config_value() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\t'/\\t}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\n'/\\n}"
+  printf '%s' "$value"
+}
+
+write_oauth_curl_config() {
+  printf 'data-urlencode = "grant_type=client_credentials"\n'
+  printf 'data-urlencode = "client_id=%s"\n' \
+    "$(escape_curl_config_value "$GRAVITINO_OAUTH_CLIENT_ID")"
+  printf 'data-urlencode = "client_secret=%s"\n' \
+    "$(escape_curl_config_value "$GRAVITINO_OAUTH_CLIENT_SECRET")"
+  if [[ -n "$GRAVITINO_OAUTH_SCOPE" ]]; then
+    printf 'data-urlencode = "scope=%s"\n' \
+      "$(escape_curl_config_value "$GRAVITINO_OAUTH_SCOPE")"
+  fi
+}
+
+write_gravitino_auth_curl_config() {
+  case "$GRAVITINO_AUTH_MODE" in
+    provided_token|oauth_client_credentials)
+      printf 'header = "Authorization: Bearer %s"\n' \
+        "$(escape_curl_config_value "$GRAVITINO_TOKEN")"
+      ;;
+    basic)
+      printf 'user = "%s:%s"\n' \
+        "$(escape_curl_config_value "$GRAVITINO_USERNAME")" \
+        "$(escape_curl_config_value "$GRAVITINO_PASSWORD")"
+      ;;
+  esac
+}
+
+fetch_gravitino_oauth_token() {
+  local token_response
+  if ! token_response=$(write_oauth_curl_config | curl --config - -sS -w $'\n%{http_code}' \
+      -X POST \
+      -H "Accept: application/json" \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      "$GRAVITINO_OAUTH_TOKEN_URI"); then
+    echo "Error: Failed to request an OAuth token for Gravitino."
+    return 1
+  fi
+
+  local token_http_code="${token_response##*$'\n'}"
+  local token_body="${token_response%$'\n'*}"
+  if [[ "$token_http_code" != 2* ]]; then
+    local oauth_error
+    oauth_error=$(printf '%s' "$token_body" \
+      | jq -r 'if type == "object" then .error_description // .error // empty else empty end' \
+        2>/dev/null)
+    echo "Error: OAuth token request failed (HTTP $token_http_code)."
+    if [[ -n "$oauth_error" ]]; then
+      echo "OAuth error: $oauth_error"
+    fi
+    return 1
+  fi
+
+  local access_token
+  if ! access_token=$(printf '%s' "$token_body" | jq -er '
+      select(
+        (.access_token | type) == "string"
+        and (.access_token | length) > 0
+        and ((.token_type // "") | ascii_downcase) == "bearer")
+      | .access_token' 2>/dev/null); then
+    echo "Error: OAuth token response did not contain a valid bearer access token."
+    return 1
+  fi
+
+  GRAVITINO_TOKEN="$access_token"
+}
+
+configure_gravitino_auth() {
+  GRAVITINO_AUTH_MODE="none"
+
+  if [[ -n "$GRAVITINO_TOKEN" ]]; then
+    if [[ -n "$GRAVITINO_OAUTH_CLIENT_ID" ]] \
+        && [[ -n "$GRAVITINO_OAUTH_CLIENT_SECRET" ]]; then
+      echo "[WARN] GRAVITINO_TOKEN takes precedence over OAuth client credentials and cannot be refreshed."
+    fi
+    GRAVITINO_AUTH_MODE="provided_token"
+    return 0
+  fi
+
+  if [[ -n "$GRAVITINO_OAUTH_CLIENT_ID" ]] \
+      && [[ -n "$GRAVITINO_OAUTH_CLIENT_SECRET" ]]; then
+    local missing=()
+    [[ -z "$GRAVITINO_OAUTH_TOKEN_URI" ]] && missing+=("gravitino_oauth_token_uri")
+    if [[ "${#missing[@]}" -gt 0 ]]; then
+      echo "Error: Missing OAuth parameters: ${missing[*]}."
+      return 1
+    fi
+
+    GRAVITINO_AUTH_MODE="oauth_client_credentials"
+    fetch_gravitino_oauth_token
+    return $?
+  fi
+
+  if [[ -n "$GRAVITINO_USERNAME" ]] || [[ -n "$GRAVITINO_PASSWORD" ]]; then
+    if [[ -z "$GRAVITINO_USERNAME" ]] || [[ -z "$GRAVITINO_PASSWORD" ]]; then
+      echo "Error: Both gravitino_username and gravitino_password are required for Basic Auth."
+      return 1
+    fi
+    GRAVITINO_AUTH_MODE="basic"
+  fi
+}
+
+gravitino_request() {
+  local method="$1"
+  local uri="$2"
+  shift 2
+
+  local response
+  if ! response=$(write_gravitino_auth_curl_config \
+      | curl --config - -sS -w $'\n%{http_code}' \
+      -X "$method" "$@" "$uri"); then
+    return 1
+  fi
+
+  GRAVITINO_HTTP_CODE="${response##*$'\n'}"
+  GRAVITINO_RESPONSE_BODY="${response%$'\n'*}"
+  if [[ "$GRAVITINO_HTTP_CODE" == "401" ]] \
+      && [[ "$GRAVITINO_AUTH_MODE" == "oauth_client_credentials" ]]; then
+    echo "[INFO] Gravitino rejected the OAuth token. Refreshing it and retrying once."
+    if ! fetch_gravitino_oauth_token; then
+      return 1
+    fi
+    if ! response=$(write_gravitino_auth_curl_config \
+        | curl --config - -sS -w $'\n%{http_code}' \
+        -X "$method" "$@" "$uri"); then
+      return 1
+    fi
+    GRAVITINO_HTTP_CODE="${response##*$'\n'}"
+    GRAVITINO_RESPONSE_BODY="${response%$'\n'*}"
+  fi
+}
+
 rebuild_index() {
   if [[ -z "$GRAVITINO_URI" ]]; then
     echo "Error: Missing required parameter gravitino_uri."
@@ -195,28 +364,78 @@ rebuild_index() {
     return 1
   fi
 
-  metalakes=$(curl -s "$GRAVITINO_URI/api/metalakes" | jq -r '.metalakes[].name')
-  if [[ -z "$metalakes" ]]; then
-    echo "Error: No metalakes found or failed to fetch metalakes."
+  if ! configure_gravitino_auth; then
     return 1
   fi
 
-  failed=0
+  if ! gravitino_request GET "$GRAVITINO_URI/api/metalakes"; then
+    echo "Error: Failed to fetch metalakes from Gravitino."
+    return 1
+  fi
 
-  for name in $metalakes; do
+  local list_http_code="$GRAVITINO_HTTP_CODE"
+  local list_body="$GRAVITINO_RESPONSE_BODY"
+  if [[ "$list_http_code" != 2* ]]; then
+    echo "Error: Failed to fetch metalakes from Gravitino (HTTP $list_http_code)."
+    if [[ -n "$list_body" ]]; then
+      echo "Response: $list_body"
+    else
+      echo "Response: <empty>"
+    fi
+    return 1
+  fi
+
+  if ! printf '%s' "$list_body" | jq -e '
+      type == "object"
+      and ((.metalakes == null) or ((.metalakes | type) == "array"))
+      and ([.metalakes[]? | (.name | type) == "string"] | all)' > /dev/null 2>&1; then
+    echo "Error: Failed to parse the metalakes response from Gravitino."
+    if [[ -n "$list_body" ]]; then
+      echo "Response: $list_body"
+    else
+      echo "Response: <empty>"
+    fi
+    return 1
+  fi
+
+  local metalakes
+  metalakes=$(printf '%s' "$list_body" | jq -r '.metalakes[]?.name')
+  if [[ -z "$metalakes" ]]; then
+    echo "No metalakes found. Nothing to rebuild."
+    return 0
+  fi
+
+  local failed=0
+
+  while IFS= read -r name; do
+    if [[ -z "$name" ]]; then
+      continue
+    fi
     echo "Rebuilding search index for metalake: $name"
-    response=$(curl -s -w "%{http_code}" -o /tmp/rebuild_result.json \
-      -X POST -H "Content-Type: application/json" "$GRAVITINO_URI/api/search/rebuild/metalakes/$name")
+    if ! gravitino_request POST "$GRAVITINO_URI/api/search/rebuild/metalakes/$name" \
+        -H "Content-Type: application/json"; then
+      echo "Failed to rebuild index for metalake $name: request failed."
+      ((failed++))
+      echo
+      continue
+    fi
 
-    if [[ "$response" == 2* ]]; then
+    local rebuild_http_code="$GRAVITINO_HTTP_CODE"
+    local rebuild_body="$GRAVITINO_RESPONSE_BODY"
+
+    if [[ "$rebuild_http_code" == 2* ]]; then
       echo "Success rebuild index for metalake $name"
     else
-      echo "Failed to rebuild index for metalake $name (HTTP $response):"
-      cat /tmp/rebuild_result.json
+      echo "Failed to rebuild index for metalake $name (HTTP $rebuild_http_code):"
+      if [[ -n "$rebuild_body" ]]; then
+        echo "$rebuild_body"
+      else
+        echo "<empty response>"
+      fi
       ((failed++))
     fi
     echo
-  done
+  done <<< "$metalakes"
 
   if [[ "$failed" -gt 0 ]]; then
     echo "Completed with $failed failure(s)."
