@@ -14,7 +14,12 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.RoleGroupAssignment;
+import com.datastrato.gravitino.authorization.RoleUserAssignment;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.PermissionUpdateRequest;
+import com.datastrato.gravitino.dto.responses.RoleGroupAssignmentListResponse;
+import com.datastrato.gravitino.dto.responses.RoleUserAssignmentListResponse;
 import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.time.Instant;
@@ -41,9 +46,7 @@ import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
-import org.apache.gravitino.dto.responses.GroupListResponse;
 import org.apache.gravitino.dto.responses.RoleResponse;
-import org.apache.gravitino.dto.responses.UserListResponse;
 import org.apache.gravitino.exceptions.NoSuchMetadataObjectException;
 import org.apache.gravitino.exceptions.NoSuchRoleException;
 import org.apache.gravitino.lock.LockManager;
@@ -120,8 +123,12 @@ public class TestExtendedRoleOperations extends JerseyTest {
 
   @Test
   public void testListUsersByRole() {
-    when(accessControlDispatcher.listUsersByRole(any(), any()))
-        .thenReturn(new User[] {buildUser("user1"), buildUser("user2")});
+    when(accessControlDispatcher.listUserAssignmentsByRole(any(), any()))
+        .thenReturn(
+            new RoleUserAssignment[] {
+              new RoleUserAssignment(buildUser("user1"), buildAssignmentAudit(), true),
+              new RoleUserAssignment(buildUser("user2"), buildAssignmentAudit(), false)
+            });
 
     Response resp =
         target("/web/security/metalakes/testMetalake/roles/testRole/users")
@@ -132,13 +139,21 @@ public class TestExtendedRoleOperations extends JerseyTest {
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
     Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
 
-    UserListResponse userListResponse = resp.readEntity(UserListResponse.class);
+    RoleUserAssignmentListResponse userListResponse =
+        resp.readEntity(RoleUserAssignmentListResponse.class);
     Assertions.assertEquals(0, userListResponse.getCode());
     Assertions.assertEquals(2, userListResponse.getUsers().length);
     Assertions.assertEquals("user1", userListResponse.getUsers()[0].name());
+    Assertions.assertEquals(IdentitySource.LOCAL, userListResponse.getUsers()[0].origin());
+    Assertions.assertEquals(
+        "assigner", userListResponse.getUsers()[0].assignmentAudit().lastModifier());
     Assertions.assertEquals("user2", userListResponse.getUsers()[1].name());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, userListResponse.getUsers()[1].origin());
+    Assertions.assertEquals(
+        Instant.parse("2026-08-28T01:02:03Z"),
+        userListResponse.getUsers()[1].assignmentAudit().lastModifiedTime());
 
-    when(accessControlDispatcher.listUsersByRole(any(), any()))
+    when(accessControlDispatcher.listUserAssignmentsByRole(any(), any()))
         .thenThrow(new NoSuchRoleException("Role testRole does not exist"));
     Response errorResp =
         target("/web/security/metalakes/testMetalake/roles/testRole/users")
@@ -154,8 +169,12 @@ public class TestExtendedRoleOperations extends JerseyTest {
 
   @Test
   public void testListGroupsByRole() {
-    when(accessControlDispatcher.listGroupsByRole(any(), any()))
-        .thenReturn(new Group[] {buildGroup("group1"), buildGroup("group2")});
+    when(accessControlDispatcher.listGroupAssignmentsByRole(any(), any()))
+        .thenReturn(
+            new RoleGroupAssignment[] {
+              new RoleGroupAssignment(buildGroup("group1"), buildAssignmentAudit(), 3),
+              new RoleGroupAssignment(buildGroup("group2"), buildAssignmentAudit(), 7)
+            });
 
     Response resp =
         target("/web/security/metalakes/testMetalake/roles/testRole/groups")
@@ -166,13 +185,18 @@ public class TestExtendedRoleOperations extends JerseyTest {
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
     Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
 
-    GroupListResponse groupListResponse = resp.readEntity(GroupListResponse.class);
+    RoleGroupAssignmentListResponse groupListResponse =
+        resp.readEntity(RoleGroupAssignmentListResponse.class);
     Assertions.assertEquals(0, groupListResponse.getCode());
     Assertions.assertEquals(2, groupListResponse.getGroups().length);
     Assertions.assertEquals("group1", groupListResponse.getGroups()[0].name());
+    Assertions.assertEquals(3, groupListResponse.getGroups()[0].userCount());
+    Assertions.assertEquals(
+        "assigner", groupListResponse.getGroups()[0].assignmentAudit().lastModifier());
     Assertions.assertEquals("group2", groupListResponse.getGroups()[1].name());
+    Assertions.assertEquals(7, groupListResponse.getGroups()[1].userCount());
 
-    when(accessControlDispatcher.listGroupsByRole(any(), any()))
+    when(accessControlDispatcher.listGroupAssignmentsByRole(any(), any()))
         .thenThrow(new RuntimeException("Test exception"));
     Response errorResp =
         target("/web/security/metalakes/testMetalake/roles/testRole/groups")
@@ -287,6 +311,15 @@ public class TestExtendedRoleOperations extends JerseyTest {
         .withRoleNames(Collections.emptyList())
         .withAuditInfo(
             AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+        .build();
+  }
+
+  private AuditInfo buildAssignmentAudit() {
+    return AuditInfo.builder()
+        .withCreator("creator")
+        .withCreateTime(Instant.EPOCH)
+        .withLastModifier("assigner")
+        .withLastModifiedTime(Instant.parse("2026-08-28T01:02:03Z"))
         .build();
   }
 

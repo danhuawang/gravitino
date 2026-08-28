@@ -6,9 +6,13 @@ package org.apache.gravitino.storage.relational.service;
 import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATIONAL_STORE_METRIC_NAME;
 
 import com.datastrato.gravitino.authorization.RoleAssignment;
+import com.datastrato.gravitino.authorization.RoleGroupAssignment;
+import com.datastrato.gravitino.authorization.RoleUserAssignment;
 import com.datastrato.gravitino.authorization.mapper.DatastratoRoleAssignmentMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoSecurableObjectMapper;
 import com.datastrato.gravitino.authorization.po.RoleAssignmentPO;
+import com.datastrato.gravitino.authorization.po.RoleGroupAssignmentPO;
+import com.datastrato.gravitino.authorization.po.RoleUserAssignmentPO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.Lists;
 import java.util.Collections;
@@ -23,10 +27,13 @@ import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.exceptions.NoSuchRoleException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
+import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.relational.mapper.RoleMetaMapper;
 import org.apache.gravitino.storage.relational.po.RolePO;
@@ -120,6 +127,92 @@ public class DatastratoRoleMetaService {
     return toRoleAssignmentsForPrincipal(metalake, group, false, assignments);
   }
 
+  /**
+   * Lists users assigned to a role, including assignment audit and identity origin.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The role user assignments.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listUserAssignmentsByRole")
+  public List<RoleUserAssignment> listUserAssignmentsByRole(String metalake, String role) {
+    List<RoleUserAssignmentPO> assignments =
+        SessionUtils.getWithoutCommit(
+            DatastratoRoleAssignmentMapper.class,
+            mapper -> mapper.listUserAssignmentsByRole(metalake, role));
+    return toRoleUserAssignments(metalake, role, assignments);
+  }
+
+  /**
+   * Lists groups assigned to a role, including assignment audit and user count.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The role group assignments.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listGroupAssignmentsByRole")
+  public List<RoleGroupAssignment> listGroupAssignmentsByRole(String metalake, String role) {
+    List<RoleGroupAssignmentPO> assignments =
+        SessionUtils.getWithoutCommit(
+            DatastratoRoleAssignmentMapper.class,
+            mapper -> mapper.listGroupAssignmentsByRole(metalake, role));
+    return toRoleGroupAssignments(metalake, role, assignments);
+  }
+
+  static List<RoleUserAssignment> toRoleUserAssignments(
+      String metalake, String role, List<RoleUserAssignmentPO> assignments) {
+    validateRoleAssignmentRows(
+        metalake,
+        role,
+        assignments,
+        assignments.isEmpty() ? null : assignments.get(0).getRequestedMetalakeId(),
+        assignments.isEmpty() ? null : assignments.get(0).getRoleId());
+    return assignments.stream()
+        .filter(assignment -> assignment.getUserId() != null)
+        .map(
+            assignment -> {
+              UserEntity user =
+                  POConverters.fromUserPO(
+                      assignment.toUserPO(),
+                      Collections.emptyList(),
+                      AuthorizationUtils.ofUserNamespace(metalake));
+              return new RoleUserAssignment(
+                  user,
+                  deserializeAuditInfo(assignment.getAssignmentAuditInfo()),
+                  Boolean.TRUE.equals(assignment.getInBuiltInIdp()));
+            })
+        .collect(Collectors.toList());
+  }
+
+  static List<RoleGroupAssignment> toRoleGroupAssignments(
+      String metalake, String role, List<RoleGroupAssignmentPO> assignments) {
+    validateRoleAssignmentRows(
+        metalake,
+        role,
+        assignments,
+        assignments.isEmpty() ? null : assignments.get(0).getRequestedMetalakeId(),
+        assignments.isEmpty() ? null : assignments.get(0).getRoleId());
+    return assignments.stream()
+        .filter(assignment -> assignment.getGroupId() != null)
+        .map(
+            assignment -> {
+              GroupEntity group =
+                  POConverters.fromGroupPO(
+                      assignment.toGroupPO(),
+                      Collections.emptyList(),
+                      AuthorizationUtils.ofGroupNamespace(metalake));
+              return new RoleGroupAssignment(
+                  group,
+                  deserializeAuditInfo(assignment.getAssignmentAuditInfo()),
+                  assignment.getUserCount() == null ? 0 : assignment.getUserCount());
+            })
+        .collect(Collectors.toList());
+  }
+
   static List<RoleAssignment> toRoleAssignments(
       String metalake, List<RoleAssignmentPO> assignments) {
     if (assignments.isEmpty()) {
@@ -173,6 +266,16 @@ public class DatastratoRoleMetaService {
             .filter(assignment -> assignment.getRoleId() != null)
             .collect(Collectors.toList());
     return toRoleAssignments(metalake, activeAssignments);
+  }
+
+  private static void validateRoleAssignmentRows(
+      String metalake, String role, List<?> assignments, Long requestedMetalakeId, Long roleId) {
+    if (assignments.isEmpty() || requestedMetalakeId == null) {
+      throw new NoSuchMetalakeException("Metalake %s does not exist", metalake);
+    }
+    if (roleId == null) {
+      throw new NoSuchRoleException("Role %s does not exist in the metalake %s", role, metalake);
+    }
   }
 
   private static List<RolePO> listRolePOsByMetalake(String metalakeName) {

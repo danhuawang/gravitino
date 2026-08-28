@@ -80,17 +80,19 @@ paths:
         - permissions
       summary: List users associated with a role
       operationId: listUsersByRole
-      description: Lists users associated with a specific role in a metalake.
+      description: |
+        Lists users associated with a specific role in a metalake, including the audit information
+        of each role assignment and whether each user is local or provisioned.
       responses:
         "200":
           description: Returns the users associated with the role
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs/open-api/users.yaml#/components/responses/UserListResponse"
+                $ref: "#/components/schemas/RoleUserAssignmentListResponse"
               examples:
-                UserListResponse:
-                  $ref: "../../docs/open-api/users.yaml#/components/examples/UserListResponse"
+                RoleUserAssignmentListResponse:
+                  $ref: "#/components/examples/RoleUserAssignmentListResponse"
         "404":
           description: Not Found - The target metalake or role does not exist
           content:
@@ -114,17 +116,19 @@ paths:
         - permissions
       summary: List groups associated with a role
       operationId: listGroupsByRole
-      description: Lists groups associated with a specific role in a metalake.
+      description: |
+        Lists groups associated with a specific role in a metalake, including the audit information
+        of each role assignment and the number of metalake users in each group.
       responses:
         "200":
           description: Returns the groups associated with the role
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "../../docs/open-api/groups.yaml#/components/responses/GroupListResponse"
+                $ref: "#/components/schemas/RoleGroupAssignmentListResponse"
               examples:
-                GroupListResponse:
-                  $ref: "../../docs/open-api/groups.yaml#/components/examples/GroupListResponse"
+                RoleGroupAssignmentListResponse:
+                  $ref: "#/components/examples/RoleGroupAssignmentListResponse"
         "404":
           description: Not Found - The target metalake or role does not exist
           content:
@@ -149,3 +153,97 @@ components:
           description: A list of securable objects to update
           items:
             $ref: "../../docs/open-api/roles.yaml#/components/schemas/SecurableObject"
+
+    IdentitySource:
+      type: string
+      description: |
+        Source of the identity. `Local` when the username exists in the built-in IdP and
+        `Provisioned` otherwise.
+      enum:
+        - Local
+        - Provisioned
+
+    RoleUserAssignment:
+      allOf:
+        - $ref: "../../docs/open-api/users.yaml#/components/schemas/User"
+        - type: object
+          required:
+            - origin
+            - assignmentAudit
+          properties:
+            origin:
+              $ref: "#/components/schemas/IdentitySource"
+            assignmentAudit:
+              $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
+
+    RoleGroupAssignment:
+      allOf:
+        - $ref: "../../docs/open-api/groups.yaml#/components/schemas/Group"
+        - type: object
+          required:
+            - assignmentAudit
+            - userCount
+          properties:
+            assignmentAudit:
+              $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
+            userCount:
+              type: integer
+              format: int32
+              minimum: 0
+              description: Number of users in the group that belong to the metalake
+
+    RoleUserAssignmentListResponse:
+      type: object
+      required:
+        - code
+        - users
+      properties:
+        code:
+          type: integer
+          format: int32
+          enum:
+            - 0
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleUserAssignment"
+
+    RoleGroupAssignmentListResponse:
+      type: object
+      required:
+        - code
+        - groups
+      properties:
+        code:
+          type: integer
+          format: int32
+          enum:
+            - 0
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleGroupAssignment"
+
+  examples:
+    RoleUserAssignmentListResponse:
+      value:
+        code: 0
+        users:
+          - name: alice
+            enabled: true
+            roles: []
+            origin: Local
+            assignmentAudit:
+              creator: admin
+              createTime: "2026-08-28T01:02:03Z"
+
+    RoleGroupAssignmentListResponse:
+      value:
+        code: 0
+        groups:
+          - name: analysts
+            roles: []
+            userCount: 12
+            assignmentAudit:
+              creator: admin
+              createTime: "2026-08-28T01:02:03Z"

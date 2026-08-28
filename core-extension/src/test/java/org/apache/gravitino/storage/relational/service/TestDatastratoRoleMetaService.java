@@ -5,12 +5,15 @@ package org.apache.gravitino.storage.relational.service;
 
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_MAX_CONNECTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.authorization.RoleAssignment;
+import com.datastrato.gravitino.authorization.RoleGroupAssignment;
+import com.datastrato.gravitino.authorization.RoleUserAssignment;
 import com.datastrato.gravitino.authorization.po.RoleAssignmentPO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import java.sql.Connection;
@@ -21,6 +24,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import org.apache.gravitino.Audit;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.authorization.Privileges;
@@ -28,6 +32,7 @@ import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.exceptions.NoSuchRoleException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
@@ -68,12 +73,21 @@ public class TestDatastratoRoleMetaService {
               + "user_id BIGINT NOT NULL PRIMARY KEY,"
               + "user_name VARCHAR(128) NOT NULL,"
               + "metalake_id BIGINT NOT NULL,"
+              + "external_id VARCHAR(256),"
+              + "enabled BOOLEAN NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
+              + "current_version BIGINT NOT NULL,"
+              + "last_version BIGINT NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE group_meta ("
               + "group_id BIGINT NOT NULL PRIMARY KEY,"
               + "group_name VARCHAR(128) NOT NULL,"
               + "metalake_id BIGINT NOT NULL,"
+              + "external_id VARCHAR(256),"
+              + "audit_info CLOB NOT NULL,"
+              + "current_version BIGINT NOT NULL,"
+              + "last_version BIGINT NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE role_meta ("
@@ -110,6 +124,29 @@ public class TestDatastratoRoleMetaService {
               + "current_version BIGINT NOT NULL,"
               + "last_version BIGINT NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE idp_user_meta ("
+              + "user_id BIGINT NOT NULL PRIMARY KEY,"
+              + "user_name VARCHAR(128) NOT NULL,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE idp_group_meta ("
+              + "group_id BIGINT NOT NULL PRIMARY KEY,"
+              + "group_name VARCHAR(128) NOT NULL,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE idp_user_group_rel ("
+              + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+              + "user_id BIGINT NOT NULL,"
+              + "group_id BIGINT NOT NULL,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE scim_user_group_rel ("
+              + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+              + "metalake_id BIGINT NOT NULL,"
+              + "user_id BIGINT NOT NULL,"
+              + "group_id BIGINT NOT NULL,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
     }
     SqlSessionFactoryHelper.getInstance().init(config);
   }
@@ -121,11 +158,16 @@ public class TestDatastratoRoleMetaService {
 
   @BeforeEach
   void resetTables() throws Exception {
+    String entityAudit = JsonUtils.anyFieldMapper().writeValueAsString(buildRoleAudit());
     try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
         Statement statement = connection.createStatement()) {
       statement.execute("DELETE FROM role_meta_securable_object");
       statement.execute("DELETE FROM user_role_rel");
       statement.execute("DELETE FROM group_role_rel");
+      statement.execute("DELETE FROM idp_user_group_rel");
+      statement.execute("DELETE FROM scim_user_group_rel");
+      statement.execute("DELETE FROM idp_user_meta");
+      statement.execute("DELETE FROM idp_group_meta");
       statement.execute("DELETE FROM role_meta");
       statement.execute("DELETE FROM user_meta");
       statement.execute("DELETE FROM group_meta");
@@ -134,12 +176,65 @@ public class TestDatastratoRoleMetaService {
       statement.execute(
           "INSERT INTO metalake_meta (metalake_id, metalake_name, deleted_at)"
               + " VALUES (1, 'metalake1', 0)");
+      try (PreparedStatement userStatement =
+              connection.prepareStatement(
+                  "INSERT INTO user_meta"
+                      + " (user_id, user_name, metalake_id, external_id, enabled, audit_info,"
+                      + " current_version, last_version, deleted_at)"
+                      + " VALUES (?, ?, 1, ?, TRUE, ?, 1, 1, 0)");
+          PreparedStatement groupStatement =
+              connection.prepareStatement(
+                  "INSERT INTO group_meta"
+                      + " (group_id, group_name, metalake_id, external_id, audit_info,"
+                      + " current_version, last_version, deleted_at)"
+                      + " VALUES (?, ?, 1, ?, ?, 1, 1, 0)")) {
+        userStatement.setLong(1, 10L);
+        userStatement.setString(2, "user1");
+        userStatement.setString(3, "local-external-id");
+        userStatement.setString(4, entityAudit);
+        userStatement.addBatch();
+        userStatement.setLong(1, 11L);
+        userStatement.setString(2, "userNoRoles");
+        userStatement.setString(3, null);
+        userStatement.setString(4, entityAudit);
+        userStatement.addBatch();
+        userStatement.setLong(1, 12L);
+        userStatement.setString(2, "userProvisioned");
+        userStatement.setString(3, "provisioned-user-id");
+        userStatement.setString(4, entityAudit);
+        userStatement.addBatch();
+        userStatement.executeBatch();
+
+        groupStatement.setLong(1, 20L);
+        groupStatement.setString(2, "group1");
+        groupStatement.setString(3, "local-external-id");
+        groupStatement.setString(4, entityAudit);
+        groupStatement.addBatch();
+        groupStatement.setLong(1, 21L);
+        groupStatement.setString(2, "groupNoRoles");
+        groupStatement.setString(3, null);
+        groupStatement.setString(4, entityAudit);
+        groupStatement.addBatch();
+        groupStatement.setLong(1, 22L);
+        groupStatement.setString(2, "groupProvisioned");
+        groupStatement.setString(3, "provisioned-group-id");
+        groupStatement.setString(4, entityAudit);
+        groupStatement.addBatch();
+        groupStatement.executeBatch();
+      }
       statement.execute(
-          "INSERT INTO user_meta (user_id, user_name, metalake_id, deleted_at)"
-              + " VALUES (10, 'user1', 1, 0), (11, 'userNoRoles', 1, 0)");
+          "INSERT INTO idp_user_meta (user_id, user_name, deleted_at)"
+              + " VALUES (1000, 'user1', 0)");
       statement.execute(
-          "INSERT INTO group_meta (group_id, group_name, metalake_id, deleted_at)"
-              + " VALUES (20, 'group1', 1, 0), (21, 'groupNoRoles', 1, 0)");
+          "INSERT INTO idp_group_meta (group_id, group_name, deleted_at)"
+              + " VALUES (2000, 'group1', 0)");
+      statement.execute(
+          "INSERT INTO idp_user_group_rel (user_id, group_id, deleted_at)"
+              + " VALUES (1000, 2000, 0)");
+      statement.execute(
+          "INSERT INTO scim_user_group_rel"
+              + " (metalake_id, user_id, group_id, deleted_at)"
+              + " VALUES (1, 10, 22, 0), (1, 12, 22, 0)");
     }
 
     String roleAudit = JsonUtils.anyFieldMapper().writeValueAsString(buildRoleAudit());
@@ -150,20 +245,34 @@ public class TestDatastratoRoleMetaService {
                 "INSERT INTO role_meta"
                     + " (role_id, role_name, metalake_id, properties, audit_info,"
                     + " current_version, last_version, deleted_at)"
-                    + " VALUES (100, 'role1', 1, '{}', ?, 1, 1, 0)");
+                    + " VALUES (?, ?, 1, '{}', ?, 1, 1, 0)");
         PreparedStatement userRelationStatement =
             connection.prepareStatement(
                 "INSERT INTO user_role_rel (user_id, role_id, audit_info, deleted_at)"
-                    + " VALUES (10, 100, ?, 0)");
+                    + " VALUES (?, 100, ?, 0)");
         PreparedStatement groupRelationStatement =
             connection.prepareStatement(
                 "INSERT INTO group_role_rel (group_id, role_id, audit_info, deleted_at)"
-                    + " VALUES (20, 100, ?, 0)")) {
-      roleStatement.setString(1, roleAudit);
+                    + " VALUES (?, 100, ?, 0)")) {
+      roleStatement.setLong(1, 100L);
+      roleStatement.setString(2, "role1");
+      roleStatement.setString(3, roleAudit);
       roleStatement.executeUpdate();
-      userRelationStatement.setString(1, assignmentAudit);
+      roleStatement.setLong(1, 101L);
+      roleStatement.setString(2, "roleNoAssignments");
+      roleStatement.setString(3, roleAudit);
+      roleStatement.executeUpdate();
+      userRelationStatement.setLong(1, 10L);
+      userRelationStatement.setString(2, assignmentAudit);
       userRelationStatement.executeUpdate();
-      groupRelationStatement.setString(1, assignmentAudit);
+      userRelationStatement.setLong(1, 12L);
+      userRelationStatement.setString(2, assignmentAudit);
+      userRelationStatement.executeUpdate();
+      groupRelationStatement.setLong(1, 20L);
+      groupRelationStatement.setString(2, assignmentAudit);
+      groupRelationStatement.executeUpdate();
+      groupRelationStatement.setLong(1, 22L);
+      groupRelationStatement.setString(2, assignmentAudit);
       groupRelationStatement.executeUpdate();
     }
   }
@@ -186,6 +295,57 @@ public class TestDatastratoRoleMetaService {
 
     assertEquals(1, assignments.size());
     assertAssignment(assignments.get(0));
+  }
+
+  /** Tests users listed by role include assignment audit and IdP-derived origin. */
+  @Test
+  public void testListUserAssignmentsByRole() {
+    DatastratoRoleMetaService service = DatastratoRoleMetaService.getInstance();
+
+    List<RoleUserAssignment> assignments = service.listUserAssignmentsByRole("metalake1", "role1");
+
+    assertEquals(2, assignments.size());
+    assertEquals("user1", assignments.get(0).user().name());
+    assertTrue(assignments.get(0).inBuiltInIdp());
+    assertEquals("local-external-id", assignments.get(0).user().externalId());
+    assertAssignmentAudit(assignments.get(0).assignmentAudit());
+    assertEquals("userProvisioned", assignments.get(1).user().name());
+    assertFalse(assignments.get(1).inBuiltInIdp());
+    assertAssignmentAudit(assignments.get(1).assignmentAudit());
+
+    assertTrue(service.listUserAssignmentsByRole("metalake1", "roleNoAssignments").isEmpty());
+    assertThrows(
+        NoSuchRoleException.class,
+        () -> service.listUserAssignmentsByRole("metalake1", "missingRole"));
+    assertThrows(
+        NoSuchMetalakeException.class,
+        () -> service.listUserAssignmentsByRole("missingMetalake", "role1"));
+  }
+
+  /** Tests groups listed by role include assignment audit and source-aware user counts. */
+  @Test
+  public void testListGroupAssignmentsByRole() {
+    DatastratoRoleMetaService service = DatastratoRoleMetaService.getInstance();
+
+    List<RoleGroupAssignment> assignments =
+        service.listGroupAssignmentsByRole("metalake1", "role1");
+
+    assertEquals(2, assignments.size());
+    assertEquals("group1", assignments.get(0).group().name());
+    assertEquals("local-external-id", assignments.get(0).group().externalId());
+    assertEquals(1, assignments.get(0).userCount());
+    assertAssignmentAudit(assignments.get(0).assignmentAudit());
+    assertEquals("groupProvisioned", assignments.get(1).group().name());
+    assertEquals(2, assignments.get(1).userCount());
+    assertAssignmentAudit(assignments.get(1).assignmentAudit());
+
+    assertTrue(service.listGroupAssignmentsByRole("metalake1", "roleNoAssignments").isEmpty());
+    assertThrows(
+        NoSuchRoleException.class,
+        () -> service.listGroupAssignmentsByRole("metalake1", "missingRole"));
+    assertThrows(
+        NoSuchMetalakeException.class,
+        () -> service.listGroupAssignmentsByRole("missingMetalake", "role1"));
   }
 
   /** Tests missing metalake, missing principal, and unassigned principal semantics. */
@@ -239,6 +399,11 @@ public class TestDatastratoRoleMetaService {
     assertTrue(assignment.role().securableObjects().isEmpty());
     assertEquals(ASSIGNED_AT, assignment.assignmentAudit().lastModifiedTime());
     assertEquals("admin", assignment.assignmentAudit().lastModifier());
+  }
+
+  private void assertAssignmentAudit(Audit audit) {
+    assertEquals(ASSIGNED_AT, audit.lastModifiedTime());
+    assertEquals("admin", audit.lastModifier());
   }
 
   private RolePO buildRolePO() throws JsonProcessingException {

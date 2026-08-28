@@ -4,6 +4,8 @@
 package com.datastrato.gravitino.authorization.mapper;
 
 import com.datastrato.gravitino.authorization.po.RoleAssignmentPO;
+import com.datastrato.gravitino.authorization.po.RoleGroupAssignmentPO;
+import com.datastrato.gravitino.authorization.po.RoleUserAssignmentPO;
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
@@ -36,4 +38,30 @@ public interface DatastratoRoleAssignmentMapper {
       method = "listRoleAssignmentsByGroup")
   List<RoleAssignmentPO> listRoleAssignmentsByGroup(
       @Param("metalake") String metalake, @Param("principal") String group);
+
+  /**
+   * Lists users assigned to a role with assignment and identity-source information.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The assigned users.
+   */
+  @SelectProvider(
+      type = DatastratoRoleAssignmentSQLProviderFactory.class,
+      method = "listUserAssignmentsByRole")
+  List<RoleUserAssignmentPO> listUserAssignmentsByRole(
+      @Param("metalake") String metalake, @Param("role") String role);
+
+  /**
+   * Lists groups assigned to a role with assignment and user-count information.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The assigned groups.
+   */
+  @SelectProvider(
+      type = DatastratoRoleAssignmentSQLProviderFactory.class,
+      method = "listGroupAssignmentsByRole")
+  List<RoleGroupAssignmentPO> listGroupAssignmentsByRole(
+      @Param("metalake") String metalake, @Param("role") String role);
 }

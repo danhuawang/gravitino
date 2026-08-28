@@ -6,8 +6,13 @@ package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.dto.authorization.RoleGroupAssignmentDTO;
+import com.datastrato.gravitino.dto.authorization.RoleUserAssignmentDTO;
 import com.datastrato.gravitino.dto.requests.PermissionUpdateRequest;
+import com.datastrato.gravitino.dto.responses.RoleGroupAssignmentListResponse;
+import com.datastrato.gravitino.dto.responses.RoleUserAssignmentListResponse;
 import com.google.common.collect.Lists;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
@@ -25,9 +30,7 @@ import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
-import org.apache.gravitino.dto.responses.GroupListResponse;
 import org.apache.gravitino.dto.responses.RoleResponse;
-import org.apache.gravitino.dto.responses.UserListResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -72,9 +75,16 @@ public class ExtendedRoleOperations {
           httpRequest,
           () ->
               Utils.ok(
-                  new UserListResponse(
-                      DTOConverters.toDTOs(
-                          accessControlDispatcher.listUsersByRole(metalake, role)))));
+                  new RoleUserAssignmentListResponse(
+                      Arrays.stream(
+                              accessControlDispatcher.listUserAssignmentsByRole(metalake, role))
+                          .map(
+                              assignment ->
+                                  new RoleUserAssignmentDTO(
+                                      assignment.user(),
+                                      assignment.assignmentAudit(),
+                                      assignment.inBuiltInIdp()))
+                          .toArray(RoleUserAssignmentDTO[]::new))));
     } catch (Exception e) {
       return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
     }
@@ -94,9 +104,16 @@ public class ExtendedRoleOperations {
           httpRequest,
           () ->
               Utils.ok(
-                  new GroupListResponse(
-                      DTOConverters.toDTOs(
-                          accessControlDispatcher.listGroupsByRole(metalake, role)))));
+                  new RoleGroupAssignmentListResponse(
+                      Arrays.stream(
+                              accessControlDispatcher.listGroupAssignmentsByRole(metalake, role))
+                          .map(
+                              assignment ->
+                                  new RoleGroupAssignmentDTO(
+                                      assignment.group(),
+                                      assignment.assignmentAudit(),
+                                      assignment.userCount()))
+                          .toArray(RoleGroupAssignmentDTO[]::new))));
     } catch (Exception e) {
       return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
     }

@@ -45,6 +45,30 @@ public class DatastratoRoleAssignmentSQLProviderFactory {
     return getProvider().listRoleAssignmentsByGroup(metalake, group);
   }
 
+  /**
+   * Lists users assigned to a role.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The role user assignment SQL.
+   */
+  public static String listUserAssignmentsByRole(
+      @Param("metalake") String metalake, @Param("role") String role) {
+    return getProvider().listUserAssignmentsByRole(metalake, role);
+  }
+
+  /**
+   * Lists groups assigned to a role.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The role group assignment SQL.
+   */
+  public static String listGroupAssignmentsByRole(
+      @Param("metalake") String metalake, @Param("role") String role) {
+    return getProvider().listGroupAssignmentsByRole(metalake, role);
+  }
+
   private static DatastratoRoleAssignmentBaseSQLProvider getProvider() {
     String databaseId =
         SqlSessionFactoryHelper.getInstance()

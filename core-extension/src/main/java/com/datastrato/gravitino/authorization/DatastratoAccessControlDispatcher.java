@@ -663,6 +663,19 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
+   * Lists users assigned to a role with assignment audit and identity origin.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The role user assignments.
+   */
+  public RoleUserAssignment[] listUserAssignmentsByRole(String metalake, String role) {
+    return DatastratoRoleMetaService.getInstance()
+        .listUserAssignmentsByRole(metalake, role)
+        .toArray(new RoleUserAssignment[0]);
+  }
+
+  /**
    * Lists groups that are granted the role under a metalake.
    *
    * @param metalake The metalake name.
@@ -690,6 +703,19 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
           ioe);
       throw new RuntimeException(ioe);
     }
+  }
+
+  /**
+   * Lists groups assigned to a role with assignment audit and user count.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @return The role group assignments.
+   */
+  public RoleGroupAssignment[] listGroupAssignmentsByRole(String metalake, String role) {
+    return DatastratoRoleMetaService.getInstance()
+        .listGroupAssignmentsByRole(metalake, role)
+        .toArray(new RoleGroupAssignment[0]);
   }
 
   /**
