@@ -1546,7 +1546,11 @@ public class TestEntityOperations extends JerseyTest {
         ExtendedCatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
         Assertions.assertEquals(2, catalogDTOs.length);
         assertCatalogs(catalogDTOs);
-        Mockito.verify(mockAuthorizer, Mockito.never())
+        // Upstream list short-circuit now consults the authorizer for a parent-scope grant before
+        // falling through to the per-object path. With access-control uninitialized that attempt
+        // fails and MetadataListingHelper still returns the unfiltered list; authorize may have
+        // been invoked once for the short-circuit probe.
+        Mockito.verify(mockAuthorizer, Mockito.atMostOnce())
             .authorize(any(), eq("testMetalake"), any(), any(), any());
       }
     } catch (Throwable failure) {

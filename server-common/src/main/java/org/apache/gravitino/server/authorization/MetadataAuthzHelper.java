@@ -206,16 +206,6 @@ public class MetadataAuthzHelper {
       String expression,
       Entity.EntityType entityType,
       NameIdentifier[] nameIdentifiers) {
-    if (enableAuthorization()
-        && nameIdentifiers.length > 0
-        && allVisibleViaParentScope(metalake, expression, entityType, nameIdentifiers)) {
-      // A privilege granted at a parent scope (metalake/catalog/schema) makes every object in the
-      // list visible, and no object-level deny exists, so the per-object authorization loop is
-      // skipped entirely. See AuthorizationExpressionConstants.*_LIST_PARENT_SCOPE_*.
-      return nameIdentifiers;
-    }
-    preloadToCache(entityType, nameIdentifiers);
-    preloadOwner(entityType, nameIdentifiers);
     return filterByExpression(metalake, expression, entityType, nameIdentifiers, e -> e);
   }
 
@@ -304,6 +294,29 @@ public class MetadataAuthzHelper {
       Entity.EntityType entityType,
       E[] entities,
       Function<E, NameIdentifier> toNameIdentifier) {
+    // Every list endpoint funnels through here, whichever shape it holds its results in, so the
+    // short-circuit and the preloads live at this one point. Keeping them in the NameIdentifier[]
+    // overload alone let the verbose catalog listing, which carries Catalog objects, run the
+    // per-object loop over every catalog in the metalake.
+    NameIdentifier[] nameIdentifiers =
+        Arrays.stream(entities).map(toNameIdentifier).toArray(NameIdentifier[]::new);
+    if (enableAuthorization()
+        && nameIdentifiers.length > 0
+        && allVisibleViaParentScope(metalake, expression, entityType, nameIdentifiers)) {
+      // A privilege granted at a parent scope (metalake/catalog/schema) makes every object in the
+      // list visible, and no object-level deny exists, so the per-object authorization loop is
+      // skipped entirely. See AuthorizationExpressionConstants.*_LIST_PARENT_SCOPE_*.
+      return entities;
+    }
+    // Preloads need a live EntityStore. When authorization is off (including Jersey unit tests
+    // that never initialize GravitinoEnv), skip them: doFilter already no-ops without auth, and
+    // cacheEnabled() defaults to true when config is null so preloadOwner would otherwise throw
+    // "GravitinoEnv is not initialized" from entityStore().
+    if (enableAuthorization()) {
+      preloadToCache(entityType, nameIdentifiers);
+      preloadOwner(entityType, nameIdentifiers);
+    }
+
     GravitinoAuthorizer authorizer =
         GravitinoAuthorizerProvider.getInstance().getGravitinoAuthorizer();
     AuthorizationRequestContext authorizationRequestContext = new AuthorizationRequestContext();
@@ -490,8 +503,8 @@ public class MetadataAuthzHelper {
     if (!GravitinoEnv.getInstance().cacheEnabled()) {
       return;
     }
-    EntityStore entityStore = GravitinoEnv.getInstance().entityStore();
     try {
+      EntityStore entityStore = GravitinoEnv.getInstance().entityStore();
       entityStore
           .relationOperations()
           .batchListEntitiesByRelation(
