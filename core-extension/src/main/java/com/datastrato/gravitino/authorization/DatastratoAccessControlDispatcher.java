@@ -706,6 +706,32 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
         .toArray(Role[]::new);
   }
 
+  /**
+   * Lists role assignments for a user with role privileges and assignment audit information.
+   *
+   * @param metalake The metalake name.
+   * @param user The user name.
+   * @return The user's role assignments.
+   */
+  public RoleAssignment[] listRoleAssignmentsByUser(String metalake, String user) {
+    return DatastratoRoleMetaService.getInstance()
+        .listUserRoleAssignments(metalake, user)
+        .toArray(new RoleAssignment[0]);
+  }
+
+  /**
+   * Lists role assignments for a group with role privileges and assignment audit information.
+   *
+   * @param metalake The metalake name.
+   * @param group The group name.
+   * @return The group's role assignments.
+   */
+  public RoleAssignment[] listRoleAssignmentsByGroup(String metalake, String group) {
+    return DatastratoRoleMetaService.getInstance()
+        .listGroupRoleAssignments(metalake, group)
+        .toArray(new RoleAssignment[0]);
+  }
+
   @Override
   public String[] listRoleNamesByObject(String metalake, MetadataObject object)
       throws NoSuchMetalakeException, NoSuchMetadataObjectException {

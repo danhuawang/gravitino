@@ -63,8 +63,8 @@ paths:
       operationId: getAuthorizationOverview
       description: |
         Returns metadata objects grouped by catalog, users and groups associated
-        through roles, privileged principal share, and all visible
-        roles with their direct members.
+        through roles, privileged principal share, and all visible roles with
+        their owners and direct members.
 
         A member is one directly assigned user or group; users contained in a group
         are not expanded. Privileged is the share of catalog principals holding an allowed
@@ -87,6 +87,70 @@ paths:
               examples:
                 NoSuchMetalakeException:
                   $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+        "5XX":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/metalakes/{metalake}/users/{user}/roles:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
+
+    get:
+      tags:
+        - access control
+      summary: List roles assigned to a user
+      operationId: listUserRoleAssignments
+      description: |
+        Returns all roles directly assigned to one user. Each role includes its
+        securable objects and privileges together with audit information recorded
+        on the user-role assignment relation.
+      responses:
+        "200":
+          description: Returns the user's role assignments
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/RoleAssignmentListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The specified metalake or user does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5XX":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/metalakes/{metalake}/groups/{group}/roles:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
+
+    get:
+      tags:
+        - access control
+      summary: List roles assigned to a group
+      operationId: listGroupRoleAssignments
+      description: |
+        Returns all roles directly assigned to one group. Each role includes its
+        securable objects and privileges together with audit information recorded
+        on the group-role assignment relation.
+      responses:
+        "200":
+          description: Returns the group's role assignments
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/RoleAssignmentListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The specified metalake or group does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
         "5XX":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
@@ -167,6 +231,17 @@ components:
           items:
             $ref: "#/components/schemas/RolePrivilege"
 
+    RoleAssignment:
+      type: object
+      required:
+        - role
+        - assignmentAudit
+      properties:
+        role:
+          $ref: "../../docs/open-api/roles.yaml#/components/schemas/Role"
+        assignmentAudit:
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
+
     CatalogAuthorization:
       type: object
       required:
@@ -231,6 +306,8 @@ components:
       properties:
         role:
           type: string
+        owner:
+          $ref: "../../docs/open-api/owners.yaml#/components/schemas/Owner"
         users:
           type: array
           items:
@@ -279,6 +356,24 @@ components:
           description: Metadata objects with their associated role privileges
           items:
             $ref: "#/components/schemas/ObjectRolePrivilege"
+
+    RoleAssignmentListResponse:
+      type: object
+      required:
+        - code
+        - roles
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        roles:
+          type: array
+          description: Roles and their principal-assignment audit information
+          items:
+            $ref: "#/components/schemas/RoleAssignment"
 
     AuthorizationOverviewResponse:
       type: object

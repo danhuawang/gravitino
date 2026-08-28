@@ -10,6 +10,7 @@ import com.datastrato.gravitino.dto.authorization.ObjectAuthorizationDTO;
 import com.datastrato.gravitino.dto.authorization.RoleMembershipDTO;
 import com.datastrato.gravitino.dto.authorization.RolePrivilegeDTO;
 import com.datastrato.gravitino.dto.responses.AuthorizationOverviewResponse;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -28,13 +30,20 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.EntityStore;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.RelationalEntity;
+import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.Group;
+import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.User;
+import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.metalake.MetalakeManager;
@@ -81,6 +90,7 @@ public class ExtendedAuthorizationOverviewOperations {
               Privilege.Name.MODIFY_FUNCTION));
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
+  private final EntityStore entityStore;
 
   @Context private HttpServletRequest httpRequest;
 
@@ -88,6 +98,7 @@ public class ExtendedAuthorizationOverviewOperations {
   public ExtendedAuthorizationOverviewOperations() {
     this.accessControlDispatcher =
         ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
+    this.entityStore = GravitinoEnv.getInstance().entityStore();
   }
 
   /**
@@ -108,6 +119,7 @@ public class ExtendedAuthorizationOverviewOperations {
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
             Role[] roles = loadVisibleRoles(metalake);
+            Map<String, OwnerDTO> roleOwners = loadRoleOwners(metalake, roles);
             Map<String, Set<String>> usersByRole = initializeMembersByRole(roles);
             Map<String, Set<String>> groupsByRole = initializeMembersByRole(roles);
             collectUsersByRole(usersByRole, accessControlDispatcher.listUsers(metalake));
@@ -137,6 +149,7 @@ public class ExtendedAuthorizationOverviewOperations {
                         role ->
                             buildRoleMembershipDTO(
                                 role,
+                                roleOwners.get(role.name),
                                 usersByRole.getOrDefault(role.name, Collections.emptySet()),
                                 groupsByRole.getOrDefault(role.name, Collections.emptySet())))
                     .toArray(RoleMembershipDTO[]::new);
@@ -274,6 +287,48 @@ public class ExtendedAuthorizationOverviewOperations {
     }
   }
 
+  private Map<String, OwnerDTO> loadRoleOwners(String metalake, Role[] roles) throws IOException {
+    if (roles.length == 0) {
+      return new LinkedHashMap<>();
+    }
+
+    List<NameIdentifier> roleIdentifiers = new ArrayList<>(roles.length);
+    Arrays.stream(roles)
+        .map(role -> NameIdentifierUtil.ofRole(metalake, role.name()))
+        .forEach(roleIdentifiers::add);
+    List<RelationalEntity<?>> relations =
+        entityStore
+            .relationOperations()
+            .batchListEntitiesByRelation(
+                SupportsRelationOperations.Type.OWNER_REL, roleIdentifiers, Entity.EntityType.ROLE);
+
+    Map<String, OwnerDTO> owners = new LinkedHashMap<>();
+    relations.forEach(
+        relation -> {
+          OwnerDTO owner = toOwnerDTO(relation.targetEntity());
+          if (owner != null) {
+            owners.put(relation.source().name(), owner);
+          }
+        });
+    return owners;
+  }
+
+  private OwnerDTO toOwnerDTO(Entity ownerEntity) {
+    if (ownerEntity instanceof User) {
+      return OwnerDTO.builder()
+          .withName(((User) ownerEntity).name())
+          .withType(Owner.Type.USER)
+          .build();
+    }
+    if (ownerEntity instanceof Group) {
+      return OwnerDTO.builder()
+          .withName(((Group) ownerEntity).name())
+          .withType(Owner.Type.GROUP)
+          .build();
+    }
+    return null;
+  }
+
   private CatalogAuthorizationDTO buildCatalogDTO(
       CatalogAccumulator catalog,
       Map<String, Set<String>> usersByRole,
@@ -320,9 +375,10 @@ public class ExtendedAuthorizationOverviewOperations {
   }
 
   private RoleMembershipDTO buildRoleMembershipDTO(
-      RoleAccumulator role, Set<String> users, Set<String> groups) {
+      RoleAccumulator role, @Nullable OwnerDTO owner, Set<String> users, Set<String> groups) {
     return new RoleMembershipDTO(
         role.name,
+        owner,
         users.toArray(new String[0]),
         groups.toArray(new String[0]),
         role.catalogs.toArray(new String[0]),
