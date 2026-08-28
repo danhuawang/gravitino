@@ -5,7 +5,10 @@ package org.apache.gravitino.storage.relational.service;
 
 import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATIONAL_STORE_METRIC_NAME;
 
+import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
+import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -13,6 +16,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.relational.po.UserPO;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
@@ -35,6 +39,30 @@ public class DatastratoUserMetaService {
    */
   public static DatastratoUserMetaService getInstance() {
     return INSTANCE;
+  }
+
+  /**
+   * Lists users under a metalake with roles and metalake group names in one SQL query.
+   *
+   * @param metalake The metalake name.
+   * @return Users with group names.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listUsersWithGroups")
+  public List<UserWithGroups> listUsersWithGroups(String metalake) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    return SessionUtils.getWithoutCommit(
+        DatastratoUserMetaMapper.class,
+        mapper -> {
+          List<UserWithGroupsPO> userPOs = mapper.listUserWithGroupsPOsByMetalakeName(metalake);
+          return userPOs.stream()
+              .map(
+                  po ->
+                      DatastratoPOConverters.fromUserWithGroupsPO(
+                          po, AuthorizationUtils.ofUserNamespace(metalake)))
+              .collect(Collectors.toList());
+        });
   }
 
   /**

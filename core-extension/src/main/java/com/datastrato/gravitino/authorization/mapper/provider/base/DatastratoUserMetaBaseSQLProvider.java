@@ -145,6 +145,41 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
+   * Lists metalake users with roles, group names, and built-in IdP membership in one query.
+   *
+   * @param metalakeName The metalake name.
+   * @return MyBatis SQL.
+   */
+  public String listUserWithGroupsPOsByMetalakeName(@Param("metalakeName") String metalakeName) {
+    return "SELECT ut.user_id as userId, ut.user_name as userName,"
+        + " ut.metalake_id as metalakeId,"
+        + " ut.external_id as externalId, ut.enabled as enabled,"
+        + " ut.audit_info as auditInfo,"
+        + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
+        + " ut.deleted_at as deletedAt,"
+        + " roles.roleNames as roleNames,"
+        + " roles.roleIds as roleIds,"
+        + " userGroups.groupNames as groupNames,"
+        + " CASE WHEN iu.user_name IS NOT NULL THEN 1 ELSE 0 END as inBuiltInIdp"
+        + " FROM "
+        + USER_TABLE_NAME
+        + " ut JOIN "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mt ON ut.metalake_id = mt.metalake_id AND mt.deleted_at = 0 AND mt.metalake_name ="
+        + " #{metalakeName}"
+        + " LEFT JOIN "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0"
+        + " LEFT OUTER JOIN ("
+        + roleAggregationSubquery()
+        + ") roles ON roles.userId = ut.user_id"
+        + " LEFT OUTER JOIN ("
+        + groupAggregationSubquery()
+        + ") userGroups ON userGroups.userId = ut.user_id"
+        + " WHERE ut.deleted_at = 0";
+  }
+
+  /**
    * Loads metalake user totals split by {@code enabled}.
    *
    * @param metalakeName The metalake name.
@@ -274,5 +309,72 @@ public class DatastratoUserMetaBaseSQLProvider {
 
   protected String jsonArrayAgg(String expr) {
     return "JSON_ARRAYAGG(" + expr + ")";
+  }
+
+  private String roleAggregationSubquery() {
+    return "SELECT rt.user_id as userId,"
+        + " JSON_ARRAYAGG(rot.role_name) as roleNames,"
+        + " JSON_ARRAYAGG(rot.role_id) as roleIds"
+        + " FROM "
+        + USER_ROLE_RELATION_TABLE_NAME
+        + " rt JOIN "
+        + ROLE_TABLE_NAME
+        + " rot ON rot.role_id = rt.role_id AND rot.deleted_at = 0"
+        + " WHERE rt.deleted_at = 0"
+        + " GROUP BY rt.user_id";
+  }
+
+  private String groupAggregationSubquery() {
+    return "SELECT membership.userId as userId,"
+        + " JSON_ARRAYAGG(membership.groupName) as groupNames"
+        + " FROM ("
+        + userGroupMembershipSubquery()
+        + ") membership"
+        + " GROUP BY membership.userId";
+  }
+
+  private String userGroupMembershipSubquery() {
+    return localIdpGroupMembershipSelect() + " UNION ALL " + scimGroupMembershipSelect();
+  }
+
+  private String localIdpGroupMembershipSelect() {
+    return "SELECT u.user_id as userId, g.group_name as groupName"
+        + " FROM "
+        + USER_TABLE_NAME
+        + " u JOIN "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mm ON u.metalake_id = mm.metalake_id AND mm.deleted_at = 0 AND mm.metalake_name ="
+        + " #{metalakeName}"
+        + " JOIN "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu ON iu.user_name = u.user_name AND iu.deleted_at = 0"
+        + " JOIN "
+        + DatastratoUserMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+        + " ir ON ir.user_id = iu.user_id AND ir.deleted_at = 0"
+        + " JOIN "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig ON ig.group_id = ir.group_id AND ig.deleted_at = 0"
+        + " JOIN "
+        + GroupMetaMapper.GROUP_TABLE_NAME
+        + " g ON g.group_name = ig.group_name AND g.metalake_id = u.metalake_id AND g.deleted_at ="
+        + " 0"
+        + " WHERE u.deleted_at = 0 AND (u.external_id IS NULL OR u.external_id = '')";
+  }
+
+  private String scimGroupMembershipSelect() {
+    return "SELECT u.user_id as userId, g.group_name as groupName"
+        + " FROM "
+        + USER_TABLE_NAME
+        + " u JOIN "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mm ON u.metalake_id = mm.metalake_id AND mm.deleted_at = 0 AND mm.metalake_name ="
+        + " #{metalakeName}"
+        + " JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
+        + " sr ON sr.user_id = u.user_id AND sr.metalake_id = u.metalake_id AND sr.deleted_at = 0"
+        + " JOIN "
+        + GroupMetaMapper.GROUP_TABLE_NAME
+        + " g ON g.group_id = sr.group_id AND g.metalake_id = u.metalake_id AND g.deleted_at = 0"
+        + " WHERE u.deleted_at = 0 AND u.external_id IS NOT NULL AND u.external_id != ''";
   }
 }

@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.authorization.mapper;
 
+import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import java.util.List;
 import org.apache.gravitino.storage.relational.po.UserPO;
 import org.apache.ibatis.annotations.Param;
@@ -80,5 +81,17 @@ public interface DatastratoUserMetaMapper {
       type = DatastratoUserMetaSQLProviderFactory.class,
       method = "countUsersByEnabledByMetalake")
   IdpNameStatusPO.UserEnabledCountsRow countUsersByEnabledByMetalake(
+      @Param("metalakeName") String metalakeName);
+
+  /**
+   * Lists metalake users with roles, group names, and built-in IdP membership in one query.
+   *
+   * @param metalakeName The metalake name.
+   * @return User rows with aggregated group names.
+   */
+  @SelectProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "listUserWithGroupsPOsByMetalakeName")
+  List<UserWithGroupsPO> listUserWithGroupsPOsByMetalakeName(
       @Param("metalakeName") String metalakeName);
 }

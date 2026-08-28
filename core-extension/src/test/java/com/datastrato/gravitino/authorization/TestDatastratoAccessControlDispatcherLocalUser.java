@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.dto.authorization.IdentityType;
 import java.util.Collections;
 import java.util.List;
 import org.apache.gravitino.EntityStore;
@@ -37,6 +38,44 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
     inner = mock(AccessControlDispatcher.class);
     idp = mock(IdpUserGroupManager.class);
     dispatcher = new DatastratoAccessControlDispatcher(inner, mock(EntityStore.class), idp);
+  }
+
+  @Test
+  public void testLookupUserGroupNamesLocal() {
+    when(idp.getUser("alice")).thenReturn(new IdpUser("alice", List.of("contractors", "analysts")));
+
+    Assertions.assertEquals(
+        List.of("contractors", "analysts"),
+        dispatcher.lookupUserGroupNames("alice", IdentityType.LOCAL));
+  }
+
+  @Test
+  public void testLookupUserGroupNamesProvisionedTodo() {
+    Assertions.assertEquals(
+        List.of(), dispatcher.lookupUserGroupNames("dana", IdentityType.PROVISIONED));
+    verify(idp, never()).getUser(any());
+  }
+
+  @Test
+  public void testLookupGroupInfoLocal() {
+    when(idp.getGroup("contractors"))
+        .thenReturn(
+            new IdpGroup(
+                "contractors", List.of("alice", "bob"), "External analysts on time-boxed access"));
+
+    GroupLookupInfo info = dispatcher.lookupGroupInfo("contractors", IdentityType.LOCAL);
+    Assertions.assertEquals("contractors", info.groupName());
+    Assertions.assertEquals("External analysts on time-boxed access", info.comment());
+    Assertions.assertEquals(List.of("alice", "bob"), info.members());
+  }
+
+  @Test
+  public void testLookupGroupInfoProvisionedTodo() {
+    GroupLookupInfo info = dispatcher.lookupGroupInfo("analysts", IdentityType.PROVISIONED);
+    Assertions.assertEquals("analysts", info.groupName());
+    Assertions.assertEquals("", info.comment());
+    Assertions.assertEquals(List.of(), info.members());
+    verify(idp, never()).getGroup(any());
   }
 
   @Test

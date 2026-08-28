@@ -23,13 +23,14 @@ paths:
       tags:
         - users
       summary: List metalake users for the security UI
-      operationId: listSecurityUsers
+      operationId: listUsersWithGroups
       description: |
         List users under a metalake for the enterprise security Users page.
 
-        Returns OSS user fields plus `origin`. `origin` is `Local` when the username exists in the
-        built-in IdP (`idp_user_meta`) and `Provisioned` otherwise. `enabled` maps to Active /
-        Suspended in the UI.
+        Returns OSS user fields plus `origin` and metalake `groups`. `origin` is `Local` when the
+        username exists in the built-in IdP (`idp_user_meta`) and `Provisioned` otherwise.
+        `enabled` maps to Active / Suspended in the UI. `groups` lists metalake group names for
+        the Users table.
 
       responses:
         "200":
@@ -157,8 +158,8 @@ paths:
       description: |
         Get a metalake user for the enterprise security user Overview page.
 
-        Returns OSS user fields plus `origin`. `origin` is `Local` when the username exists in the
-        built-in IdP (`idp_user_meta`) and `Provisioned` otherwise.
+        Returns OSS user fields plus `origin`. `origin` is `Local` when `externalId` is blank and
+        `Provisioned` when `externalId` is present.
 
       responses:
         "200":
@@ -261,15 +262,32 @@ components:
         - Local
         - Provisioned
 
-    ExtendedUser:
-      allOf:
-        - $ref: "../../docs/open-api/users.yaml#/components/schemas/User"
-        - type: object
-          required:
-            - origin
-          properties:
-            origin:
-              $ref: "#/components/schemas/IdentitySource"
+    IdentityType:
+      type: string
+      description: Identity type for user or group lookup before add
+      enum:
+        - local
+        - provisioned
+
+    UserGroupNamesResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        username:
+          type: string
+          description: Looked-up username
+        type:
+          $ref: "#/components/schemas/IdentityType"
+        groupNames:
+          type: array
+          description: Group names for the user
+          items:
+            type: string
 
     IdpNameStatus:
       type: object
@@ -300,6 +318,22 @@ components:
           description: Built-in IdP users with metalake membership status
           items:
             $ref: "#/components/schemas/IdpNameStatus"
+
+    ExtendedUser:
+      allOf:
+        - $ref: "../../docs/open-api/users.yaml#/components/schemas/User"
+        - type: object
+          required:
+            - origin
+            - groups
+          properties:
+            origin:
+              $ref: "#/components/schemas/IdentitySource"
+            groups:
+              type: array
+              description: Metalake group names for the security Users table
+              items:
+                type: string
 
     ExtendedUserListResponse:
       type: object

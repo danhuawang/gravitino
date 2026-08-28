@@ -1,0 +1,137 @@
+# Copyright 2026 Datastrato.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+---
+
+paths:
+
+  /web/security/identity/users/{username}/groups:
+    get:
+      tags:
+        - identity
+      summary: Get groups for a user before add
+      operationId: getUserGroups
+      description: |
+        Look up group names for a user in IdP / SCIM before adding the user into a metalake.
+
+        `type=local` resolves membership from built-in IdP tables (`idp_user_group_rel` joined with
+        `idp_group_meta`). `type=provisioned` is reserved for global SCIM lookup and currently
+        returns an empty list.
+
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: "^[^:]*$"
+          description: Username to look up
+        - name: type
+          in: query
+          required: true
+          schema:
+            $ref: "./users.yaml#/components/schemas/IdentityType"
+          description: Identity type
+
+      responses:
+        "200":
+          description: Returns group names for the user
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./users.yaml#/components/schemas/UserGroupNamesResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The local IdP user does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/identity/groups/{groupName}:
+    get:
+      tags:
+        - identity
+      summary: Get group metadata before add
+      operationId: getGroupInfo
+      description: |
+        Look up group metadata in IdP / SCIM before adding the group into a metalake.
+
+        `type=local` resolves from built-in IdP tables (`idp_group_meta` with membership from
+        `idp_user_group_rel`). `type=provisioned` is reserved for global SCIM lookup and currently
+        returns empty metadata.
+
+      parameters:
+        - name: groupName
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+          description: Group name to look up
+        - name: type
+          in: query
+          required: true
+          schema:
+            $ref: "./users.yaml#/components/schemas/IdentityType"
+          description: Identity type
+
+      responses:
+        "200":
+          description: Returns group metadata
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/GroupInfoResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The local IdP group does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    GroupInfoResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        groupName:
+          type: string
+          description: Group name
+        type:
+          $ref: "./users.yaml#/components/schemas/IdentityType"
+        comment:
+          type: string
+          description: Group comment
+        members:
+          type: array
+          description: Member usernames
+          items:
+            type: string

@@ -9,6 +9,7 @@ import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.authorization.IdentityType;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -48,6 +49,7 @@ import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.exceptions.RoleAlreadyExistsException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.idp.IdpUserGroupManager;
+import org.apache.gravitino.idp.model.IdpGroup;
 import org.apache.gravitino.lock.LockType;
 import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.AuditInfo;
@@ -309,6 +311,62 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
       String metalake, List<String> usernames, boolean enabled) {
     return DatastratoUserMetaService.getInstance()
         .batchUpdateUserEnabled(metalake, usernames, enabled);
+  }
+
+  /**
+   * Lists users under a metalake with roles, group names, and built-in IdP membership in one SQL
+   * query.
+   *
+   * @param metalake The metalake name.
+   * @return Users with group names.
+   */
+  public List<UserWithGroups> listUsersWithGroups(String metalake) {
+    return DatastratoUserMetaService.getInstance().listUsersWithGroups(metalake);
+  }
+
+  /**
+   * Looks up group names for a user before adding the user into a metalake.
+   *
+   * @param username The username.
+   * @param type The identity type.
+   * @return Group names for the user.
+   */
+  public List<String> lookupUserGroupNames(String username, IdentityType type) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(username), "username cannot be blank");
+    Preconditions.checkNotNull(type, "type cannot be null");
+
+    switch (type) {
+      case LOCAL:
+        return idpUserGroupManager.getUser(username).groupNames();
+      case PROVISIONED:
+        // TODO: resolve group names for provisioned users from global SCIM identity store.
+        return List.of();
+      default:
+        throw new IllegalArgumentException("Unsupported identity type: " + type);
+    }
+  }
+
+  /**
+   * Looks up group metadata before adding the group into a metalake.
+   *
+   * @param groupName The group name.
+   * @param type The identity type.
+   * @return Group metadata.
+   */
+  public GroupLookupInfo lookupGroupInfo(String groupName, IdentityType type) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(groupName), "groupName cannot be blank");
+    Preconditions.checkNotNull(type, "type cannot be null");
+
+    switch (type) {
+      case LOCAL:
+        IdpGroup group = idpUserGroupManager.getGroup(groupName);
+        return new GroupLookupInfo(group.name(), group.comment(), group.usernames());
+      case PROVISIONED:
+        // TODO: resolve group metadata for provisioned groups from global SCIM identity store.
+        return new GroupLookupInfo(groupName, "", List.of());
+      default:
+        throw new IllegalArgumentException("Unsupported identity type: " + type);
+    }
   }
 
   /**

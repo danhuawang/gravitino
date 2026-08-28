@@ -61,6 +61,11 @@ public class DatastratoUserMetaSQLProviderFactory {
     return getProvider().countUsersByEnabledByMetalake(metalakeName);
   }
 
+  public static String listUserWithGroupsPOsByMetalakeName(
+      @Param("metalakeName") String metalakeName) {
+    return getProvider().listUserWithGroupsPOsByMetalakeName(metalakeName);
+  }
+
   private static DatastratoUserMetaBaseSQLProvider getProvider() {
     String databaseId =
         SqlSessionFactoryHelper.getInstance()

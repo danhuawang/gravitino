@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.authorization.IdpNameStatus;
+import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
@@ -124,12 +125,11 @@ public class TestExtendedUserOperations extends JerseyTest {
   @Test
   public void testListUsers() {
     String metalake = "metalake";
-    when(accessControlDispatcher.listExtendedUsers(metalake))
+    when(accessControlDispatcher.listUsersWithGroups(metalake))
         .thenReturn(
-            new ExtendedUserDTO[] {
-              ExtendedUserDTO.from(buildUser("lee.p", "has-ext", true), true),
-              ExtendedUserDTO.from(buildUser("dana.k", null, false), false)
-            });
+            List.of(
+                new UserWithGroups(buildUser("lee.p", "has-ext", true), List.of(), true),
+                new UserWithGroups(buildUser("dana.k", null, false), List.of(), false)));
 
     Response response =
         target("/web/security/metalakes/" + metalake + "/users")

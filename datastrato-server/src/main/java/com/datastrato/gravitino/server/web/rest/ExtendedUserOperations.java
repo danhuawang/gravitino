@@ -77,7 +77,8 @@ public class ExtendedUserOperations {
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
             return Utils.ok(
-                new ExtendedUserListResponse(accessControlDispatcher.listExtendedUsers(metalake)));
+                new ExtendedUserListResponse(
+                    ExtendedUserDTO.from(accessControlDispatcher.listUsersWithGroups(metalake))));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.LIST, "", metalake, e);
