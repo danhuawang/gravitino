@@ -308,8 +308,14 @@ public class MetadataAuthzHelper {
       // skipped entirely. See AuthorizationExpressionConstants.*_LIST_PARENT_SCOPE_*.
       return entities;
     }
-    preloadToCache(entityType, nameIdentifiers);
-    preloadOwner(entityType, nameIdentifiers);
+    // Preloads need a live EntityStore. When authorization is off (including Jersey unit tests
+    // that never initialize GravitinoEnv), skip them: doFilter already no-ops without auth, and
+    // cacheEnabled() defaults to true when config is null so preloadOwner would otherwise throw
+    // "GravitinoEnv is not initialized" from entityStore().
+    if (enableAuthorization()) {
+      preloadToCache(entityType, nameIdentifiers);
+      preloadOwner(entityType, nameIdentifiers);
+    }
 
     GravitinoAuthorizer authorizer =
         GravitinoAuthorizerProvider.getInstance().getGravitinoAuthorizer();
@@ -497,8 +503,8 @@ public class MetadataAuthzHelper {
     if (!GravitinoEnv.getInstance().cacheEnabled()) {
       return;
     }
-    EntityStore entityStore = GravitinoEnv.getInstance().entityStore();
     try {
+      EntityStore entityStore = GravitinoEnv.getInstance().entityStore();
       entityStore
           .relationOperations()
           .batchListEntitiesByRelation(
