@@ -27,7 +27,11 @@ import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalNotification;
+<<<<<<< HEAD
 import com.google.common.util.concurrent.UncheckedExecutionException;
+=======
+import io.airlift.log.Logger;
+>>>>>>> upstream/branch-1.3
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.Connector;
 import io.trino.spi.connector.ConnectorAccessControl;
@@ -57,8 +61,6 @@ import org.apache.gravitino.trino.connector.catalog.CatalogConnectorContext;
 import org.apache.gravitino.trino.connector.catalog.CatalogConnectorMetadata;
 import org.apache.gravitino.trino.connector.catalog.CatalogConnectorMetadataAdapter;
 import org.apache.gravitino.trino.connector.security.GravitinoAuthProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * GravitinoConnector serves as the entry point for operations on the connector managed by Trino and
@@ -67,7 +69,7 @@ import org.slf4j.LoggerFactory;
  */
 public class GravitinoConnector implements Connector {
 
-  private static final Logger LOG = LoggerFactory.getLogger(GravitinoConnector.class);
+  private static final Logger LOG = Logger.get(GravitinoConnector.class);
 
   private final NameIdentifier catalogIdentifier;
   protected final CatalogConnectorContext catalogConnectorContext;
@@ -258,6 +260,7 @@ public class GravitinoConnector implements Connector {
     } catch (ExecutionException | UncheckedExecutionException e) {
       Throwable cause = e.getCause() == null ? e : e.getCause();
       LOG.warn(
+<<<<<<< HEAD
           "Failed to create per-user Gravitino client for user '{}'", session.getUser(), cause);
       if (cause instanceof TrinoException) {
         // Already carries a specific Trino error code (e.g. from buildForSession); re-wrapping
@@ -274,6 +277,9 @@ public class GravitinoConnector implements Connector {
                 + cause.getMessage(),
             cause);
       }
+=======
+          cause, "Failed to create per-user Gravitino client for user '%s'", session.getUser());
+>>>>>>> upstream/branch-1.3
       throw new TrinoException(
           GENERIC_INTERNAL_ERROR,
           "Unexpected error while creating per-user Gravitino client for user '"
@@ -353,7 +359,7 @@ public class GravitinoConnector implements Connector {
       try {
         client.close();
       } catch (Exception e) {
-        LOG.warn("Failed to close GravitinoAdminClient", e);
+        LOG.warn(e, "Failed to close GravitinoAdminClient");
       }
     }
   }

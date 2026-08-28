@@ -37,8 +37,14 @@
 #   - OpenShift arbitrary UID compatible
 # ==============================================================================
 
+<<<<<<< HEAD
 ARG TRINO_VERSION=478
 ARG JDK_VERSION=jdk-25+36
+=======
+COPY --chown=trino:trino packages/trino/conf /etc/trino
+COPY --chown=trino:trino packages/gravitino-trino-connector/mysql-connector-java-8.0.27.jar /usr/lib/trino/plugin/iceberg/
+COPY --chown=trino:trino packages/gravitino-trino-connector/postgresql-42.7.11.jar /usr/lib/trino/plugin/iceberg/
+>>>>>>> upstream/branch-1.3
 
 # ==============================================================================
 # Stage 1: Get jvmkill (OOM protection — kills JVM on OutOfMemoryError)

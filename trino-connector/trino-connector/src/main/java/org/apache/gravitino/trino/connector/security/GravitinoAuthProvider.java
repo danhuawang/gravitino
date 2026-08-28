@@ -19,7 +19,11 @@
 package org.apache.gravitino.trino.connector.security;
 
 import com.google.common.base.Preconditions;
+<<<<<<< HEAD
 import io.trino.spi.TrinoException;
+=======
+import io.airlift.log.Logger;
+>>>>>>> upstream/branch-1.3
 import io.trino.spi.connector.ConnectorSession;
 import java.io.File;
 import java.util.Locale;
@@ -30,9 +34,12 @@ import org.apache.gravitino.client.GravitinoAdminClient;
 import org.apache.gravitino.client.GravitinoClientConfiguration;
 import org.apache.gravitino.client.KerberosTokenProvider;
 import org.apache.gravitino.trino.connector.GravitinoConfig;
+<<<<<<< HEAD
 import org.apache.gravitino.trino.connector.GravitinoErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+=======
+>>>>>>> upstream/branch-1.3
 
 /**
  * Builds a {@link GravitinoAdminClient} with the appropriate authentication provider based on the
@@ -41,7 +48,7 @@ import org.slf4j.LoggerFactory;
  */
 public class GravitinoAuthProvider {
 
-  private static final Logger LOG = LoggerFactory.getLogger(GravitinoAuthProvider.class);
+  private static final Logger LOG = Logger.get(GravitinoAuthProvider.class);
 
   /** Authentication type configuration key. */
   public static final String AUTH_TYPE_KEY =
@@ -329,7 +336,7 @@ public class GravitinoAuthProvider {
     // Remove leading slash from path if present
     String normalizedPath = path.startsWith("/") ? path.substring(1) : path;
 
-    LOG.info("Initializing OAuth2 token provider with server URI: {}", serverUri);
+    LOG.info("Initializing OAuth2 token provider with server URI: %s", serverUri);
     return DefaultOAuth2TokenProvider.builder()
         .withUri(serverUri)
         .withCredential(credential)
@@ -373,7 +380,7 @@ public class GravitinoAuthProvider {
       kerberosBuilder.withKeyTabFile(keytabFile);
     } else {
       LOG.warn(
-          "No keytab file configured for Kerberos authentication ({}). "
+          "No keytab file configured for Kerberos authentication (%s). "
               + "Authentication will fail at runtime unless Kerberos credentials are already "
               + "present in the current security context.",
           KERBEROS_KEYTAB_FILE_PATH_KEY);
