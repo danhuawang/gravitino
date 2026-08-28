@@ -71,6 +71,38 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/security/metalakes/{metalake}/roles/{role}/assignments:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/role"
+    put:
+      tags:
+        - permissions
+      summary: Assign a role to multiple users and groups
+      operationId: assignRoleToPrincipals
+      description: |
+        Assigns one role to all requested users and groups atomically. Existing active
+        assignments are retained with their original assignment audit information.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleAssignmentRequest"
+      responses:
+        "200":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BaseResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The target metalake, role, user, or group does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/metalakes/{metalake}/roles/{role}/users:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
@@ -154,6 +186,35 @@ components:
           items:
             $ref: "../../docs/open-api/roles.yaml#/components/schemas/SecurableObject"
 
+    RoleAssignmentRequest:
+      type: object
+      description: Users and groups that receive the role
+      properties:
+        users:
+          type: array
+          uniqueItems: true
+          description: User names to assign
+          items:
+            type: string
+            minLength: 1
+        groups:
+          type: array
+          uniqueItems: true
+          description: Group names to assign
+          items:
+            type: string
+            minLength: 1
+      anyOf:
+        - required:
+            - users
+          properties:
+            users:
+              minItems: 1
+        - required:
+            - groups
+          properties:
+            groups:
+              minItems: 1
     IdentitySource:
       type: string
       description: |

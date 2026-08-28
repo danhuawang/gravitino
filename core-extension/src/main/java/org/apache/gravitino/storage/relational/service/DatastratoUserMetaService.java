@@ -7,18 +7,23 @@ import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATI
 
 import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
 import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.relational.po.UserPO;
+import org.apache.gravitino.storage.relational.utils.POConverters;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
 
 /**
@@ -39,6 +44,31 @@ public class DatastratoUserMetaService {
    */
   public static DatastratoUserMetaService getInstance() {
     return INSTANCE;
+  }
+
+  /**
+   * Batch-loads users and their direct roles with one SQL statement.
+   *
+   * @param metalake The metalake name.
+   * @param userNames The user names to load.
+   * @return The existing users in the requested set.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "batchGetUsers")
+  public List<UserEntity> batchGetUsers(String metalake, List<String> userNames) {
+    if (userNames == null || userNames.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    Namespace namespace = AuthorizationUtils.ofUserNamespace(metalake);
+    List<IdpNameStatusPO.UserWithOrigin> users =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class,
+            mapper -> mapper.listUsersByMetalakeAndNamesWithOrigin(metalake, userNames));
+    return users.stream()
+        .map(user -> POConverters.fromExtendedUserPO(user, namespace))
+        .collect(Collectors.toList());
   }
 
   /**

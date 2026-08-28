@@ -16,14 +16,17 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
+import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
@@ -69,6 +72,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   private final AccessControlDispatcher accessControlDispatcher;
   private final EntityStore entityStore;
   private final IdpUserGroupManager idpUserGroupManager;
+  private final DatastratoRoleMetaService roleMetaService;
+  private final DatastratoUserMetaService userMetaService;
 
   /**
    * Creates the enterprise access-control dispatcher.
@@ -81,9 +86,25 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
       AccessControlDispatcher accessControlDispatcher,
       EntityStore entityStore,
       IdpUserGroupManager idpUserGroupManager) {
+    this(
+        accessControlDispatcher,
+        entityStore,
+        idpUserGroupManager,
+        DatastratoRoleMetaService.getInstance(),
+        DatastratoUserMetaService.getInstance());
+  }
+
+  DatastratoAccessControlDispatcher(
+      AccessControlDispatcher accessControlDispatcher,
+      EntityStore entityStore,
+      IdpUserGroupManager idpUserGroupManager,
+      DatastratoRoleMetaService roleMetaService,
+      DatastratoUserMetaService userMetaService) {
     this.accessControlDispatcher = accessControlDispatcher;
     this.entityStore = entityStore;
     this.idpUserGroupManager = Preconditions.checkNotNull(idpUserGroupManager);
+    this.roleMetaService = Preconditions.checkNotNull(roleMetaService);
+    this.userMetaService = Preconditions.checkNotNull(userMetaService);
   }
 
   @Override
@@ -309,8 +330,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    */
   public List<String> batchUpdateUserEnabled(
       String metalake, List<String> usernames, boolean enabled) {
-    return DatastratoUserMetaService.getInstance()
-        .batchUpdateUserEnabled(metalake, usernames, enabled);
+    return userMetaService.batchUpdateUserEnabled(metalake, usernames, enabled);
   }
 
   /**
@@ -726,9 +746,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    */
   public Role[] listRolesWithSecurableObjects(String metalake) {
     Namespace namespace = AuthorizationUtils.ofRoleNamespace(metalake);
-    return DatastratoRoleMetaService.getInstance()
-        .listRolesWithSecurableObjectsByNamespace(namespace)
-        .stream()
+    return roleMetaService.listRolesWithSecurableObjectsByNamespace(namespace).stream()
         .toArray(Role[]::new);
   }
 
@@ -740,9 +758,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @return The user's role assignments.
    */
   public RoleAssignment[] listRoleAssignmentsByUser(String metalake, String user) {
-    return DatastratoRoleMetaService.getInstance()
-        .listUserRoleAssignments(metalake, user)
-        .toArray(new RoleAssignment[0]);
+    return roleMetaService.listUserRoleAssignments(metalake, user).toArray(new RoleAssignment[0]);
   }
 
   /**
@@ -753,9 +769,84 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @return The group's role assignments.
    */
   public RoleAssignment[] listRoleAssignmentsByGroup(String metalake, String group) {
-    return DatastratoRoleMetaService.getInstance()
-        .listGroupRoleAssignments(metalake, group)
-        .toArray(new RoleAssignment[0]);
+    return roleMetaService.listGroupRoleAssignments(metalake, group).toArray(new RoleAssignment[0]);
+  }
+
+  /**
+   * Assigns one role to multiple users and groups with direct batch relation SQL.
+   *
+   * <p>All requested principals and the role are validated before either relation table is changed.
+   * User-role and group-role assignments are then inserted in one transaction.
+   *
+   * @param metalake The metalake name.
+   * @param role The role name.
+   * @param users The user names.
+   * @param groups The group names.
+   */
+  public void assignRoleToPrincipals(
+      String metalake, String role, List<String> users, List<String> groups) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    Preconditions.checkArgument(StringUtils.isNotBlank(role), "role cannot be blank");
+
+    List<String> userNames = users == null ? Collections.emptyList() : users;
+    List<String> groupNames = groups == null ? Collections.emptyList() : groups;
+    Preconditions.checkArgument(
+        !userNames.isEmpty() || !groupNames.isEmpty(),
+        "At least one user or group must be specified");
+    Preconditions.checkArgument(
+        userNames.stream().allMatch(StringUtils::isNotBlank), "user name cannot be blank");
+    Preconditions.checkArgument(
+        groupNames.stream().allMatch(StringUtils::isNotBlank), "group name cannot be blank");
+    Preconditions.checkArgument(
+        Sets.newHashSet(userNames).size() == userNames.size(),
+        "Duplicate user names are not allowed");
+    Preconditions.checkArgument(
+        Sets.newHashSet(groupNames).size() == groupNames.size(),
+        "Duplicate group names are not allowed");
+
+    TreeLockUtils.doWithTreeLock(
+        NameIdentifier.of(AuthorizationUtils.ofUserNamespace(metalake).levels()),
+        LockType.WRITE,
+        () ->
+            TreeLockUtils.doWithTreeLock(
+                NameIdentifier.of(AuthorizationUtils.ofGroupNamespace(metalake).levels()),
+                LockType.WRITE,
+                () ->
+                    TreeLockUtils.doWithTreeLock(
+                        AuthorizationUtils.ofRole(metalake, role),
+                        LockType.READ,
+                        () -> {
+                          Role loadedRole = accessControlDispatcher.getRole(metalake, role);
+                          Preconditions.checkState(
+                              loadedRole instanceof RoleEntity,
+                              "Role %s under metalake %s is not a role entity",
+                              role,
+                              metalake);
+                          RoleEntity roleEntity = (RoleEntity) loadedRole;
+                          List<UserEntity> loadedUsers = loadUsers(metalake, userNames);
+                          List<GroupEntity> loadedGroups = loadGroups(metalake, groupNames);
+
+                          Instant assignmentTime = Instant.now();
+                          String modifier = PrincipalUtils.getCurrentPrincipal().getName();
+                          List<UserEntity> updatedUsers =
+                              Lists.newArrayListWithCapacity(loadedUsers.size());
+                          for (UserEntity user : loadedUsers) {
+                            updatedUsers.add(
+                                withAssignedRole(user, roleEntity, modifier, assignmentTime));
+                          }
+                          List<GroupEntity> updatedGroups =
+                              Lists.newArrayListWithCapacity(loadedGroups.size());
+                          for (GroupEntity group : loadedGroups) {
+                            updatedGroups.add(
+                                withAssignedRole(group, roleEntity, modifier, assignmentTime));
+                          }
+
+                          roleMetaService.batchAssignRoleToPrincipals(
+                              roleEntity.id(), updatedUsers, updatedGroups);
+                          notifyAuthorizationPlugins(
+                              metalake, roleEntity, updatedUsers, updatedGroups);
+                          return null;
+                        })));
   }
 
   @Override
@@ -912,6 +1003,138 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
                 "Role %s does not exist in the metalake %s", role, metalake);
           } catch (IOException ioe) {
             throw new RuntimeException(ioe);
+          }
+        });
+  }
+
+  private List<UserEntity> loadUsers(String metalake, List<String> userNames) {
+    if (userNames.isEmpty()) {
+      return Lists.newArrayList();
+    }
+
+    Map<String, UserEntity> usersByName = Maps.newHashMap();
+    for (UserEntity user : userMetaService.batchGetUsers(metalake, userNames)) {
+      usersByName.put(user.name(), user);
+    }
+
+    List<UserEntity> users = Lists.newArrayListWithCapacity(userNames.size());
+    List<String> missingUsers = Lists.newArrayList();
+    for (String userName : userNames) {
+      UserEntity user = usersByName.get(userName);
+      if (user == null) {
+        missingUsers.add(userName);
+      } else {
+        users.add(user);
+      }
+    }
+    if (!missingUsers.isEmpty()) {
+      throw new NoSuchUserException(
+          "Users %s do not exist in the metalake %s", missingUsers, metalake);
+    }
+    return users;
+  }
+
+  private List<GroupEntity> loadGroups(String metalake, List<String> groupNames) {
+    if (groupNames.isEmpty()) {
+      return Lists.newArrayList();
+    }
+
+    List<NameIdentifier> identifiers = Lists.newArrayListWithCapacity(groupNames.size());
+    for (String groupName : groupNames) {
+      identifiers.add(AuthorizationUtils.ofGroup(metalake, groupName));
+    }
+    Map<String, GroupEntity> groupsByName = Maps.newHashMap();
+    for (GroupEntity group :
+        entityStore.batchGet(identifiers, Entity.EntityType.GROUP, GroupEntity.class)) {
+      groupsByName.put(group.name(), group);
+    }
+
+    List<GroupEntity> groups = Lists.newArrayListWithCapacity(groupNames.size());
+    List<String> missingGroups = Lists.newArrayList();
+    for (String groupName : groupNames) {
+      GroupEntity group = groupsByName.get(groupName);
+      if (group == null) {
+        missingGroups.add(groupName);
+      } else {
+        groups.add(group);
+      }
+    }
+    if (!missingGroups.isEmpty()) {
+      throw new NoSuchGroupException(
+          "Groups %s do not exist in the metalake %s", missingGroups, metalake);
+    }
+    return groups;
+  }
+
+  private static UserEntity withAssignedRole(
+      UserEntity user, RoleEntity role, String modifier, Instant assignmentTime) {
+    List<String> roleNames =
+        Lists.newArrayList(Optional.ofNullable(user.roleNames()).orElse(Collections.emptyList()));
+    List<Long> roleIds =
+        Lists.newArrayList(Optional.ofNullable(user.roleIds()).orElse(Collections.emptyList()));
+    if (!roleIds.contains(role.id())) {
+      roleNames.add(role.name());
+      roleIds.add(role.id());
+    }
+
+    return UserEntity.builder()
+        .withNamespace(user.namespace())
+        .withId(user.id())
+        .withName(user.name())
+        .withExternalId(user.externalId())
+        .withEnabled(user.enabled())
+        .withRoleNames(roleNames)
+        .withRoleIds(roleIds)
+        .withAuditInfo(updatedAudit(user.auditInfo(), modifier, assignmentTime))
+        .build();
+  }
+
+  private static GroupEntity withAssignedRole(
+      GroupEntity group, RoleEntity role, String modifier, Instant assignmentTime) {
+    List<String> roleNames =
+        Lists.newArrayList(Optional.ofNullable(group.roleNames()).orElse(Collections.emptyList()));
+    List<Long> roleIds =
+        Lists.newArrayList(Optional.ofNullable(group.roleIds()).orElse(Collections.emptyList()));
+    if (!roleIds.contains(role.id())) {
+      roleNames.add(role.name());
+      roleIds.add(role.id());
+    }
+
+    return GroupEntity.builder()
+        .withNamespace(group.namespace())
+        .withId(group.id())
+        .withName(group.name())
+        .withExternalId(group.externalId())
+        .withRoleNames(roleNames)
+        .withRoleIds(roleIds)
+        .withAuditInfo(updatedAudit(group.auditInfo(), modifier, assignmentTime))
+        .build();
+  }
+
+  private static AuditInfo updatedAudit(
+      AuditInfo currentAudit, String modifier, Instant assignmentTime) {
+    return AuditInfo.builder()
+        .withCreator(currentAudit.creator())
+        .withCreateTime(currentAudit.createTime())
+        .withLastModifier(modifier)
+        .withLastModifiedTime(assignmentTime)
+        .build();
+  }
+
+  private static void notifyAuthorizationPlugins(
+      String metalake, RoleEntity role, List<UserEntity> users, List<GroupEntity> groups) {
+    AuthorizationUtils.callAuthorizationPluginForSecurableObjects(
+        metalake,
+        role.securableObjects(),
+        (authorizationPlugin, catalogName) -> {
+          Role filteredRole =
+              AuthorizationUtils.filterSecurableObjects(role, metalake, catalogName);
+          List<Role> roles = Collections.singletonList(filteredRole);
+          for (UserEntity user : users) {
+            authorizationPlugin.onGrantedRolesToUser(roles, user);
+          }
+          for (GroupEntity group : groups) {
+            authorizationPlugin.onGrantedRolesToGroup(roles, group);
           }
         });
   }

@@ -3,8 +3,13 @@
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Collections;
+import java.util.List;
+import org.apache.gravitino.storage.relational.po.GroupRoleRelPO;
+import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
 import org.junit.jupiter.api.Test;
 
 /** Tests principal-role assignment SQL generation. */
@@ -43,6 +48,53 @@ public class TestDatastratoRoleAssignmentBaseSQLProvider {
     assertTrue(sql.contains("mt.metalake_id as requestedMetalakeId"));
     assertTrue(sql.contains("principal.group_id as principalId"));
     assertTrue(sql.contains("ORDER BY rt.role_name"));
+  }
+
+  @Test
+  public void testBatchAssignRoleToUsers() {
+    String sql =
+        provider.batchAssignRoleToUsers(
+            List.of(
+                UserRoleRelPO.builder()
+                    .withUserId(1L)
+                    .withRoleId(10L)
+                    .withAuditInfo("{}")
+                    .withCurrentVersion(1L)
+                    .withLastVersion(1L)
+                    .withDeletedAt(0L)
+                    .build()));
+
+    assertTrue(sql.startsWith("<script>INSERT INTO user_role_rel"));
+    assertTrue(sql.contains("<foreach collection='assignments'"));
+    assertTrue(sql.contains("#{item.userId} AS principal_id"));
+    assertTrue(sql.contains("WHERE NOT EXISTS"));
+    assertTrue(sql.contains("existing_assignment.deleted_at = 0"));
+  }
+
+  @Test
+  public void testBatchAssignRoleToGroups() {
+    String sql =
+        provider.batchAssignRoleToGroups(
+            List.of(
+                GroupRoleRelPO.builder()
+                    .withGroupId(2L)
+                    .withRoleId(10L)
+                    .withAuditInfo("{}")
+                    .withCurrentVersion(1L)
+                    .withLastVersion(1L)
+                    .withDeletedAt(0L)
+                    .build()));
+
+    assertTrue(sql.startsWith("<script>INSERT INTO group_role_rel"));
+    assertTrue(sql.contains("#{item.groupId} AS principal_id"));
+    assertTrue(sql.contains("UNION ALL"));
+    assertTrue(sql.contains("existing_assignment.role_id = batch_assignment.role_id"));
+  }
+
+  @Test
+  public void testBatchAssignRoleWithEmptyAssignments() {
+    assertEquals("SELECT 0", provider.batchAssignRoleToUsers(Collections.emptyList()));
+    assertEquals("SELECT 0", provider.batchAssignRoleToGroups(Collections.emptyList()));
   }
 
   /** Tests role-side user assignments include relation audit and identity origin. */

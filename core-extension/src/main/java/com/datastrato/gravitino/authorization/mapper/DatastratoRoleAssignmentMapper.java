@@ -7,11 +7,36 @@ import com.datastrato.gravitino.authorization.po.RoleAssignmentPO;
 import com.datastrato.gravitino.authorization.po.RoleGroupAssignmentPO;
 import com.datastrato.gravitino.authorization.po.RoleUserAssignmentPO;
 import java.util.List;
+import org.apache.gravitino.storage.relational.po.GroupRoleRelPO;
+import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
+import org.apache.ibatis.annotations.InsertProvider;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
 
 /** Enterprise MyBatis mapper for principal-role assignment queries. */
 public interface DatastratoRoleAssignmentMapper {
+
+  /**
+   * Assigns one role to multiple users in one SQL statement.
+   *
+   * @param assignments The user-role assignments to insert.
+   * @return The number of inserted assignments.
+   */
+  @InsertProvider(
+      type = DatastratoRoleAssignmentSQLProviderFactory.class,
+      method = "batchAssignRoleToUsers")
+  int batchAssignRoleToUsers(@Param("assignments") List<UserRoleRelPO> assignments);
+
+  /**
+   * Assigns one role to multiple groups in one SQL statement.
+   *
+   * @param assignments The group-role assignments to insert.
+   * @return The number of inserted assignments.
+   */
+  @InsertProvider(
+      type = DatastratoRoleAssignmentSQLProviderFactory.class,
+      method = "batchAssignRoleToGroups")
+  int batchAssignRoleToGroups(@Param("assignments") List<GroupRoleRelPO> assignments);
 
   /**
    * Lists role assignments for a user.

@@ -11,11 +11,35 @@ import static org.apache.gravitino.storage.relational.mapper.UserRoleRelMapper.U
 
 import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
+import org.apache.gravitino.storage.relational.po.GroupRoleRelPO;
+import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
 import org.apache.ibatis.annotations.Param;
 
 /** Base SQL provider for enterprise principal-role assignment queries. */
 public class DatastratoRoleAssignmentBaseSQLProvider {
+
+  /**
+   * Assigns one role to multiple users without changing existing assignments.
+   *
+   * @param assignments The user-role assignments.
+   * @return The batch user-role assignment SQL.
+   */
+  public String batchAssignRoleToUsers(@Param("assignments") List<UserRoleRelPO> assignments) {
+    return batchAssignRole(USER_ROLE_RELATION_TABLE_NAME, "user_id", "userId", assignments.size());
+  }
+
+  /**
+   * Assigns one role to multiple groups without changing existing assignments.
+   *
+   * @param assignments The group-role assignments.
+   * @return The batch group-role assignment SQL.
+   */
+  public String batchAssignRoleToGroups(@Param("assignments") List<GroupRoleRelPO> assignments) {
+    return batchAssignRole(
+        GROUP_ROLE_RELATION_TABLE_NAME, "group_id", "groupId", assignments.size());
+  }
 
   /**
    * Lists role assignments for a user.
@@ -129,6 +153,42 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
         + " rt ON rt.role_id = rel.role_id AND rt.deleted_at = 0"
         + " WHERE mt.metalake_name = #{metalake} AND mt.deleted_at = 0"
         + " ORDER BY rt.role_name";
+  }
+
+  private String batchAssignRole(
+      String relationTableName,
+      String principalIdColumn,
+      String principalIdProperty,
+      int assignmentCount) {
+    if (assignmentCount == 0) {
+      return "SELECT 0";
+    }
+
+    return "<script>INSERT INTO "
+        + relationTableName
+        + " ("
+        + principalIdColumn
+        + ", role_id, audit_info, current_version, last_version, deleted_at)"
+        + " SELECT batch_assignment.principal_id, batch_assignment.role_id,"
+        + " batch_assignment.audit_info, batch_assignment.current_version,"
+        + " batch_assignment.last_version, batch_assignment.deleted_at"
+        + " FROM ("
+        + "<foreach collection='assignments' item='item' separator=' UNION ALL '>"
+        + "SELECT #{item."
+        + principalIdProperty
+        + "} AS principal_id, #{item.roleId} AS role_id,"
+        + " #{item.auditInfo} AS audit_info, #{item.currentVersion} AS current_version,"
+        + " #{item.lastVersion} AS last_version, #{item.deletedAt} AS deleted_at"
+        + "</foreach>"
+        + ") batch_assignment"
+        + " WHERE NOT EXISTS (SELECT 1 FROM "
+        + relationTableName
+        + " existing_assignment WHERE existing_assignment."
+        + principalIdColumn
+        + " = batch_assignment.principal_id"
+        + " AND existing_assignment.role_id = batch_assignment.role_id"
+        + " AND existing_assignment.deleted_at = 0)"
+        + "</script>";
   }
 
   private String roleAssignmentsFrom(String relationTableName) {

@@ -5,8 +5,11 @@ package com.datastrato.gravitino.authorization.mapper;
 
 import com.datastrato.gravitino.authorization.mapper.provider.base.DatastratoRoleAssignmentBaseSQLProvider;
 import com.google.common.collect.ImmutableMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.storage.relational.JDBCBackend.JDBCBackendType;
+import org.apache.gravitino.storage.relational.po.GroupRoleRelPO;
+import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.ibatis.annotations.Param;
 
@@ -20,6 +23,28 @@ public class DatastratoRoleAssignmentSQLProviderFactory {
           JDBCBackendType.POSTGRESQL, new DatastratoRoleAssignmentPostgreSQLProvider());
 
   private DatastratoRoleAssignmentSQLProviderFactory() {}
+
+  /**
+   * Assigns one role to multiple users.
+   *
+   * @param assignments The user-role assignments.
+   * @return The batch user-role assignment SQL.
+   */
+  public static String batchAssignRoleToUsers(
+      @Param("assignments") List<UserRoleRelPO> assignments) {
+    return getProvider().batchAssignRoleToUsers(assignments);
+  }
+
+  /**
+   * Assigns one role to multiple groups.
+   *
+   * @param assignments The group-role assignments.
+   * @return The batch group-role assignment SQL.
+   */
+  public static String batchAssignRoleToGroups(
+      @Param("assignments") List<GroupRoleRelPO> assignments) {
+    return getProvider().batchAssignRoleToGroups(assignments);
+  }
 
   /**
    * Lists role assignments for a user.

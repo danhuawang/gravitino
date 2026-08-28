@@ -36,8 +36,10 @@ import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.relational.mapper.RoleMetaMapper;
+import org.apache.gravitino.storage.relational.po.GroupRoleRelPO;
 import org.apache.gravitino.storage.relational.po.RolePO;
 import org.apache.gravitino.storage.relational.po.SecurableObjectPO;
+import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
 import org.apache.gravitino.storage.relational.utils.POConverters;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
 import org.slf4j.Logger;
@@ -125,6 +127,59 @@ public class DatastratoRoleMetaService {
             DatastratoRoleAssignmentMapper.class,
             mapper -> mapper.listRoleAssignmentsByGroup(metalake, group));
     return toRoleAssignmentsForPrincipal(metalake, group, false, assignments);
+  }
+
+  /**
+   * Assigns one role to multiple users and groups in one transaction.
+   *
+   * <p>Each principal type is written with one batch SQL statement. Existing active assignments are
+   * left unchanged so their original assignment audit information is preserved.
+   *
+   * @param roleId The role id.
+   * @param users The users to assign.
+   * @param groups The groups to assign.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "batchAssignRoleToPrincipals")
+  public void batchAssignRoleToPrincipals(
+      long roleId, List<UserEntity> users, List<GroupEntity> groups) {
+    List<UserRoleRelPO> userAssignments =
+        users.stream()
+            .flatMap(
+                user ->
+                    POConverters.initializeUserRoleRelsPOWithVersion(
+                        user, Collections.singletonList(roleId))
+                        .stream())
+            .collect(Collectors.toList());
+    List<GroupRoleRelPO> groupAssignments =
+        groups.stream()
+            .flatMap(
+                group ->
+                    POConverters.initializeGroupRoleRelsPOWithVersion(
+                        group, Collections.singletonList(roleId))
+                        .stream())
+            .collect(Collectors.toList());
+
+    if (userAssignments.isEmpty() && groupAssignments.isEmpty()) {
+      return;
+    }
+
+    SessionUtils.doMultipleWithCommit(
+        () -> {
+          if (!userAssignments.isEmpty()) {
+            SessionUtils.doWithoutCommit(
+                DatastratoRoleAssignmentMapper.class,
+                mapper -> mapper.batchAssignRoleToUsers(userAssignments));
+          }
+        },
+        () -> {
+          if (!groupAssignments.isEmpty()) {
+            SessionUtils.doWithoutCommit(
+                DatastratoRoleAssignmentMapper.class,
+                mapper -> mapper.batchAssignRoleToGroups(groupAssignments));
+          }
+        });
   }
 
   /**
