@@ -45,6 +45,15 @@ public class IcebergConstants {
   public static final String URI = "uri";
   public static final String CATALOG_BACKEND_NAME = "catalog-backend-name";
 
+  /**
+   * Gravitino-only catalog property that binds the catalog to a configured KMS provider.
+   *
+   * <p>The value is the named provider handle configured in server KMS settings. It matches {@code
+   * provider} in policy {@code allowedKeys} and in table property {@code encryption.key-provider}.
+   * The KMS protocol ({@code api}) is resolved from provider configuration, not supplied by users.
+   */
+  public static final String ENCRYPTION_KMS_SOURCE = "encryption-kms-source";
+
   // IO properties
   public static final String IO_IMPL = "io-impl";
   public static final String ICEBERG_S3_ENDPOINT = "s3.endpoint";

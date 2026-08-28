@@ -23,12 +23,16 @@ import static org.apache.gravitino.connector.PropertyEntry.integerOptionalProper
 import static org.apache.gravitino.connector.PropertyEntry.stringOptionalPropertyEntry;
 import static org.apache.gravitino.connector.PropertyEntry.stringRequiredPropertyEntry;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.regex.Pattern;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.cloud.storage.AzurePropertiesMetadata;
 import org.apache.gravitino.cloud.storage.GCSPropertiesMetadata;
 import org.apache.gravitino.cloud.storage.OSSPropertiesMetadata;
@@ -47,6 +51,11 @@ public class IcebergCatalogPropertiesMetadata extends BaseCatalogPropertiesMetad
   public static final String URI = IcebergConstants.URI;
   public static final String CATALOG_BACKEND_NAME = IcebergConstants.CATALOG_BACKEND_NAME;
 
+  /** Gravitino KMS provider binding for this Iceberg catalog. */
+  public static final String ENCRYPTION_KMS_SOURCE = IcebergConstants.ENCRYPTION_KMS_SOURCE;
+
+  private static final Pattern KMS_SOURCE_NAME_PATTERN =
+      Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]*");
   private static final Map<String, PropertyEntry<?>> PROPERTIES_METADATA;
 
   public static final Map<String, String> KERBEROS_CONFIGURATION_FOR_HIVE_BACKEND =
@@ -125,6 +134,7 @@ public class IcebergCatalogPropertiesMetadata extends BaseCatalogPropertiesMetad
                 false,
                 null,
                 false),
+            encryptionKmsSourcePropertyEntry(),
             integerOptionalPropertyEntry(
                 IcebergConstants.REST_CATALOG_BACKEND_CLIENT_CONNECTION_TIMEOUT_MS,
                 "HTTP connection timeout in milliseconds for the REST catalog backend",
@@ -163,5 +173,47 @@ public class IcebergCatalogPropertiesMetadata extends BaseCatalogPropertiesMetad
           }
         });
     return icebergProperties;
+  }
+
+  /**
+   * Builds the optional Gravitino-side KMS source binding.
+   *
+   * <p>The property is immutable because changing its source after catalog creation could cause
+   * stored key identifiers to be interpreted by a different KMS provider. It is intentionally not
+   * translated into an Iceberg catalog property.
+   *
+   * @return the {@code encryption-kms-source} property entry
+   */
+  private static PropertyEntry<String> encryptionKmsSourcePropertyEntry() {
+    return new PropertyEntry.Builder<String>()
+        .withName(ENCRYPTION_KMS_SOURCE)
+        .withDescription("The configured Gravitino KMS source used by this Iceberg catalog")
+        .withRequired(false)
+        .withImmutable(true)
+        .withJavaType(String.class)
+        .withDefaultValue(null)
+        .withDecoder(IcebergCatalogPropertiesMetadata::decodeEncryptionKmsSource)
+        .withEncoder(Function.identity())
+        .withHidden(false)
+        .withReserved(false)
+        .build();
+  }
+
+  /**
+   * Validates a configured KMS source name.
+   *
+   * @param value raw source name
+   * @return the unmodified source name
+   * @throws IllegalArgumentException if the source name cannot identify a configured KMS source
+   */
+  private static String decodeEncryptionKmsSource(String value) {
+    Preconditions.checkArgument(
+        StringUtils.isNotBlank(value), "%s cannot be blank", ENCRYPTION_KMS_SOURCE);
+    Preconditions.checkArgument(
+        KMS_SOURCE_NAME_PATTERN.matcher(value).matches(),
+        "%s must match [A-Za-z0-9][A-Za-z0-9_-]*: '%s'",
+        ENCRYPTION_KMS_SOURCE,
+        value);
+    return value;
   }
 }

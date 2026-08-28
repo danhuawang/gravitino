@@ -20,6 +20,7 @@ package org.apache.gravitino.catalog.lakehouse.iceberg;
 
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
+import org.apache.gravitino.connector.PropertyEntry;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.common.cache.LocalTableMetadataCache;
 import org.junit.jupiter.api.Assertions;
@@ -139,5 +140,60 @@ public class TestIcebergCatalogPropertiesMetadata {
         transformedProperties.get(IcebergConstants.ICEBERG_REST_CLIENT_CONNECTION_TIMEOUT_MS));
     Assertions.assertEquals(
         "5678", transformedProperties.get(IcebergConstants.ICEBERG_REST_CLIENT_SOCKET_TIMEOUT_MS));
+  }
+
+  @Test
+  void testEncryptionKmsSourceMetadata() {
+    Assertions.assertTrue(metadata.containsProperty(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+    Assertions.assertTrue(metadata.isImmutableProperty(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+    Assertions.assertFalse(metadata.isRequiredProperty(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+    Assertions.assertFalse(metadata.isHiddenProperty(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+    Assertions.assertNull(metadata.getDefaultValue(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+
+    PropertyEntry<?> entry = metadata.propertyEntries().get(IcebergConstants.ENCRYPTION_KMS_SOURCE);
+    Assertions.assertNotNull(entry);
+    Assertions.assertFalse(entry.isReserved());
+    Assertions.assertEquals(String.class, entry.getJavaType());
+  }
+
+  @Test
+  void testEncryptionKmsSourceRejectsBlankValues() {
+    for (String value : new String[] {"", "   "}) {
+      Map<String, String> properties =
+          ImmutableMap.of(IcebergConstants.ENCRYPTION_KMS_SOURCE, value);
+      IllegalArgumentException exception =
+          Assertions.assertThrows(
+              IllegalArgumentException.class,
+              () -> metadata.getOrDefault(properties, IcebergConstants.ENCRYPTION_KMS_SOURCE));
+      Assertions.assertTrue(exception.getMessage().contains("cannot be blank"));
+    }
+  }
+
+  @Test
+  void testEncryptionKmsSourceRejectsUnresolvableNames() {
+    for (String value :
+        new String[] {"bad.name", "bad/name", "-bad", "bad source", " openbao", "openbao "}) {
+      Map<String, String> properties =
+          ImmutableMap.of(IcebergConstants.ENCRYPTION_KMS_SOURCE, value);
+      IllegalArgumentException exception =
+          Assertions.assertThrows(
+              IllegalArgumentException.class,
+              () -> metadata.getOrDefault(properties, IcebergConstants.ENCRYPTION_KMS_SOURCE));
+      Assertions.assertTrue(exception.getMessage().contains("must match"));
+    }
+  }
+
+  @Test
+  void testEncryptionKmsSourceRemainsGravitinoOnly() {
+    Map<String, String> properties =
+        ImmutableMap.of(IcebergConstants.ENCRYPTION_KMS_SOURCE, "openbao");
+
+    Assertions.assertEquals(
+        "openbao", metadata.getOrDefault(properties, IcebergConstants.ENCRYPTION_KMS_SOURCE));
+    Map<String, String> transformedProperties = metadata.transformProperties(properties);
+
+    Assertions.assertFalse(
+        transformedProperties.containsKey(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+    Assertions.assertFalse(transformedProperties.containsValue("openbao"));
   }
 }
