@@ -177,14 +177,28 @@ tasks.register("checkNewFileLicenseHeaders") {
   description =
     "Ensures newly-added Datastrato files use the copyright-only header (no Apache license sentence)."
 
-  // Base ref to diff against: gradle property, else GitHub PR base ref, else origin/main.
-  val baseRef =
+  // Explicit override: gradle property, else GitHub PR base ref. Blank GITHUB_BASE_REF
+  // is ignored (Gradle 8.2 maps a present empty env var; it does not have Provider.filter).
+  // When neither is set, ask Git for the current branch's remote upstream and fall back
+  // to the remote default. Local feature branches that track their remote head should
+  // set -PlicenseBaseRef to the intended target branch.
+  val configuredBaseRef =
     providers
       .gradleProperty("licenseBaseRef")
-      .orElse(providers.environmentVariable("GITHUB_BASE_REF").map { "origin/$it" })
-      .getOrElse("origin/main")
+      .orElse(
+        providers.environmentVariable("GITHUB_BASE_REF").map { branch ->
+          NewFileFinder.originRefFromGithubBranch(branch)
+        }
+      )
 
   doLast {
+    val baseRef =
+      NewFileFinder.resolveBaseRef(
+        rootDir,
+        if (configuredBaseRef.isPresent) configuredBaseRef.get() else null
+      )
+    logger.lifecycle("checkNewFileLicenseHeaders: using base ref '$baseRef'")
+
     // Resolve added files vs the base ref. Fail (don't skip) if the base ref is
     // unavailable so the new-file enforcement cannot be bypassed by a shallow
     // or fresh checkout; CI must fetch the base ref or pass -PlicenseBaseRef.
@@ -192,7 +206,7 @@ tasks.register("checkNewFileLicenseHeaders") {
       NewFileFinder.addedFiles(rootDir, baseRef)
         ?: throw GradleException(
           "checkNewFileLicenseHeaders could not resolve base ref '$baseRef'. " +
-            "Fetch the base ref (e.g. origin/main) or set -PlicenseBaseRef."
+            "Fetch the base ref (e.g. origin/main or origin/branch-1.3) or set -PlicenseBaseRef."
         )
 
     val violations = mutableListOf<String>()

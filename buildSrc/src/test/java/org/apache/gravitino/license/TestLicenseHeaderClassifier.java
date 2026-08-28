@@ -32,6 +32,9 @@ import org.junit.jupiter.api.io.TempDir;
  *   <li>Upstream-sync PR - ASF-headered files pass, a coincidental Datastrato
  *       mention buried past the header region does not trigger, and a real
  *       Datastrato+Apache header is still caught.
+ *   <li>Local checkout of a release branch - Git's configured upstream supplies
+ *       {@code origin/branch-1.3}, not {@code origin/main}, so historical release-branch
+ *       files are not treated as new.
  * </ol>
  *
  * <p>The git plumbing is exercised against a temporary git repo (no real repo
@@ -341,7 +344,193 @@ class TestLicenseHeaderClassifier {
         "exact path with newline must be preserved (NUL-delimited output)");
   }
 
+  // --- Local release-branch base inference (Jerry's branch-1.3 local build) ---
+
+  @Test
+  void inferBaseRefUsesConfiguredReleaseUpstream(@TempDir Path dir)
+      throws Exception {
+    Path repo = divergedMainAndRelease(dir);
+
+    assertEquals("origin/branch-1.3", NewFileFinder.inferBaseRef(repo.toFile()));
+    assertEquals(
+        "origin/branch-1.3", NewFileFinder.resolveBaseRef(repo.toFile(), null));
+    assertEquals(
+        "origin/main", NewFileFinder.resolveBaseRef(repo.toFile(), "origin/main"));
+
+    List<String> vsInferred =
+        NewFileFinder.addedFiles(repo.toFile(), NewFileFinder.inferBaseRef(repo.toFile()));
+    assertNotNull(vsInferred);
+    assertTrue(vsInferred.isEmpty(), "historical 1.3 files must not look new vs the release tip");
+
+    List<String> vsMain = NewFileFinder.addedFiles(repo.toFile(), "origin/main");
+    assertNotNull(vsMain);
+    assertEquals(1, vsMain.size());
+    assertTrue(vsMain.contains("pkg/Legacy.java"));
+  }
+
+  @Test
+  void inferBaseRefOnFeatureBranchUsesConfiguredReleaseUpstream(@TempDir Path dir)
+      throws Exception {
+    Path repo = divergedMainAndRelease(dir);
+    runGit(repo, "checkout", "-b", "pr/fix");
+    runGit(repo, "branch", "--set-upstream-to=origin/branch-1.3", "pr/fix");
+    writeFile(
+        repo,
+        "pkg/New.java",
+        "/*",
+        " * Copyright 2026 Datastrato Pvt Ltd.",
+        " * " + LicenseHeaderClassifier.APACHE_SENTENCE,
+        " */",
+        "package pkg;");
+    runGit(repo, "add", "pkg/New.java");
+    commit(repo, "-m", "add new file");
+
+    assertEquals("origin/branch-1.3", NewFileFinder.inferBaseRef(repo.toFile()));
+    List<String> added =
+        NewFileFinder.addedFiles(repo.toFile(), NewFileFinder.inferBaseRef(repo.toFile()));
+    assertNotNull(added);
+    assertEquals(1, added.size());
+    assertTrue(added.contains("pkg/New.java"));
+    assertTrue(LicenseHeaderClassifier.isViolation(repo.resolve("pkg/New.java")));
+  }
+
+  @Test
+  void inferBaseRefOnReleaseBranchWithLocalCommitsUsesRemoteRelease(@TempDir Path dir)
+      throws Exception {
+    Path repo = divergedMainAndRelease(dir);
+    writeFile(
+        repo,
+        "pkg/New.java",
+        "/*",
+        " * Copyright 2026 Datastrato Pvt Ltd.",
+        " * " + LicenseHeaderClassifier.APACHE_SENTENCE,
+        " */",
+        "package pkg;");
+    runGit(repo, "add", "pkg/New.java");
+    commit(repo, "-m", "add new file directly to release branch");
+
+    assertEquals("origin/branch-1.3", NewFileFinder.inferBaseRef(repo.toFile()));
+    List<String> added =
+        NewFileFinder.addedFiles(repo.toFile(), NewFileFinder.inferBaseRef(repo.toFile()));
+    assertNotNull(added);
+    assertEquals(1, added.size());
+    assertTrue(added.contains("pkg/New.java"));
+    assertTrue(LicenseHeaderClassifier.isViolation(repo.resolve("pkg/New.java")));
+  }
+
+  @Test
+  void inferBaseRefOnMainUsesConfiguredUpstream(@TempDir Path dir) throws Exception {
+    Path repo = divergedMainAndRelease(dir);
+    runGit(repo, "checkout", "main");
+    assertEquals("origin/main", NewFileFinder.inferBaseRef(repo.toFile()));
+  }
+
+  @Test
+  void inferBaseRefWithoutUpstreamUsesRemoteDefault(@TempDir Path dir) throws Exception {
+    Path repo = dir.resolve("repo");
+    gitInit(repo);
+    runGit(repo, "remote", "add", "origin", ".");
+    commit(repo, "--allow-empty", "-m", "base");
+    runGit(repo, "branch", "-M", "local-work");
+    runGit(repo, "update-ref", "refs/remotes/origin/main", revParse(repo, "HEAD"));
+    runGit(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+
+    assertEquals("origin/main", NewFileFinder.inferBaseRef(repo.toFile()));
+  }
+
+  @Test
+  void inferBaseRefOnDetachedHeadUsesRemoteDefault(@TempDir Path dir) throws Exception {
+    Path repo = divergedMainAndRelease(dir);
+    runGit(repo, "checkout", "--detach");
+
+    assertEquals("origin/main", NewFileFinder.inferBaseRef(repo.toFile()));
+    assertEquals("origin/main", NewFileFinder.resolveBaseRef(repo.toFile(), null));
+  }
+
+  @Test
+  void inferBaseRefWithoutRemoteHeadUsesOriginHead(@TempDir Path dir) throws Exception {
+    Path repo = dir.resolve("repo");
+    gitInit(repo);
+    runGit(repo, "remote", "add", "origin", ".");
+    commit(repo, "--allow-empty", "-m", "base");
+    runGit(repo, "branch", "-M", "local-work");
+
+    assertEquals("origin/HEAD", NewFileFinder.inferBaseRef(repo.toFile()));
+  }
+
+  @Test
+  void originRefFromGithubBranchIgnoresBlankValues() {
+    assertNull(NewFileFinder.originRefFromGithubBranch(null));
+    assertNull(NewFileFinder.originRefFromGithubBranch(""));
+    assertNull(NewFileFinder.originRefFromGithubBranch("   "));
+    assertEquals("origin/main", NewFileFinder.originRefFromGithubBranch("main"));
+    assertEquals("origin/branch-1.3", NewFileFinder.originRefFromGithubBranch(" branch-1.3 "));
+  }
+
+  @Test
+  void resolveBaseRefTreatsBlankConfiguredRefAsMissing(@TempDir Path dir) throws Exception {
+    Path repo = divergedMainAndRelease(dir);
+
+    assertEquals("origin/branch-1.3", NewFileFinder.resolveBaseRef(repo.toFile(), ""));
+    assertEquals("origin/branch-1.3", NewFileFinder.resolveBaseRef(repo.toFile(), "  "));
+  }
+
   // --- helpers ---
+
+  /**
+   * Temp repo where {@code origin/main} and {@code origin/branch-1.3} diverged: main has extra
+   * empty commits, and branch-1.3 added a legacy Datastrato+Apache file. HEAD is left on
+   * {@code branch-1.3}.
+   */
+  private static Path divergedMainAndRelease(Path dir) throws Exception {
+    Path repo = dir.resolve("repo");
+    gitInit(repo);
+    runGit(repo, "remote", "add", "origin", ".");
+    commit(repo, "--allow-empty", "-m", "fork");
+    runGit(repo, "branch", "-M", "main");
+    String fork = revParse(repo, "HEAD");
+
+    commit(repo, "--allow-empty", "-m", "main-1");
+    commit(repo, "--allow-empty", "-m", "main-2");
+    runGit(repo, "update-ref", "refs/remotes/origin/main", revParse(repo, "HEAD"));
+    runGit(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
+    runGit(repo, "branch", "--set-upstream-to=origin/main", "main");
+
+    runGit(repo, "checkout", "-b", "branch-1.3", fork);
+    writeFile(
+        repo,
+        "pkg/Legacy.java",
+        "/*",
+        " * Copyright 2026 Datastrato Pvt Ltd.",
+        " * " + LicenseHeaderClassifier.APACHE_SENTENCE,
+        " */",
+        "package pkg;");
+    runGit(repo, "add", "pkg/Legacy.java");
+    commit(repo, "-m", "1.3 historical file");
+    runGit(repo, "update-ref", "refs/remotes/origin/branch-1.3", revParse(repo, "HEAD"));
+    runGit(repo, "branch", "--set-upstream-to=origin/branch-1.3", "branch-1.3");
+    return repo;
+  }
+
+  private static String revParse(Path repo, String rev) throws Exception {
+    return runGitOutput(repo, "rev-parse", rev);
+  }
+
+  private static String runGitOutput(Path repo, String... args) throws Exception {
+    List<String> cmd = new ArrayList<>();
+    cmd.add("git");
+    cmd.addAll(Arrays.asList(args));
+    Process process = new ProcessBuilder(cmd).directory(repo.toFile()).redirectErrorStream(true).start();
+    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    byte[] chunk = new byte[4096];
+    int read;
+    while ((read = process.getInputStream().read(chunk)) > 0) {
+      buffer.write(chunk, 0, read);
+    }
+    int exit = process.waitFor();
+    assertEquals(0, exit, "git " + String.join(" ", args) + " failed: " + buffer);
+    return buffer.toString(StandardCharsets.UTF_8.name()).trim();
+  }
 
   private static void gitInit(Path repo) throws Exception {
     Files.createDirectories(repo);
