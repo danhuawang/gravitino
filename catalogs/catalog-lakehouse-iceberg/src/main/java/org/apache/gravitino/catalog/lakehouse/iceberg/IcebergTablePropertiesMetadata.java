@@ -21,16 +21,15 @@ package org.apache.gravitino.catalog.lakehouse.iceberg;
 import static org.apache.gravitino.connector.PropertyEntry.stringImmutablePropertyEntry;
 import static org.apache.gravitino.connector.PropertyEntry.stringReservedPropertyEntry;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import java.util.List;
 import java.util.Map;
-<<<<<<< HEAD
-=======
 import java.util.Set;
 import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
->>>>>>> dea6d16e1 ([#925] feat(iceberg): identify Iceberg encryption keys as provider plus key ID (#940))
 import org.apache.gravitino.connector.BasePropertiesMetadata;
 import org.apache.gravitino.connector.PropertyEntry;
 import org.apache.iceberg.TableProperties;
@@ -55,6 +54,23 @@ public class IcebergTablePropertiesMetadata extends BasePropertiesMetadata {
 
   public static final String DISTRIBUTION_MODE = TableProperties.WRITE_DISTRIBUTION_MODE;
 
+  /**
+   * The default Iceberg table format version Gravitino applies when {@link #FORMAT_VERSION} is not
+   * explicitly set. Gravitino owns this default rather than deferring to the Iceberg library's own
+   * version-dependent default, and stamps it onto the table at creation.
+   */
+  public static final int ICEBERG_DEFAULT_FORMAT_VERSION = 2;
+
+  /**
+   * The Iceberg table format versions Gravitino allows creating: {@code 1}–{@code 4}, the range the
+   * bundled Iceberg version (1.11.0) can write. Gravitino is not more restrictive than Iceberg for
+   * the create passthrough; each version's feature set is defined by the Iceberg spec (v1/v2/v3 are
+   * adopted, v3 is required for V3 types such as {@code variant}, and v4 is under active
+   * development and not yet finalized). An unset (empty) value defaults to {@link
+   * #ICEBERG_DEFAULT_FORMAT_VERSION}. Extend this set as newer Iceberg writer versions ship.
+   */
+  public static final Set<Integer> SUPPORTED_FORMAT_VERSIONS = ImmutableSet.of(1, 2, 3, 4);
+
   private static final Map<String, PropertyEntry<?>> PROPERTIES_METADATA;
 
   static {
@@ -78,17 +94,12 @@ public class IcebergTablePropertiesMetadata extends BasePropertiesMetadata {
             stringReservedPropertyEntry(
                 IDENTIFIER_FIELDS, "The identifier field(s) for defining the table", false),
             stringReservedPropertyEntry(DISTRIBUTION_MODE, "Write distribution mode", false),
-<<<<<<< HEAD
-            stringImmutablePropertyEntry(
-                FORMAT_VERSION, "The Iceberg table format version, ", false, null, false, false),
-=======
             formatVersionPropertyEntry(),
             nonBlankEncryptionPropertyEntry(
                 ENCRYPTION_KEY_PROVIDER,
                 "The configured KMS provider used to interpret the table encryption key ID"),
             nonBlankEncryptionPropertyEntry(
                 ENCRYPTION_KEY_ID, "The key identifier used to encrypt this Iceberg table"),
->>>>>>> dea6d16e1 ([#925] feat(iceberg): identify Iceberg encryption keys as provider plus key ID (#940))
             stringImmutablePropertyEntry(
                 PROVIDER,
                 "Iceberg provider for Iceberg table fileFormat, such as Parquet, Orc, Avro, or Iceberg",
@@ -103,8 +114,6 @@ public class IcebergTablePropertiesMetadata extends BasePropertiesMetadata {
   protected Map<String, PropertyEntry<?>> specificPropertyEntries() {
     return PROPERTIES_METADATA;
   }
-<<<<<<< HEAD
-=======
 
   /**
    * Builds the property entry for {@link #FORMAT_VERSION}, an immutable property that accepts an
@@ -191,5 +200,4 @@ public class IcebergTablePropertiesMetadata extends BasePropertiesMetadata {
         SUPPORTED_FORMAT_VERSIONS);
     return version;
   }
->>>>>>> dea6d16e1 ([#925] feat(iceberg): identify Iceberg encryption keys as provider plus key ID (#940))
 }

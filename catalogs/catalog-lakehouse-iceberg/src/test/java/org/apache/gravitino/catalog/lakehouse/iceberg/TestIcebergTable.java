@@ -707,8 +707,6 @@ public class TestIcebergTable {
     Assertions.assertEquals(distributionName, DistributionMode.RANGE.modeName());
   }
 
-<<<<<<< HEAD
-=======
   @Test
   void testRebuildCreatePropertiesResolvesFormatVersion() {
     // The format-version mapping Gravitino applies at create time:
@@ -805,7 +803,6 @@ public class TestIcebergTable {
         .get(IcebergTablePropertiesMetadata.FORMAT_VERSION);
   }
 
->>>>>>> dea6d16e1 ([#925] feat(iceberg): identify Iceberg encryption keys as provider plus key ID (#940))
   protected static String genRandomName() {
     return UUID.randomUUID().toString().replace("-", "");
   }
