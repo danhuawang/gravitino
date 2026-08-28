@@ -486,5 +486,4 @@ public class RelationalEntityStore
             String.format("Doesn't support the relation type %s", relType));
     }
   }
-
 }

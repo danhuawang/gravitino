@@ -38,6 +38,7 @@ jobs:
               - server-common/**
               - conf/**
               - scripts/mysql/**
+              - dev/ci/test_multi_instance_entity_cache_consistency.sh
               - dev/ci/test_multi_instance_consistency.sh
               - dev/ci/setup_multi_instance.sh
               - build.gradle.kts
@@ -112,7 +113,7 @@ jobs:
         run: |
           # Keep in sync with the latest schema file under scripts/mysql/ when the version bumps.
           mysql -h 127.0.0.1 -P 3306 -ugravitino -pgravitino gravitino \
-            < scripts/mysql/schema-2.0.0-mysql.sql
+            < scripts/mysql/schema-1.3.0-mysql.sql
 
       - name: Build Gravitino distribution
         run: ./gradlew compileDistribution -PskipWeb=true -x test

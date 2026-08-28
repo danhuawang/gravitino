@@ -39,7 +39,16 @@ JDBC_URL=https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/${JDBC_VERSI
 
 curl -fsSL "${JDBC_URL}" -o "${JDBC_JAR}"
 EXPECTED_SHA1="$(curl -fsSL "${JDBC_URL}.sha1")"
-echo "${EXPECTED_SHA1}  ${JDBC_JAR}" | sha1sum --check
+if command -v sha1sum >/dev/null 2>&1; then
+  echo "${EXPECTED_SHA1}  ${JDBC_JAR}" | sha1sum --check
+else
+  ACTUAL_SHA1="$(shasum -a 1 "${JDBC_JAR}" | awk '{print $1}')"
+  if [[ "${ACTUAL_SHA1}" != "${EXPECTED_SHA1}" ]]; then
+    echo "SHA-1 verification failed for ${JDBC_JAR}" >&2
+    exit 1
+  fi
+  echo "${JDBC_JAR}: OK"
+fi
 
 # The entity-cache consistency test uses an Iceberg JDBC catalog. Catalogs have
 # isolated class loaders, so the driver must also be present in the catalog's
