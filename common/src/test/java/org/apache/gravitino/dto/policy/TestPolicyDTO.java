@@ -18,8 +18,12 @@
  */
 package org.apache.gravitino.dto.policy;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.InvalidDefinitionException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -28,9 +32,13 @@ import java.util.Optional;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.encryption.kms.KmsReferenceDTO;
+import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.policy.IcebergDataCompactionContent;
 import org.apache.gravitino.policy.IcebergEncryptionContent;
+import org.apache.gravitino.policy.PolicyContent;
+import org.apache.gravitino.policy.PolicyContents;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -289,6 +297,73 @@ public class TestPolicyDTO {
     IllegalArgumentException exception =
         Assertions.assertThrows(IllegalArgumentException.class, content::validate);
     Assertions.assertTrue(exception.getMessage().contains("KMS provider cannot be blank"));
+  }
+
+  /**
+   * The REST wire format and the persisted storage format are two contracts with independent
+   * lifetimes, produced by two different mappers: {@code objectMapper()} over the DTO and {@code
+   * anyFieldMapper()} over the domain object. They happen to be identical today. Nothing else
+   * asserts that, so a change to either mapper, DTO field, or domain field could silently move one
+   * without the other. This pins both against the same literal in one run so the drift is visible.
+   */
+  @Test
+  public void testIcebergEncryptionWireAndStoredFormatsMatch() throws JsonProcessingException {
+    PolicyContent domain =
+        PolicyContents.icebergEncryption(
+            1,
+            true,
+            ImmutableList.of(
+                new KmsReference("aws-prod", "Key-A"),
+                new KmsReference("openbao-production", "Key-B")),
+            IcebergEncryptionContent.Enforcement.DENY_CREATE);
+
+    String storedJson = JsonUtils.anyFieldMapper().writeValueAsString(domain);
+    String wireJson = JsonUtils.objectMapper().writeValueAsString(DTOConverters.toDTO(domain));
+
+    String pinned =
+        "{\"schemaVersion\":1,\"required\":true,"
+            + "\"allowedKeys\":["
+            + "{\"provider\":\"aws-prod\",\"keyId\":\"Key-A\"},"
+            + "{\"provider\":\"openbao-production\",\"keyId\":\"Key-B\"}],"
+            + "\"enforcement\":\"deny-create\"}";
+
+    Assertions.assertEquals(
+        JsonUtils.objectMapper().readTree(pinned), JsonUtils.objectMapper().readTree(storedJson));
+    Assertions.assertEquals(
+        JsonUtils.objectMapper().readTree(pinned), JsonUtils.objectMapper().readTree(wireJson));
+
+    IcebergEncryptionContent restoredFromStorage =
+        JsonUtils.anyFieldMapper().readValue(storedJson, IcebergEncryptionContent.class);
+    Assertions.assertEquals(domain, restoredFromStorage);
+
+    PolicyContentDTO.IcebergEncryptionContentDTO restoredFromWire =
+        JsonUtils.objectMapper()
+            .readValue(wireJson, PolicyContentDTO.IcebergEncryptionContentDTO.class);
+    Assertions.assertEquals(2, restoredFromWire.allowedKeys().size());
+    Assertions.assertEquals(
+        "openbao-production", restoredFromWire.allowedKeys().get(1).getProvider());
+    Assertions.assertEquals("Key-B", restoredFromWire.allowedKeys().get(1).getKeyId());
+    Assertions.assertDoesNotThrow(restoredFromWire::validate);
+  }
+
+  /**
+   * The storage mapper rebuilds {@link KmsReference} through a deserializer registered on {@code
+   * anyFieldMapper()}, not through field reflection, because the class exposes only a validating
+   * two-argument constructor. FIELD/ANY visibility alone is not enough, so an equivalently
+   * configured mapper without that module must fail. This pins the registration as load-bearing.
+   */
+  @Test
+  public void testKmsReferenceRequiresRegisteredDeserializer() throws JsonProcessingException {
+    String json = "{\"provider\":\"aws-prod\",\"keyId\":\"Key-A\"}";
+
+    ObjectMapper withoutModule =
+        new ObjectMapper().setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
+    Assertions.assertThrows(
+        InvalidDefinitionException.class, () -> withoutModule.readValue(json, KmsReference.class));
+
+    Assertions.assertEquals(
+        new KmsReference("aws-prod", "Key-A"),
+        JsonUtils.anyFieldMapper().readValue(json, KmsReference.class));
   }
 
   private static PolicyContentDTO.IcebergEncryptionContentDTO encryptionContent() {

@@ -33,6 +33,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.client.Entity;
@@ -57,11 +58,13 @@ import org.apache.gravitino.dto.responses.MetadataObjectListResponse;
 import org.apache.gravitino.dto.responses.NameListResponse;
 import org.apache.gravitino.dto.responses.PolicyListResponse;
 import org.apache.gravitino.dto.responses.PolicyResponse;
+import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NoSuchPolicyException;
 import org.apache.gravitino.exceptions.PolicyAlreadyExistsException;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.PolicyEntity;
+import org.apache.gravitino.policy.IcebergEncryptionContent;
 import org.apache.gravitino.policy.Policy;
 import org.apache.gravitino.policy.PolicyChange;
 import org.apache.gravitino.policy.PolicyContent;
@@ -377,6 +380,56 @@ public class TestPolicyOperations extends BaseOperationsTest {
     PolicyResponse policyResp = resp.readEntity(PolicyResponse.class);
     Assertions.assertEquals(0, policyResp.getCode());
     Assertions.assertEquals("system_iceberg_compaction", policyResp.getPolicy().policyType());
+  }
+
+  @Test
+  public void testCreatePolicyWithIcebergEncryptionType() {
+    PolicyContent content =
+        PolicyContents.icebergEncryption(
+            1,
+            true,
+            Collections.singletonList(new KmsReference("production", "key-a")),
+            IcebergEncryptionContent.Enforcement.DENY_CREATE);
+    PolicyEntity policy =
+        PolicyEntity.builder()
+            .withId(1L)
+            .withName("iceberg-encryption")
+            .withPolicyType(Policy.BuiltInType.ICEBERG_ENCRYPTION)
+            .withEnabled(true)
+            .withContent(content)
+            .withAuditInfo(testAuditInfo1)
+            .build();
+    when(policyManager.createPolicy(
+            metalake,
+            "iceberg-encryption",
+            Policy.BuiltInType.ICEBERG_ENCRYPTION,
+            null,
+            true,
+            content))
+        .thenReturn(policy);
+
+    PolicyCreateRequest request =
+        new PolicyCreateRequest(
+            "iceberg-encryption", "system_iceberg_encryption", null, true, toDTO(content));
+    Response response =
+        target(policyPath(metalake))
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    PolicyResponse policyResponse = response.readEntity(PolicyResponse.class);
+    Assertions.assertEquals(0, policyResponse.getCode());
+    Assertions.assertEquals("system_iceberg_encryption", policyResponse.getPolicy().policyType());
+    PolicyContentDTO.IcebergEncryptionContentDTO responseContent =
+        (PolicyContentDTO.IcebergEncryptionContentDTO) policyResponse.getPolicy().content();
+    Assertions.assertEquals(1, responseContent.schemaVersion());
+    Assertions.assertTrue(responseContent.required());
+    Assertions.assertEquals(
+        IcebergEncryptionContent.Enforcement.DENY_CREATE, responseContent.enforcement());
+    Assertions.assertEquals("production", responseContent.allowedKeys().get(0).getProvider());
+    Assertions.assertEquals("key-a", responseContent.allowedKeys().get(0).getKeyId());
+    Assertions.assertDoesNotThrow(responseContent::validate);
   }
 
   @Test

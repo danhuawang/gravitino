@@ -21,9 +21,11 @@ package org.apache.gravitino.storage.relational.utils;
 
 import static org.apache.gravitino.file.Fileset.LOCATION_NAME_UNKNOWN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -44,6 +46,7 @@ import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.file.Fileset;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
@@ -61,6 +64,7 @@ import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TableStatisticEntity;
 import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.meta.TopicEntity;
+import org.apache.gravitino.policy.IcebergEncryptionContent;
 import org.apache.gravitino.policy.Policy;
 import org.apache.gravitino.policy.PolicyContent;
 import org.apache.gravitino.policy.PolicyContents;
@@ -825,6 +829,81 @@ public class TestPOConverters {
     assertEquals(expectedPolicy.comment(), convertedPolicy.comment());
     assertEquals(expectedPolicy.enabled(), convertedPolicy.enabled());
     assertEquals(expectedPolicy.content(), convertedPolicy.content());
+  }
+
+  @Test
+  public void testIcebergEncryptionPolicyPersistenceRoundTrip() throws JsonProcessingException {
+    PolicyContent content =
+        PolicyContents.icebergEncryption(
+            1, ImmutableList.of(new KmsReference("analytics-prod", "projects/p/keys/k")));
+    PolicyEntity policy =
+        createPolicy(
+            1L,
+            "iceberg-encryption",
+            NamespaceUtil.ofPolicy("test_metalake"),
+            Policy.BuiltInType.ICEBERG_ENCRYPTION,
+            "test comment",
+            true,
+            content);
+
+    PolicyPO policyPO =
+        POConverters.initializePolicyPOWithVersion(policy, PolicyPO.builder().withMetalakeId(1L));
+    PolicyEntity converted =
+        POConverters.fromPolicyPO(policyPO, NamespaceUtil.ofPolicy("test_metalake"));
+    PolicyPO updatedPolicyPO = POConverters.updatePolicyPOWithVersion(policyPO, policy, true);
+    PolicyEntity convertedUpdate =
+        POConverters.fromPolicyPO(updatedPolicyPO, NamespaceUtil.ofPolicy("test_metalake"));
+
+    assertEquals(content, converted.content());
+    assertEquals(content, convertedUpdate.content());
+    assertFalse(
+        POConverters.checkPolicyVersionNeedUpdate(
+            updatedPolicyPO.getPolicyVersionPO(), convertedUpdate));
+    assertEquals(
+        "analytics-prod",
+        JsonUtils.anyFieldMapper()
+            .readTree(policyPO.getPolicyVersionPO().getContent())
+            .get("allowedKeys")
+            .get(0)
+            .get("provider")
+            .asText());
+  }
+
+  @Test
+  public void testIcebergEncryptionPolicyRoundTripPreservesEnforcementAndKeyOrder()
+      throws JsonProcessingException {
+    PolicyContent content =
+        PolicyContents.icebergEncryption(
+            1,
+            true,
+            ImmutableList.of(
+                new KmsReference("analytics-prod", "projects/p/keys/k1"),
+                new KmsReference("analytics-dr", "projects/p/keys/k2")),
+            IcebergEncryptionContent.Enforcement.DENY_CREATE);
+    PolicyEntity policy =
+        createPolicy(
+            1L,
+            "iceberg-encryption",
+            NamespaceUtil.ofPolicy("test_metalake"),
+            Policy.BuiltInType.ICEBERG_ENCRYPTION,
+            "test comment",
+            true,
+            content);
+
+    PolicyPO policyPO =
+        POConverters.initializePolicyPOWithVersion(policy, PolicyPO.builder().withMetalakeId(1L));
+    PolicyEntity converted =
+        POConverters.fromPolicyPO(policyPO, NamespaceUtil.ofPolicy("test_metalake"));
+
+    assertEquals(content, converted.content());
+
+    // Pin the stored shape: persistence must not depend on the REST DTO to encode these fields.
+    JsonNode stored =
+        JsonUtils.anyFieldMapper().readTree(policyPO.getPolicyVersionPO().getContent());
+    assertEquals("deny-create", stored.get("enforcement").asText());
+    assertEquals(2, stored.get("allowedKeys").size());
+    assertEquals("analytics-dr", stored.get("allowedKeys").get(1).get("provider").asText());
+    assertEquals("projects/p/keys/k2", stored.get("allowedKeys").get(1).get("keyId").asText());
   }
 
   @Test

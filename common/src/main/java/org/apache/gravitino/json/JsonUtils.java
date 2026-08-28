@@ -83,6 +83,7 @@ import org.apache.gravitino.dto.rel.partitions.IdentityPartitionDTO;
 import org.apache.gravitino.dto.rel.partitions.ListPartitionDTO;
 import org.apache.gravitino.dto.rel.partitions.PartitionDTO;
 import org.apache.gravitino.dto.rel.partitions.RangePartitionDTO;
+import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.Expression;
@@ -101,6 +102,8 @@ public class JsonUtils {
 
   private static final String NAMESPACE = "namespace";
   private static final String NAME = "name";
+  private static final String KMS_PROVIDER = "provider";
+  private static final String KMS_KEY_ID = "keyId";
   private static final String POSITION_FIRST = "first";
   private static final String POSITION_AFTER = "after";
   private static final String POSITION_DEFAULT = "default";
@@ -315,7 +318,9 @@ public class JsonUtils {
                     .addDeserializer(Expression.class, new ColumnDefaultValueDeserializer())
                     .addSerializer(Expression.class, new ColumnDefaultValueSerializer())
                     .addDeserializer(StatisticValue.class, new StatisticValueDeserializer())
-                    .addSerializer(StatisticValue.class, new StatisticValueSerializer()));
+                    .addSerializer(StatisticValue.class, new StatisticValueSerializer())
+                    .addDeserializer(KmsReference.class, new KmsReferenceDeserializer())
+                    .addSerializer(KmsReference.class, new KmsReferenceSerializer()));
   }
 
   /**
@@ -1026,6 +1031,44 @@ public class JsonUtils {
       Namespace namespace =
           levels == null ? Namespace.empty() : Namespace.of(levels.toArray(new String[0]));
       return NameIdentifier.of(namespace, name);
+    }
+  }
+
+  /**
+   * Custom JSON serializer for KmsReference objects.
+   *
+   * <p>Writes the stored property names explicitly so that renaming a field on {@link KmsReference}
+   * cannot silently change the persisted format.
+   */
+  public static class KmsReferenceSerializer extends JsonSerializer<KmsReference> {
+
+    @Override
+    public void serialize(KmsReference value, JsonGenerator gen, SerializerProvider serializers)
+        throws IOException {
+      gen.writeStartObject();
+      gen.writeStringField(KMS_PROVIDER, value.provider());
+      gen.writeStringField(KMS_KEY_ID, value.keyId());
+      gen.writeEndObject();
+    }
+  }
+
+  /**
+   * Custom JSON deserializer for KmsReference objects.
+   *
+   * <p>Routes through the validating constructor, so a malformed record fails on read rather than
+   * producing a partially populated reference.
+   */
+  public static class KmsReferenceDeserializer extends JsonDeserializer<KmsReference> {
+
+    @Override
+    public KmsReference deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+      JsonNode node = p.getCodec().readTree(p);
+      Preconditions.checkArgument(
+          node != null && !node.isNull() && node.isObject(),
+          "Cannot parse KMS reference from invalid JSON: %s",
+          node);
+
+      return new KmsReference(getString(KMS_PROVIDER, node), getString(KMS_KEY_ID, node));
     }
   }
 
