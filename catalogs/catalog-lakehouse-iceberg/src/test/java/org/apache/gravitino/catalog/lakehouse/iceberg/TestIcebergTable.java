@@ -22,6 +22,7 @@ import static org.apache.gravitino.rel.expressions.transforms.Transforms.bucket;
 import static org.apache.gravitino.rel.expressions.transforms.Transforms.day;
 import static org.apache.gravitino.rel.expressions.transforms.Transforms.identity;
 import static org.apache.gravitino.rel.expressions.transforms.Transforms.truncate;
+import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 
 import com.google.common.collect.Maps;
 import java.time.Instant;
@@ -56,6 +57,7 @@ import org.apache.gravitino.rel.expressions.sorts.SortOrders;
 import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.iceberg.DistributionMode;
+import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -705,6 +707,105 @@ public class TestIcebergTable {
     Assertions.assertEquals(distributionName, DistributionMode.RANGE.modeName());
   }
 
+<<<<<<< HEAD
+=======
+  @Test
+  void testRebuildCreatePropertiesResolvesFormatVersion() {
+    // The format-version mapping Gravitino applies at create time:
+    //   absent -> 2, empty -> 2, "2" -> 2, "3" -> 3.
+    Assertions.assertEquals("2", rebuiltFormatVersion(null));
+    Assertions.assertEquals("2", rebuiltFormatVersion(""));
+    Assertions.assertEquals("2", rebuiltFormatVersion("2"));
+    Assertions.assertEquals("3", rebuiltFormatVersion("3"));
+  }
+
+  /**
+   * The create request composes two steps: {@code rebuildCreateProperties} derives Iceberg
+   * defaults, then {@code toIcebergCreateProperties} drops Gravitino-only keys. Every other test
+   * here supplies an explicit format version, so none of them would notice if the derive step
+   * stopped reaching the request. This omits it, which is the only case that fails if the
+   * composition breaks.
+   */
+  @Test
+  void testCreateRequestAppliesDerivedDefaultsWhenNotSupplied() {
+    Map<String, String> properties = new HashMap<>();
+    properties.put(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER, "openbao-production");
+    properties.put(IcebergTable.PROP_PROVIDER, IcebergTable.ICEBERG_PARQUET_FILE_FORMAT);
+    IcebergColumn column =
+        IcebergColumn.builder()
+            .withName("id")
+            .withType(Types.IntegerType.get())
+            .withNullable(false)
+            .build();
+    IcebergTable table =
+        IcebergTable.builder()
+            .withName("defaulted_table")
+            .withColumns(new IcebergColumn[] {column})
+            .withProperties(properties)
+            .withPartitioning(new Transform[0])
+            .withDistribution(Distributions.NONE)
+            .withSortOrders(new SortOrder[0])
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+
+    Map<String, String> requestProperties = table.toCreateTableRequest().properties();
+
+    Assertions.assertEquals(
+        String.valueOf(IcebergTablePropertiesMetadata.ICEBERG_DEFAULT_FORMAT_VERSION),
+        requestProperties.get(IcebergTablePropertiesMetadata.FORMAT_VERSION));
+    Assertions.assertEquals(
+        IcebergTable.ICEBERG_PARQUET_FILE_FORMAT, requestProperties.get(DEFAULT_FILE_FORMAT));
+    Assertions.assertFalse(
+        requestProperties.containsKey(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER));
+  }
+
+  @Test
+  void testCreateRequestRemovesKmsProviderButPreservesKeyIdAndFormatVersion() {
+    Map<String, String> properties = new HashMap<>();
+    properties.put(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER, "openbao-production");
+    properties.put(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_ID, "customer-key-v1");
+    properties.put(IcebergTablePropertiesMetadata.FORMAT_VERSION, "3");
+    IcebergColumn column =
+        IcebergColumn.builder()
+            .withName("id")
+            .withType(Types.IntegerType.get())
+            .withNullable(false)
+            .build();
+    IcebergTable table =
+        IcebergTable.builder()
+            .withName("encrypted_table")
+            .withColumns(new IcebergColumn[] {column})
+            .withProperties(properties)
+            .withPartitioning(new Transform[0])
+            .withDistribution(Distributions.NONE)
+            .withSortOrders(new SortOrder[0])
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+
+    CreateTableRequest request = table.toCreateTableRequest();
+
+    Assertions.assertFalse(
+        request.properties().containsKey(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER));
+    Assertions.assertEquals(
+        "customer-key-v1",
+        request.properties().get(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_ID));
+    Assertions.assertEquals(
+        "3", request.properties().get(IcebergTablePropertiesMetadata.FORMAT_VERSION));
+    Assertions.assertEquals(
+        "openbao-production",
+        table.properties().get(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER));
+  }
+
+  private static String rebuiltFormatVersion(String input) {
+    Map<String, String> properties = new HashMap<>();
+    if (input != null) {
+      properties.put(IcebergTablePropertiesMetadata.FORMAT_VERSION, input);
+    }
+    return IcebergTable.rebuildCreateProperties(properties)
+        .get(IcebergTablePropertiesMetadata.FORMAT_VERSION);
+  }
+
+>>>>>>> dea6d16e1 ([#925] feat(iceberg): identify Iceberg encryption keys as provider plus key ID (#940))
   protected static String genRandomName() {
     return UUID.randomUUID().toString().replace("-", "");
   }

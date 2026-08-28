@@ -100,10 +100,30 @@ public class IcebergTable extends BaseTable {
             .withName(name)
             .withLocation(location)
             .withSchema(schema)
-            .setProperties(rebuildCreateProperties(properties))
+            .setProperties(toIcebergCreateProperties(rebuildCreateProperties(properties)))
             .withPartitionSpec(ToIcebergPartitionSpec.toPartitionSpec(schema, partitioning))
             .withWriteOrder(ToIcebergSortOrder.toSortOrder(schema, sortOrders));
     return builder.build();
+  }
+
+  /**
+   * Copies Gravitino table properties into the set sent to Iceberg at table creation.
+   *
+   * <p>Kept separate from {@link #rebuildCreateProperties(Map)}, which derives Iceberg-meaningful
+   * defaults from Gravitino input. This instead drops the keys Iceberg should never receive, so the
+   * two steps compose as enrich-then-project rather than one method owning both.
+   *
+   * <p>The KMS provider selects Gravitino's configured KMS client and is not Iceberg metadata. The
+   * key ID remains in the returned map because Iceberg uses it to select the encryption key.
+   *
+   * @param gravitinoProperties Gravitino table properties
+   * @return a copy safe to send to Iceberg
+   */
+  @VisibleForTesting
+  static Map<String, String> toIcebergCreateProperties(Map<String, String> gravitinoProperties) {
+    Map<String, String> icebergProperties = Maps.newHashMap(gravitinoProperties);
+    icebergProperties.remove(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER);
+    return icebergProperties;
   }
 
   /**

@@ -25,6 +25,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
 import java.util.List;
 import java.util.Map;
+<<<<<<< HEAD
+=======
+import java.util.Set;
+import java.util.function.Function;
+import org.apache.commons.lang3.StringUtils;
+>>>>>>> dea6d16e1 ([#925] feat(iceberg): identify Iceberg encryption keys as provider plus key ID (#940))
 import org.apache.gravitino.connector.BasePropertiesMetadata;
 import org.apache.gravitino.connector.PropertyEntry;
 import org.apache.iceberg.TableProperties;
@@ -40,6 +46,13 @@ public class IcebergTablePropertiesMetadata extends BasePropertiesMetadata {
   public static final String PROVIDER = IcebergConstants.PROVIDER;
   public static final String FORMAT = IcebergConstants.FORMAT;
   public static final String FORMAT_VERSION = IcebergConstants.FORMAT_VERSION;
+
+  /** The configured KMS provider used to interpret {@link #ENCRYPTION_KEY_ID}. */
+  public static final String ENCRYPTION_KEY_PROVIDER = IcebergConstants.ENCRYPTION_KEY_PROVIDER;
+
+  /** The key identifier used to encrypt this Iceberg table. */
+  public static final String ENCRYPTION_KEY_ID = IcebergConstants.ENCRYPTION_KEY_ID;
+
   public static final String DISTRIBUTION_MODE = TableProperties.WRITE_DISTRIBUTION_MODE;
 
   private static final Map<String, PropertyEntry<?>> PROPERTIES_METADATA;
@@ -65,8 +78,17 @@ public class IcebergTablePropertiesMetadata extends BasePropertiesMetadata {
             stringReservedPropertyEntry(
                 IDENTIFIER_FIELDS, "The identifier field(s) for defining the table", false),
             stringReservedPropertyEntry(DISTRIBUTION_MODE, "Write distribution mode", false),
+<<<<<<< HEAD
             stringImmutablePropertyEntry(
                 FORMAT_VERSION, "The Iceberg table format version, ", false, null, false, false),
+=======
+            formatVersionPropertyEntry(),
+            nonBlankEncryptionPropertyEntry(
+                ENCRYPTION_KEY_PROVIDER,
+                "The configured KMS provider used to interpret the table encryption key ID"),
+            nonBlankEncryptionPropertyEntry(
+                ENCRYPTION_KEY_ID, "The key identifier used to encrypt this Iceberg table"),
+>>>>>>> dea6d16e1 ([#925] feat(iceberg): identify Iceberg encryption keys as provider plus key ID (#940))
             stringImmutablePropertyEntry(
                 PROVIDER,
                 "Iceberg provider for Iceberg table fileFormat, such as Parquet, Orc, Avro, or Iceberg",
@@ -81,4 +103,93 @@ public class IcebergTablePropertiesMetadata extends BasePropertiesMetadata {
   protected Map<String, PropertyEntry<?>> specificPropertyEntries() {
     return PROPERTIES_METADATA;
   }
+<<<<<<< HEAD
+=======
+
+  /**
+   * Builds the property entry for {@link #FORMAT_VERSION}, an immutable property that accepts an
+   * unset value or one of {@link #SUPPORTED_FORMAT_VERSIONS} and defaults to {@link
+   * #ICEBERG_DEFAULT_FORMAT_VERSION}.
+   *
+   * @return the {@code format-version} property entry.
+   */
+  private static PropertyEntry<Integer> formatVersionPropertyEntry() {
+    return new PropertyEntry.Builder<Integer>()
+        .withName(FORMAT_VERSION)
+        .withDescription(
+            "The Iceberg table format version. Gravitino supports creating tables at versions 1 to "
+                + "4 (the range the bundled Iceberg version can write) and defaults to 2 when unset. "
+                + "Version 3 is required for V3 types such as variant; version 4 is not yet a "
+                + "finalized Iceberg spec.")
+        .withRequired(false)
+        .withImmutable(true)
+        .withJavaType(Integer.class)
+        .withDefaultValue(ICEBERG_DEFAULT_FORMAT_VERSION)
+        .withDecoder(IcebergTablePropertiesMetadata::decodeFormatVersion)
+        .withEncoder(String::valueOf)
+        .withHidden(false)
+        .withReserved(false)
+        .build();
+  }
+
+  /**
+   * Builds an optional, immutable, user-visible encryption property whose value must be nonblank.
+   *
+   * @param name property name
+   * @param description property description
+   * @return the property entry
+   */
+  private static PropertyEntry<String> nonBlankEncryptionPropertyEntry(
+      String name, String description) {
+    return new PropertyEntry.Builder<String>()
+        .withName(name)
+        .withDescription(description)
+        .withRequired(false)
+        .withImmutable(true)
+        .withJavaType(String.class)
+        .withDefaultValue(null)
+        .withDecoder(value -> decodeNonBlankEncryptionProperty(name, value))
+        .withEncoder(Function.identity())
+        .withHidden(false)
+        .withReserved(false)
+        .build();
+  }
+
+  /**
+   * Validates an encryption property without changing its provider-defined value.
+   *
+   * @param name property name
+   * @param value raw property value
+   * @return the original value
+   * @throws IllegalArgumentException if the value is blank
+   */
+  private static String decodeNonBlankEncryptionProperty(String name, String value) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(value), "%s cannot be blank", name);
+    return value;
+  }
+
+  /**
+   * Decodes and validates a user-supplied {@link #FORMAT_VERSION} value. An unset (null or blank)
+   * value is allowed and resolves to {@link #ICEBERG_DEFAULT_FORMAT_VERSION}; otherwise the value
+   * must be an integer in {@link #SUPPORTED_FORMAT_VERSIONS}.
+   *
+   * @param value the raw property value.
+   * @return the parsed format version, or {@link #ICEBERG_DEFAULT_FORMAT_VERSION} when the value is
+   *     unset.
+   * @throws IllegalArgumentException if the value is neither blank nor a version in {@link
+   *     #SUPPORTED_FORMAT_VERSIONS}.
+   */
+  private static Integer decodeFormatVersion(String value) {
+    if (StringUtils.isBlank(value)) {
+      return ICEBERG_DEFAULT_FORMAT_VERSION;
+    }
+    int version = Integer.parseInt(value.trim());
+    Preconditions.checkArgument(
+        SUPPORTED_FORMAT_VERSIONS.contains(version),
+        "Unsupported Iceberg format-version: %s, supported versions are %s",
+        version,
+        SUPPORTED_FORMAT_VERSIONS);
+    return version;
+  }
+>>>>>>> dea6d16e1 ([#925] feat(iceberg): identify Iceberg encryption keys as provider plus key ID (#940))
 }
