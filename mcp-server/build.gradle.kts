@@ -168,11 +168,7 @@ tasks {
     workingDir(pythonProjectDir)
 
     doFirst {
-<<<<<<< HEAD
-      commandLine(getUvExecutable(), "pip", "install", "--python", venvPython, "black", "isort==6.0.1")
-=======
       commandLine(getUvExecutable(), "pip", "install", "--python", venvPython, blackRequirement, isortRequirement)
->>>>>>> upstream/branch-1.3
     }
 
     doLast {

@@ -324,8 +324,6 @@ public class TestMetadataAuthzHelper {
   }
 
   /**
-<<<<<<< HEAD
-=======
    * The verbose catalog listing hands this helper {@code Catalog} objects rather than identifiers,
    * so it goes through the generic overload. That overload used to skip the short-circuit, which
    * left every catalog in the metalake on the per-object path.
@@ -379,7 +377,6 @@ public class TestMetadataAuthzHelper {
   }
 
   /**
->>>>>>> upstream/branch-1.3
    * Builds an authorizer that grants {@code SELECT_TABLE} at the schema scope, but only for the
    * schema whose simple name equals {@code grantedSchema}. Used to prove the short-circuit never
    * applies one parent's grant to siblings under a different parent.

@@ -27,11 +27,8 @@ import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalNotification;
-<<<<<<< HEAD
 import com.google.common.util.concurrent.UncheckedExecutionException;
-=======
 import io.airlift.log.Logger;
->>>>>>> upstream/branch-1.3
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.Connector;
 import io.trino.spi.connector.ConnectorAccessControl;
@@ -260,8 +257,7 @@ public class GravitinoConnector implements Connector {
     } catch (ExecutionException | UncheckedExecutionException e) {
       Throwable cause = e.getCause() == null ? e : e.getCause();
       LOG.warn(
-<<<<<<< HEAD
-          "Failed to create per-user Gravitino client for user '{}'", session.getUser(), cause);
+          cause, "Failed to create per-user Gravitino client for user '%s'", session.getUser());
       if (cause instanceof TrinoException) {
         // Already carries a specific Trino error code (e.g. from buildForSession); re-wrapping
         // would swallow it.
@@ -277,9 +273,6 @@ public class GravitinoConnector implements Connector {
                 + cause.getMessage(),
             cause);
       }
-=======
-          cause, "Failed to create per-user Gravitino client for user '%s'", session.getUser());
->>>>>>> upstream/branch-1.3
       throw new TrinoException(
           GENERIC_INTERNAL_ERROR,
           "Unexpected error while creating per-user Gravitino client for user '"

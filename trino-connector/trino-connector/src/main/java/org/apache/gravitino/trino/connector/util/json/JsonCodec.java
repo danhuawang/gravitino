@@ -131,12 +131,8 @@ public class JsonCodec {
    * order, then fall back to a generic constructor scan that fills unknown reference parameters
    * with default values as a last-resort compatibility mechanism.
    */
-<<<<<<< HEAD
-  private static Object instantiateBlockEncodingManager(
-=======
   @VisibleForTesting
   static Object instantiateBlockEncodingManager(
->>>>>>> upstream/branch-1.3
       Class<?> blockEncodingManagerClass, ClassLoader classLoader) throws Exception {
     try {
       Object instance = blockEncodingManagerClass.getConstructor().newInstance();
@@ -168,25 +164,6 @@ public class JsonCodec {
 
     NoSuchMethodException lastError = null;
     for (Constructor<?> ctor : blockEncodingManagerClass.getDeclaredConstructors()) {
-<<<<<<< HEAD
-      try {
-        ctor.setAccessible(true);
-        Class<?>[] paramTypes = ctor.getParameterTypes();
-        Object[] args = new Object[paramTypes.length];
-        for (int i = 0; i < paramTypes.length; i++) {
-          if (Set.class.isAssignableFrom(paramTypes[i])) {
-            args[i] = Collections.emptySet();
-          } else if (paramTypes[i].isPrimitive()) {
-            args[i] = defaultPrimitive(paramTypes[i]);
-          } else {
-            args[i] = tryDefaultInstance(paramTypes[i]);
-          }
-        }
-        Object instance = ctor.newInstance(args);
-        LOG.debug("Instantiated BlockEncodingManager with fallback constructor {}", ctor);
-        return instance;
-      } catch (ReflectiveOperationException e) {
-=======
       if (!ctor.trySetAccessible()) {
         continue;
       }
@@ -217,7 +194,6 @@ public class JsonCodec {
         LOG.debug("Instantiated BlockEncodingManager with fallback constructor {}", ctor);
         return instance;
       } catch (ReflectiveOperationException | RuntimeException e) {
->>>>>>> upstream/branch-1.3
         lastError =
             new NoSuchMethodException(
                 "Failed invoking BlockEncodingManager constructor " + ctor + ": " + e.getMessage());
@@ -233,17 +209,11 @@ public class JsonCodec {
   private static Object tryDefaultInstance(Class<?> type) {
     try {
       Constructor<?> ctor = type.getDeclaredConstructor();
-<<<<<<< HEAD
-      ctor.setAccessible(true);
-      return ctor.newInstance();
-    } catch (ReflectiveOperationException e) {
-=======
       if (!ctor.trySetAccessible()) {
         return null;
       }
       return ctor.newInstance();
     } catch (ReflectiveOperationException | RuntimeException e) {
->>>>>>> upstream/branch-1.3
       return null;
     }
   }

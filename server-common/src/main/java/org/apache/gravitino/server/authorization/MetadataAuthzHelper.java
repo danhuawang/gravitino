@@ -206,19 +206,6 @@ public class MetadataAuthzHelper {
       String expression,
       Entity.EntityType entityType,
       NameIdentifier[] nameIdentifiers) {
-<<<<<<< HEAD
-    if (enableAuthorization()
-        && nameIdentifiers.length > 0
-        && allVisibleViaParentScope(metalake, expression, entityType, nameIdentifiers)) {
-      // A privilege granted at a parent scope (metalake/catalog/schema) makes every object in the
-      // list visible, and no object-level deny exists, so the per-object authorization loop is
-      // skipped entirely. See AuthorizationExpressionConstants.*_LIST_PARENT_SCOPE_*.
-      return nameIdentifiers;
-    }
-    preloadToCache(entityType, nameIdentifiers);
-    preloadOwner(entityType, nameIdentifiers);
-=======
->>>>>>> upstream/branch-1.3
     return filterByExpression(metalake, expression, entityType, nameIdentifiers, e -> e);
   }
 

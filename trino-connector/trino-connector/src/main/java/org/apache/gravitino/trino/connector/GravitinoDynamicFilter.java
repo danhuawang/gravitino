@@ -21,10 +21,7 @@ package org.apache.gravitino.trino.connector;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.predicate.TupleDomain;
-<<<<<<< HEAD
-=======
 import java.lang.reflect.Method;
->>>>>>> upstream/branch-1.3
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -63,11 +60,6 @@ class GravitinoDynamicFilter implements DynamicFilter {
   // Note: this method is not annotated with @Override because it does not exist in the
   // DynamicFilter interface of the baseline open-source Trino SPI version this connector compiles
   // against. It is present in newer Trino/Starburst SPI versions, where it is dispatched at
-<<<<<<< HEAD
-  // runtime by signature, providing cross-version compatibility.
-  public OptionalLong getPreferredDynamicFilterTimeout() {
-    return OptionalLong.empty();
-=======
   // runtime by signature, providing cross-version compatibility. When the delegate implements the
   // same method, its value is forwarded so the underlying SPI's timeout preference is preserved.
   public OptionalLong getPreferredDynamicFilterTimeout() {
@@ -77,7 +69,6 @@ class GravitinoDynamicFilter implements DynamicFilter {
     } catch (ReflectiveOperationException | RuntimeException e) {
       return OptionalLong.empty();
     }
->>>>>>> upstream/branch-1.3
   }
 
   @Override
