@@ -368,6 +368,13 @@ class TestErrorHandler(unittest.TestCase):
                 )
             )
 
+        with self.assertRaises(ConnectionFailedException):
+            TABLE_ERROR_HANDLER.handle(
+                ErrorResponse.generate_error_response(
+                    ConnectionFailedException, "mock error"
+                )
+            )
+
         with self.assertRaises(NoSuchSchemaException):
             TABLE_ERROR_HANDLER.handle(
                 ErrorResponse.generate_error_response(

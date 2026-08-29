@@ -395,6 +395,9 @@ public class ErrorHandlers {
         case ErrorConstants.ILLEGAL_ARGUMENTS_CODE:
           throw new IllegalArgumentException(errorMessage);
 
+        case ErrorConstants.CONNECTION_FAILED_CODE:
+          throw new ConnectionFailedException(errorMessage);
+
         case ErrorConstants.NOT_FOUND_CODE:
           if (errorResponse.getType().equals(NoSuchSchemaException.class.getSimpleName())) {
             throw new NoSuchSchemaException(errorMessage);
