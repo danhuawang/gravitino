@@ -55,7 +55,8 @@ public class ExtendedGroupOperations {
 
   /**
    * Lists groups under a metalake for the security UI, including {@code origin} ({@code Local} vs
-   * {@code Provisioned}) from a JOIN to {@code idp_group_meta}.
+   * {@code Provisioned}) from a JOIN to {@code idp_group_meta}, and {@code userCount} for the
+   * Groups table.
    *
    * @param metalake The metalake name.
    * @return Groups.
@@ -132,7 +133,8 @@ public class ExtendedGroupOperations {
                     ExtendedGroupDTO.from(
                         accessControlDispatcher.addLocalGroup(
                             metalake, request.getName(), request.getRoles()),
-                        true)));
+                        true,
+                        0)));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(

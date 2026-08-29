@@ -121,7 +121,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
     when(accessControlDispatcher.listExtendedGroups(metalake))
         .thenReturn(
             new ExtendedGroupDTO[] {
-              ExtendedGroupDTO.from(local, true), ExtendedGroupDTO.from(provisioned, false)
+              ExtendedGroupDTO.from(local, true, 12), ExtendedGroupDTO.from(provisioned, false, 8)
             });
 
     Response response =
@@ -137,9 +137,11 @@ public class TestExtendedGroupOperations extends JerseyTest {
     Assertions.assertEquals("contractors", body.getGroups()[0].name());
     Assertions.assertEquals("has-ext", body.getGroups()[0].externalId());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getGroups()[0].origin());
+    Assertions.assertEquals(12, body.getGroups()[0].userCount());
     Assertions.assertEquals("governance", body.getGroups()[1].name());
     Assertions.assertNull(body.getGroups()[1].externalId());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getGroups()[1].origin());
+    Assertions.assertEquals(8, body.getGroups()[1].userCount());
   }
 
   @Test

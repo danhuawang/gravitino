@@ -100,9 +100,11 @@ paths:
       summary: Get the metalake authorization overview
       operationId: getAuthorizationOverview
       description: |
-        Returns metadata objects grouped by catalog, users and groups associated
-        through roles, privileged principal share, and all visible roles with
-        their direct members.
+        Returns summary card counts, metadata objects grouped by catalog, users and
+        groups associated through roles, privileged principal share, and all visible
+        roles with their direct members.
+
+        Summary includes active/suspended users, empty groups, and unassigned roles.
 
         A member is one directly assigned user or group; users contained in a group
         are not expanded. Privileged is the share of catalog principals holding an allowed
@@ -443,6 +445,46 @@ components:
           items:
             $ref: "#/components/schemas/ObjectRolePrivilege"
 
+    AuthorizationSummary:
+      type: object
+      required:
+        - userCount
+        - activeUserCount
+        - suspendedUserCount
+        - groupCount
+        - emptyGroupCount
+        - roleCount
+        - unassignedRoleCount
+      properties:
+        userCount:
+          type: integer
+          format: int32
+          description: Total metalake users
+        activeUserCount:
+          type: integer
+          format: int32
+          description: Users with enabled=true
+        suspendedUserCount:
+          type: integer
+          format: int32
+          description: Users with enabled=false
+        groupCount:
+          type: integer
+          format: int32
+          description: Total metalake groups
+        emptyGroupCount:
+          type: integer
+          format: int32
+          description: Groups with zero member users
+        roleCount:
+          type: integer
+          format: int32
+          description: Visible roles included in the overview
+        unassignedRoleCount:
+          type: integer
+          format: int32
+          description: Visible roles with no user or group member
+
     RoleAssignmentListResponse:
       type: object
       required:
@@ -482,6 +524,7 @@ components:
       type: object
       required:
         - code
+        - summary
         - catalogs
         - roles
         - unassignedRoles
@@ -491,6 +534,8 @@ components:
           format: int32
           enum:
             - 0
+        summary:
+          $ref: "#/components/schemas/AuthorizationSummary"
         catalogs:
           type: array
           items:

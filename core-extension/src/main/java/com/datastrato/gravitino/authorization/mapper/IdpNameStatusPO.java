@@ -124,7 +124,7 @@ public class IdpNameStatusPO {
   public static ExtendedGroupDTO toExtendedGroup(GroupWithOrigin row, String metalakeName) {
     Namespace namespace = AuthorizationUtils.ofGroupNamespace(metalakeName);
     return ExtendedGroupDTO.from(
-        POConverters.fromExtendedGroupPO(row, namespace), row.inBuiltInIdp());
+        POConverters.fromExtendedGroupPO(row, namespace), row.inBuiltInIdp(), row.userCount());
   }
 
   /**
@@ -306,6 +306,7 @@ public class IdpNameStatusPO {
   public static final class GroupWithOrigin extends ExtendedGroupPO {
 
     private Integer inBuiltInIdp;
+    private Integer userCount;
 
     /**
      * @return {@code 1} when the name exists in {@code idp_group_meta}, otherwise {@code 0}.
@@ -326,6 +327,27 @@ public class IdpNameStatusPO {
      */
     public boolean inBuiltInIdp() {
       return isFlagTrue(inBuiltInIdp);
+    }
+
+    /**
+     * @return Number of metalake users in the group.
+     */
+    public Integer getUserCount() {
+      return userCount;
+    }
+
+    /**
+     * @param userCount Number of metalake users in the group.
+     */
+    public void setUserCount(Integer userCount) {
+      this.userCount = userCount;
+    }
+
+    /**
+     * @return Number of metalake users in the group, or {@code 0} when unset.
+     */
+    public int userCount() {
+      return userCount == null ? 0 : userCount;
     }
   }
 }
