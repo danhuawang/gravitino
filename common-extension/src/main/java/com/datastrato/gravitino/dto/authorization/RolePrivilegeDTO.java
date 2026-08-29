@@ -5,6 +5,7 @@ package com.datastrato.gravitino.dto.authorization;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -27,6 +28,12 @@ public class RolePrivilegeDTO {
   @JsonProperty("privileges")
   private PrivilegeDTO[] privileges;
 
+  @JsonProperty("createTime")
+  private Instant createTime;
+
+  @JsonProperty("assignCount")
+  private int assignCount;
+
   /** Default constructor for Jackson deserialization. */
   protected RolePrivilegeDTO() {}
 
@@ -35,10 +42,15 @@ public class RolePrivilegeDTO {
    *
    * @param role The role name.
    * @param privileges The privileges granted to the role.
+   * @param createTime The role creation time.
+   * @param assignCount The number of users and groups directly assigned to the role.
    */
-  protected RolePrivilegeDTO(String role, PrivilegeDTO[] privileges) {
+  protected RolePrivilegeDTO(
+      String role, PrivilegeDTO[] privileges, Instant createTime, int assignCount) {
     this.role = role;
     this.privileges = privileges;
+    this.createTime = createTime;
+    this.assignCount = assignCount;
   }
 
   /**
@@ -76,6 +88,8 @@ public class RolePrivilegeDTO {
   public static class Builder {
     private String role;
     private PrivilegeDTO[] privileges;
+    private Instant createTime;
+    private int assignCount;
 
     /**
      * Sets the role name.
@@ -100,6 +114,28 @@ public class RolePrivilegeDTO {
     }
 
     /**
+     * Sets the role creation time.
+     *
+     * @param createTime The role creation time.
+     * @return The builder instance.
+     */
+    public Builder withCreateTime(Instant createTime) {
+      this.createTime = createTime;
+      return this;
+    }
+
+    /**
+     * Sets the number of direct user and group assignments.
+     *
+     * @param assignCount The direct assignment count.
+     * @return The builder instance.
+     */
+    public Builder withAssignCount(int assignCount) {
+      this.assignCount = assignCount;
+      return this;
+    }
+
+    /**
      * Builds an instance of RolePrivilegeDTO using the builder's properties.
      *
      * @return An instance of RolePrivilegeDTO.
@@ -109,8 +145,10 @@ public class RolePrivilegeDTO {
       Preconditions.checkArgument(StringUtils.isNotBlank(role), "role cannot be null or empty");
       Preconditions.checkArgument(
           privileges != null && privileges.length != 0, "privileges can't be null or empty");
+      Preconditions.checkArgument(createTime != null, "create time cannot be null");
+      Preconditions.checkArgument(assignCount >= 0, "assign count cannot be negative");
 
-      return new RolePrivilegeDTO(role, privileges);
+      return new RolePrivilegeDTO(role, privileges, createTime, assignCount);
     }
   }
 }

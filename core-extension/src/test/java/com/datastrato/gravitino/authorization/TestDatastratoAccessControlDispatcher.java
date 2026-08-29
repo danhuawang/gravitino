@@ -6,7 +6,6 @@ package com.datastrato.gravitino.authorization;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -210,7 +209,7 @@ public class TestDatastratoAccessControlDispatcher {
 
   @Test
   @SuppressWarnings("unchecked")
-  public void testAssignRoleToPrincipalsWithDirectBatchService() {
+  public void testAssignRolesToPrincipalsWithDirectBatchService() {
     AccessControlDispatcher delegate = mock(AccessControlDispatcher.class);
     EntityStore batchEntityStore = mock(EntityStore.class);
     DatastratoRoleMetaService roleMetaService = mock(DatastratoRoleMetaService.class);
@@ -235,6 +234,15 @@ public class TestDatastratoAccessControlDispatcher {
                 Lists.newArrayList(
                     SecurableObjects.ofCatalog(
                         CATALOG, Lists.newArrayList(Privileges.UseCatalog.allow()))))
+            .withAuditInfo(auditInfo)
+            .build();
+    RoleEntity secondBatchRole =
+        RoleEntity.builder()
+            .withNamespace(batchRole.namespace())
+            .withId(20L)
+            .withName("second-batch-role")
+            .withProperties(Maps.newHashMap())
+            .withSecurableObjects(Lists.newArrayList())
             .withAuditInfo(auditInfo)
             .build();
     UserEntity alice =
@@ -279,6 +287,7 @@ public class TestDatastratoAccessControlDispatcher {
             .build();
 
     Mockito.when(delegate.getRole(METALAKE, "batch-role")).thenReturn(batchRole);
+    Mockito.when(delegate.getRole(METALAKE, "second-batch-role")).thenReturn(secondBatchRole);
     Mockito.when(userMetaService.batchGetUsers(eq(METALAKE), anyList()))
         .thenReturn(Lists.newArrayList(bob, alice));
     Mockito.when(
@@ -288,24 +297,28 @@ public class TestDatastratoAccessControlDispatcher {
                 eq(GroupEntity.class)))
         .thenReturn(Lists.newArrayList(admins, analysts));
 
-    dispatcher.assignRoleToPrincipals(
+    dispatcher.assignRolesToPrincipals(
         METALAKE,
-        "batch-role",
+        Lists.newArrayList("batch-role", "second-batch-role"),
         Lists.newArrayList("alice", "bob"),
         Lists.newArrayList("analysts", "admins"));
 
+    ArgumentCaptor<List<RoleEntity>> rolesCaptor = ArgumentCaptor.forClass(List.class);
     ArgumentCaptor<List<UserEntity>> usersCaptor = ArgumentCaptor.forClass(List.class);
     ArgumentCaptor<List<GroupEntity>> groupsCaptor = ArgumentCaptor.forClass(List.class);
     verify(roleMetaService)
-        .batchAssignRoleToPrincipals(eq(10L), usersCaptor.capture(), groupsCaptor.capture());
+        .batchAssignRolesToPrincipals(
+            rolesCaptor.capture(), usersCaptor.capture(), groupsCaptor.capture());
 
     Assertions.assertEquals("alice", usersCaptor.getValue().get(0).name());
     Assertions.assertEquals("bob", usersCaptor.getValue().get(1).name());
-    Assertions.assertEquals(Lists.newArrayList(99L, 10L), usersCaptor.getValue().get(0).roleIds());
+    Assertions.assertEquals(
+        Lists.newArrayList(99L, 10L, 20L), usersCaptor.getValue().get(0).roleIds());
+    Assertions.assertEquals(Lists.newArrayList(batchRole, secondBatchRole), rolesCaptor.getValue());
     Assertions.assertEquals("test", usersCaptor.getValue().get(0).auditInfo().creator());
     Assertions.assertEquals("analysts", groupsCaptor.getValue().get(0).name());
     Assertions.assertEquals("admins", groupsCaptor.getValue().get(1).name());
-    Assertions.assertEquals(Lists.newArrayList(10L), groupsCaptor.getValue().get(0).roleIds());
+    Assertions.assertEquals(Lists.newArrayList(10L, 20L), groupsCaptor.getValue().get(0).roleIds());
     verify(delegate, never()).grantRolesToUser(any(), anyList(), any());
     verify(delegate, never()).grantRolesToGroup(any(), anyList(), any());
 
@@ -319,12 +332,12 @@ public class TestDatastratoAccessControlDispatcher {
     Assertions.assertThrows(
         NoSuchGroupException.class,
         () ->
-            dispatcher.assignRoleToPrincipals(
+            dispatcher.assignRolesToPrincipals(
                 METALAKE,
-                "batch-role",
+                Lists.newArrayList("batch-role", "second-batch-role"),
                 Lists.newArrayList("alice"),
                 Lists.newArrayList("missing")));
-    verify(roleMetaService, never()).batchAssignRoleToPrincipals(anyLong(), anyList(), anyList());
+    verify(roleMetaService, never()).batchAssignRolesToPrincipals(anyList(), anyList(), anyList());
   }
 
   @Test

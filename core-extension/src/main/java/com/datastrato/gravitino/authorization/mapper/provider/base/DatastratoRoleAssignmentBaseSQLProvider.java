@@ -21,7 +21,7 @@ import org.apache.ibatis.annotations.Param;
 public class DatastratoRoleAssignmentBaseSQLProvider {
 
   /**
-   * Assigns one role to multiple users without changing existing assignments.
+   * Assigns multiple roles to multiple users without changing existing assignments.
    *
    * @param assignments The user-role assignments.
    * @return The batch user-role assignment SQL.
@@ -31,7 +31,7 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
   }
 
   /**
-   * Assigns one role to multiple groups without changing existing assignments.
+   * Assigns multiple roles to multiple groups without changing existing assignments.
    *
    * @param assignments The group-role assignments.
    * @return The batch group-role assignment SQL.

@@ -9,10 +9,8 @@ import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.RoleGroupAssignmentDTO;
 import com.datastrato.gravitino.dto.authorization.RoleUserAssignmentDTO;
 import com.datastrato.gravitino.dto.requests.PermissionUpdateRequest;
-import com.datastrato.gravitino.dto.requests.RoleAssignmentRequest;
 import com.datastrato.gravitino.dto.responses.RoleGroupAssignmentListResponse;
 import com.datastrato.gravitino.dto.responses.RoleUserAssignmentListResponse;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import java.util.Arrays;
 import java.util.List;
@@ -32,7 +30,6 @@ import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
-import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.dto.responses.RoleResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.server.authorization.NameBindings;
@@ -119,38 +116,6 @@ public class ExtendedRoleOperations {
                           .toArray(RoleGroupAssignmentDTO[]::new))));
     } catch (Exception e) {
       return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
-    }
-  }
-
-  /**
-   * Assigns this role to multiple users and groups.
-   *
-   * @param metalake The metalake name.
-   * @param role The role name.
-   * @param request The users and groups to assign.
-   * @return A successful base response when all assignments are persisted.
-   */
-  @PUT
-  @Path("assignments")
-  @Produces("application/vnd.gravitino.v1+json")
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GRANTS")
-  public Response assignRoleToPrincipals(
-      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
-          String metalake,
-      @PathParam("role") @AuthorizationMetadata(type = Entity.EntityType.ROLE) String role,
-      RoleAssignmentRequest request) {
-    try {
-      return Utils.doAs(
-          httpRequest,
-          () -> {
-            Preconditions.checkArgument(request != null, "request cannot be null");
-            request.validate();
-            accessControlDispatcher.assignRoleToPrincipals(
-                metalake, role, request.getUsers(), request.getGroups());
-            return Utils.ok(new BaseResponse(0));
-          });
-    } catch (Exception e) {
-      return ExceptionHandlers.handleRoleException(OperationType.GRANT, role, metalake, e);
     }
   }
 

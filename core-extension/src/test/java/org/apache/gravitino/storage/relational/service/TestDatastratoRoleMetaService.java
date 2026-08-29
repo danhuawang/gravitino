@@ -19,6 +19,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.Collections;
@@ -27,6 +28,7 @@ import java.util.Map;
 import org.apache.gravitino.Audit;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
+import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
@@ -36,6 +38,9 @@ import org.apache.gravitino.exceptions.NoSuchRoleException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
+import org.apache.gravitino.meta.GroupEntity;
+import org.apache.gravitino.meta.RoleEntity;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.storage.relational.po.RolePO;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.junit.jupiter.api.AfterAll;
@@ -105,6 +110,8 @@ public class TestDatastratoRoleMetaService {
               + "user_id BIGINT NOT NULL,"
               + "role_id BIGINT NOT NULL,"
               + "audit_info CLOB NOT NULL,"
+              + "current_version BIGINT NOT NULL DEFAULT 1,"
+              + "last_version BIGINT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE group_role_rel ("
@@ -112,6 +119,8 @@ public class TestDatastratoRoleMetaService {
               + "group_id BIGINT NOT NULL,"
               + "role_id BIGINT NOT NULL,"
               + "audit_info CLOB NOT NULL,"
+              + "current_version BIGINT NOT NULL DEFAULT 1,"
+              + "last_version BIGINT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE role_meta_securable_object ("
@@ -348,6 +357,61 @@ public class TestDatastratoRoleMetaService {
         () -> service.listGroupAssignmentsByRole("missingMetalake", "role1"));
   }
 
+  /**
+   * Tests assigning every requested role to every requested principal atomically and idempotently.
+   */
+  @Test
+  public void testBatchAssignRolesToPrincipals() throws Exception {
+    AuditInfo assignmentAudit = buildAssignmentAudit();
+    RoleEntity role1 =
+        RoleEntity.builder()
+            .withNamespace(AuthorizationUtils.ofRoleNamespace("metalake1"))
+            .withId(100L)
+            .withName("role1")
+            .withProperties(Collections.emptyMap())
+            .withSecurableObjects(Collections.emptyList())
+            .withAuditInfo(buildRoleAudit())
+            .build();
+    RoleEntity role2 =
+        RoleEntity.builder()
+            .withNamespace(AuthorizationUtils.ofRoleNamespace("metalake1"))
+            .withId(101L)
+            .withName("roleNoAssignments")
+            .withProperties(Collections.emptyMap())
+            .withSecurableObjects(Collections.emptyList())
+            .withAuditInfo(buildRoleAudit())
+            .build();
+    UserEntity user =
+        UserEntity.builder()
+            .withNamespace(AuthorizationUtils.ofUserNamespace("metalake1"))
+            .withId(11L)
+            .withName("userNoRoles")
+            .withEnabled(true)
+            .withRoleNames(List.of("role1", "roleNoAssignments"))
+            .withRoleIds(List.of(100L, 101L))
+            .withAuditInfo(assignmentAudit)
+            .build();
+    GroupEntity group =
+        GroupEntity.builder()
+            .withNamespace(AuthorizationUtils.ofGroupNamespace("metalake1"))
+            .withId(21L)
+            .withName("groupNoRoles")
+            .withRoleNames(List.of("role1", "roleNoAssignments"))
+            .withRoleIds(List.of(100L, 101L))
+            .withAuditInfo(assignmentAudit)
+            .build();
+
+    DatastratoRoleMetaService service = DatastratoRoleMetaService.getInstance();
+    service.batchAssignRolesToPrincipals(List.of(role1, role2), List.of(user), List.of(group));
+    service.batchAssignRolesToPrincipals(List.of(role1, role2), List.of(user), List.of(group));
+
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      assertRelationCount(statement, "user_role_rel", "user_id", 11L, 2);
+      assertRelationCount(statement, "group_role_rel", "group_id", 21L, 2);
+    }
+  }
+
   /** Tests missing metalake, missing principal, and unassigned principal semantics. */
   @Test
   public void testPrincipalExistenceSemantics() {
@@ -392,6 +456,23 @@ public class TestDatastratoRoleMetaService {
     assertEquals(List.of(securableObject), assignment.role().securableObjects());
     assertEquals(ASSIGNED_AT, assignment.assignmentAudit().lastModifiedTime());
     assertEquals("admin", assignment.assignmentAudit().lastModifier());
+  }
+
+  private void assertRelationCount(
+      Statement statement,
+      String relationTable,
+      String principalIdColumn,
+      long principalId,
+      int expectedCount)
+      throws Exception {
+    String sql =
+        String.format(
+            "SELECT COUNT(*) FROM %s WHERE %s = %d AND deleted_at = 0",
+            relationTable, principalIdColumn, principalId);
+    try (ResultSet resultSet = statement.executeQuery(sql)) {
+      assertTrue(resultSet.next());
+      assertEquals(expectedCount, resultSet.getInt(1));
+    }
   }
 
   private void assertAssignment(RoleAssignment assignment) {
