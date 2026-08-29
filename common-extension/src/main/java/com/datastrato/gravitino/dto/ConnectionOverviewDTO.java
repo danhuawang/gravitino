@@ -48,6 +48,9 @@ public class ConnectionOverviewDTO {
   @JsonProperty("testStatus")
   private final ConnectionTestStatusDTO testStatus;
 
+  @JsonProperty("credentialProviders")
+  private final CredentialProviderStatusDTO[] credentialProviders;
+
   /**
    * Creates a connection overview.
    *
@@ -60,6 +63,7 @@ public class ConnectionOverviewDTO {
    * @param audit The Catalog audit information.
    * @param endpoint The safe Connect display endpoint.
    * @param testStatus The latest valid manual connection test status.
+   * @param credentialProviders The configured credential providers and their latest test statuses.
    */
   public ConnectionOverviewDTO(
       String name,
@@ -70,7 +74,8 @@ public class ConnectionOverviewDTO {
       @Nullable String cloudRegionCode,
       AuditDTO audit,
       String endpoint,
-      ConnectionTestStatusDTO testStatus) {
+      ConnectionTestStatusDTO testStatus,
+      CredentialProviderStatusDTO[] credentialProviders) {
     this.name = name;
     this.type = type;
     this.provider = provider;
@@ -80,11 +85,12 @@ public class ConnectionOverviewDTO {
     this.audit = audit;
     this.endpoint = endpoint;
     this.testStatus = testStatus;
+    this.credentialProviders = credentialProviders;
   }
 
   /** Creates an empty instance for Jackson deserialization. */
   public ConnectionOverviewDTO() {
-    this(null, null, null, null, null, null, null, null, null);
+    this(null, null, null, null, null, null, null, null, null, null);
   }
 
   /**
@@ -100,5 +106,11 @@ public class ConnectionOverviewDTO {
     Preconditions.checkArgument(StringUtils.isNotBlank(endpoint), "endpoint cannot be blank");
     Preconditions.checkArgument(testStatus != null, "testStatus cannot be null");
     testStatus.validate();
+    Preconditions.checkArgument(credentialProviders != null, "credentialProviders cannot be null");
+    for (CredentialProviderStatusDTO credentialProvider : credentialProviders) {
+      Preconditions.checkArgument(
+          credentialProvider != null, "credentialProviders cannot contain null");
+      credentialProvider.validate();
+    }
   }
 }

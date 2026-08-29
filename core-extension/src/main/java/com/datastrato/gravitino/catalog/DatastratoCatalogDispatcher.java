@@ -249,6 +249,7 @@ public class DatastratoCatalogDispatcher implements CatalogDispatcher {
     try {
       connectionTestStore.reconcileTestResultAfterCatalogChange(
           before, after, ConnectionTestType.CATALOG, preserve);
+      connectionTestStore.reconcileCredentialTestResultsAfterCatalogChange(before, after, preserve);
     } catch (RuntimeException e) {
       LOG.warn(
           "Catalog {} {} operation succeeded, but its connection test result could not be reconciled",

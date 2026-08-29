@@ -13,14 +13,19 @@ import com.datastrato.gravitino.dto.ConnectionDTO;
 import com.datastrato.gravitino.dto.ConnectionOverviewDTO;
 import com.datastrato.gravitino.dto.ConnectionTestErrorDTO;
 import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
+import com.datastrato.gravitino.dto.CredentialProviderStatusDTO;
 import com.datastrato.gravitino.dto.responses.ConnectionListResponse;
 import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
 import com.datastrato.gravitino.server.web.rest.converter.ConnectionConverter;
 import java.security.Principal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -28,6 +33,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
@@ -199,8 +205,10 @@ public class ConnectionOperations {
             NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, connection);
             Catalog catalog = catalogDispatcher.loadCatalog(identifier);
             ConnectionTestStatusDTO status = resolveTestStatus(identifier, catalog.provider());
+            CredentialProviderStatusDTO[] credentialProviders =
+                resolveCredentialProviderStatuses(identifier, resolveCredentialProviders(catalog));
             ConnectionOverviewDTO overview =
-                ConnectionConverter.toConnectionOverviewDTO(catalog, status);
+                ConnectionConverter.toConnectionOverviewDTO(catalog, status, credentialProviders);
             return Utils.ok(new ConnectionOverviewResponse(overview));
           });
     } catch (Exception e) {
@@ -233,6 +241,72 @@ public class ConnectionOperations {
             ConnectionFailedException.class.getSimpleName(),
             result.errorMessage());
     return new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.FAILED, lastTestedAt, error);
+  }
+
+  private CredentialProviderStatusDTO[] resolveCredentialProviderStatuses(
+      NameIdentifier identifier, @Nullable String configuredProviders) {
+    if (StringUtils.isBlank(configuredProviders)) {
+      return new CredentialProviderStatusDTO[0];
+    }
+
+    Set<String> distinctTypes = new LinkedHashSet<>();
+    for (String configuredProvider : configuredProviders.split(",")) {
+      if (StringUtils.isNotBlank(configuredProvider)) {
+        distinctTypes.add(configuredProvider.trim());
+      }
+    }
+
+    List<CredentialProviderStatusDTO> statuses = new ArrayList<>();
+    for (String credentialType : distinctTypes) {
+      final String testType;
+      try {
+        testType = ConnectionTestType.credential(credentialType);
+      } catch (IllegalArgumentException e) {
+        LOG.warn(
+            "Ignoring invalid credential provider type {} configured on Catalog {}",
+            credentialType,
+            identifier);
+        continue;
+      }
+
+      Optional<ConnectionTestResult> stored =
+          connectionTestStore.getValidTestResult(identifier, testType);
+      ConnectionTestStatusDTO status;
+      if (stored.isEmpty()) {
+        status = new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null);
+      } else {
+        ConnectionTestResult result = stored.get();
+        Instant lastTestedAt = Instant.ofEpochMilli(result.lastTestedAt());
+        if (result.status() == ConnectionTestResult.Status.PASSED) {
+          status =
+              new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.PASSED, lastTestedAt, null);
+        } else {
+          ConnectionTestErrorDTO error =
+              new ConnectionTestErrorDTO(
+                  ErrorConstants.INTERNAL_ERROR_CODE,
+                  RuntimeException.class.getSimpleName(),
+                  result.errorMessage());
+          status =
+              new ConnectionTestStatusDTO(
+                  true, ConnectionTestStatusDTO.FAILED, lastTestedAt, error);
+        }
+      }
+      statuses.add(new CredentialProviderStatusDTO(credentialType, status));
+    }
+    return statuses.toArray(new CredentialProviderStatusDTO[0]);
+  }
+
+  @Nullable
+  private String resolveCredentialProviders(Catalog catalog) {
+    Map<String, String> properties = catalog.properties();
+    String providers =
+        properties == null ? null : properties.get(CredentialConstants.CREDENTIAL_PROVIDERS);
+    if (StringUtils.isNotBlank(providers) || !(catalog instanceof BaseCatalog)) {
+      return providers;
+    }
+    return ((BaseCatalog<?>) catalog)
+        .propertiesWithCredentialProviders()
+        .get(CredentialConstants.CREDENTIAL_PROVIDERS);
   }
 
   private Map<String, String> resolveCredentialProviders(String metalake, Catalog[] catalogs) {

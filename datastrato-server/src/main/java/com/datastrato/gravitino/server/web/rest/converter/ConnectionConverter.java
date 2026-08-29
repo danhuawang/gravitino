@@ -6,6 +6,7 @@ package com.datastrato.gravitino.server.web.rest.converter;
 import com.datastrato.gravitino.dto.ConnectionDTO;
 import com.datastrato.gravitino.dto.ConnectionOverviewDTO;
 import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
+import com.datastrato.gravitino.dto.CredentialProviderStatusDTO;
 import com.google.common.base.Preconditions;
 import java.net.URI;
 import java.util.ArrayList;
@@ -69,8 +70,24 @@ public class ConnectionConverter {
    */
   public static ConnectionOverviewDTO toConnectionOverviewDTO(
       Catalog catalog, ConnectionTestStatusDTO testStatus) {
+    return toConnectionOverviewDTO(catalog, testStatus, new CredentialProviderStatusDTO[0]);
+  }
+
+  /**
+   * Converts a Catalog to a whitelisted Connect overview DTO with credential provider statuses.
+   *
+   * @param catalog The catalog entity or DTO.
+   * @param testStatus The latest valid manual Catalog connection test status.
+   * @param credentialProviders The configured credential providers and their latest test statuses.
+   * @return The converted Connection overview DTO.
+   */
+  public static ConnectionOverviewDTO toConnectionOverviewDTO(
+      Catalog catalog,
+      ConnectionTestStatusDTO testStatus,
+      CredentialProviderStatusDTO[] credentialProviders) {
     Preconditions.checkArgument(catalog != null, "catalog cannot be null");
     Preconditions.checkArgument(testStatus != null, "testStatus cannot be null");
+    Preconditions.checkArgument(credentialProviders != null, "credentialProviders cannot be null");
 
     Map<String, String> properties = catalog.properties();
     String endpoint = resolveEndpoint(catalog.provider(), properties);
@@ -83,7 +100,8 @@ public class ConnectionConverter {
         getProperty(properties, Catalog.CLOUD_REGION_CODE),
         DTOConverters.toDTO(catalog.auditInfo()),
         endpoint,
-        testStatus);
+        testStatus,
+        credentialProviders);
   }
 
   /**

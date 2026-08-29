@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
 import java.time.Instant;
+import javax.annotation.Nullable;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.dto.AuditDTO;
 import org.junit.jupiter.api.Test;
@@ -65,19 +66,44 @@ class TestConnectionOverviewDTO {
 
   @Test
   void testOverviewResponseValidation() {
+    ConnectionTestStatusDTO notTested =
+        new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null);
     ConnectionOverviewDTO overview =
-        new ConnectionOverviewDTO(
-            "catalog",
-            Catalog.Type.RELATIONAL,
-            "jdbc-mysql",
-            null,
-            "aws",
-            "us-east-1",
-            AuditDTO.builder().build(),
-            "jdbc:mysql://host/db",
-            new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null));
+        newOverview(
+            new CredentialProviderStatusDTO[] {
+              new CredentialProviderStatusDTO("s3-token", notTested)
+            });
 
     assertDoesNotThrow(() -> new ConnectionOverviewResponse(overview).validate());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CredentialProviderStatusDTO(" ", notTested).validate());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CredentialProviderStatusDTO("s3-token", null).validate());
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new ConnectionOverviewResponse(newOverview(null)).validate());
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ConnectionOverviewResponse(newOverview(new CredentialProviderStatusDTO[] {null}))
+                .validate());
     assertThrows(IllegalArgumentException.class, () -> new ConnectionOverviewResponse().validate());
+  }
+
+  private ConnectionOverviewDTO newOverview(
+      @Nullable CredentialProviderStatusDTO[] credentialProviders) {
+    return new ConnectionOverviewDTO(
+        "catalog",
+        Catalog.Type.RELATIONAL,
+        "jdbc-mysql",
+        null,
+        "aws",
+        "us-east-1",
+        AuditDTO.builder().build(),
+        "jdbc:mysql://host/db",
+        new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null),
+        credentialProviders);
   }
 }

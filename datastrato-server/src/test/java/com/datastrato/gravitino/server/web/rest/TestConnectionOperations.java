@@ -19,6 +19,7 @@ import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestType;
 import com.datastrato.gravitino.dto.ConnectionDTO;
+import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
 import com.datastrato.gravitino.dto.responses.ConnectionListResponse;
 import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -45,6 +46,7 @@ import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.credential.CredentialConstants;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.CatalogDTO;
+import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.lock.LockManager;
@@ -489,7 +491,9 @@ public class TestConnectionOperations extends JerseyTest {
                     Catalog.CLOUD_REGION_CODE,
                     "us-east-1",
                     "warehouse",
-                    "s3a://warehouse-user:warehouse-secret@bucket/path"))
+                    "s3a://warehouse-user:warehouse-secret@bucket/path",
+                    "credential-providers",
+                    "s3-token,gcs-token"))
             .withAudit(AuditDTO.builder().build())
             .build();
     when(catalogDispatcher.loadCatalog(identifier)).thenReturn(catalog);
@@ -503,6 +507,29 @@ public class TestConnectionOperations extends JerseyTest {
                     ConnectionTestResult.Status.PASSED,
                     1787646600000L,
                     null)));
+
+    when(connectionTestStore.getValidTestResult(
+            identifier, ConnectionTestType.credential("s3-token")))
+        .thenReturn(
+            Optional.of(
+                new ConnectionTestResult(
+                    10L,
+                    ConnectionTestType.credential("s3-token"),
+                    1L,
+                    ConnectionTestResult.Status.PASSED,
+                    1787646601000L,
+                    null)));
+    when(connectionTestStore.getValidTestResult(
+            identifier, ConnectionTestType.credential("gcs-token")))
+        .thenReturn(
+            Optional.of(
+                new ConnectionTestResult(
+                    10L,
+                    ConnectionTestType.credential("gcs-token"),
+                    1L,
+                    ConnectionTestResult.Status.FAILED,
+                    1787646602000L,
+                    "Failed to test the credential provider")));
 
     Response response =
         target(String.format("/web/metalakes/%s/connections/%s", metalake, catalogName))
@@ -532,6 +559,18 @@ public class TestConnectionOperations extends JerseyTest {
     assertEquals(
         "2026-08-25T08:30:00Z",
         overview.getConnection().getTestStatus().getLastTestedAt().toString());
+    assertEquals(2, overview.getConnection().getCredentialProviders().length);
+    assertEquals("s3-token", overview.getConnection().getCredentialProviders()[0].getType());
+    assertEquals(
+        ConnectionTestStatusDTO.PASSED,
+        overview.getConnection().getCredentialProviders()[0].getTestStatus().getStatus());
+    assertEquals("gcs-token", overview.getConnection().getCredentialProviders()[1].getType());
+    assertEquals(
+        ConnectionTestStatusDTO.FAILED,
+        overview.getConnection().getCredentialProviders()[1].getTestStatus().getStatus());
+    assertEquals(
+        ErrorConstants.INTERNAL_ERROR_CODE,
+        overview.getConnection().getCredentialProviders()[1].getTestStatus().getError().getCode());
   }
 
   @Test

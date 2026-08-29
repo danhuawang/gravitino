@@ -14,12 +14,12 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 
-/** Connection test support and latest valid manual test status for one Catalog. */
+/** Connection test support and latest valid manual test status for one target. */
 @Getter
 @ToString
 @EqualsAndHashCode
 public class ConnectionTestStatusDTO {
-  /** The derived state for a supported Catalog without a valid persisted result. */
+  /** The derived state for a supported target without a valid persisted result. */
   public static final String NOT_TESTED = "NOT_TESTED";
 
   /** The state for a completed successful connection probe. */

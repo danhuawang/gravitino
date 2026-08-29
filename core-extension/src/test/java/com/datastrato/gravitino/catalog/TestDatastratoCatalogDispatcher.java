@@ -157,6 +157,7 @@ class TestDatastratoCatalogDispatcher {
         IDENTIFIER, CatalogChange.setProperty("jdbc-url", "jdbc:mysql://other/db"));
     verify(store)
         .reconcileTestResultAfterCatalogChange(before, changed, ConnectionTestType.CATALOG, false);
+    verify(store).reconcileCredentialTestResultsAfterCatalogChange(before, changed, false);
 
     CatalogConnectionSnapshot commentOnly =
         new CatalogConnectionSnapshot(
@@ -170,6 +171,7 @@ class TestDatastratoCatalogDispatcher {
     verify(store)
         .reconcileTestResultAfterCatalogChange(
             changed, commentOnly, ConnectionTestType.CATALOG, true);
+    verify(store).reconcileCredentialTestResultsAfterCatalogChange(changed, commentOnly, true);
   }
 
   @Test
@@ -186,6 +188,7 @@ class TestDatastratoCatalogDispatcher {
     dispatcher.alterCatalog(IDENTIFIER, CatalogChange.rename("renamed"));
     verify(store)
         .reconcileTestResultAfterCatalogChange(before, renamed, ConnectionTestType.CATALOG, true);
+    verify(store).reconcileCredentialTestResultsAfterCatalogChange(before, renamed, true);
 
     CatalogConnectionSnapshot enabled =
         new CatalogConnectionSnapshot(10L, 3L, "renamed", "jdbc-mysql", before.properties());
@@ -197,8 +200,10 @@ class TestDatastratoCatalogDispatcher {
     dispatcher.disableCatalog(renamedIdentifier);
     verify(store)
         .reconcileTestResultAfterCatalogChange(renamed, enabled, ConnectionTestType.CATALOG, true);
+    verify(store).reconcileCredentialTestResultsAfterCatalogChange(renamed, enabled, true);
     verify(store)
         .reconcileTestResultAfterCatalogChange(enabled, disabled, ConnectionTestType.CATALOG, true);
+    verify(store).reconcileCredentialTestResultsAfterCatalogChange(enabled, disabled, true);
 
     when(delegate.dropCatalog(renamedIdentifier, true)).thenReturn(true);
     dispatcher.dropCatalog(renamedIdentifier, true);

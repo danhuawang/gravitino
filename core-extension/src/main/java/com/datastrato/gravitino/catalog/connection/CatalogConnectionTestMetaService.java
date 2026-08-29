@@ -156,6 +156,46 @@ public final class CatalogConnectionTestMetaService implements ConnectionTestSto
 
   /** {@inheritDoc} */
   @Override
+  public void reconcileCredentialTestResultsAfterCatalogChange(
+      CatalogConnectionSnapshot before, CatalogConnectionSnapshot after, boolean preserve) {
+    Preconditions.checkArgument(before != null, "Previous Catalog snapshot cannot be null");
+    Preconditions.checkArgument(after != null, "Current Catalog snapshot cannot be null");
+    Preconditions.checkArgument(
+        before.catalogId() == after.catalogId(), "Catalog ID changed during metadata update");
+    if (before.catalogVersion() == after.catalogVersion()) {
+      return;
+    }
+
+    SessionUtils.doWithCommit(
+        ConnectionTestResultMapper.class,
+        resultMapper -> {
+          CatalogPO current = resultMapper.selectCatalogForUpdate(after.catalogId());
+          if (!matches(current, after)) {
+            return;
+          }
+          resultMapper.list(after.catalogId()).stream()
+              .filter(
+                  result ->
+                      ConnectionTestType.isCredential(result.getType())
+                          && Objects.equals(result.getCatalogVersion(), before.catalogVersion()))
+              .forEach(
+                  result -> {
+                    if (preserve) {
+                      resultMapper.updateVersion(
+                          after.catalogId(),
+                          result.getType(),
+                          before.catalogVersion(),
+                          after.catalogVersion());
+                    } else {
+                      resultMapper.deleteByTypeAndVersion(
+                          after.catalogId(), result.getType(), before.catalogVersion());
+                    }
+                  });
+        });
+  }
+
+  /** {@inheritDoc} */
+  @Override
   public int deleteOrphanedTestResults(int limit) {
     Preconditions.checkArgument(limit > 0, "Cleanup limit must be positive");
     return SessionUtils.doWithCommitAndFetchResult(

@@ -64,6 +64,18 @@ public interface ConnectionTestStore {
       boolean preserve);
 
   /**
+   * Reconciles every credential provider result after a successful Catalog metadata change. Results
+   * are advanced to the new Catalog version when {@code preserve} is true and invalidated
+   * otherwise.
+   *
+   * @param before The Catalog snapshot before the change.
+   * @param after The Catalog snapshot after the change.
+   * @param preserve Whether to carry the results to the new version.
+   */
+  void reconcileCredentialTestResultsAfterCatalogChange(
+      CatalogConnectionSnapshot before, CatalogConnectionSnapshot after, boolean preserve);
+
+  /**
    * Deletes persisted results whose Catalog no longer exists as a live relational entity.
    *
    * @param limit The maximum number of orphaned Catalog IDs to process.

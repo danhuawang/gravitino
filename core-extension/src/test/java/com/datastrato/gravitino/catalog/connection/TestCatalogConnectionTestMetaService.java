@@ -214,6 +214,41 @@ class TestCatalogConnectionTestMetaService {
   }
 
   @Test
+  void testReconcileAllCredentialResults() throws Exception {
+    CatalogConnectionSnapshot before = service.loadCatalogConnectionSnapshot(CATALOG);
+    service.recordTestResult(
+        before,
+        ConnectionTestType.credential("s3-token"),
+        ConnectionTestResult.Status.PASSED,
+        1000L,
+        null);
+    service.recordTestResult(
+        before,
+        ConnectionTestType.credential("gcs-token"),
+        ConnectionTestResult.Status.PASSED,
+        1001L,
+        null);
+
+    setCatalogVersion(2L);
+    CatalogConnectionSnapshot after = service.loadCatalogConnectionSnapshot(CATALOG);
+    service.reconcileCredentialTestResultsAfterCatalogChange(before, after, true);
+    assertTrue(
+        service.getValidTestResult(CATALOG, ConnectionTestType.credential("s3-token")).isPresent());
+    assertTrue(
+        service
+            .getValidTestResult(CATALOG, ConnectionTestType.credential("gcs-token"))
+            .isPresent());
+
+    setCatalogVersion(3L);
+    CatalogConnectionSnapshot third = service.loadCatalogConnectionSnapshot(CATALOG);
+    service.reconcileCredentialTestResultsAfterCatalogChange(after, third, false);
+    assertTrue(
+        service.getValidTestResult(CATALOG, ConnectionTestType.credential("s3-token")).isEmpty());
+    assertTrue(
+        service.getValidTestResult(CATALOG, ConnectionTestType.credential("gcs-token")).isEmpty());
+  }
+
+  @Test
   void testStaleProbeAndInputConstraints() throws Exception {
     CatalogConnectionSnapshot before = service.loadCatalogConnectionSnapshot(CATALOG);
     setCatalogVersion(2L);

@@ -171,6 +171,7 @@ components:
         - audit
         - endpoint
         - testStatus
+        - credentialProviders
       properties:
         name:
           type: string
@@ -206,6 +207,24 @@ components:
         testStatus:
           $ref: "#/components/schemas/ConnectionTestStatus"
 
+        credentialProviders:
+          type: array
+          description: Configured credential providers and their latest valid test statuses
+          items:
+            $ref: "#/components/schemas/CredentialProviderStatus"
+
+    CredentialProviderStatus:
+      type: object
+      required:
+        - type
+        - testStatus
+      properties:
+        type:
+          type: string
+          description: The canonical credential provider type
+        testStatus:
+          $ref: "#/components/schemas/ConnectionTestStatus"
+
     ConnectionTestStatus:
       type: object
       required:
@@ -216,7 +235,7 @@ components:
       properties:
         supported:
           type: boolean
-          description: Whether the Catalog provider supports a real connection probe
+          description: Whether the Catalog or credential provider supports a real connection probe
         status:
           type: string
           nullable: true
@@ -246,12 +265,10 @@ components:
         code:
           type: integer
           format: int32
-          enum:
-            - 1007
+          description: Application error code for the failed probe
         type:
           type: string
-          enum:
-            - ConnectionFailedException
+          description: Safe application error type
         message:
           type: string
           description: Safe failure message without stack, cause, or connection properties

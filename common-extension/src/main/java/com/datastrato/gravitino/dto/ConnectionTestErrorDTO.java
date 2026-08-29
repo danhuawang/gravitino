@@ -10,7 +10,7 @@ import lombok.Getter;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
 
-/** Safe application error returned for a failed Catalog connection test. */
+/** Safe application error returned for a failed connection test. */
 @Getter
 @ToString
 @EqualsAndHashCode
