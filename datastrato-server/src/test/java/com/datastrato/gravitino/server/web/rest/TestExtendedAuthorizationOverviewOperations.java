@@ -8,12 +8,8 @@ import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
@@ -38,10 +34,7 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
-import org.apache.gravitino.RelationalEntity;
-import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.Group;
-import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
@@ -53,13 +46,10 @@ import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
-import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
-import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
-import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -72,11 +62,11 @@ import org.mockito.Mockito;
 
 public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
 
+  private static final Instant ROLE_CREATED_AT = Instant.parse("2026-08-26T01:02:03Z");
+
   private static final DatastratoAccessControlDispatcher accessControlDispatcher =
       mock(DatastratoAccessControlDispatcher.class);
   private static final EntityStore entityStore = mock(EntityStore.class);
-  private static final SupportsRelationOperations relationOperations =
-      mock(SupportsRelationOperations.class);
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
     @Override
@@ -106,8 +96,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
 
   @BeforeEach
   public void resetMocks() throws IOException {
-    Mockito.reset(accessControlDispatcher, entityStore, relationOperations);
-    when(entityStore.relationOperations()).thenReturn(relationOperations);
+    Mockito.reset(accessControlDispatcher, entityStore);
     mockInUseMetalake();
   }
 
@@ -133,7 +122,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
   }
 
   @Test
-  public void testGetAuthorizationOverview() throws IOException {
+  public void testGetAuthorizationOverview() {
     SecurableObject catalog1 =
         SecurableObjects.ofCatalog("catalog1", Lists.newArrayList(Privileges.UseCatalog.allow()));
     SecurableObject schema1 =
@@ -165,26 +154,6 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[] {user1, user2});
     when(accessControlDispatcher.listGroups("metalake1")).thenReturn(new Group[] {group1});
 
-    UserEntity owner = mock(UserEntity.class);
-    when(owner.name()).thenReturn("owner1");
-    RelationalEntity<UserEntity> ownerRelation =
-        new RelationalEntity<>(
-            SupportsRelationOperations.Type.OWNER_REL,
-            NameIdentifierUtil.ofRole("metalake1", "role1"),
-            Entity.EntityType.ROLE,
-            owner);
-    GroupEntity groupOwner = mock(GroupEntity.class);
-    when(groupOwner.name()).thenReturn("ownerGroup");
-    RelationalEntity<GroupEntity> groupOwnerRelation =
-        new RelationalEntity<>(
-            SupportsRelationOperations.Type.OWNER_REL,
-            NameIdentifierUtil.ofRole("metalake1", "role2"),
-            Entity.EntityType.ROLE,
-            groupOwner);
-    when(relationOperations.batchListEntitiesByRelation(
-            eq(SupportsRelationOperations.Type.OWNER_REL), anyList(), eq(Entity.EntityType.ROLE)))
-        .thenReturn(Lists.newArrayList(ownerRelation, groupOwnerRelation));
-
     Response response =
         target("/web/security/metalakes/metalake1/authorization/overview")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -213,10 +182,6 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     RoleMembershipDTO[] roles = overview.getRoles();
     Assertions.assertEquals(3, roles.length);
     Assertions.assertEquals("role1", roles[0].getRole());
-    Assertions.assertEquals("owner1", roles[0].getOwner().name());
-    Assertions.assertEquals(Owner.Type.USER, roles[0].getOwner().type());
-    Assertions.assertEquals("ownerGroup", roles[1].getOwner().name());
-    Assertions.assertEquals(Owner.Type.GROUP, roles[1].getOwner().type());
     Assertions.assertEquals(2, roles[0].getUserCount());
     Assertions.assertEquals(0, roles[0].getGroupCount());
     Assertions.assertEquals(2, roles[0].getMemberCount());
@@ -227,12 +192,6 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     Assertions.assertEquals("role3", roles[2].getRole());
     Assertions.assertFalse(roles[2].isAssigned());
     Assertions.assertEquals(0, roles[2].getMemberCount());
-    Assertions.assertNull(roles[2].getOwner());
-    verify(relationOperations)
-        .batchListEntitiesByRelation(
-            eq(SupportsRelationOperations.Type.OWNER_REL),
-            argThat(identifiers -> identifiers.size() == 3),
-            eq(Entity.EntityType.ROLE));
   }
 
   @Test
@@ -302,6 +261,10 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     Assertions.assertEquals(1, objects.length);
     Assertions.assertEquals("catalog1.schema1.table1", objects[0].getMetadataObject().fullName());
     Assertions.assertEquals(2, objects[0].getRolePrivileges().length);
+    Assertions.assertEquals(ROLE_CREATED_AT, objects[0].getRolePrivileges()[0].getCreateTime());
+    Assertions.assertEquals(2, objects[0].getRolePrivileges()[0].getAssignCount());
+    Assertions.assertEquals(ROLE_CREATED_AT, objects[0].getRolePrivileges()[1].getCreateTime());
+    Assertions.assertEquals(2, objects[0].getRolePrivileges()[1].getAssignCount());
     Assertions.assertEquals(2, catalog.getPrivilegedPrincipalCount());
     Assertions.assertEquals(2.0 / 3.0, catalog.getPrivileged());
   }
@@ -321,7 +284,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         .withProperties(Collections.emptyMap())
         .withSecurableObjects(securableObjects)
         .withAuditInfo(
-            AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+            AuditInfo.builder().withCreator("creator").withCreateTime(ROLE_CREATED_AT).build())
         .build();
   }
 

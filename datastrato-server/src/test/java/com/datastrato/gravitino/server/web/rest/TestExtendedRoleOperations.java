@@ -18,7 +18,6 @@ import com.datastrato.gravitino.authorization.RoleGroupAssignment;
 import com.datastrato.gravitino.authorization.RoleUserAssignment;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.PermissionUpdateRequest;
-import com.datastrato.gravitino.dto.requests.RoleAssignmentRequest;
 import com.datastrato.gravitino.dto.responses.RoleGroupAssignmentListResponse;
 import com.datastrato.gravitino.dto.responses.RoleUserAssignmentListResponse;
 import com.google.common.collect.Lists;
@@ -45,11 +44,9 @@ import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
-import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.responses.RoleResponse;
-import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NoSuchMetadataObjectException;
 import org.apache.gravitino.exceptions.NoSuchRoleException;
 import org.apache.gravitino.lock.LockManager;
@@ -212,65 +209,6 @@ public class TestExtendedRoleOperations extends JerseyTest {
     ErrorResponse errorResponse = errorResp.readEntity(ErrorResponse.class);
     Assertions.assertEquals(ErrorConstants.INTERNAL_ERROR_CODE, errorResponse.getCode());
     Assertions.assertEquals(RuntimeException.class.getSimpleName(), errorResponse.getType());
-  }
-
-  @Test
-  public void testAssignRoleToPrincipals() {
-    RoleAssignmentRequest request =
-        new RoleAssignmentRequest(
-            Lists.newArrayList("alice", "bob"), Lists.newArrayList("analysts", "admins"));
-
-    Response response =
-        target("/web/security/metalakes/testMetalake/roles/testRole/assignments")
-            .request(MediaType.APPLICATION_JSON_TYPE)
-            .accept("application/vnd.gravitino.v1+json")
-            .put(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
-
-    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-    BaseResponse baseResponse = response.readEntity(BaseResponse.class);
-    Assertions.assertEquals(0, baseResponse.getCode());
-    Mockito.verify(accessControlDispatcher)
-        .assignRoleToPrincipals(
-            "testMetalake",
-            "testRole",
-            Lists.newArrayList("alice", "bob"),
-            Lists.newArrayList("analysts", "admins"));
-  }
-
-  @Test
-  public void testAssignRoleToPrincipalsRejectsEmptyRequest() {
-    RoleAssignmentRequest request =
-        new RoleAssignmentRequest(Collections.emptyList(), Collections.emptyList());
-
-    Response response =
-        target("/web/security/metalakes/testMetalake/roles/testRole/assignments")
-            .request(MediaType.APPLICATION_JSON_TYPE)
-            .accept("application/vnd.gravitino.v1+json")
-            .put(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
-
-    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
-    Mockito.verify(accessControlDispatcher, Mockito.never())
-        .assignRoleToPrincipals(any(), any(), any(), any());
-  }
-
-  @Test
-  public void testAssignRoleToPrincipalsReturnsNotFound() {
-    RoleAssignmentRequest request =
-        new RoleAssignmentRequest(Lists.newArrayList("alice"), Lists.newArrayList("missing-group"));
-    Mockito.doThrow(new NoSuchGroupException("Group missing-group does not exist"))
-        .when(accessControlDispatcher)
-        .assignRoleToPrincipals(any(), any(), any(), any());
-
-    Response response =
-        target("/web/security/metalakes/testMetalake/roles/testRole/assignments")
-            .request(MediaType.APPLICATION_JSON_TYPE)
-            .accept("application/vnd.gravitino.v1+json")
-            .put(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
-
-    Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
-    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
-    Assertions.assertEquals(ErrorConstants.NOT_FOUND_CODE, errorResponse.getCode());
-    Assertions.assertEquals(NoSuchGroupException.class.getSimpleName(), errorResponse.getType());
   }
 
   @Test

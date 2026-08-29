@@ -5,12 +5,10 @@ package com.datastrato.gravitino.dto.authorization;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
-import javax.annotation.Nullable;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.gravitino.dto.authorization.OwnerDTO;
 
 /** A role with its assigned user and group members. */
 @Getter
@@ -20,9 +18,6 @@ public class RoleMembershipDTO {
 
   @JsonProperty("role")
   private String role;
-
-  @JsonProperty("owner")
-  private @Nullable OwnerDTO owner;
 
   @JsonProperty("users")
   private String[] users;
@@ -58,7 +53,6 @@ public class RoleMembershipDTO {
    * Creates a role membership DTO.
    *
    * @param role The role name.
-   * @param owner The role owner, or {@code null} when no owner is assigned.
    * @param users The users assigned to the role.
    * @param groups The groups assigned to the role.
    * @param catalogs The catalogs containing explicitly privileged objects for the role.
@@ -67,7 +61,6 @@ public class RoleMembershipDTO {
    */
   public RoleMembershipDTO(
       String role,
-      @Nullable OwnerDTO owner,
       String[] users,
       String[] groups,
       String[] catalogs,
@@ -80,7 +73,6 @@ public class RoleMembershipDTO {
     Preconditions.checkArgument(objectCount >= 0, "object count cannot be negative");
     Preconditions.checkArgument(privilegeCount >= 0, "privilege count cannot be negative");
     this.role = role;
-    this.owner = owner;
     this.users = users;
     this.groups = groups;
     this.userCount = users.length;

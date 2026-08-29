@@ -71,17 +71,16 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/roles/{role}/assignments:
+  /web/security/metalakes/{metalake}/roles/assignments:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
-      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/role"
     put:
       tags:
         - permissions
-      summary: Assign a role to multiple users and groups
-      operationId: assignRoleToPrincipals
+      summary: Assign multiple roles to multiple users and groups
+      operationId: assignRolesToPrincipals
       description: |
-        Assigns one role to all requested users and groups atomically. Existing active
+        Assigns all requested roles to all requested users and groups atomically. Existing active
         assignments are retained with their original assignment audit information.
       requestBody:
         required: true
@@ -95,7 +94,7 @@ paths:
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "404":
-          description: Not Found - The target metalake, role, user, or group does not exist
+          description: Not Found - A target metalake, role, user, or group does not exist
           content:
             application/vnd.gravitino.v1+json:
               schema:
@@ -188,8 +187,18 @@ components:
 
     RoleAssignmentRequest:
       type: object
-      description: Users and groups that receive the role
+      description: Roles to assign and the users and groups that receive them
+      required:
+        - roles
       properties:
+        roles:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: Role names to assign
+          items:
+            type: string
+            minLength: 1
         users:
           type: array
           uniqueItems: true

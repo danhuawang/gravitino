@@ -111,9 +111,9 @@ paths:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D"
 
-  /web/security/metalakes/{metalake}/roles/{role}/assignments:
+  /web/security/metalakes/{metalake}/roles/assignments:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D~1assignments"
+    $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1assignments"
 
   /web/security/metalakes/{metalake}/roles/{role}/users:
     # escape the path name by replacing `{ }` with `%7B %7D`
@@ -122,6 +122,10 @@ paths:
   /web/security/metalakes/{metalake}/roles/{role}/groups:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D~1groups"
+
+  /web/security/metalakes/{metalake}/roles:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./authorization.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles"
 
   /web/security/metalakes/{metalake}/objects/roles:
     # escape the path name by replacing `{ }` with `%7B %7D`

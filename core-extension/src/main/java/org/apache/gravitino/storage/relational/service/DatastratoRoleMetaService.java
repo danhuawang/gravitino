@@ -130,35 +130,30 @@ public class DatastratoRoleMetaService {
   }
 
   /**
-   * Assigns one role to multiple users and groups in one transaction.
+   * Assigns multiple roles to multiple users and groups in one transaction.
    *
    * <p>Each principal type is written with one batch SQL statement. Existing active assignments are
    * left unchanged so their original assignment audit information is preserved.
    *
-   * @param roleId The role id.
+   * @param roles The roles to assign.
    * @param users The users to assign.
    * @param groups The groups to assign.
    */
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
-      baseMetricName = "batchAssignRoleToPrincipals")
-  public void batchAssignRoleToPrincipals(
-      long roleId, List<UserEntity> users, List<GroupEntity> groups) {
+      baseMetricName = "batchAssignRolesToPrincipals")
+  public void batchAssignRolesToPrincipals(
+      List<RoleEntity> roles, List<UserEntity> users, List<GroupEntity> groups) {
+    List<Long> roleIds = roles.stream().map(RoleEntity::id).collect(Collectors.toList());
     List<UserRoleRelPO> userAssignments =
         users.stream()
             .flatMap(
-                user ->
-                    POConverters.initializeUserRoleRelsPOWithVersion(
-                        user, Collections.singletonList(roleId))
-                        .stream())
+                user -> POConverters.initializeUserRoleRelsPOWithVersion(user, roleIds).stream())
             .collect(Collectors.toList());
     List<GroupRoleRelPO> groupAssignments =
         groups.stream()
             .flatMap(
-                group ->
-                    POConverters.initializeGroupRoleRelsPOWithVersion(
-                        group, Collections.singletonList(roleId))
-                        .stream())
+                group -> POConverters.initializeGroupRoleRelsPOWithVersion(group, roleIds).stream())
             .collect(Collectors.toList());
 
     if (userAssignments.isEmpty() && groupAssignments.isEmpty()) {

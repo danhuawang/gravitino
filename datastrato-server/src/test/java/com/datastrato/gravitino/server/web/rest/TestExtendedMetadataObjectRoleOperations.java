@@ -35,10 +35,12 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
+import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
@@ -60,6 +62,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
+
+  private static final Instant ROLE_CREATED_AT = Instant.parse("2026-08-26T01:02:03Z");
 
   private static final DatastratoAccessControlDispatcher accessControlDispatcher =
       mock(DatastratoAccessControlDispatcher.class);
@@ -140,6 +144,10 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
               buildRole("role1", Lists.newArrayList(table1, table2)),
               buildRole("role2", Lists.newArrayList(table1ForRole2))
             });
+    User alice = mockUser("alice", Lists.newArrayList("role1", "role2"));
+    Group analysts = mockGroup("analysts", Lists.newArrayList("role1"));
+    when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[] {alice});
+    when(accessControlDispatcher.listGroups("metalake1")).thenReturn(new Group[] {analysts});
 
     Response resp =
         target("/web/security/metalakes/metalake1/objects/roles")
@@ -161,15 +169,15 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
         "catalog1.schema1.table1", objectRolePrivileges[0].metadataObject().fullName());
     Assertions.assertEquals(2, objectRolePrivileges[0].rolePrivileges().size());
     assertRolePrivilege(
-        objectRolePrivileges[0].rolePrivileges().get(0), "role1", "SELECT_TABLE", "ALLOW");
+        objectRolePrivileges[0].rolePrivileges().get(0), "role1", "SELECT_TABLE", "ALLOW", 2);
     assertRolePrivilege(
-        objectRolePrivileges[0].rolePrivileges().get(1), "role2", "SELECT_TABLE", "DENY");
+        objectRolePrivileges[0].rolePrivileges().get(1), "role2", "SELECT_TABLE", "DENY", 1);
 
     Assertions.assertEquals(
         "catalog1.schema1.table2", objectRolePrivileges[1].metadataObject().fullName());
     Assertions.assertEquals(1, objectRolePrivileges[1].rolePrivileges().size());
     assertRolePrivilege(
-        objectRolePrivileges[1].rolePrivileges().get(0), "role1", "CREATE_TABLE", "ALLOW");
+        objectRolePrivileges[1].rolePrivileges().get(0), "role1", "CREATE_TABLE", "ALLOW", 2);
     verify(accessControlDispatcher, never()).listRoleNames("metalake1");
     verify(accessControlDispatcher, never()).getRole(any(), any());
   }
@@ -245,15 +253,35 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
         .withProperties(Collections.emptyMap())
         .withSecurableObjects(securableObjects)
         .withAuditInfo(
-            AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build())
+            AuditInfo.builder().withCreator("creator").withCreateTime(ROLE_CREATED_AT).build())
         .build();
   }
 
+  private User mockUser(String name, List<String> roles) {
+    User user = mock(User.class);
+    when(user.name()).thenReturn(name);
+    when(user.roles()).thenReturn(roles);
+    return user;
+  }
+
+  private Group mockGroup(String name, List<String> roles) {
+    Group group = mock(Group.class);
+    when(group.name()).thenReturn(name);
+    when(group.roles()).thenReturn(roles);
+    return group;
+  }
+
   private void assertRolePrivilege(
-      RolePrivilegeDTO rolePrivilege, String role, String privilege, String condition) {
+      RolePrivilegeDTO rolePrivilege,
+      String role,
+      String privilege,
+      String condition,
+      int assignCount) {
     Assertions.assertEquals(role, rolePrivilege.role());
     Assertions.assertEquals(1, rolePrivilege.privileges().size());
     Assertions.assertEquals(privilege, rolePrivilege.privileges().get(0).name().name());
     Assertions.assertEquals(condition, rolePrivilege.privileges().get(0).condition().name());
+    Assertions.assertEquals(ROLE_CREATED_AT, rolePrivilege.getCreateTime());
+    Assertions.assertEquals(assignCount, rolePrivilege.getAssignCount());
   }
 }

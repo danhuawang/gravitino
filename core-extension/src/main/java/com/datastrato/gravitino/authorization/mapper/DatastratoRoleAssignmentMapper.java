@@ -17,7 +17,7 @@ import org.apache.ibatis.annotations.SelectProvider;
 public interface DatastratoRoleAssignmentMapper {
 
   /**
-   * Assigns one role to multiple users in one SQL statement.
+   * Assigns multiple roles to multiple users in one SQL statement.
    *
    * @param assignments The user-role assignments to insert.
    * @return The number of inserted assignments.
@@ -28,7 +28,7 @@ public interface DatastratoRoleAssignmentMapper {
   int batchAssignRoleToUsers(@Param("assignments") List<UserRoleRelPO> assignments);
 
   /**
-   * Assigns one role to multiple groups in one SQL statement.
+   * Assigns multiple roles to multiple groups in one SQL statement.
    *
    * @param assignments The group-role assignments to insert.
    * @return The number of inserted assignments.

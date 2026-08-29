@@ -25,7 +25,7 @@ public class DatastratoRoleAssignmentSQLProviderFactory {
   private DatastratoRoleAssignmentSQLProviderFactory() {}
 
   /**
-   * Assigns one role to multiple users.
+   * Assigns multiple roles to multiple users.
    *
    * @param assignments The user-role assignments.
    * @return The batch user-role assignment SQL.
@@ -36,7 +36,7 @@ public class DatastratoRoleAssignmentSQLProviderFactory {
   }
 
   /**
-   * Assigns one role to multiple groups.
+   * Assigns multiple roles to multiple groups.
    *
    * @param assignments The group-role assignments.
    * @return The batch group-role assignment SQL.
@@ -106,7 +106,31 @@ public class DatastratoRoleAssignmentSQLProviderFactory {
   static class DatastratoRoleAssignmentMySQLProvider
       extends DatastratoRoleAssignmentBaseSQLProvider {}
 
-  static class DatastratoRoleAssignmentH2Provider extends DatastratoRoleAssignmentBaseSQLProvider {}
+  static class DatastratoRoleAssignmentH2Provider extends DatastratoRoleAssignmentBaseSQLProvider {
+
+    /** {@inheritDoc} */
+    @Override
+    public String batchAssignRoleToUsers(List<UserRoleRelPO> assignments) {
+      return castBatchAssignmentParameters(super.batchAssignRoleToUsers(assignments), "userId");
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public String batchAssignRoleToGroups(List<GroupRoleRelPO> assignments) {
+      return castBatchAssignmentParameters(super.batchAssignRoleToGroups(assignments), "groupId");
+    }
+
+    private String castBatchAssignmentParameters(String sql, String principalIdProperty) {
+      return sql.replace(
+              "#{item." + principalIdProperty + "}",
+              "CAST(#{item." + principalIdProperty + "} AS BIGINT)")
+          .replace("#{item.roleId}", "CAST(#{item.roleId} AS BIGINT)")
+          .replace("#{item.auditInfo}", "CAST(#{item.auditInfo} AS VARCHAR)")
+          .replace("#{item.currentVersion}", "CAST(#{item.currentVersion} AS BIGINT)")
+          .replace("#{item.lastVersion}", "CAST(#{item.lastVersion} AS BIGINT)")
+          .replace("#{item.deletedAt}", "CAST(#{item.deletedAt} AS BIGINT)");
+    }
+  }
 
   static class DatastratoRoleAssignmentPostgreSQLProvider
       extends DatastratoRoleAssignmentBaseSQLProvider {}

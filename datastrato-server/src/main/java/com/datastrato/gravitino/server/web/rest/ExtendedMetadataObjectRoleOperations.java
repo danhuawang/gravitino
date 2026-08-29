@@ -10,6 +10,7 @@ import com.datastrato.gravitino.dto.authorization.RolePrivilegeDTO;
 import com.datastrato.gravitino.dto.responses.ObjectRolePrivilegeListResponse;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +24,10 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
+import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.metalake.MetalakeManager;
@@ -78,11 +81,23 @@ public class ExtendedMetadataObjectRoleOperations {
                     Entity.EntityType.ROLE,
                     roles,
                     role -> NameIdentifierUtil.ofRole(metalake, role.name()));
+            Map<String, Integer> assignmentCounts = initializeAssignmentCounts(roles);
+            if (roles.length > 0) {
+              collectUserAssignmentCounts(
+                  assignmentCounts, accessControlDispatcher.listUsers(metalake));
+              collectGroupAssignmentCounts(
+                  assignmentCounts, accessControlDispatcher.listGroups(metalake));
+            }
 
             Map<MetadataObjectKey, List<RolePrivilegeDTO>> objectRolePrivileges =
                 new LinkedHashMap<>();
             Arrays.stream(roles)
-                .forEach(role -> collectObjectRolePrivileges(objectRolePrivileges, role));
+                .forEach(
+                    role ->
+                        collectObjectRolePrivileges(
+                            objectRolePrivileges,
+                            role,
+                            assignmentCounts.getOrDefault(role.name(), 0)));
 
             ObjectRolePrivilegeDTO[] objectRolePrivilegeDTOs =
                 objectRolePrivileges.entrySet().stream()
@@ -106,7 +121,9 @@ public class ExtendedMetadataObjectRoleOperations {
   }
 
   private void collectObjectRolePrivileges(
-      Map<MetadataObjectKey, List<RolePrivilegeDTO>> objectRolePrivileges, Role role) {
+      Map<MetadataObjectKey, List<RolePrivilegeDTO>> objectRolePrivileges,
+      Role role,
+      int assignCount) {
     role.securableObjects()
         .forEach(
             securableObject -> {
@@ -117,18 +134,51 @@ public class ExtendedMetadataObjectRoleOperations {
               objectRolePrivileges
                   .computeIfAbsent(
                       MetadataObjectKey.of(securableObject), ignored -> new ArrayList<>())
-                  .add(buildRolePrivilege(role.name(), securableObject));
+                  .add(buildRolePrivilege(role, securableObject, assignCount));
             });
   }
 
-  private RolePrivilegeDTO buildRolePrivilege(String roleName, SecurableObject securableObject) {
+  private RolePrivilegeDTO buildRolePrivilege(
+      Role role, SecurableObject securableObject, int assignCount) {
     return RolePrivilegeDTO.builder()
-        .withRole(roleName)
+        .withRole(role.name())
         .withPrivileges(
             securableObject.privileges().stream()
                 .map(DTOConverters::toDTO)
                 .toArray(PrivilegeDTO[]::new))
+        .withCreateTime(role.auditInfo().createTime())
+        .withAssignCount(assignCount)
         .build();
+  }
+
+  private Map<String, Integer> initializeAssignmentCounts(Role[] roles) {
+    Map<String, Integer> assignmentCounts = new LinkedHashMap<>();
+    Arrays.stream(roles).forEach(role -> assignmentCounts.put(role.name(), 0));
+    return assignmentCounts;
+  }
+
+  private void collectUserAssignmentCounts(Map<String, Integer> assignmentCounts, User[] users) {
+    Arrays.stream(users)
+        .forEach(
+            user ->
+                safeRoles(user.roles())
+                    .forEach(role -> incrementAssignmentCount(assignmentCounts, role)));
+  }
+
+  private void collectGroupAssignmentCounts(Map<String, Integer> assignmentCounts, Group[] groups) {
+    Arrays.stream(groups)
+        .forEach(
+            group ->
+                safeRoles(group.roles())
+                    .forEach(role -> incrementAssignmentCount(assignmentCounts, role)));
+  }
+
+  private void incrementAssignmentCount(Map<String, Integer> assignmentCounts, String role) {
+    assignmentCounts.computeIfPresent(role, (ignored, count) -> count + 1);
+  }
+
+  private List<String> safeRoles(List<String> roles) {
+    return roles == null ? Collections.emptyList() : roles;
   }
 
   private static class MetadataObjectKey implements MetadataObject {
