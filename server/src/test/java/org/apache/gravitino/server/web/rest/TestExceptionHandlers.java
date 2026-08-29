@@ -18,14 +18,11 @@
  */
 package org.apache.gravitino.server.web.rest;
 
-<<<<<<< HEAD
-=======
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.OptimisticLockException;
->>>>>>> 58b9c4352 ([#926] fix(api): map table KMS connection failures (#941))
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -58,8 +55,6 @@ public class TestExceptionHandlers {
     String msg6 = ExceptionHandlers.BaseExceptionHandler.getErrorMsg(e6);
     Assertions.assertEquals("", msg6);
   }
-<<<<<<< HEAD
-=======
 
   @Test
   public void testOptimisticLockConflictReturnsConflict() {
@@ -90,5 +85,4 @@ public class TestExceptionHandlers {
     Assertions.assertEquals(ErrorConstants.CONNECTION_FAILED_CODE, error.getCode());
     Assertions.assertEquals(ConnectionFailedException.class.getSimpleName(), error.getType());
   }
->>>>>>> 58b9c4352 ([#926] fix(api): map table KMS connection failures (#941))
 }
