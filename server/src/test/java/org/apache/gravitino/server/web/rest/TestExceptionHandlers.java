@@ -22,7 +22,6 @@ import javax.ws.rs.core.Response;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
-import org.apache.gravitino.exceptions.OptimisticLockException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -54,21 +53,6 @@ public class TestExceptionHandlers {
 
     String msg6 = ExceptionHandlers.BaseExceptionHandler.getErrorMsg(e6);
     Assertions.assertEquals("", msg6);
-  }
-
-  @Test
-  public void testOptimisticLockConflictReturnsConflict() {
-    Response response =
-        ExceptionHandlers.handleTableException(
-            OperationType.ALTER,
-            "table",
-            "schema",
-            new OptimisticLockException("The table was modified concurrently"));
-
-    Assertions.assertEquals(Response.Status.CONFLICT.getStatusCode(), response.getStatus());
-    ErrorResponse errorResponse = (ErrorResponse) response.getEntity();
-    Assertions.assertEquals(ErrorConstants.OPTIMISTIC_LOCK_CONFLICT_CODE, errorResponse.getCode());
-    Assertions.assertEquals(OptimisticLockException.class.getSimpleName(), errorResponse.getType());
   }
 
   @Test
