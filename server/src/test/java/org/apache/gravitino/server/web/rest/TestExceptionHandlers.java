@@ -18,6 +18,10 @@
  */
 package org.apache.gravitino.server.web.rest;
 
+import javax.ws.rs.core.Response;
+import org.apache.gravitino.dto.responses.ErrorConstants;
+import org.apache.gravitino.dto.responses.ErrorResponse;
+import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -49,5 +53,20 @@ public class TestExceptionHandlers {
 
     String msg6 = ExceptionHandlers.BaseExceptionHandler.getErrorMsg(e6);
     Assertions.assertEquals("", msg6);
+  }
+
+  @Test
+  public void testTableConnectionFailureUsesBadGateway() {
+    Response response =
+        ExceptionHandlers.handleTableException(
+            OperationType.CREATE,
+            "orders",
+            "customer",
+            new ConnectionFailedException("KMS is unavailable"));
+
+    Assertions.assertEquals(Response.Status.BAD_GATEWAY.getStatusCode(), response.getStatus());
+    ErrorResponse error = (ErrorResponse) response.getEntity();
+    Assertions.assertEquals(ErrorConstants.CONNECTION_FAILED_CODE, error.getCode());
+    Assertions.assertEquals(ConnectionFailedException.class.getSimpleName(), error.getType());
   }
 }

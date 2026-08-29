@@ -19,6 +19,7 @@ from gravitino.constants.error import ErrorConstants
 from gravitino.dto.responses.error_response import ErrorResponse
 from gravitino.exceptions.base import (
     CatalogNotInUseException,
+    ConnectionFailedException,
     ForbiddenException,
     IllegalArgumentException,
     MetalakeNotInUseException,
@@ -40,6 +41,9 @@ class TableErrorHandler(RestErrorHandler):
 
         if code is ErrorConstants.ILLEGAL_ARGUMENTS_CODE:
             raise IllegalArgumentException(error_message)
+
+        if code is ErrorConstants.CONNECTION_FAILED_CODE:
+            raise ConnectionFailedException(error_message)
 
         if code is ErrorConstants.NOT_FOUND_CODE:
             if exception_type == NoSuchSchemaException.__name__:
