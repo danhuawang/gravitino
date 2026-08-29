@@ -14,7 +14,9 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.dto.authorization.AuthorizationSummaryDTO;
 import com.datastrato.gravitino.dto.authorization.CatalogAuthorizationDTO;
+import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ObjectAuthorizationDTO;
 import com.datastrato.gravitino.dto.authorization.RoleMembershipDTO;
 import com.datastrato.gravitino.dto.responses.AuthorizationOverviewResponse;
@@ -148,11 +150,13 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
               buildRole("role2", Lists.newArrayList(table1Deny)),
               buildRole("role3", Collections.emptyList())
             });
-    User user1 = mockUser("user1", Lists.newArrayList("role1", "role2"));
-    User user2 = mockUser("user2", Lists.newArrayList("role1"));
-    Group group1 = mockGroup("group1", Lists.newArrayList("role2"));
+    User user1 = mockUser("user1", Lists.newArrayList("role1", "role2"), true);
+    User user2 = mockUser("user2", Lists.newArrayList("role1"), false);
+    ExtendedGroupDTO group1 = mockExtendedGroup("group1", Lists.newArrayList("role2"), 2);
+    ExtendedGroupDTO emptyGroup = mockExtendedGroup("empty", Collections.emptyList(), 0);
     when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[] {user1, user2});
-    when(accessControlDispatcher.listGroups("metalake1")).thenReturn(new Group[] {group1});
+    when(accessControlDispatcher.listExtendedGroups("metalake1"))
+        .thenReturn(new ExtendedGroupDTO[] {group1, emptyGroup});
 
     Response response =
         target("/web/security/metalakes/metalake1/authorization/overview")
@@ -165,6 +169,15 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         response.readEntity(AuthorizationOverviewResponse.class);
     Assertions.assertEquals(0, overview.getCode());
     Assertions.assertArrayEquals(new String[] {"role3"}, overview.getUnassignedRoles());
+
+    AuthorizationSummaryDTO summary = overview.getSummary();
+    Assertions.assertEquals(2, summary.getUserCount());
+    Assertions.assertEquals(1, summary.getActiveUserCount());
+    Assertions.assertEquals(1, summary.getSuspendedUserCount());
+    Assertions.assertEquals(2, summary.getGroupCount());
+    Assertions.assertEquals(1, summary.getEmptyGroupCount());
+    Assertions.assertEquals(3, summary.getRoleCount());
+    Assertions.assertEquals(1, summary.getUnassignedRoleCount());
 
     CatalogAuthorizationDTO[] catalogs = overview.getCatalogs();
     Assertions.assertEquals(2, catalogs.length);
@@ -199,7 +212,8 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     when(accessControlDispatcher.listRolesWithSecurableObjects("metalake1"))
         .thenReturn(new Role[0]);
     when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[0]);
-    when(accessControlDispatcher.listGroups("metalake1")).thenReturn(new Group[0]);
+    when(accessControlDispatcher.listExtendedGroups("metalake1"))
+        .thenReturn(new ExtendedGroupDTO[0]);
 
     Response response =
         target("/web/security/metalakes/metalake1/authorization/overview")
@@ -213,6 +227,14 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     Assertions.assertEquals(0, overview.getCatalogs().length);
     Assertions.assertEquals(0, overview.getRoles().length);
     Assertions.assertEquals(0, overview.getUnassignedRoles().length);
+    AuthorizationSummaryDTO summary = overview.getSummary();
+    Assertions.assertEquals(0, summary.getUserCount());
+    Assertions.assertEquals(0, summary.getActiveUserCount());
+    Assertions.assertEquals(0, summary.getSuspendedUserCount());
+    Assertions.assertEquals(0, summary.getGroupCount());
+    Assertions.assertEquals(0, summary.getEmptyGroupCount());
+    Assertions.assertEquals(0, summary.getRoleCount());
+    Assertions.assertEquals(0, summary.getUnassignedRoleCount());
   }
 
   @Test
@@ -288,17 +310,22 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         .build();
   }
 
-  private User mockUser(String name, List<String> roles) {
+  private User mockUser(String name, List<String> roles, boolean enabled) {
     User user = mock(User.class);
     when(user.name()).thenReturn(name);
     when(user.roles()).thenReturn(roles);
+    when(user.enabled()).thenReturn(enabled);
     return user;
   }
 
-  private Group mockGroup(String name, List<String> roles) {
+  private ExtendedGroupDTO mockExtendedGroup(String name, List<String> roles, int userCount) {
     Group group = mock(Group.class);
     when(group.name()).thenReturn(name);
     when(group.roles()).thenReturn(roles);
-    return group;
+    when(group.externalId()).thenReturn(null);
+    when(group.auditInfo())
+        .thenReturn(
+            AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build());
+    return ExtendedGroupDTO.from(group, true, userCount);
   }
 }

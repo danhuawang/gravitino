@@ -22,6 +22,9 @@ public class ExtendedGroupDTO extends GroupDTO {
   @JsonProperty("origin")
   private IdentitySource origin;
 
+  @JsonProperty("userCount")
+  private int userCount;
+
   /** Default constructor for Jackson deserialization. */
   private ExtendedGroupDTO() {}
 
@@ -31,9 +34,11 @@ public class ExtendedGroupDTO extends GroupDTO {
       String externalId,
       List<String> roles,
       AuditDTO audit,
-      IdentitySource origin) {
+      IdentitySource origin,
+      int userCount) {
     super(id, name, externalId, roles, audit);
     this.origin = origin;
+    this.userCount = userCount;
   }
 
   /**
@@ -44,18 +49,25 @@ public class ExtendedGroupDTO extends GroupDTO {
   }
 
   /**
-   * Builds an {@link ExtendedGroupDTO} from a {@link Group}, deriving {@code origin} from built-in
-   * IdP membership.
+   * @return Number of metalake users in the group for the security Groups table.
+   */
+  public int userCount() {
+    return userCount;
+  }
+
+  /**
+   * Builds an {@link ExtendedGroupDTO} from a {@link Group}, IdP membership, and user count.
    *
    * @param group The metalake group.
    * @param inBuiltInIdp {@code true} when the name exists in {@code idp_group_meta}.
+   * @param userCount Number of metalake users in the group.
    * @return The extended group DTO.
    */
-  public static ExtendedGroupDTO from(Group group, boolean inBuiltInIdp) {
-    return from(group, IdentitySource.fromIdpMembership(inBuiltInIdp));
+  public static ExtendedGroupDTO from(Group group, boolean inBuiltInIdp, int userCount) {
+    return from(group, IdentitySource.fromIdpMembership(inBuiltInIdp), userCount);
   }
 
-  private static ExtendedGroupDTO from(Group group, IdentitySource origin) {
+  private static ExtendedGroupDTO from(Group group, IdentitySource origin, int userCount) {
     Preconditions.checkArgument(group != null, "group cannot be null");
     Preconditions.checkArgument(StringUtils.isNotBlank(group.name()), "group name cannot be blank");
     List<String> roles = group.roles() == null ? Collections.emptyList() : group.roles();
@@ -65,6 +77,7 @@ public class ExtendedGroupDTO extends GroupDTO {
         group.externalId(),
         roles,
         DTOConverters.toDTO(group.auditInfo()),
-        origin);
+        origin,
+        userCount);
   }
 }

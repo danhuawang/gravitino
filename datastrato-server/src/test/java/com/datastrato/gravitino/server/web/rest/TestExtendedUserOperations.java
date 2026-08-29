@@ -229,7 +229,7 @@ public class TestExtendedUserOperations extends JerseyTest {
 
   @Test
   public void testListUserGroups() {
-    ExtendedGroupDTO group = ExtendedGroupDTO.from(buildGroup("contractors", null), true);
+    ExtendedGroupDTO group = ExtendedGroupDTO.from(buildGroup("contractors", null), true, 0);
     when(accessControlDispatcher.listExtendedGroupsForUser("metalake", "alice"))
         .thenReturn(new ExtendedGroupDTO[] {group});
     ExtendedGroupListResponse body =

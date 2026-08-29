@@ -27,8 +27,10 @@ paths:
       description: |
         List groups under a metalake for the enterprise security Groups page.
 
-        Returns OSS group fields plus `origin`. `origin` is `Local` when the group name exists in
-        the built-in IdP (`idp_group_meta`) and `Provisioned` otherwise.
+        Returns OSS group fields plus `origin` and `userCount`. `origin` is `Local` when the group
+        name exists in the built-in IdP (`idp_group_meta`) and `Provisioned` otherwise. `userCount`
+        is the number of metalake users in the group (local groups from built-in IdP membership,
+        provisioned groups from SCIM).
 
       responses:
         "200":
@@ -186,9 +188,16 @@ components:
         - type: object
           required:
             - origin
+            - userCount
           properties:
             origin:
               $ref: "#/components/schemas/IdentitySource"
+            userCount:
+              type: integer
+              format: int32
+              description: >
+                Number of metalake users in the group for the security Groups table. Local groups
+                count built-in IdP membership; provisioned groups count SCIM membership.
 
     IdpNameStatus:
       type: object

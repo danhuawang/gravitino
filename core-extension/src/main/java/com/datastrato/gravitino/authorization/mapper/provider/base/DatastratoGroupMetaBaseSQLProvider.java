@@ -123,6 +123,39 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " AND gt.external_id IS NOT NULL AND gt.external_id <> '')";
   }
 
+  private String groupUserCountSelect() {
+    return " COALESCE(CASE WHEN gt.external_id IS NULL OR gt.external_id = '' THEN ("
+        + localGroupUserCountSubquery()
+        + ") ELSE ("
+        + scimGroupUserCountSubquery()
+        + ") END, 0) as userCount";
+  }
+
+  private String localGroupUserCountSubquery() {
+    return "SELECT COUNT(DISTINCT ut.user_id) FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig INNER JOIN "
+        + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+        + " iugr ON iugr.group_id = ig.group_id AND iugr.deleted_at = 0"
+        + " INNER JOIN "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " ium ON ium.user_id = iugr.user_id AND ium.deleted_at = 0"
+        + " INNER JOIN "
+        + UserMetaMapper.USER_TABLE_NAME
+        + " ut ON ut.metalake_id = gt.metalake_id AND ut.user_name = ium.user_name"
+        + " AND ut.deleted_at = 0"
+        + " WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0";
+  }
+
+  private String scimGroupUserCountSubquery() {
+    return "SELECT COUNT(DISTINCT ut.user_id) FROM "
+        + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
+        + " sur INNER JOIN "
+        + UserMetaMapper.USER_TABLE_NAME
+        + " ut ON ut.user_id = sur.user_id AND ut.metalake_id = gt.metalake_id AND ut.deleted_at = 0"
+        + " WHERE sur.group_id = gt.group_id AND sur.metalake_id = gt.metalake_id AND sur.deleted_at = 0";
+  }
+
   private String groupsForMetalakeUserSelectAndFrom() {
     return "SELECT gt.group_id as groupId, gt.group_name as groupName,"
         + " gt.metalake_id as metalakeId,"
@@ -201,7 +234,8 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " "
         + jsonArrayAgg("rot.role_id")
         + " as roleIds,"
-        + " MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) as inBuiltInIdp"
+        + " MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) as inBuiltInIdp,"
+        + groupUserCountSelect()
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + groupJoin
