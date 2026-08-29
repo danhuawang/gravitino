@@ -85,6 +85,12 @@ public class IcebergConstants {
   public static final String FORMAT = "format";
   public static final String FORMAT_VERSION = "format-version";
 
+  /** Gravitino table property that identifies the configured KMS provider for encryption. */
+  public static final String ENCRYPTION_KEY_PROVIDER = "encryption.key-provider";
+
+  /** Iceberg table property that identifies the key used to encrypt the table. */
+  public static final String ENCRYPTION_KEY_ID = "encryption.key-id";
+
   public static final String ICEBERG_METRICS_STORE = "metricsStore";
   public static final String ICEBERG_METRICS_STORE_RETAIN_DAYS = "metricsStoreRetainDays";
   public static final String ICEBERG_METRICS_QUEUE_CAPACITY = "metricsQueueCapacity";
