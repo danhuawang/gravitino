@@ -25,6 +25,7 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.ImmutableMap;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.gravitino.NameIdentifier;
 import org.junit.jupiter.api.Assertions;
@@ -138,6 +139,53 @@ class TestIcebergRequestContext {
         new IcebergLoadTableFailureEvent(
             context, NameIdentifier.of("ml", "cat", "ns", "t"), new RuntimeException("boom"));
     Assertions.assertSame(context.httpHeaders(), event.customInfo());
+  }
+
+  @Test
+  void testAuditExtrasStayOffHttpHeadersAndMergeIntoCustomInfo() {
+    IcebergRequestContext context = new IcebergRequestContext(requestWithoutHeader(), "cat");
+    Assertions.assertTrue(context.auditExtras().isEmpty());
+
+    IcebergRequestContext withExtras =
+        context.withAuditExtras(Collections.singletonMap("icebergEncryption.reason", "COMPLIANT"));
+    Assertions.assertTrue(context.auditExtras().isEmpty());
+    Assertions.assertEquals("COMPLIANT", withExtras.auditExtras().get("icebergEncryption.reason"));
+    Assertions.assertFalse(withExtras.httpHeaders().containsKey("icebergEncryption.reason"));
+
+    IcebergLoadTableFailureEvent event =
+        new IcebergLoadTableFailureEvent(
+            withExtras,
+            NameIdentifier.of("metalake", "catalog", "schema", "table"),
+            new Exception("x"));
+    Assertions.assertEquals("COMPLIANT", event.customInfo().get("icebergEncryption.reason"));
+  }
+
+  @Test
+  void testAuditExtrasMergeWithExistingHeaders() {
+    IcebergRequestContext context =
+        new IcebergRequestContext(requestWithHeader("X-Request-Id", "req-9"), "cat");
+    IcebergRequestContext withExtras =
+        context.withAuditExtras(Collections.singletonMap("icebergEncryption.reason", "COMPLIANT"));
+
+    Map<String, String> merged = IcebergEvent.mergeCustomInfo(withExtras);
+    Assertions.assertEquals("req-9", merged.get("X-Request-Id"));
+    Assertions.assertEquals("COMPLIANT", merged.get("icebergEncryption.reason"));
+    Assertions.assertFalse(withExtras.httpHeaders().containsKey("icebergEncryption.reason"));
+  }
+
+  @Test
+  void testCustomInfoUnionsInnerDispatcherAndEncryptionKeys() {
+    IcebergRequestContext context =
+        new IcebergRequestContext(requestWithHeader("X-Request-Id", "req-9"), "cat")
+            .withAuditExtras(
+                ImmutableMap.of(
+                    "audit.reason", "policy-applied", "icebergEncryption.reason", "COMPLIANT"));
+
+    Assertions.assertEquals("req-9", context.customInfo().get("X-Request-Id"));
+    Assertions.assertEquals("policy-applied", context.customInfo().get("audit.reason"));
+    Assertions.assertEquals("COMPLIANT", context.customInfo().get("icebergEncryption.reason"));
+    Assertions.assertFalse(context.httpHeaders().containsKey("audit.reason"));
+    Assertions.assertFalse(context.httpHeaders().containsKey("icebergEncryption.reason"));
   }
 
   private static HttpServletRequest requestWithoutHeader() {
