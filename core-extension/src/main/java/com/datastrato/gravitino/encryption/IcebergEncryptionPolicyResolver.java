@@ -11,6 +11,7 @@ import java.util.Optional;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.exceptions.NoSuchMetadataObjectException;
 import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.policy.Policy;
 import org.apache.gravitino.policy.PolicyDispatcher;
@@ -44,7 +45,10 @@ public final class IcebergEncryptionPolicyResolver {
   /**
    * Resolves an enabled Iceberg encryption policy from association and inheritance.
    *
-   * <p>The candidate table is not queried because it does not exist during table creation.
+   * <p>The candidate table is not queried because it does not exist during table creation. A
+   * missing parent metadata object is treated as having no associated policies so that {@code
+   * createTable} on a dropped schema can fall through to the catalog dispatcher and surface {@code
+   * NoSuchSchemaException}.
    *
    * @param tableIdentifier candidate table identifier
    * @return the sole matching policy, or empty when no policy is in scope
@@ -63,8 +67,13 @@ public final class IcebergEncryptionPolicyResolver {
         continue;
       }
 
-      PolicyEntity[] associated =
-          policyDispatcher.listPolicyInfosForMetadataObject(metalake, parent);
+      PolicyEntity[] associated;
+      try {
+        associated = policyDispatcher.listPolicyInfosForMetadataObject(metalake, parent);
+      } catch (NoSuchMetadataObjectException e) {
+        // Dropped or never-created ancestors inherit nothing; keep walking other parents.
+        continue;
+      }
       if (associated == null) {
         continue;
       }
