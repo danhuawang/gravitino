@@ -8,6 +8,7 @@ import static org.apache.gravitino.utils.NameIdentifierUtil.getCatalogIdentifier
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.preview.DataPreviewSensitiveTableException;
 import com.google.common.base.Preconditions;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -224,7 +225,36 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
   /** {@inheritDoc} */
   @Override
   public Table alterTable(NameIdentifier ident, TableChange... changes) {
-    return dispatcher.alterTable(ident, changes);
+    TableChange[] encryptionChanges = encryptionChanges(changes);
+    if (encryptionChanges.length == 0) {
+      return dispatcher.alterTable(ident, changes);
+    }
+
+    Catalog catalog = catalogManager.loadCatalog(getCatalogIdentifier(ident));
+    if (!ICEBERG_PROVIDER.equals(catalog.provider())) {
+      return dispatcher.alterTable(ident, changes);
+    }
+
+    try {
+      Table table = dispatcher.alterTable(ident, changes);
+      stashAuditExtras(
+          alterExtras(
+              encryptionChanges,
+              IcebergEncryptionAuditInfos.Reason.ENCRYPTION_PROPERTIES_UPDATED,
+              null));
+      return table;
+    } catch (IllegalArgumentException e) {
+      stashAuditExtras(
+          alterExtras(
+              encryptionChanges,
+              IcebergEncryptionAuditInfos.Reason.ENCRYPTION_KEY_CHANGE_DENIED,
+              e));
+      throw e;
+    } catch (RuntimeException e) {
+      stashAuditExtras(
+          alterExtras(encryptionChanges, IcebergEncryptionAuditInfos.Reason.OPERATION_FAILED, e));
+      throw e;
+    }
   }
 
   /** {@inheritDoc} */
@@ -261,6 +291,20 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
 
   private static void stashAuditExtras(Map<String, String> extras) {
     RequestContext.setAuditExtras(extras);
+  }
+
+  private static Map<String, String> alterExtras(
+      TableChange[] changes, IcebergEncryptionAuditInfos.Reason reason, @Nullable Exception error) {
+    IcebergEncryptionAuditInfos.Builder extras =
+        IcebergEncryptionAuditInfos.builder().withReason(reason);
+    KmsReference attempted = attemptedProviderKey(changes);
+    if (attempted != null) {
+      extras.withAttemptedProviderKey(attempted);
+    }
+    if (error != null && reason == IcebergEncryptionAuditInfos.Reason.OPERATION_FAILED) {
+      extras.withError(error);
+    }
+    return extras.build();
   }
 
   private static Map<String, String> extras(
@@ -344,6 +388,52 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
       forwarded.put(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID, validatedKey.keyId());
     }
     return forwarded;
+  }
+
+  private static TableChange[] encryptionChanges(@Nullable TableChange[] changes) {
+    if (changes == null) {
+      return new TableChange[0];
+    }
+    return Arrays.stream(changes)
+        .filter(IcebergTableEncryptionDispatcher::isEncryptionChange)
+        .toArray(TableChange[]::new);
+  }
+
+  private static boolean isEncryptionChange(@Nullable TableChange change) {
+    String property = null;
+    if (change instanceof TableChange.SetProperty) {
+      property = ((TableChange.SetProperty) change).getProperty();
+    } else if (change instanceof TableChange.RemoveProperty) {
+      property = ((TableChange.RemoveProperty) change).getProperty();
+    }
+    return IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER.equals(property)
+        || IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID.equals(property)
+        || IcebergEncryptionPolicyEvaluator.ENCRYPTION_KMS_API.equals(property)
+        || IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_SOURCE.equals(property);
+  }
+
+  @Nullable
+  private static KmsReference attemptedProviderKey(TableChange[] changes) {
+    String provider = null;
+    String keyId = null;
+    for (TableChange change : changes) {
+      if (change instanceof TableChange.SetProperty) {
+        TableChange.SetProperty set = (TableChange.SetProperty) change;
+        if (IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER.equals(set.getProperty())) {
+          provider = set.getValue();
+        } else if (IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID.equals(set.getProperty())) {
+          keyId = set.getValue();
+        }
+      }
+    }
+    if (StringUtils.isAnyBlank(provider, keyId)) {
+      return null;
+    }
+    try {
+      return new KmsReference(provider, keyId);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
   }
 
   @Nullable
