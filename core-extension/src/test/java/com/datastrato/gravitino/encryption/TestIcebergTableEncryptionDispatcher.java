@@ -580,6 +580,20 @@ public class TestIcebergTableEncryptionDispatcher {
   }
 
   @Test
+  void testAmbiguousPolicyAuditSnapshotsRequestedProviderKey() {
+    PolicyEntity first = policy("a-policy", true, Enforcement.DENY_CREATE, KEY_ID);
+    PolicyEntity second = policy("b-policy", true, Enforcement.DENY_CREATE, KEY_ID);
+    associateOnSchema(first, second);
+
+    Assertions.assertThrows(AmbiguousPolicyException.class, () -> create(keyProperties(KEY_ID)));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(SOURCE, extras.get(IcebergEncryptionAuditInfos.PROVIDER));
+    Assertions.assertEquals(KEY_ID, extras.get(IcebergEncryptionAuditInfos.KEY_ID));
+    verify(delegate, never()).createTable(any(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
   void testPolicyDecisionSucceedsThenPhysicalCreateFailsWithCorrelatedAudit() {
     PolicyEntity policy = policy("create-failure", true, Enforcement.DENY_CREATE, KEY_ID);
     RuntimeException failure = new RuntimeException("physical create failed");
