@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.credential.CatalogCredentialManager;
@@ -40,6 +41,9 @@ import org.apache.gravitino.credential.Credential;
 import org.apache.gravitino.credential.CredentialConstants;
 import org.apache.gravitino.credential.CredentialPrivilege;
 import org.apache.gravitino.credential.PathBasedCredentialContext;
+import org.apache.gravitino.encryption.IcebergEncryptionDecision;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
+import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.common.ops.IcebergCatalogWrapper;
 import org.apache.gravitino.iceberg.service.cache.ScanPlanCache;
@@ -80,6 +84,18 @@ public class CatalogWrapperForREST extends IcebergCatalogWrapper {
 
   private final ScanPlanCache scanPlanCache;
 
+  /**
+   * KMS provider this catalog's encryption keys belong to, from {@code encryption-kms-source}, or
+   * null when the catalog is not bound to a KMS.
+   */
+  @Nullable private final String kmsSource;
+
+  /**
+   * Confirms that a requested encryption key exists and is usable, or null when this catalog has no
+   * KMS binding or the server has no KMS registry. Null disables key confirmation entirely.
+   */
+  @Nullable private final IcebergEncryptionPolicyEvaluator.KmsKeyValidator kmsKeyValidator;
+
   private static final String DATA_ACCESS_VENDED_CREDENTIALS = "vended-credentials";
   private static final String DATA_ACCESS_REMOTE_SIGNING = "remote-signing";
 
@@ -105,16 +121,34 @@ public class CatalogWrapperForREST extends IcebergCatalogWrapper {
           GCSProperties.GRAVITINO_GCS_SERVICE_ACCOUNT_FILE);
 
   public CatalogWrapperForREST(String catalogName, IcebergConfig config) {
+    this(catalogName, config, null);
+  }
+
+  /**
+   * Creates a REST catalog wrapper that can confirm encryption keys against a KMS.
+   *
+   * @param catalogName the catalog name.
+   * @param config the Iceberg catalog configuration.
+   * @param kmsKeyValidator confirms requested encryption keys, or null to disable confirmation.
+   */
+  public CatalogWrapperForREST(
+      String catalogName,
+      IcebergConfig config,
+      @Nullable IcebergEncryptionPolicyEvaluator.KmsKeyValidator kmsKeyValidator) {
     super(config);
     // To be compatible with old properties
     Map<String, String> catalogProperties =
         checkForCompatibility(config.getAllConfig(), deprecatedProperties);
     this.catalogCredentialManager = new CatalogCredentialManager(catalogName, catalogProperties);
     this.scanPlanCache = loadScanPlanCache(config);
+    String source = catalogProperties.get(IcebergConstants.ENCRYPTION_KMS_SOURCE);
+    this.kmsSource = StringUtils.isBlank(source) ? null : source.trim();
+    this.kmsKeyValidator = kmsKeyValidator;
   }
 
   public LoadTableResponse createTable(
       Namespace namespace, CreateTableRequest request, boolean requestCredential) {
+    confirmEncryptionKey(request.properties());
     LoadTableResponse loadTableResponse = super.createTable(namespace, request);
     if (shouldGenerateCredential(loadTableResponse, requestCredential)) {
       return injectCredentialConfig(
@@ -123,6 +157,54 @@ public class CatalogWrapperForREST extends IcebergCatalogWrapper {
           CredentialPrivilege.WRITE);
     }
     return loadTableResponse;
+  }
+
+  /**
+   * Confirms with the KMS that an encryption key named by a create request is usable.
+   *
+   * <p>This is a mechanism check, not a governance decision: it answers "does this key exist and
+   * can it wrap", never "is this key allowed here". Policy enforcement is a separate concern
+   * applied above this wrapper.
+   *
+   * <p>{@code encryption.key-id} is Iceberg's own {@link TableProperties#ENCRYPTION_TABLE_KEY}, so
+   * catalogs that name no {@code encryption-kms-source} keep passing it through to Iceberg's native
+   * encryption untouched. Once an operator opts a catalog in to a KMS source, an encrypted create
+   * fails closed rather than persisting a key binding that nothing has confirmed.
+   *
+   * @param requestProperties table properties supplied by the create request.
+   * @throws IllegalArgumentException if the KMS reports the key as missing or unusable, which the
+   *     REST layer maps to 400.
+   * @throws ServiceUnavailableException if the catalog names a KMS source this deployment cannot
+   *     consult, or the KMS returned no definitive answer, which the REST layer maps to 503.
+   */
+  protected final void confirmEncryptionKey(Map<String, String> requestProperties) {
+    if (kmsSource == null || requestProperties == null) {
+      return;
+    }
+    String keyId = requestProperties.get(IcebergConstants.ENCRYPTION_KEY_ID);
+    if (StringUtils.isBlank(keyId)) {
+      return;
+    }
+    if (kmsKeyValidator == null) {
+      throw new ServiceUnavailableException(
+          "Catalog names KMS source '%s' but no KMS client is configured, so encryption key '%s'"
+              + " cannot be validated",
+          kmsSource, keyId);
+    }
+
+    IcebergEncryptionDecision.KmsValidationStatus status =
+        kmsKeyValidator.validate(new KmsReference(kmsSource, keyId));
+    switch (status) {
+      case VALID:
+        return;
+      case UNAVAILABLE:
+        throw new ServiceUnavailableException(
+            "KMS source '%s' could not validate encryption key '%s'", kmsSource, keyId);
+      default:
+        throw new IllegalArgumentException(
+            String.format(
+                "Encryption key '%s' is not usable in KMS source '%s'", keyId, kmsSource));
+    }
   }
 
   public LoadTableResponse loadTable(

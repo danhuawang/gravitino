@@ -30,8 +30,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.gravitino.credential.CredentialPrivilege;
 import org.apache.gravitino.credential.CredentialPropertyUtils;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.utils.MapUtils;
 import org.apache.iceberg.BaseMetadataTable;
@@ -97,12 +99,29 @@ public class FederatedCatalogWrapper extends CatalogWrapperForREST {
    * @param config the Iceberg catalog configuration (backend {@code rest}).
    */
   public FederatedCatalogWrapper(String catalogName, IcebergConfig config) {
-    super(catalogName, config);
+    this(catalogName, config, null);
+  }
+
+  /**
+   * Creates a federated REST catalog wrapper that can confirm encryption keys against a KMS.
+   *
+   * @param catalogName the catalog name.
+   * @param config the Iceberg catalog configuration (backend {@code rest}).
+   * @param kmsKeyValidator confirms requested encryption keys, or null to disable confirmation.
+   */
+  public FederatedCatalogWrapper(
+      String catalogName,
+      IcebergConfig config,
+      @Nullable IcebergEncryptionPolicyEvaluator.KmsKeyValidator kmsKeyValidator) {
+    super(catalogName, config, kmsKeyValidator);
   }
 
   @Override
   public LoadTableResponse createTable(
       Namespace namespace, CreateTableRequest request, boolean requestCredential) {
+    // This override does not delegate to super.createTable, so the key confirmation applied there
+    // is invoked explicitly to keep both create paths behaving the same.
+    confirmEncryptionKey(request.properties());
     // The remote REST catalog vends its own credentials, so the requestCredential flag is not used
     // here; FileIO-derived client config is extracted by createTableInternal.
     return createTableInternal(namespace, request);
