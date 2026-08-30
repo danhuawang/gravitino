@@ -61,6 +61,7 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
+import org.apache.gravitino.encryption.kms.KmsClientRegistry;
 import org.apache.gravitino.idp.IdpUserGroupManager;
 import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.listener.EventBus;
@@ -333,6 +334,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public MetricsSystem metricsSystem() {
     return GravitinoEnv.getInstance().metricsSystem();
+  }
+
+  @Override
+  public KmsClientRegistry kmsClientRegistry() {
+    return GravitinoEnv.getInstance().kmsClientRegistry();
   }
 
   @Override
