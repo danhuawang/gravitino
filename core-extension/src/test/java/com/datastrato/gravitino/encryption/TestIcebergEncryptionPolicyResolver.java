@@ -16,6 +16,7 @@ import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.exceptions.AmbiguousPolicyException;
+import org.apache.gravitino.exceptions.NoSuchMetadataObjectException;
 import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.policy.Policy;
 import org.apache.gravitino.policy.PolicyContent;
@@ -30,7 +31,8 @@ import org.junit.jupiter.api.Test;
  * Pins the resolution rules: only enabled encryption policies count, only catalog and schema
  * ancestors are consulted — never the table itself, which does not exist at create time, and never
  * the metalake — each level of a hierarchical schema is walked separately, a policy reached twice
- * is deduped by name, and more than one distinct match is rejected.
+ * is deduped by name, more than one distinct match is rejected, and a missing ancestor is treated
+ * as having no policies rather than failing resolve.
  */
 public class TestIcebergEncryptionPolicyResolver {
 
@@ -177,6 +179,41 @@ public class TestIcebergEncryptionPolicyResolver {
     when(policyDispatcher.listPolicyInfosForMetadataObject(METALAKE, SCHEMA)).thenReturn(null);
 
     Assertions.assertEquals(Optional.empty(), resolver.resolve(TABLE));
+  }
+
+  @Test
+  void testMissingSchemaParentIsTreatedAsNoPolicies() {
+    when(policyDispatcher.listPolicyInfosForMetadataObject(METALAKE, SCHEMA))
+        .thenThrow(
+            new NoSuchMetadataObjectException(
+                "Metadata object %s type SCHEMA doesn't exist", "catalog.schema"));
+
+    Assertions.assertEquals(Optional.empty(), resolver.resolve(TABLE));
+    verify(policyDispatcher).listPolicyInfosForMetadataObject(METALAKE, CATALOG);
+  }
+
+  @Test
+  void testMissingSchemaParentStillUsesCatalogPolicy() {
+    PolicyEntity catalogPolicy = icebergPolicy("catalog-policy", true);
+    when(policyDispatcher.listPolicyInfosForMetadataObject(METALAKE, SCHEMA))
+        .thenThrow(
+            new NoSuchMetadataObjectException(
+                "Metadata object %s type SCHEMA doesn't exist", "catalog.schema"));
+    when(policyDispatcher.listPolicyInfosForMetadataObject(METALAKE, CATALOG))
+        .thenReturn(new PolicyEntity[] {catalogPolicy});
+
+    Assertions.assertSame(catalogPolicy, resolver.resolve(TABLE).orElseThrow(AssertionError::new));
+  }
+
+  @Test
+  void testOtherPolicyLookupErrorsPropagate() {
+    when(policyDispatcher.listPolicyInfosForMetadataObject(METALAKE, SCHEMA))
+        .thenThrow(new IllegalStateException("policy store unavailable"));
+
+    Assertions.assertEquals(
+        "policy store unavailable",
+        Assertions.assertThrows(IllegalStateException.class, () -> resolver.resolve(TABLE))
+            .getMessage());
   }
 
   private static PolicyEntity icebergPolicy(String name, boolean enabled) {

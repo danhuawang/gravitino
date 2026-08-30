@@ -30,6 +30,10 @@ import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewNormalizeDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewOperationDispatcher;
 import com.datastrato.gravitino.catalog.connection.CatalogConnectionTestMetaService;
+import com.datastrato.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
+import com.datastrato.gravitino.encryption.IcebergEncryptionPolicyResolver;
+import com.datastrato.gravitino.encryption.IcebergTableEncryptionDispatcher;
+import com.datastrato.gravitino.encryption.SinglePolicyChecker;
 import com.datastrato.gravitino.listener.DatastratoFilesetEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoModelEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
@@ -38,6 +42,8 @@ import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoViewEventDispatcher;
 import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
+import com.google.common.annotations.VisibleForTesting;
+import java.util.function.Supplier;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
@@ -55,6 +61,7 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
+import org.apache.gravitino.encryption.kms.KmsClientRegistry;
 import org.apache.gravitino.idp.IdpUserGroupManager;
 import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.listener.EventBus;
@@ -131,8 +138,12 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             // env instance (DatastratoGravitinoEnv or its subclass), not a static singleton.
             () -> datastratoSchemaDispatcher);
     DatastratoTableHookDispatcher tableHookDispatcher =
-        new DatastratoTableHookDispatcher(
-            tableOperationDispatcher, this::ownerDispatcher, catalogManager());
+        createExternalTableHookDispatcher(
+            tableOperationDispatcher,
+            catalogManager(),
+            this::ownerDispatcher,
+            new IcebergEncryptionPolicyResolver(policyDispatcher(), new SinglePolicyChecker()),
+            IcebergTableEncryptionDispatcher.registryValidator(kmsClientRegistry()));
     DatastratoTableDispatcher tableNormalizeDispatcher =
         new DatastratoTableNormalizeDispatcher(tableHookDispatcher, catalogManager());
     this.datastratoTableDispatcher =
@@ -217,6 +228,20 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             idpUserGroupManager());
 
     LOG.info("Datastrato Gravitino Environment initialized.");
+  }
+
+  @VisibleForTesting
+  static DatastratoTableHookDispatcher createExternalTableHookDispatcher(
+      DatastratoTableDispatcher tableOperationDispatcher,
+      CatalogManager catalogManager,
+      Supplier<OwnerDispatcher> ownerDispatcher,
+      IcebergEncryptionPolicyResolver policyResolver,
+      IcebergEncryptionPolicyEvaluator.KmsKeyValidator keyValidator) {
+    DatastratoTableDispatcher tableEncryptionDispatcher =
+        new IcebergTableEncryptionDispatcher(
+            tableOperationDispatcher, catalogManager, policyResolver, keyValidator);
+    return new DatastratoTableHookDispatcher(
+        tableEncryptionDispatcher, ownerDispatcher, catalogManager);
   }
 
   @Override
@@ -309,6 +334,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public MetricsSystem metricsSystem() {
     return GravitinoEnv.getInstance().metricsSystem();
+  }
+
+  @Override
+  public KmsClientRegistry kmsClientRegistry() {
+    return GravitinoEnv.getInstance().kmsClientRegistry();
   }
 
   @Override
