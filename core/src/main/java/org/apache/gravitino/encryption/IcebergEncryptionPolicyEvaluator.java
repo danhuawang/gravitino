@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Datastrato Pvt Ltd.
  */
-package com.datastrato.gravitino.encryption;
+package org.apache.gravitino.encryption;
 
 import com.google.common.base.Preconditions;
 import java.util.Map;

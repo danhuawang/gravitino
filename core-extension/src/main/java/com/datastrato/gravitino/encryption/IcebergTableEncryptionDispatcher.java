@@ -24,9 +24,12 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.encryption.IcebergEncryptionDecision;
+import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
 import org.apache.gravitino.encryption.kms.KmsClient;
 import org.apache.gravitino.encryption.kms.KmsClientRegistry;
-import org.apache.gravitino.encryption.kms.KmsKeyProperties;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.exceptions.AmbiguousPolicyException;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
@@ -357,35 +360,6 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
     }
   }
 
-  private static IcebergEncryptionDecision.KmsValidationStatus validateKey(
-      KmsClient kmsClient, KmsReference reference) {
-    try {
-      Optional<KmsKeyProperties> properties = kmsClient.getKeyProperties(reference);
-      return properties.isPresent()
-              && properties.get().enabled()
-              && properties.get().supportsWrapping()
-          ? IcebergEncryptionDecision.KmsValidationStatus.VALID
-          : IcebergEncryptionDecision.KmsValidationStatus.INVALID;
-    } catch (ConnectionFailedException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE;
-    } catch (IllegalArgumentException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.INVALID;
-    } catch (RuntimeException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE;
-    }
-  }
-
-  private static IcebergEncryptionDecision.KmsValidationStatus validateKey(
-      Function<KmsReference, KmsClient> clientResolver, KmsReference reference) {
-    try {
-      return validateKey(clientResolver.apply(reference), reference);
-    } catch (IllegalArgumentException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.INVALID;
-    } catch (RuntimeException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE;
-    }
-  }
-
   /**
    * Adapts the configured KMS client registry to the evaluator's terminal validation contract.
    *
@@ -395,29 +369,18 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
   public static IcebergEncryptionPolicyEvaluator.KmsKeyValidator registryValidator(
       KmsClientRegistry kmsClientRegistry) {
     Preconditions.checkArgument(kmsClientRegistry != null, "kmsClientRegistry cannot be null");
-    return new IcebergEncryptionPolicyEvaluator.KmsKeyValidator() {
-      @Override
-      public IcebergEncryptionDecision.KmsValidationStatus validate(KmsReference key) {
-        try {
-          return validateKey(kmsClientRegistry.getClient(key), key);
-        } catch (IllegalArgumentException e) {
-          return IcebergEncryptionDecision.KmsValidationStatus.INVALID;
-        } catch (RuntimeException e) {
-          return IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE;
-        }
-      }
-    };
+    return IcebergEncryptionKmsKeyValidators.fromRegistry(kmsClientRegistry);
   }
 
   static IcebergEncryptionPolicyEvaluator.KmsKeyValidator clientResolverValidator(
       Function<KmsReference, KmsClient> clientResolver) {
     Preconditions.checkArgument(clientResolver != null, "clientResolver cannot be null");
-    return key -> validateKey(clientResolver, key);
+    return IcebergEncryptionKmsKeyValidators.fromClientResolver(clientResolver);
   }
 
   static IcebergEncryptionPolicyEvaluator.KmsKeyValidator clientValidator(KmsClient kmsClient) {
     Preconditions.checkArgument(kmsClient != null, "kmsClient cannot be null");
-    return key -> validateKey(kmsClient, key);
+    return IcebergEncryptionKmsKeyValidators.fromClient(kmsClient);
   }
 
   private static IcebergEncryptionAuditInfos.Compliance toAuditCompliance(
