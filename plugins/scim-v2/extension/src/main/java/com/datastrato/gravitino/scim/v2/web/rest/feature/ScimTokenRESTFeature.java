@@ -54,7 +54,7 @@ public class ScimTokenRESTFeature implements Feature {
     context.register(ScimTokenOperations.class);
     context.register(ScimProvisioningOperations.class);
     LOG.info(
-        "SCIM v2 OAuth authorization uses v2_scim_user_group_rel via {}",
+        "SCIM v2 OAuth authorization uses scim_user_group_rel via {}",
         ScimOAuthPrincipalMapper.PRINCIPAL_MAPPER_CLASS_NAME);
     LOG.info("Initialized SCIM v2 token manager for token admin REST APIs");
     return true;

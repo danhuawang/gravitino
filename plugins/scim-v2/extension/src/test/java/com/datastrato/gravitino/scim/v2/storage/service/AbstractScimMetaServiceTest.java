@@ -67,11 +67,11 @@ public abstract class AbstractScimMetaServiceTest extends AbstractScimMetaStorag
   }
 
   protected void softDeleteAllTokens() throws SQLException {
-    executeUpdate("UPDATE v2_scim_token_meta SET deleted_at = 1 WHERE deleted_at = 0");
+    executeUpdate("UPDATE scim_token_meta SET deleted_at = 1 WHERE deleted_at = 0");
   }
 
   protected int countTokens() {
-    return countTableRows("v2_scim_token_meta");
+    return countTableRows("scim_token_meta");
   }
 
   private void executeUpdate(String... sqlStatements) throws SQLException {

@@ -12,7 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-/** Persistent object for SCIM v2 token metadata rows in {@code v2_scim_token_meta}. */
+/** Persistent object for SCIM v2 token metadata rows in {@code scim_token_meta}. */
 @Getter
 @EqualsAndHashCode
 @ToString

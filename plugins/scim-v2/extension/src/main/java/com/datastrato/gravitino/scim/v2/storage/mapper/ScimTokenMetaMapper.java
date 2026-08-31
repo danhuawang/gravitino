@@ -13,9 +13,9 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
 import org.apache.ibatis.annotations.UpdateProvider;
 
-/** MyBatis mapper for {@code v2_scim_token_meta}. */
+/** MyBatis mapper for {@code scim_token_meta}. */
 public interface ScimTokenMetaMapper {
-  String TABLE_NAME = "v2_scim_token_meta";
+  String TABLE_NAME = "scim_token_meta";
 
   @InsertProvider(type = ScimTokenMetaSQLProviderFactory.class, method = "insert")
   void insert(@Param("tokenMeta") ScimTokenMetaPO tokenMeta);

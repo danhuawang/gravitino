@@ -12,9 +12,9 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
 import org.apache.ibatis.annotations.UpdateProvider;
 
-/** MyBatis mapper for {@code v2_scim_user_meta}. */
+/** MyBatis mapper for {@code scim_user_meta}. */
 public interface ScimUserMetaMapper {
-  String TABLE_NAME = "v2_scim_user_meta";
+  String TABLE_NAME = "scim_user_meta";
 
   @InsertProvider(type = ScimUserMetaSQLProviderFactory.class, method = "insert")
   void insert(@Param("userMeta") ScimUserMetaPO userMeta);

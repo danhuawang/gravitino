@@ -9,9 +9,9 @@ import org.apache.ibatis.annotations.DeleteProvider;
 import org.apache.ibatis.annotations.InsertProvider;
 import org.apache.ibatis.annotations.Param;
 
-/** MyBatis mapper for {@code v2_scim_error_history}. */
+/** MyBatis mapper for {@code scim_error_history}. */
 public interface ScimErrorHistoryMapper {
-  String TABLE_NAME = "v2_scim_error_history";
+  String TABLE_NAME = "scim_error_history";
 
   @InsertProvider(type = ScimErrorHistorySQLProviderFactory.class, method = "insert")
   void insert(@Param("errorHistory") ScimErrorHistoryPO errorHistory);

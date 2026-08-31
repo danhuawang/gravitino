@@ -12,9 +12,9 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
 import org.apache.ibatis.annotations.UpdateProvider;
 
-/** MyBatis mapper for {@code v2_scim_user_group_rel}. */
+/** MyBatis mapper for {@code scim_user_group_rel}. */
 public interface ScimUserGroupRelMapper {
-  String SCIM_USER_GROUP_REL_TABLE_NAME = "v2_scim_user_group_rel";
+  String SCIM_USER_GROUP_REL_TABLE_NAME = "scim_user_group_rel";
 
   @SelectProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,

@@ -24,7 +24,7 @@ import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.storage.IdGenerator;
 import org.apache.gravitino.storage.relational.utils.POConverters;
 
-/** Manager for SCIM v2 user lifecycle backed by {@code v2_scim_user_meta}. */
+/** Manager for SCIM v2 user lifecycle backed by {@code scim_user_meta}. */
 public class ScimUserManager implements Closeable {
 
   private static final ScimUserMetaService USER_META_SERVICE = ScimUserMetaService.getInstance();

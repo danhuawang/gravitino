@@ -244,7 +244,7 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
         Connection connection = sqlSession.getConnection();
         PreparedStatement statement =
             connection.prepareStatement(
-                "UPDATE v2_scim_user_group_rel SET deleted_at = ? WHERE user_id = ? AND group_id ="
+                "UPDATE scim_user_group_rel SET deleted_at = ? WHERE user_id = ? AND group_id ="
                     + " ? AND deleted_at > 0")) {
       statement.setLong(1, deletedAt);
       statement.setLong(2, USER_ID);

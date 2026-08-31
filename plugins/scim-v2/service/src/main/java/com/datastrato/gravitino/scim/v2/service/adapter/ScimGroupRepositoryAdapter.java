@@ -41,7 +41,7 @@ import org.apache.gravitino.exceptions.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** SCIMple repository adapter for Group provisioning backed by {@code v2_scim_group_meta}. */
+/** SCIMple repository adapter for Group provisioning backed by {@code scim_group_meta}. */
 public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
 
   private static final Logger LOG = LoggerFactory.getLogger(ScimGroupRepositoryAdapter.class);

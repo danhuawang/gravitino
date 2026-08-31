@@ -12,9 +12,9 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
 import org.apache.ibatis.annotations.UpdateProvider;
 
-/** MyBatis mapper for {@code v2_scim_group_meta}. */
+/** MyBatis mapper for {@code scim_group_meta}. */
 public interface ScimGroupMetaMapper {
-  String TABLE_NAME = "v2_scim_group_meta";
+  String TABLE_NAME = "scim_group_meta";
 
   @InsertProvider(type = ScimGroupMetaSQLProviderFactory.class, method = "insert")
   void insert(@Param("groupMeta") ScimGroupMetaPO groupMeta);

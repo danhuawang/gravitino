@@ -23,7 +23,7 @@ import org.apache.gravitino.exceptions.AlreadyExistsException;
 import org.apache.gravitino.storage.IdGenerator;
 import org.apache.gravitino.storage.relational.utils.POConverters;
 
-/** Manager for SCIM v2 group lifecycle backed by {@code v2_scim_group_meta}. */
+/** Manager for SCIM v2 group lifecycle backed by {@code scim_group_meta}. */
 public class ScimGroupManager implements Closeable {
 
   private static final ScimGroupMetaService GROUP_META_SERVICE = ScimGroupMetaService.getInstance();

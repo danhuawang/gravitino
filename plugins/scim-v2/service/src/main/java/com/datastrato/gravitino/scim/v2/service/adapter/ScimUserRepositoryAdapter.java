@@ -33,7 +33,7 @@ import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.AlreadyExistsException;
 import org.apache.gravitino.exceptions.NotFoundException;
 
-/** SCIMple repository adapter for User provisioning backed by {@code v2_scim_user_meta}. */
+/** SCIMple repository adapter for User provisioning backed by {@code scim_user_meta}. */
 public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
 
   private final ScimUserManager userManager;

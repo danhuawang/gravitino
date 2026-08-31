@@ -56,7 +56,7 @@ public class TestScimTokenMapperPackageProvider {
   void testPgSoftDeleteByName() {
     String sql = new ScimTokenMetaPostgreSQLProvider().softDeleteByName("token-a");
 
-    assertTrue(sql.startsWith("UPDATE v2_scim_token_meta SET deleted_at = "), sql);
+    assertTrue(sql.startsWith("UPDATE scim_token_meta SET deleted_at = "), sql);
     assertFalse(sql.contains(" stm SET "), sql);
     assertUsesPostgreSQLMillisecondTimestamp(sql);
   }
@@ -128,7 +128,7 @@ public class TestScimTokenMapperPackageProvider {
   @Test
   void testTouchSql() {
     String sql = new ScimTokenMetaBaseSQLProvider().updateScimTokenLastUsedAt(1L);
-    assertTrue(sql.startsWith("UPDATE v2_scim_token_meta SET last_used_at = "), sql);
+    assertTrue(sql.startsWith("UPDATE scim_token_meta SET last_used_at = "), sql);
     assertUsesMillisecondTimestamp(sql);
   }
 
@@ -136,7 +136,7 @@ public class TestScimTokenMapperPackageProvider {
   void testPgTouchSql() {
     String sql = new ScimTokenMetaPostgreSQLProvider().updateScimTokenLastUsedAt(1L);
 
-    assertTrue(sql.startsWith("UPDATE v2_scim_token_meta SET last_used_at = "), sql);
+    assertTrue(sql.startsWith("UPDATE scim_token_meta SET last_used_at = "), sql);
     assertUsesPostgreSQLMillisecondTimestamp(sql);
   }
 

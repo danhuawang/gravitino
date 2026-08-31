@@ -42,8 +42,8 @@ class TestScimUserGroupRelSoftDeleteSQLProvider {
 
     assertUsesMillisecondTimestamp(sql);
     assertTrue(sql.contains("NOT EXISTS"));
-    assertTrue(sql.contains("v2_scim_user_meta"));
-    assertTrue(sql.contains("v2_scim_group_meta"));
+    assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("scim_group_meta"));
   }
 
   @Test
