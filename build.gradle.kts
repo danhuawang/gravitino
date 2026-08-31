@@ -615,6 +615,8 @@ subprojects {
         if (name == "sourcesJar") {
           include("LICENSE")
           include("NOTICE")
+          include("LICENSE-APACHE")
+          include("LICENSE-ENTERPRISE")
         } else if (project.name == "web") {
           include("web/web/LICENSE.bin")
           rename("LICENSE.bin", "LICENSE")
@@ -625,6 +627,8 @@ subprojects {
           rename("LICENSE.bin", "LICENSE")
           include("NOTICE.bin")
           rename("NOTICE.bin", "NOTICE")
+          include("LICENSE-APACHE")
+          include("LICENSE-ENTERPRISE")
         }
       }
     }
@@ -1067,6 +1071,8 @@ tasks {
         from(projectDir.dir("licenses")) { into("package/licenses") }
         from(projectDir.file("LICENSE.bin")) { into("package") }
         from(projectDir.file("NOTICE.bin")) { into("package") }
+        from(projectDir.file("LICENSE-APACHE")) { into("package") }
+        from(projectDir.file("LICENSE-ENTERPRISE")) { into("package") }
         from(projectDir.file("README.md")) { into("package") }
         if (!skipWeb) {
           from(projectDir.dir("web/web/licenses")) { into("package/web/licenses") }

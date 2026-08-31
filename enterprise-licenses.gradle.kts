@@ -110,12 +110,23 @@ val extraDatastratoHeaderFiles = fileTree(rootDir) {
   LicenseHeaderClassifier.hasDatastratoCopyright(LicenseHeaderClassifier.readHeader(file.toPath()))
 }.map { it.relativeTo(rootDir).path.replace(File.separatorChar, '/') }
 
+// Mixed-distribution root files are not Apache-headered source. LICENSE is the
+// short mixed statement; LICENSE-ENTERPRISE is the proprietary placeholder;
+// LICENSE-APACHE holds the Apache 2.0 text that used to live in LICENSE.
+val mixedDistributionLicenseFiles =
+  listOf(
+    "LICENSE",
+    "LICENSE-APACHE",
+    "LICENSE-ENTERPRISE"
+  )
+
 // Combined Apache-Rat exclusion list for enterprise files. Consumed by the
 // `rat` task in build.gradle.kts (the RatTask type is only importable there)
 // via `project.extra["enterpriseRatExcludes"]`, so this file does not touch `rat`.
 // `project.extra` (not the script-local `extra`) is used so the value is visible
 // to build.gradle.kts, which shares the same project extra properties.
-project.extra["enterpriseRatExcludes"] = datastratoLicenseCheckIncludes + extraDatastratoHeaderFiles
+project.extra["enterpriseRatExcludes"] =
+  datastratoLicenseCheckIncludes + extraDatastratoHeaderFiles + mixedDistributionLicenseFiles
 tasks.register("checkDatastratoLicenseHeaders") {
   group = "verification"
   description = "Checks Datastrato header format for enterprise-owned files."
