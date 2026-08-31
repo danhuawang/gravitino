@@ -1,0 +1,26 @@
+LICENSE-ENTERPRISE
+
+This file covers proprietary software in Gravitino Enterprise that is
+owned by Datastrato and is not licensed under the Apache License,
+Version 2.0.
+
+Commercial terms for this software will be supplied separately. Until
+those terms are published, the proprietary modules listed below are not
+available under the Apache License 2.0 or any other open-source license.
+This file does not grant a license and does not contain commercial
+contract language.
+
+The proprietary module set includes, at a high level:
+
+  - Enterprise server and extensions (datastrato-server, common-extension,
+    core-extension, lineage-extension)
+  - Enterprise authorization (authorization-jdbc-enterprise, SCIM)
+  - Search and metrics services
+  - Additional JDBC catalogs (Oracle, BigQuery, MaxCompute, SQL Server)
+  - Secret-backend bundles (Vault, OpenBao, Transit)
+  - License-management components
+  - Enterprise documentation, QA, and supporting scripts and configuration
+
+This list is derived from the enterprise paths in
+datastratoLicenseCheckIncludes. It is not a file inventory and may grow
+as enterprise modules are added.

@@ -217,6 +217,16 @@ if [[ "$1" == "package" ]]; then
   rm -f gravitino-$GRAVITINO_VERSION-src/web-v2/web/LICENSE.bin
   rm -f gravitino-$GRAVITINO_VERSION-src/web-v2/web/NOTICE.bin
 
+  # Mixed-distribution files must remain in the source tarball. The .bin copies
+  # above are binary-package variants; LICENSE / NOTICE / LICENSE-APACHE /
+  # LICENSE-ENTERPRISE are the source-tree set.
+  for required in LICENSE NOTICE LICENSE-APACHE LICENSE-ENTERPRISE; do
+    if [ ! -f "gravitino-$GRAVITINO_VERSION-src/$required" ]; then
+      echo "ERROR: source tarball is missing $required"
+      exit 1
+    fi
+  done
+
   rm -f *.asc
   tar cvzf gravitino-$GRAVITINO_VERSION-src.tar.gz --exclude gravitino-$GRAVITINO_VERSION-src/.git gravitino-$GRAVITINO_VERSION-src
   echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --armour --output gravitino-$GRAVITINO_VERSION-src.tar.gz.asc \
