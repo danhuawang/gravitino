@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Inc.
  */
 /**
  * Build-time license logic for the enterprise licensing policy.

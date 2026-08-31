@@ -1,6 +1,5 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
- * This software is licensed under the Apache License version 2.
+ * Copyright 2024 Datastrato Inc.
  */
 
 // We have placed this class in the server module rather than the core module because later

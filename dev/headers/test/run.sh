@@ -11,6 +11,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HEADERS="$(cd "${HERE}/.." && pwd)"
 APPLY="${HEADERS}/apply-datastrato-license-headers.sh"
+REWRITE="${HEADERS}/rewrite-datastrato-headers.py"
 FIXTURES="${HERE}/fixtures"
 EXPECTED="${HERE}/expected"
 WORKDIR="$(mktemp -d)"
@@ -204,5 +205,97 @@ if ! "${APPLY}" check-year "${buried}" >/dev/null 2>"${check_year_buried}"; then
   fail "check-year should accept a stamped header and ignore the body year"
 fi
 pass "check-year ignores a copyright year in the body"
+
+rewrite_old="$(copy_input existing-2024.java.input RewriteOld.java)"
+rewrite_current="$(copy_input current-2026.java.input RewriteCurrent.java)"
+rewrite_both="$(copy_input header-plus-body.java.input RewriteBoth.java)"
+rewrite_asf="$(copy_input asf.java.input RewriteAsf.java)"
+rewrite_inc="$(copy_input already-inc.java.input RewriteInc.java)"
+rewrite_headerless="$(copy_input headerless.java.input RewriteHeaderless.java)"
+rewrite_spdx="$(copy_input rewrite-spdx.java.input RewriteSpdx.java)"
+rewrite_buried20="$(copy_input rewrite-buried-after-20.java.input RewriteBuried20.java)"
+rewrite_script="$(copy_input rewrite-shebang.sh.input rewrite-run.sh)"
+rewrite_sql="$(copy_input rewrite-schema.sql.input rewrite-schema.sql)"
+rewrite_note="$(copy_input rewrite-note.md.input rewrite-note.md)"
+rewrite_xml="$(copy_input rewrite-catalog.xml.input rewrite-catalog.xml)"
+rewrite_inc_grant="$(copy_input rewrite-inc-plus-grant.java.input RewriteIncGrant.java)"
+rewrite_out="${WORKDIR}/rewrite.out"
+python3 "${REWRITE}" "${rewrite_old}" "${rewrite_current}" "${rewrite_both}" \
+  "${rewrite_asf}" "${rewrite_inc}" "${rewrite_headerless}" "${rewrite_spdx}" \
+  "${rewrite_buried20}" "${rewrite_script}" "${rewrite_sql}" "${rewrite_note}" \
+  "${rewrite_xml}" "${rewrite_inc_grant}" >"${rewrite_out}"
+assert_same "${rewrite_old}" "${EXPECTED}/rewrite-existing-2024.java" \
+  "rewrite 2024 Java to Inc. copyright-only"
+assert_same "${rewrite_current}" "${EXPECTED}/rewrite-current-2026.java" \
+  "rewrite current-year Pvt Ltd to Inc. and drop the Apache sentence"
+assert_same "${rewrite_both}" "${EXPECTED}/rewrite-header-plus-body.java" \
+  "rewrite the header without touching a body copyright string"
+assert_same "${rewrite_script}" "${EXPECTED}/rewrite-shebang.sh" \
+  "rewrite shell header after shebang and keep 2024"
+assert_same "${rewrite_sql}" "${EXPECTED}/rewrite-schema.sql" \
+  "rewrite SQL header and keep 2025"
+assert_same "${rewrite_note}" "${EXPECTED}/rewrite-note.md" \
+  "rewrite Markdown HTML-comment header"
+assert_same "${rewrite_xml}" "${EXPECTED}/rewrite-catalog.xml" \
+  "rewrite XML comment after the declaration"
+assert_same "${rewrite_inc_grant}" "${EXPECTED}/rewrite-inc-plus-grant.java" \
+  "drop the Apache grant on an already-Inc. header and keep 2024"
+assert_unchanged "${rewrite_asf}" "${FIXTURES}/asf.java.input" "rewrite skips ASF Java"
+assert_unchanged "${rewrite_inc}" "${FIXTURES}/already-inc.java.input" \
+  "rewrite skips already-Inc. Java"
+assert_unchanged "${rewrite_headerless}" "${FIXTURES}/headerless.java.input" \
+  "rewrite does not stamp a headerless file"
+assert_unchanged "${rewrite_spdx}" "${FIXTURES}/rewrite-spdx.java.input" \
+  "rewrite skips SPDX Java"
+assert_unchanged "${rewrite_buried20}" "${FIXTURES}/rewrite-buried-after-20.java.input" \
+  "rewrite leaves copyright after line 20 alone"
+grep -q 'Rewrote 8 file(s); skipped 5' "${rewrite_out}" \
+  || fail "expected 8 rewrites and 5 skips, got: $(cat "${rewrite_out}")"
+pass "rewrite converts existing Datastrato headers and skips ASF/SPDX/body"
+
+if python3 "${REWRITE}" >/dev/null 2>"${WORKDIR}/rewrite-no-args.err"; then
+  fail "rewrite with no files should exit"
+fi
+grep -q 'pass the files to rewrite' "${WORKDIR}/rewrite-no-args.err" \
+  || fail "rewrite no-args missing explicit-file error"
+pass "rewrite refuses to run without file arguments"
+
+if python3 "${REWRITE}" --scan "${rewrite_old}" >/dev/null 2>"${WORKDIR}/rewrite-scan-and-files.err"; then
+  fail "rewrite --scan with files should exit"
+fi
+grep -q 'pass files or --scan, not both' "${WORKDIR}/rewrite-scan-and-files.err" \
+  || fail "rewrite --scan with files missing exclusive-mode error"
+pass "rewrite refuses to mix --scan with file arguments"
+
+scan_root="${WORKDIR}/scan-root"
+mkdir -p \
+  "${scan_root}/src" \
+  "${scan_root}/docs-enterprise" \
+  "${scan_root}/dev/headers/test/fixtures" \
+  "${scan_root}/dev/ci" \
+  "${scan_root}/buildSrc/src/test/java/org/apache/gravitino/license"
+cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/src/Keep.java"
+cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/docs-enterprise/page.md"
+cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/dev/headers/test/fixtures/old.java.input"
+cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/dev/ci/test_new_file_license_headers.sh"
+cp "${FIXTURES}/existing-2024.java.input" \
+  "${scan_root}/buildSrc/src/test/java/org/apache/gravitino/license/TestLicenseHeaderClassifier.java"
+python_bin="$(command -v python3)"
+PATH="/usr/bin:/bin" "${python_bin}" "${REWRITE}" --scan --root "${scan_root}" \
+  >"${WORKDIR}/scan.out"
+assert_same "${scan_root}/src/Keep.java" "${EXPECTED}/rewrite-existing-2024.java" \
+  "--scan rewrites a source file"
+assert_unchanged "${scan_root}/docs-enterprise/page.md" "${FIXTURES}/existing-2024.java.input" \
+  "--scan skips docs-enterprise"
+assert_unchanged "${scan_root}/dev/headers/test/fixtures/old.java.input" \
+  "${FIXTURES}/existing-2024.java.input" "--scan skips stamper fixtures"
+assert_unchanged \
+  "${scan_root}/buildSrc/src/test/java/org/apache/gravitino/license/TestLicenseHeaderClassifier.java" \
+  "${FIXTURES}/existing-2024.java.input" "--scan skips classifier test strings"
+assert_unchanged "${scan_root}/dev/ci/test_new_file_license_headers.sh" \
+  "${FIXTURES}/existing-2024.java.input" "--scan skips new-file CI header strings"
+grep -q 'Rewrote 1 file(s); skipped 0' "${WORKDIR}/scan.out" \
+  || fail "expected --scan to rewrite 1 file, got: $(cat "${WORKDIR}/scan.out")"
+pass "rewrite --scan honors skip paths"
 
 echo "OK"

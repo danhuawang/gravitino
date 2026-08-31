@@ -1,7 +1,6 @@
 package com.datastrato.gravitino.search.rest;
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
- * This software is licensed under the Apache License version 2.
+ * Copyright 2024 Datastrato Inc.
  */
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.fasterxml.jackson.annotation.JsonProperty;

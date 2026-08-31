@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
+ * Copyright 2024 Datastrato Inc.
  */
 package com.datastrato.gravitino.search.service;
 

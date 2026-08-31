@@ -1,6 +1,5 @@
 /*
- * Copyright 2025 Datastrato Pvt Ltd.
- * This software is licensed under the Apache License version 2.
+ * Copyright 2025 Datastrato Inc.
  */
 package com.datastrato.gravitino.authorization;
 

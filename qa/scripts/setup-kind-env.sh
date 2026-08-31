@@ -1,7 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2024 Datastrato Pvt Ltd.
-# This software is licensed under the Apache License version 2.
+# Copyright 2024 Datastrato Inc.
 #
 # Deploys Gravitino and optional components into a kind cluster for e2e tests.
 #

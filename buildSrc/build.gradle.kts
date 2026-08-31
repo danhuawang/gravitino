@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Inc.
  *
  * Testable build logic for the enterprise license checks. Compiled before the
  * root build; classes are available to build scripts (including the
