@@ -28,8 +28,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
+import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.common.authentication.AuthenticationConfig;
@@ -50,12 +55,20 @@ public class IcebergCatalogWrapperManager implements AutoCloseable {
 
   private final IcebergConfigProvider configProvider;
 
+  /**
+   * True when the Iceberg REST service runs inside the Gravitino server. Standalone deployments
+   * have no {@link GravitinoEnv}, so server-owned components such as the KMS client registry do not
+   * exist.
+   */
+  private final boolean auxMode;
+
   public IcebergCatalogWrapperManager(
       Map<String, String> properties,
       IcebergConfigProvider configProvider,
       boolean auxMode,
       String metalakeName) {
     this.configProvider = configProvider;
+    this.auxMode = auxMode;
     this.catalogWrapperCache =
         Caffeine.newBuilder()
             .expireAfterAccess(
@@ -140,10 +153,12 @@ public class IcebergCatalogWrapperManager implements AutoCloseable {
     IcebergCatalogBackend backend =
         IcebergCatalogBackend.valueOf(
             icebergConfig.get(IcebergConfig.CATALOG_BACKEND).toUpperCase(Locale.ROOT));
+    IcebergEncryptionPolicyEvaluator.KmsKeyValidator kmsKeyValidator =
+        resolveKmsKeyValidator(icebergConfig);
     CatalogWrapperForREST rest =
         backend == IcebergCatalogBackend.REST
-            ? new FederatedCatalogWrapper(catalogName, icebergConfig)
-            : new CatalogWrapperForREST(catalogName, icebergConfig);
+            ? new FederatedCatalogWrapper(catalogName, icebergConfig, kmsKeyValidator)
+            : new CatalogWrapperForREST(catalogName, icebergConfig, kmsKeyValidator);
     AuthenticationConfig authenticationConfig =
         new AuthenticationConfig(icebergConfig.getAllConfig());
     if (authenticationConfig.isKerberosAuth() && rest.getCatalog() instanceof SupportsKerberos) {
@@ -152,6 +167,31 @@ public class IcebergCatalogWrapperManager implements AutoCloseable {
     }
 
     return rest;
+  }
+
+  /**
+   * Resolves the key confirmation capability for one catalog.
+   *
+   * <p>Returns null, disabling confirmation, unless the service runs inside the Gravitino server
+   * and the catalog names a KMS through {@code encryption-kms-source}. Checking the binding before
+   * touching {@link GravitinoEnv} keeps catalogs that use no KMS independent of server-owned
+   * components.
+   *
+   * @param icebergConfig resolved configuration for the catalog.
+   * @return a validator bound to the server's KMS registry, or null when confirmation cannot apply.
+   */
+  @Nullable
+  private IcebergEncryptionPolicyEvaluator.KmsKeyValidator resolveKmsKeyValidator(
+      IcebergConfig icebergConfig) {
+    if (!auxMode) {
+      return null;
+    }
+    if (StringUtils.isBlank(
+        icebergConfig.getAllConfig().get(IcebergConstants.ENCRYPTION_KMS_SOURCE))) {
+      return null;
+    }
+    return IcebergEncryptionKmsKeyValidators.fromRegistry(
+        GravitinoEnv.getInstance().kmsClientRegistry());
   }
 
   private void closeIcebergCatalogWrapper(IcebergCatalogWrapper catalogWrapper) {

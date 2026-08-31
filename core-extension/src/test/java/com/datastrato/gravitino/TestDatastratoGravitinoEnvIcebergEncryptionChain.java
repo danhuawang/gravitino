@@ -11,14 +11,14 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableHookDispatcher;
-import com.datastrato.gravitino.encryption.IcebergEncryptionDecision;
-import com.datastrato.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
-import com.datastrato.gravitino.encryption.IcebergEncryptionPolicyResolver;
 import com.datastrato.gravitino.encryption.IcebergTableEncryptionDispatcher;
-import com.datastrato.gravitino.encryption.SinglePolicyChecker;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.encryption.IcebergEncryptionDecision;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
+import org.apache.gravitino.encryption.SinglePolicyChecker;
 import org.apache.gravitino.policy.PolicyDispatcher;
 import org.junit.jupiter.api.Test;
 

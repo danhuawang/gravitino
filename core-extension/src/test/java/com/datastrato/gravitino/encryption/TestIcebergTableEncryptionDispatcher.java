@@ -31,6 +31,10 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.encryption.IcebergEncryptionDecision;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
+import org.apache.gravitino.encryption.SinglePolicyChecker;
 import org.apache.gravitino.encryption.kms.KmsClient;
 import org.apache.gravitino.encryption.kms.KmsClientRegistry;
 import org.apache.gravitino.encryption.kms.KmsKeyProperties;
@@ -607,6 +611,153 @@ public class TestIcebergTableEncryptionDispatcher {
         Reason.TABLE_CREATE_FAILED.code(), event.get(IcebergEncryptionAuditInfos.REASON));
     Assertions.assertEquals(
         KmsValidationStatus.VALID.name(), event.get(IcebergEncryptionAuditInfos.KMS_VALIDATION));
+  }
+
+  @Test
+  void testNonEncryptionAlterDoesNotStashExtras() {
+    TableChange change = TableChange.setProperty("comment", "updated");
+    Table altered = mock(Table.class);
+    when(delegate.alterTable(TABLE, change)).thenReturn(altered);
+
+    Assertions.assertSame(altered, dispatcher.alterTable(TABLE, change));
+
+    verify(delegate).alterTable(TABLE, change);
+    verifyNoInteractions(catalogManager);
+    Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
+    Assertions.assertEquals(0, validationCalls.get());
+  }
+
+  @Test
+  void testNonIcebergEncryptionAlterDoesNotStashExtras() {
+    when(catalog.provider()).thenReturn("jdbc-postgresql");
+    TableChange change =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID, KEY_ID);
+    Table altered = mock(Table.class);
+    when(delegate.alterTable(TABLE, change)).thenReturn(altered);
+
+    Assertions.assertSame(altered, dispatcher.alterTable(TABLE, change));
+
+    verify(delegate).alterTable(TABLE, change);
+    Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
+    Assertions.assertEquals(0, validationCalls.get());
+  }
+
+  @Test
+  void testSuccessfulEncryptionAlterStashesUpdatedAndAttemptedKey() {
+    TableChange provider =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER, SOURCE);
+    TableChange keyId =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID, KEY_ID);
+    TableChange comment = TableChange.setProperty("comment", "kept");
+    Table altered = mock(Table.class);
+    when(delegate.alterTable(eq(TABLE), any(TableChange[].class))).thenReturn(altered);
+
+    Assertions.assertSame(altered, dispatcher.alterTable(TABLE, provider, keyId, comment));
+
+    verify(delegate).alterTable(TABLE, provider, keyId, comment);
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.ENCRYPTION_PROPERTIES_UPDATED.code(),
+        extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(SOURCE, extras.get(IcebergEncryptionAuditInfos.ATTEMPTED_PROVIDER));
+    Assertions.assertEquals(KEY_ID, extras.get(IcebergEncryptionAuditInfos.ATTEMPTED_KEY_ID));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.PREVIOUS_PROVIDER));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    Assertions.assertEquals(0, validationCalls.get());
+  }
+
+  @Test
+  void testKeyIdOnlyAlterStashesUpdatedWithoutAttemptedKey() {
+    TableChange keyId =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID, KEY_ID);
+    Table altered = mock(Table.class);
+    when(delegate.alterTable(TABLE, keyId)).thenReturn(altered);
+
+    Assertions.assertSame(altered, dispatcher.alterTable(TABLE, keyId));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.ENCRYPTION_PROPERTIES_UPDATED.code(),
+        extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.ATTEMPTED_PROVIDER));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.ATTEMPTED_KEY_ID));
+  }
+
+  @Test
+  void testLeftoverProtocolPropAlterIsAudited() {
+    TableChange leftover =
+        TableChange.setProperty(
+            IcebergEncryptionPolicyEvaluator.ENCRYPTION_KMS_API, "openbao-transit");
+    Table altered = mock(Table.class);
+    when(delegate.alterTable(TABLE, leftover)).thenReturn(altered);
+
+    Assertions.assertSame(altered, dispatcher.alterTable(TABLE, leftover));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.ENCRYPTION_PROPERTIES_UPDATED.code(),
+        extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.ATTEMPTED_KEY_ID));
+    Assertions.assertEquals(0, validationCalls.get());
+  }
+
+  @Test
+  void testRemoveEncryptionPropAlterStashesUpdatedWithoutAttemptedKey() {
+    TableChange remove =
+        TableChange.removeProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID);
+    Table altered = mock(Table.class);
+    when(delegate.alterTable(TABLE, remove)).thenReturn(altered);
+
+    Assertions.assertSame(altered, dispatcher.alterTable(TABLE, remove));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.ENCRYPTION_PROPERTIES_UPDATED.code(),
+        extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.ATTEMPTED_KEY_ID));
+  }
+
+  @Test
+  void testIllegalArgumentOnEncryptionAlterIsKeyChangeDenied() {
+    TableChange provider =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER, SOURCE);
+    TableChange keyId =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID, "other-key");
+    IllegalArgumentException failure =
+        new IllegalArgumentException("encryption.key-id is immutable");
+    when(delegate.alterTable(TABLE, provider, keyId)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(
+            IllegalArgumentException.class, () -> dispatcher.alterTable(TABLE, provider, keyId)));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.ENCRYPTION_KEY_CHANGE_DENIED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(SOURCE, extras.get(IcebergEncryptionAuditInfos.ATTEMPTED_PROVIDER));
+    Assertions.assertEquals("other-key", extras.get(IcebergEncryptionAuditInfos.ATTEMPTED_KEY_ID));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    Assertions.assertEquals(0, validationCalls.get());
+  }
+
+  @Test
+  void testRuntimeFailureOnEncryptionAlterIsOperationFailed() {
+    TableChange keyId =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID, KEY_ID);
+    RuntimeException failure = new RuntimeException("catalog alter failed");
+    when(delegate.alterTable(TABLE, keyId)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(RuntimeException.class, () -> dispatcher.alterTable(TABLE, keyId)));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.OPERATION_FAILED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        RuntimeException.class.getName(), extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.ATTEMPTED_KEY_ID));
   }
 
   @Test

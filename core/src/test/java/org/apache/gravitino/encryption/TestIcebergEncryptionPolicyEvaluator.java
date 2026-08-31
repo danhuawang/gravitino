@@ -1,7 +1,7 @@
 /*
  * Copyright 2026 Datastrato Pvt Ltd.
  */
-package com.datastrato.gravitino.encryption;
+package org.apache.gravitino.encryption;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;

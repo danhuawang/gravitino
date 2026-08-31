@@ -8,6 +8,7 @@ import static org.apache.gravitino.utils.NameIdentifierUtil.getCatalogIdentifier
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.preview.DataPreviewSensitiveTableException;
 import com.google.common.base.Preconditions;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,9 +25,12 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.encryption.IcebergEncryptionDecision;
+import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
 import org.apache.gravitino.encryption.kms.KmsClient;
 import org.apache.gravitino.encryption.kms.KmsClientRegistry;
-import org.apache.gravitino.encryption.kms.KmsKeyProperties;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.exceptions.AmbiguousPolicyException;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
@@ -221,7 +225,36 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
   /** {@inheritDoc} */
   @Override
   public Table alterTable(NameIdentifier ident, TableChange... changes) {
-    return dispatcher.alterTable(ident, changes);
+    TableChange[] encryptionChanges = encryptionChanges(changes);
+    if (encryptionChanges.length == 0) {
+      return dispatcher.alterTable(ident, changes);
+    }
+
+    Catalog catalog = catalogManager.loadCatalog(getCatalogIdentifier(ident));
+    if (!ICEBERG_PROVIDER.equals(catalog.provider())) {
+      return dispatcher.alterTable(ident, changes);
+    }
+
+    try {
+      Table table = dispatcher.alterTable(ident, changes);
+      stashAuditExtras(
+          alterExtras(
+              encryptionChanges,
+              IcebergEncryptionAuditInfos.Reason.ENCRYPTION_PROPERTIES_UPDATED,
+              null));
+      return table;
+    } catch (IllegalArgumentException e) {
+      stashAuditExtras(
+          alterExtras(
+              encryptionChanges,
+              IcebergEncryptionAuditInfos.Reason.ENCRYPTION_KEY_CHANGE_DENIED,
+              e));
+      throw e;
+    } catch (RuntimeException e) {
+      stashAuditExtras(
+          alterExtras(encryptionChanges, IcebergEncryptionAuditInfos.Reason.OPERATION_FAILED, e));
+      throw e;
+    }
   }
 
   /** {@inheritDoc} */
@@ -258,6 +291,20 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
 
   private static void stashAuditExtras(Map<String, String> extras) {
     RequestContext.setAuditExtras(extras);
+  }
+
+  private static Map<String, String> alterExtras(
+      TableChange[] changes, IcebergEncryptionAuditInfos.Reason reason, @Nullable Exception error) {
+    IcebergEncryptionAuditInfos.Builder extras =
+        IcebergEncryptionAuditInfos.builder().withReason(reason);
+    KmsReference attempted = attemptedProviderKey(changes);
+    if (attempted != null) {
+      extras.withAttemptedProviderKey(attempted);
+    }
+    if (error != null && reason == IcebergEncryptionAuditInfos.Reason.OPERATION_FAILED) {
+      extras.withError(error);
+    }
+    return extras.build();
   }
 
   private static Map<String, String> extras(
@@ -343,6 +390,52 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
     return forwarded;
   }
 
+  private static TableChange[] encryptionChanges(@Nullable TableChange[] changes) {
+    if (changes == null) {
+      return new TableChange[0];
+    }
+    return Arrays.stream(changes)
+        .filter(IcebergTableEncryptionDispatcher::isEncryptionChange)
+        .toArray(TableChange[]::new);
+  }
+
+  private static boolean isEncryptionChange(@Nullable TableChange change) {
+    String property = null;
+    if (change instanceof TableChange.SetProperty) {
+      property = ((TableChange.SetProperty) change).getProperty();
+    } else if (change instanceof TableChange.RemoveProperty) {
+      property = ((TableChange.RemoveProperty) change).getProperty();
+    }
+    return IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER.equals(property)
+        || IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID.equals(property)
+        || IcebergEncryptionPolicyEvaluator.ENCRYPTION_KMS_API.equals(property)
+        || IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_SOURCE.equals(property);
+  }
+
+  @Nullable
+  private static KmsReference attemptedProviderKey(TableChange[] changes) {
+    String provider = null;
+    String keyId = null;
+    for (TableChange change : changes) {
+      if (change instanceof TableChange.SetProperty) {
+        TableChange.SetProperty set = (TableChange.SetProperty) change;
+        if (IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER.equals(set.getProperty())) {
+          provider = set.getValue();
+        } else if (IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID.equals(set.getProperty())) {
+          keyId = set.getValue();
+        }
+      }
+    }
+    if (StringUtils.isAnyBlank(provider, keyId)) {
+      return null;
+    }
+    try {
+      return new KmsReference(provider, keyId);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
+
   @Nullable
   private static KmsReference requestedProviderKey(Map<String, String> properties) {
     String provider = properties.get(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER);
@@ -357,35 +450,6 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
     }
   }
 
-  private static IcebergEncryptionDecision.KmsValidationStatus validateKey(
-      KmsClient kmsClient, KmsReference reference) {
-    try {
-      Optional<KmsKeyProperties> properties = kmsClient.getKeyProperties(reference);
-      return properties.isPresent()
-              && properties.get().enabled()
-              && properties.get().supportsWrapping()
-          ? IcebergEncryptionDecision.KmsValidationStatus.VALID
-          : IcebergEncryptionDecision.KmsValidationStatus.INVALID;
-    } catch (ConnectionFailedException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE;
-    } catch (IllegalArgumentException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.INVALID;
-    } catch (RuntimeException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE;
-    }
-  }
-
-  private static IcebergEncryptionDecision.KmsValidationStatus validateKey(
-      Function<KmsReference, KmsClient> clientResolver, KmsReference reference) {
-    try {
-      return validateKey(clientResolver.apply(reference), reference);
-    } catch (IllegalArgumentException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.INVALID;
-    } catch (RuntimeException e) {
-      return IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE;
-    }
-  }
-
   /**
    * Adapts the configured KMS client registry to the evaluator's terminal validation contract.
    *
@@ -395,29 +459,18 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
   public static IcebergEncryptionPolicyEvaluator.KmsKeyValidator registryValidator(
       KmsClientRegistry kmsClientRegistry) {
     Preconditions.checkArgument(kmsClientRegistry != null, "kmsClientRegistry cannot be null");
-    return new IcebergEncryptionPolicyEvaluator.KmsKeyValidator() {
-      @Override
-      public IcebergEncryptionDecision.KmsValidationStatus validate(KmsReference key) {
-        try {
-          return validateKey(kmsClientRegistry.getClient(key), key);
-        } catch (IllegalArgumentException e) {
-          return IcebergEncryptionDecision.KmsValidationStatus.INVALID;
-        } catch (RuntimeException e) {
-          return IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE;
-        }
-      }
-    };
+    return IcebergEncryptionKmsKeyValidators.fromRegistry(kmsClientRegistry);
   }
 
   static IcebergEncryptionPolicyEvaluator.KmsKeyValidator clientResolverValidator(
       Function<KmsReference, KmsClient> clientResolver) {
     Preconditions.checkArgument(clientResolver != null, "clientResolver cannot be null");
-    return key -> validateKey(clientResolver, key);
+    return IcebergEncryptionKmsKeyValidators.fromClientResolver(clientResolver);
   }
 
   static IcebergEncryptionPolicyEvaluator.KmsKeyValidator clientValidator(KmsClient kmsClient) {
     Preconditions.checkArgument(kmsClient != null, "kmsClient cannot be null");
-    return key -> validateKey(kmsClient, key);
+    return IcebergEncryptionKmsKeyValidators.fromClient(kmsClient);
   }
 
   private static IcebergEncryptionAuditInfos.Compliance toAuditCompliance(
