@@ -915,6 +915,7 @@ tasks.rat {
     "clients/client-python/tests/unittests/htmlcov/*",
     "clients/client-python/tests/integration/htmlcov/*",
     "clients/filesystem-fuse/Cargo.lock",
+    "dev/headers/**",
     "dev/charts/gravitino/README.md",
     "dev/charts/gravitino-iceberg-rest-server/README.md",
     "dev/charts/gravitino-lance-rest-server/README.md",
@@ -988,7 +989,14 @@ tasks.rat {
   setExcludes(excludes + (project.extra["enterpriseRatExcludes"] as List<String>))
 }
 
-tasks.check.get().dependsOn(tasks.rat)
+tasks.register<Exec>("testDatastratoLicenseHeaderScript") {
+  group = "verification"
+  description = "Runs the Datastrato license-header fixture suite (dev/headers/test/run.sh)."
+  workingDir = rootDir
+  commandLine("bash", "dev/headers/test/run.sh")
+}
+
+tasks.check.get().dependsOn(tasks.rat, tasks.named("testDatastratoLicenseHeaderScript"))
 
 tasks.cyclonedxBom {
   setIncludeConfigs(listOf("runtimeClasspath"))

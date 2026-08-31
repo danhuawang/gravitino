@@ -1,0 +1,6 @@
+/*
+ * Copyright 2024 Datastrato Pvt Ltd.
+ */
+class Both {
+  String sample = "Copyright 2024 Datastrato Pvt Ltd.";
+}
