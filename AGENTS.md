@@ -22,6 +22,16 @@
 ## General Coding Standards
 - **Language**: Use English for all code, comments, and documentation.
 - **Style**: Follow rigid Google Java Style. Run `./gradlew spotlessApply` to format.
+- **License headers**: New `com.datastrato` / enterprise-only files use the Datastrato copyright-only header with the **calendar year of generation**:
+  ```text
+  Copyright YYYY Datastrato Inc.
+  ```
+  Do not add the Apache license sentence. Copy `dev/headers/datastrato-apache-2.txt` and replace `YEAR`, or run
+  `dev/headers/apply-datastrato-license-headers.sh apply <file...>`.
+  Pass **only the new files to stamp**. The script does not scan the repo. Do not
+  run `apply` with no arguments. Existing Datastrato headers keep their year and
+  entity. It does not rewrite Apache ASF headers. If you change the stamper, run
+  `dev/headers/test/run.sh`.
 - **Javadoc**: All new `public` and `protected` classes, methods, and fields must have Javadoc. Missing Javadoc fails the checkstyle CI step (runs with `-Werror`).
 - **Imports**: Always use normal `import` statements instead of Fully Qualified Class Names (FQN) in Java code whenever possible.
   - **Bad**: `org.apache.gravitino.rel.Table table = ...;`

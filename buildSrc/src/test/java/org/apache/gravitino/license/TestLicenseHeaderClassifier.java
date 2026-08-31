@@ -47,6 +47,9 @@ class TestLicenseHeaderClassifier {
     assertTrue(
         LicenseHeaderClassifier.hasDatastratoCopyright(
             "/*\n * Copyright 2026 Datastrato Pvt Ltd.\n */"));
+    assertTrue(
+        LicenseHeaderClassifier.hasDatastratoCopyright(
+            "/*\n * Copyright 2026 Datastrato Inc.\n */"));
     assertFalse(
         LicenseHeaderClassifier.hasDatastratoCopyright(
             "/*\n * Licensed to the Apache Software Foundation (ASF) under one\n */"));

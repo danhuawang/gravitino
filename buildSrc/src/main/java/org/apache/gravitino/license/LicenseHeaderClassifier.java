@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
 public final class LicenseHeaderClassifier {
 
   private static final Pattern DATASTRATO_HEADER =
-      Pattern.compile("Copyright\\s+\\d{4}\\s+Datastrato Pvt Ltd\\.");
+      Pattern.compile("Copyright\\s+\\d{4}\\s+Datastrato (?:Pvt Ltd|Inc)\\.");
 
   /** Apache license sentence that new Datastrato files must NOT carry. */
   public static final String APACHE_SENTENCE =

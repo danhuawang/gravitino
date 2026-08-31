@@ -197,6 +197,17 @@ We use [Spotless](https://github.com/diffplug/spotless) for code formatting. Run
 ./gradlew spotlessApply
 ```
 
+Spotless formats Java only. It does **not** write license headers. New
+enterprise-only (`com.datastrato`) files must use the Datastrato
+copyright-only header with the **calendar year of generation**. Copy
+[`dev/headers/datastrato-apache-2.txt`](dev/headers/datastrato-apache-2.txt)
+and replace `YEAR`, or run
+`dev/headers/apply-datastrato-license-headers.sh apply <file...>`.
+Do not add `This software is licensed under the Apache License version 2.`
+Pass only the new files to stamp; the script does not scan the repo. Existing
+Datastrato headers keep their year and entity. It does not rewrite Apache
+ASF headers. The long ASF header has no year.
+
 ## 🗂️ File Structure Overview
 
 Key directories in the Gravitino repo:

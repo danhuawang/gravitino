@@ -1,0 +1,11 @@
+# Datastrato copyright-only source header template
+#
+# Replace YEAR with the calendar year this file is generated (for example 2026).
+# Do not copy a stale year from an older file.
+# apply does not rewrite existing Datastrato headers.
+# Do not rewrite Apache ASF headers.
+# New Datastrato files must not add the Apache license sentence.
+#
+# Canonical body (comment markers depend on file type):
+
+Copyright YEAR Datastrato Inc.
