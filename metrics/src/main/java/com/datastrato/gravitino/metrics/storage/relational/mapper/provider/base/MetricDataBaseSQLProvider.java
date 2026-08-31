@@ -18,6 +18,9 @@ import java.util.Set;
 import org.apache.gravitino.storage.relational.mapper.GroupMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper;
+import org.apache.gravitino.storage.relational.mapper.PolicyMetaMapper;
+import org.apache.gravitino.storage.relational.mapper.PolicyMetadataObjectRelMapper;
+import org.apache.gravitino.storage.relational.mapper.PolicyVersionMapper;
 import org.apache.gravitino.storage.relational.mapper.SecurableObjectMapper;
 import org.apache.gravitino.storage.relational.mapper.TagMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.TagMetadataObjectRelMapper;
@@ -34,7 +37,9 @@ public class MetricDataBaseSQLProvider {
       @Param("startTimestamp") Timestamp startTimestamp,
       @Param("endTimestamp") Timestamp endTimestamp) {
     return "<script>"
-        + "SELECT metric_name as metricName, created_time as createdTime, metric_value as metricValue"
+        + "SELECT metric_name as metricName, created_time as createdTime,"
+        + " metric_value as metricValue, metric_state as metricState,"
+        + " metric_message as metricMessage"
         + " FROM "
         + METRICS_TABLE_NAME
         + " dm WHERE dm.metalake_id = #{metalakeId}"
@@ -68,7 +73,9 @@ public class MetricDataBaseSQLProvider {
       @Param("startTimestamp") Timestamp startTimestamp,
       @Param("endTimestamp") Timestamp endTimestamp) {
     return "<script>"
-        + "SELECT metric_name as metricName, updated_time as createdTime, metric_value as metricValue"
+        + "SELECT metric_name as metricName, updated_time as createdTime,"
+        + " metric_value as metricValue, metric_state as metricState,"
+        + " metric_message as metricMessage"
         + " FROM "
         + CURRENT_METRICS_TABLE_NAME
         + " dmc WHERE dmc.metalake_id = #{metalakeId}"
@@ -146,6 +153,26 @@ public class MetricDataBaseSQLProvider {
         + " WHERE tm.metalake_id = #{metalakeId} AND tm.deleted_at = 0 AND trm.deleted_at = 0";
   }
 
+  /**
+   * Builds the query for metadata objects covered by a current, enabled policy.
+   *
+   * @param metalakeId metalake ID
+   * @return enabled policy relation query
+   */
+  public String listEnabledPolicyMetadataObjectIdsByMetalakeId(
+      @Param("metalakeId") long metalakeId) {
+    return "SELECT DISTINCT prm.metadata_object_id"
+        + " FROM "
+        + PolicyMetadataObjectRelMapper.POLICY_METADATA_OBJECT_RELATION_TABLE_NAME
+        + " prm JOIN "
+        + PolicyMetaMapper.POLICY_META_TABLE_NAME
+        + " pm ON prm.policy_id = pm.policy_id JOIN "
+        + PolicyVersionMapper.POLICY_VERSION_TABLE_NAME
+        + " pvi ON pm.policy_id = pvi.policy_id AND pm.current_version = pvi.version"
+        + " WHERE pm.metalake_id = #{metalakeId} AND prm.deleted_at = 0"
+        + " AND pm.deleted_at = 0 AND pvi.deleted_at = 0 AND pvi.enabled = TRUE";
+  }
+
   public String insertMetricsData(
       @Param("metalakeId") long metalakeId,
       @Param("userId") long userId,
@@ -153,14 +180,17 @@ public class MetricDataBaseSQLProvider {
     return "<script>"
         + "INSERT INTO "
         + METRICS_TABLE_NAME
-        + " (metalake_id, user_id, metric_name, metric_value, created_time)"
+        + " (metalake_id, user_id, metric_name, metric_value, metric_state, metric_message,"
+        + " created_time)"
         + " VALUES "
         + "<foreach item='metric' collection='metrics' separator=','>"
         + "("
         + "#{metalakeId}, "
         + "#{userId}, "
         + "#{metric.metricName}, "
-        + "#{metric.metricValue}, "
+        + "#{metric.metricValue, jdbcType=DOUBLE}, "
+        + "#{metric.metricState, jdbcType=VARCHAR}, "
+        + "#{metric.metricMessage, jdbcType=VARCHAR}, "
         + "#{metric.createdTime, jdbcType=TIMESTAMP}"
         + ")"
         + "</foreach>"
@@ -313,12 +343,14 @@ public class MetricDataBaseSQLProvider {
     return "<script>"
         + "INSERT INTO "
         + tableName
-        + " (metalake_id, user_id, metric_name, metric_value, "
+        + " (metalake_id, user_id, metric_name, metric_value, metric_state, metric_message, "
         + timestampColumn
         + ") VALUES "
         + "<foreach item='metric' collection='metrics' separator=','>"
         + "(#{metric.metalakeId}, #{metric.userId}, #{metric.metricName},"
-        + " #{metric.metricValue}, #{metric.createdTime, jdbcType=TIMESTAMP})"
+        + " #{metric.metricValue, jdbcType=DOUBLE}, #{metric.metricState, jdbcType=VARCHAR},"
+        + " #{metric.metricMessage, jdbcType=VARCHAR},"
+        + " #{metric.createdTime, jdbcType=TIMESTAMP})"
         + "</foreach>"
         + "</script>";
   }

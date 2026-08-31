@@ -265,6 +265,9 @@ public class AuthorizationExpressionConstants {
           METALAKE::OWNER || POLICY::OWNER || ANY_APPLY_POLICY
           """;
 
+  /** Authorization expression that permits only the metalake owner. */
+  public static final String METALAKE_OWNER_AUTHORIZATION_EXPRESSION = "METALAKE::OWNER";
+
   /**
    * Special case: "METALAKE_USER" is used here as a unique authorization token, not a logical
    * expression like other constants. This is intentional and required for metalake-level user

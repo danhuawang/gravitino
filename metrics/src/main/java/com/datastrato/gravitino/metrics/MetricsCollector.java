@@ -9,9 +9,8 @@
 // server-common.
 package com.datastrato.gravitino.metrics;
 
-import static com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService.Metric.TAGGED_ASSET_COUNT;
-
 import com.datastrato.gravitino.metrics.config.MetricsConfig;
+import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.datastrato.gravitino.metrics.storage.relational.OwnerNameRelPO;
 import com.datastrato.gravitino.metrics.storage.relational.TagNameMetadataObjectRelPO;
@@ -25,7 +24,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.EnumMap;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -49,26 +48,31 @@ import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.Metalake;
-import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
+import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.FilesetEntity;
+import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.ModelEntity;
+import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.UserEntity;
+import org.apache.gravitino.meta.ViewEntity;
+import org.apache.gravitino.rel.ViewCatalog;
 import org.apache.gravitino.server.ServerConfig;
 import org.apache.gravitino.storage.relational.po.SecurableObjectPO;
 import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
@@ -89,6 +93,7 @@ public class MetricsCollector implements Closeable {
   private SchemaDispatcher schemaDispatcher;
   private TableDispatcher tableDispatcher;
   private TopicDispatcher topicDispatcher;
+  private ViewDispatcher viewDispatcher;
   private MetricDataService metricDataService;
   private EntityStore store;
 
@@ -102,10 +107,6 @@ public class MetricsCollector implements Closeable {
   private final int metricsCalculationMaxThreadsNum = 5;
   private final long metricsCalculationKeepAliveTimeSec = 60L;
   private final int metricsCalculationQueueSize = 50;
-
-  @Getter
-  private final EnumMap<TagCategory, Set<String>> categoryToTagNames =
-      new EnumMap<>(TagCategory.class);
 
   private Duration retentionPeriod;
   private boolean enableAuthorization;
@@ -125,6 +126,7 @@ public class MetricsCollector implements Closeable {
     this.schemaDispatcher = gravitinoEnv.schemaDispatcher();
     this.tableDispatcher = gravitinoEnv.tableDispatcher();
     this.topicDispatcher = gravitinoEnv.topicDispatcher();
+    this.viewDispatcher = gravitinoEnv.viewDispatcher();
     this.metricDataService = MetricDataService.getInstance();
     metricDataService.initialize(serverConfig.get(Configs.ENABLE_AUTHORIZATION));
     this.store = gravitinoEnv.entityStore();
@@ -151,31 +153,6 @@ public class MetricsCollector implements Closeable {
             new LinkedBlockingQueue<>(metricsCalculationQueueSize),
             calculatorThreadFactory,
             new ThreadPoolExecutor.CallerRunsPolicy());
-
-    Set<String> piiTags =
-        serverConfig.get(MetricsConfig.PII_TAGS_CONFIG).stream()
-            .map(String::trim)
-            .collect(Collectors.toSet());
-
-    Set<String> publicTags =
-        serverConfig.get(MetricsConfig.PUBLIC_TAGS_CONFIG).stream()
-            .map(String::trim)
-            .collect(Collectors.toSet());
-
-    Set<String> confidentialTags =
-        serverConfig.get(MetricsConfig.CONFIDENTIAL_TAGS_CONFIG).stream()
-            .map(String::trim)
-            .collect(Collectors.toSet());
-
-    Set<String> privateTags =
-        serverConfig.get(MetricsConfig.PRIVATE_TAGS_CONFIG).stream()
-            .map(String::trim)
-            .collect(Collectors.toSet());
-
-    categoryToTagNames.put(TagCategory.PII, piiTags);
-    categoryToTagNames.put(TagCategory.PUBLIC, publicTags);
-    categoryToTagNames.put(TagCategory.CONFIDENTIAL, confidentialTags);
-    categoryToTagNames.put(TagCategory.PRIVATE, privateTags);
 
     this.retentionPeriod = Duration.ofDays(serverConfig.get(MetricsConfig.RETENTION_DAYS_CONFIG));
 
@@ -234,22 +211,6 @@ public class MetricsCollector implements Closeable {
     }
   }
 
-  public enum TagCategory {
-    PUBLIC,
-    PII,
-    CONFIDENTIAL,
-    PRIVATE,
-    // Used to calculate the total number of tagged assets
-    ANY_TAG;
-
-    public String metricName() {
-      if (this == ANY_TAG) {
-        return TAGGED_ASSET_COUNT.getName();
-      }
-      return this.name().toLowerCase() + "_tagged_asset_count";
-    }
-  }
-
   /** Controls whether a collection updates only current data or current and history together. */
   public enum PublishMode {
     /** Replaces the current snapshot without adding a historical point. */
@@ -257,6 +218,15 @@ public class MetricsCollector implements Closeable {
 
     /** Replaces current and appends history in one metalake transaction. */
     CURRENT_AND_HISTORY
+  }
+
+  /** Summarizes whether every metric produced by one collection is complete. */
+  public enum CollectionOutcome {
+    /** Every published metric was computed from all dependencies. */
+    COMPLETE,
+
+    /** At least one published metric is partial or unavailable. */
+    INCOMPLETE
   }
 
   private void collectAllMetrics(PublishMode publishMode, long runTimestamp) {
@@ -319,7 +289,21 @@ public class MetricsCollector implements Closeable {
     }
   }
 
-  void collectAndPublish(BaseMetalake metalake, PublishMode publishMode, long runTimestamp)
+  CollectionOutcome collectAndPublish(
+      BaseMetalake metalake, PublishMode publishMode, long runTimestamp) throws Exception {
+    return collectAndPublish(metalake, publishMode, runTimestamp, true);
+  }
+
+  CollectionOutcome refreshAndPublishDirtyMetalake(
+      BaseMetalake metalake, PublishMode publishMode, long runTimestamp) throws Exception {
+    return collectAndPublish(metalake, publishMode, runTimestamp, false);
+  }
+
+  private CollectionOutcome collectAndPublish(
+      BaseMetalake metalake,
+      PublishMode publishMode,
+      long runTimestamp,
+      boolean markDirtyOnIncomplete)
       throws Exception {
     synchronized (metalakeLock(metalake.id())) {
       String metalakeName = metalake.name();
@@ -328,11 +312,22 @@ public class MetricsCollector implements Closeable {
         MetalakeSnapshot snapshot = loadAllDataForMetalake(metalake);
         metalakeSnapshots.put(metalakeName, snapshot);
         Map<Long, List<MetricPO>> metricsByUser = calculateMetrics(snapshot);
+        CollectionOutcome outcome = collectionOutcome(metricsByUser);
         if (publishMode == PublishMode.CURRENT_AND_HISTORY) {
-          metricDataService.replaceCurrentAndAppendHistory(
-              metalake.id(), metricsByUser, runTimestamp);
+          if (outcome == CollectionOutcome.INCOMPLETE && markDirtyOnIncomplete) {
+            metricDataService.replaceCurrentAndAppendHistoryAndMarkDirty(
+                metalake.id(), metricsByUser, runTimestamp, runTimestamp);
+          } else {
+            metricDataService.replaceCurrentAndAppendHistory(
+                metalake.id(), metricsByUser, runTimestamp);
+          }
         } else {
-          metricDataService.replaceCurrentMetrics(metalake.id(), metricsByUser, runTimestamp);
+          if (outcome == CollectionOutcome.INCOMPLETE && markDirtyOnIncomplete) {
+            metricDataService.replaceCurrentMetricsAndMarkDirty(
+                metalake.id(), metricsByUser, runTimestamp, runTimestamp);
+          } else {
+            metricDataService.replaceCurrentMetrics(metalake.id(), metricsByUser, runTimestamp);
+          }
         }
         metalakeSnapshots
             .entrySet()
@@ -341,9 +336,11 @@ public class MetricsCollector implements Closeable {
                     !entry.getKey().equals(metalakeName)
                         && entry.getValue().getAssetTreeRoot().getId() == metalake.id());
         LOG.info(
-            "[run: {}] Metrics for metalake {} processed successfully",
+            "[run: {}] Metrics for metalake {} processed with outcome {}",
             Instant.ofEpochMilli(runTimestamp),
-            metalakeName);
+            metalakeName,
+            outcome);
+        return outcome;
       } catch (Exception e) {
         if (previousSnapshot == null) {
           metalakeSnapshots.remove(metalakeName);
@@ -353,6 +350,15 @@ public class MetricsCollector implements Closeable {
         throw e;
       }
     }
+  }
+
+  @VisibleForTesting
+  static CollectionOutcome collectionOutcome(Map<Long, List<MetricPO>> metricsByUser) {
+    boolean complete =
+        metricsByUser.values().stream()
+            .flatMap(List::stream)
+            .allMatch(metric -> metric.getMetricState() == MetricState.COMPLETE);
+    return complete ? CollectionOutcome.COMPLETE : CollectionOutcome.INCOMPLETE;
   }
 
   CompletableFuture<Void> submitIncremental(Runnable task) {
@@ -371,7 +377,7 @@ public class MetricsCollector implements Closeable {
   }
 
   private Map<Long, List<MetricPO>> calculateMetrics(MetalakeSnapshot snapshot) {
-    MetricsCalculator calculator = new MetricsCalculator(snapshot, categoryToTagNames);
+    MetricsCalculator calculator = new MetricsCalculator(snapshot);
     Map<Long, List<MetricPO>> metricsByUser = new HashMap<>();
     if (!enableAuthorization) {
       metricsByUser.put(
@@ -379,23 +385,33 @@ public class MetricsCollector implements Closeable {
       return metricsByUser;
     }
 
-    snapshot
-        .getUserNameToUserId()
-        .forEach(
-            (userName, userId) ->
-                metricsByUser.put(
-                    userId, calculator.calculateMetricsForUser(userName, true, false)));
-    Optional<Owner> owner =
-        snapshot.getAssetTreeRoot().getOwners().stream()
-            .filter(candidate -> candidate.type().equals(Owner.Type.USER))
-            .filter(candidate -> snapshot.getUserNameToUserId().containsKey(candidate.name()))
-            .findFirst();
-    owner.ifPresent(
-        value ->
-            metricsByUser.put(
-                MOCK_USER_ID_FOR_METALAKE_OWNER,
-                calculator.calculateMetricsForUser(value.name(), true, true)));
-    return metricsByUser;
+    GravitinoAuthorizer authorizer = new MemoizedJcasbinAuthorizer();
+    try {
+      authorizer.initialize();
+      snapshot
+          .getUserNameToUserId()
+          .forEach(
+              (userName, userId) ->
+                  metricsByUser.put(
+                      userId, calculator.calculateMetricsForUser(userName, authorizer)));
+      Optional<Owner> owner =
+          snapshot.getAssetTreeRoot().getOwners().stream()
+              .filter(candidate -> candidate.type().equals(Owner.Type.USER))
+              .filter(candidate -> snapshot.getUserNameToUserId().containsKey(candidate.name()))
+              .findFirst();
+      owner.ifPresent(
+          value ->
+              metricsByUser.put(
+                  MOCK_USER_ID_FOR_METALAKE_OWNER,
+                  calculator.calculateMetricsForUser(value.name(), authorizer)));
+      return metricsByUser;
+    } finally {
+      try {
+        authorizer.close();
+      } catch (IOException e) {
+        LOG.warn("Error closing authorizer", e);
+      }
+    }
   }
 
   /**
@@ -407,9 +423,14 @@ public class MetricsCollector implements Closeable {
     Set<AssetNode> catalogNodes = new HashSet<>();
     Set<AssetNode> schemaNodes = new HashSet<>();
     Set<AssetNode> tableNodes = new HashSet<>();
+    Set<AssetNode> viewNodes = new HashSet<>();
+    Set<AssetNode> functionNodes = new HashSet<>();
     Set<AssetNode> filesetNodes = new HashSet<>();
     Set<AssetNode> topicNodes = new HashSet<>();
     Set<AssetNode> modelNodes = new HashSet<>();
+    Set<String> failedCatalogNames = new HashSet<>();
+    Map<String, Catalog.Type> catalogTypes = new HashMap<>();
+    Map<String, Boolean> viewListingSupportByCatalog = new HashMap<>();
     Map<Long, AssetNode> assetNodeById = new HashMap<>();
 
     // Root is the metalake
@@ -436,58 +457,106 @@ public class MetricsCollector implements Closeable {
       root.addChild(catalogNode);
       assetNodeById.put(catalogNode.getId(), catalogNode);
       catalogNodes.add(catalogNode);
+      catalogTypes.put(catalog.name(), catalog.getType());
 
-      CatalogManager.CatalogWrapper catalogWrapper =
-          catalogManager.loadCatalogAndWrap(catalog.nameIdentifier());
-      boolean managedSchema =
-          catalogWrapper.capabilities().managedStorage(Capability.Scope.SCHEMA).supported();
+      Map<Long, AssetNode> catalogAssetNodeById = new HashMap<>();
+      Set<AssetNode> catalogSchemaNodes = new HashSet<>();
+      Set<AssetNode> catalogTableNodes = new HashSet<>();
+      Set<AssetNode> catalogViewNodes = new HashSet<>();
+      Set<AssetNode> catalogFunctionNodes = new HashSet<>();
+      Set<AssetNode> catalogFilesetNodes = new HashSet<>();
+      Set<AssetNode> catalogTopicNodes = new HashSet<>();
+      Set<AssetNode> catalogModelNodes = new HashSet<>();
+      try {
+        CatalogManager.CatalogWrapper catalogWrapper = loadCatalog(catalog);
+        boolean managedSchema = managedStorage(catalogWrapper, Capability.Scope.SCHEMA);
+        boolean managedTable = managedStorage(catalogWrapper, Capability.Scope.TABLE);
+        boolean managedView = managedStorage(catalogWrapper, Capability.Scope.VIEW);
+        boolean managedTopic = managedStorage(catalogWrapper, Capability.Scope.TOPIC);
+        boolean viewListingSupported =
+            catalog.getType() == Catalog.Type.RELATIONAL
+                && (managedView || supportsViewListing(catalogWrapper));
 
-      // fetch and add schemas
-      Namespace nsOfSchema = NamespaceUtil.ofSchema(metalake.name(), catalog.name());
-      Set<AssetNode> schemas =
-          getSchemaNodes(nsOfSchema, catalogNode, managedSchema, objectIdToOwners, assetNodeById);
-      catalogNode.addChildren(schemas);
-      schemaNodes.addAll(schemas);
-
-      // for each schema, fetch and add tables/filesets/topics/models
-      boolean managedTable =
-          catalogWrapper.capabilities().managedStorage(Capability.Scope.TABLE).supported();
-      boolean managedTopic =
-          catalogWrapper.capabilities().managedStorage(Capability.Scope.TOPIC).supported();
-
-      for (AssetNode schemaNode : catalogNode.getChildren()) {
-        Namespace ns = Namespace.of(metalake.name(), catalogNode.getName(), schemaNode.getName());
-        switch (catalog.getType()) {
-          case RELATIONAL:
-            Set<AssetNode> tables =
-                getTableNodes(ns, schemaNode, managedTable, objectIdToOwners, assetNodeById);
-            schemaNode.addChildren(tables);
-            tableNodes.addAll(tables);
-            break;
-
-          case FILESET:
-            Set<AssetNode> filesets =
-                getFilesetNodes(ns, schemaNode, objectIdToOwners, assetNodeById);
-            schemaNode.addChildren(filesets);
-            filesetNodes.addAll(filesets);
-            break;
-
-          case MESSAGING:
-            Set<AssetNode> topics =
-                getTopicNodes(ns, schemaNode, managedTopic, objectIdToOwners, assetNodeById);
-            schemaNode.addChildren(topics);
-            topicNodes.addAll(topics);
-            break;
-
-          case MODEL:
-            Set<AssetNode> models = getModelNodes(ns, schemaNode, objectIdToOwners, assetNodeById);
-            schemaNode.addChildren(models);
-            modelNodes.addAll(models);
-            break;
-
-          default:
-            LOG.warn("Unsupported catalog type: {}", catalog.getType());
+        if (catalog.getType() == Catalog.Type.RELATIONAL) {
+          viewListingSupportByCatalog.put(catalog.name(), viewListingSupported);
+          if (!viewListingSupported) {
+            LOG.debug("Catalog {} does not support view listing; skipping views", catalog.name());
+          }
         }
+
+        Namespace nsOfSchema = NamespaceUtil.ofSchema(metalake.name(), catalog.name());
+        Set<AssetNode> schemas =
+            getSchemaNodes(
+                nsOfSchema, catalogNode, managedSchema, objectIdToOwners, catalogAssetNodeById);
+        catalogSchemaNodes.addAll(schemas);
+
+        for (AssetNode schemaNode : schemas) {
+          Namespace ns = Namespace.of(metalake.name(), catalogNode.getName(), schemaNode.getName());
+          switch (catalog.getType()) {
+            case RELATIONAL:
+              Set<AssetNode> tables =
+                  getTableNodes(
+                      ns, schemaNode, managedTable, objectIdToOwners, catalogAssetNodeById);
+              Set<AssetNode> views =
+                  viewListingSupported
+                      ? getViewNodes(
+                          ns, schemaNode, managedView, objectIdToOwners, catalogAssetNodeById)
+                      : Collections.emptySet();
+              schemaNode.addChildren(tables);
+              schemaNode.addChildren(views);
+              catalogTableNodes.addAll(tables);
+              catalogViewNodes.addAll(views);
+              break;
+
+            case FILESET:
+              Set<AssetNode> filesets =
+                  getFilesetNodes(ns, schemaNode, objectIdToOwners, catalogAssetNodeById);
+              schemaNode.addChildren(filesets);
+              catalogFilesetNodes.addAll(filesets);
+              break;
+
+            case MESSAGING:
+              Set<AssetNode> topics =
+                  getTopicNodes(
+                      ns, schemaNode, managedTopic, objectIdToOwners, catalogAssetNodeById);
+              schemaNode.addChildren(topics);
+              catalogTopicNodes.addAll(topics);
+              break;
+
+            case MODEL:
+              Set<AssetNode> models =
+                  getModelNodes(ns, schemaNode, objectIdToOwners, catalogAssetNodeById);
+              schemaNode.addChildren(models);
+              catalogModelNodes.addAll(models);
+              break;
+
+            default:
+              LOG.warn("Unsupported catalog type: {}", catalog.getType());
+          }
+
+          if (catalog.getType() != Catalog.Type.UNSUPPORTED) {
+            Set<AssetNode> functions =
+                getFunctionNodes(ns, schemaNode, objectIdToOwners, catalogAssetNodeById);
+            schemaNode.addChildren(functions);
+            catalogFunctionNodes.addAll(functions);
+          }
+        }
+
+        catalogNode.addChildren(schemas);
+        assetNodeById.putAll(catalogAssetNodeById);
+        schemaNodes.addAll(catalogSchemaNodes);
+        tableNodes.addAll(catalogTableNodes);
+        viewNodes.addAll(catalogViewNodes);
+        functionNodes.addAll(catalogFunctionNodes);
+        filesetNodes.addAll(catalogFilesetNodes);
+        topicNodes.addAll(catalogTopicNodes);
+        modelNodes.addAll(catalogModelNodes);
+      } catch (Exception e) {
+        failedCatalogNames.add(catalog.name());
+        LOG.warn(
+            "Catalog {} could not be collected; dashboard metrics will publish a safe incomplete result",
+            catalog.name(),
+            e);
       }
     }
 
@@ -503,24 +572,36 @@ public class MetricsCollector implements Closeable {
     Map<Long, Set<Long>> userIdToRoleIds = getUserIdToRoleIds(userEntities);
 
     // Fetch tag information relative data
-    Map<NameIdentifier, Set<String>> assetIdentToTagNames =
-        getAssetIdentToTagNames(metalake, assetNodeById);
-    long tagCount = metricDataService.getTagCountByMetalakeId(metalake.id());
+    Set<Long> taggedObjectIds = getTaggedObjectIds(metalake, assetNodeById);
+    Set<Long> enabledPolicyObjectIds =
+        metricDataService.listEnabledPolicyMetadataObjectIdsByMetalakeId(metalake.id());
+    List<PolicyEntity> policies =
+        store.list(
+            NamespaceUtil.ofPolicy(metalake.name()), PolicyEntity.class, Entity.EntityType.POLICY);
+    long disabledPolicyCount = policies.stream().filter(policy -> !policy.enabled()).count();
 
-    return new MetalakeSnapshot(
-        root,
-        assetNodeById,
-        userNameToUserId,
-        roleIdToSecurableObjects,
-        userIdToRoleIds,
-        tagCount,
-        assetIdentToTagNames,
-        catalogNodes,
-        schemaNodes,
-        tableNodes,
-        filesetNodes,
-        topicNodes,
-        modelNodes);
+    return MetalakeSnapshot.builder()
+        .assetTreeRoot(root)
+        .assetNodeById(assetNodeById)
+        .userNameToUserId(userNameToUserId)
+        .roleIdToSecurableObjects(roleIdToSecurableObjects)
+        .userIdToRoleIds(userIdToRoleIds)
+        .taggedObjectIds(taggedObjectIds)
+        .catalogNodes(catalogNodes)
+        .schemaNodes(schemaNodes)
+        .tableNodes(tableNodes)
+        .viewNodes(viewNodes)
+        .functionNodes(functionNodes)
+        .filesetNodes(filesetNodes)
+        .topicNodes(topicNodes)
+        .modelNodes(modelNodes)
+        .enabledPolicyObjectIds(enabledPolicyObjectIds)
+        .policyCount(policies.size())
+        .disabledPolicyCount(disabledPolicyCount)
+        .failedCatalogNames(failedCatalogNames)
+        .catalogTypes(catalogTypes)
+        .viewListingSupportByCatalog(viewListingSupportByCatalog)
+        .build();
   }
 
   private void collectThenCleanMetrics() {
@@ -601,9 +682,8 @@ public class MetricsCollector implements Closeable {
                 Collectors.mapping(UserRoleRelPO::getRoleId, Collectors.toSet())));
   }
 
-  private Map<NameIdentifier, Set<String>> getAssetIdentToTagNames(
-      BaseMetalake metalake, Map<Long, AssetNode> assetNodeById) {
-    Map<NameIdentifier, Set<String>> assetIdentToTagNames = new HashMap<>();
+  private Set<Long> getTaggedObjectIds(BaseMetalake metalake, Map<Long, AssetNode> assetNodeById) {
+    Set<Long> taggedObjectIds = new HashSet<>();
     List<TagNameMetadataObjectRelPO> tagNameMetadataObjectRelPOS =
         metricDataService.listTagNameMetadataObjectRelsByMetalakeId(metalake.id());
     for (TagNameMetadataObjectRelPO relPO : tagNameMetadataObjectRelPOS) {
@@ -616,11 +696,9 @@ public class MetricsCollector implements Closeable {
             relPO.getTagName());
         continue;
       }
-      assetIdentToTagNames
-          .computeIfAbsent(assetNode.getNameIdent(), k -> new HashSet<>())
-          .add(relPO.getTagName());
+      taggedObjectIds.add(assetNode.getId());
     }
-    return assetIdentToTagNames;
+    return taggedObjectIds;
   }
 
   private AssetNode getMetalakeNode(BaseMetalake metalake, Map<Long, Set<Owner>> objectIdToOwners) {
@@ -642,13 +720,46 @@ public class MetricsCollector implements Closeable {
         objectIdToOwners.get(catalogEntity.id()));
   }
 
+  private CatalogManager.CatalogWrapper loadCatalog(CatalogEntity catalog)
+      throws CatalogCollectionException {
+    try {
+      return catalogManager.loadCatalogAndWrap(catalog.nameIdentifier());
+    } catch (Exception e) {
+      throw new CatalogCollectionException(e);
+    }
+  }
+
+  private static boolean managedStorage(
+      CatalogManager.CatalogWrapper catalogWrapper, Capability.Scope scope)
+      throws CatalogCollectionException {
+    try {
+      return catalogWrapper.capabilities().managedStorage(scope).supported();
+    } catch (Exception e) {
+      throw new CatalogCollectionException(e);
+    }
+  }
+
+  private static boolean supportsViewListing(CatalogManager.CatalogWrapper catalogWrapper)
+      throws CatalogCollectionException {
+    try {
+      return catalogWrapper.doWithViewOps(
+          viewCatalog ->
+              viewCatalog.getClass().getMethod("listViews", Namespace.class).getDeclaringClass()
+                  != ViewCatalog.class);
+    } catch (UnsupportedOperationException e) {
+      return false;
+    } catch (Exception e) {
+      throw new CatalogCollectionException(e);
+    }
+  }
+
   private Set<AssetNode> getSchemaNodes(
       Namespace nsOfSchema,
       AssetNode catalogNode,
       boolean managedSchema,
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
-      throws IOException {
+      throws IOException, CatalogCollectionException {
     Set<AssetNode> schemaNodes =
         store.list(nsOfSchema, SchemaEntity.class, Entity.EntityType.SCHEMA).stream()
             .map(
@@ -668,14 +779,18 @@ public class MetricsCollector implements Closeable {
     // if the schemas are not managed, it means there may be external schemas that have not been
     // imported, so we need to use schemaDispatcher to get the full schema
     if (!managedSchema) {
-      Set<AssetNode> schemasFromDispatcher =
-          Arrays.stream(schemaDispatcher.listSchemas(nsOfSchema))
-              .map(
-                  schema ->
-                      new AssetNode(
-                          -1, schema.name(), MetadataObject.Type.SCHEMA, catalogNode, null))
-              .collect(Collectors.toSet());
-      schemaNodes.addAll(schemasFromDispatcher);
+      try {
+        Set<AssetNode> schemasFromDispatcher =
+            Arrays.stream(schemaDispatcher.listSchemas(nsOfSchema))
+                .map(
+                    schema ->
+                        new AssetNode(
+                            -1, schema.name(), MetadataObject.Type.SCHEMA, catalogNode, null))
+                .collect(Collectors.toSet());
+        schemaNodes.addAll(schemasFromDispatcher);
+      } catch (Exception e) {
+        throw new CatalogCollectionException(e);
+      }
     }
     return schemaNodes;
   }
@@ -686,7 +801,7 @@ public class MetricsCollector implements Closeable {
       boolean managedTable,
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
-      throws IOException {
+      throws IOException, CatalogCollectionException {
     Set<AssetNode> tableNodes = new HashSet<>();
     try {
       tableNodes =
@@ -717,15 +832,70 @@ public class MetricsCollector implements Closeable {
     // if the tables are not managed, it means there may be external tables that have not been
     // imported, so we need to use tableDispatcher to get the full tables
     if (!managedTable) {
-      Set<AssetNode> tablesFromDispatcher =
-          Arrays.stream(tableDispatcher.listTables(nsOfTable))
-              .map(
-                  table ->
-                      new AssetNode(-1, table.name(), MetadataObject.Type.TABLE, schemaNode, null))
-              .collect(Collectors.toSet());
-      tableNodes.addAll(tablesFromDispatcher);
+      try {
+        Set<AssetNode> tablesFromDispatcher =
+            Arrays.stream(tableDispatcher.listTables(nsOfTable))
+                .map(
+                    table ->
+                        new AssetNode(
+                            -1, table.name(), MetadataObject.Type.TABLE, schemaNode, null))
+                .collect(Collectors.toSet());
+        tableNodes.addAll(tablesFromDispatcher);
+      } catch (Exception e) {
+        throw new CatalogCollectionException(e);
+      }
     }
     return tableNodes;
+  }
+
+  private Set<AssetNode> getViewNodes(
+      Namespace nsOfView,
+      AssetNode schemaNode,
+      boolean managedView,
+      Map<Long, Set<Owner>> objectIdToOwners,
+      Map<Long, AssetNode> assetNodeById)
+      throws IOException, CatalogCollectionException {
+    Set<AssetNode> viewNodes = new HashSet<>();
+    try {
+      viewNodes =
+          store.list(nsOfView, ViewEntity.class, Entity.EntityType.VIEW).stream()
+              .map(
+                  view -> {
+                    AssetNode assetNode =
+                        new AssetNode(
+                            view.id(),
+                            view.name(),
+                            MetadataObject.Type.VIEW,
+                            schemaNode,
+                            objectIdToOwners.get(view.id()));
+                    assetNodeById.put(assetNode.getId(), assetNode);
+                    return assetNode;
+                  })
+              .collect(Collectors.toSet());
+    } catch (NoSuchEntityException e) {
+      if (managedView) {
+        throw e;
+      }
+      LOG.warn(
+          "Schema not found in store when listing views for namespace: {}, will try dispatcher",
+          nsOfView,
+          e);
+    }
+
+    if (!managedView) {
+      try {
+        Set<AssetNode> viewsFromDispatcher =
+            Arrays.stream(viewDispatcher.listViews(nsOfView))
+                .map(
+                    view ->
+                        new AssetNode(-1, view.name(), MetadataObject.Type.VIEW, schemaNode, null))
+                .collect(Collectors.toSet());
+        viewNodes.addAll(viewsFromDispatcher);
+      } catch (Exception e) {
+        throw new CatalogCollectionException(e);
+      }
+    }
+    return viewNodes;
   }
 
   private Set<AssetNode> getFilesetNodes(
@@ -750,13 +920,35 @@ public class MetricsCollector implements Closeable {
         .collect(Collectors.toSet());
   }
 
+  private Set<AssetNode> getFunctionNodes(
+      Namespace nsOfFunction,
+      AssetNode schemaNode,
+      Map<Long, Set<Owner>> objectIdToOwners,
+      Map<Long, AssetNode> assetNodeById)
+      throws IOException {
+    return store.list(nsOfFunction, FunctionEntity.class, Entity.EntityType.FUNCTION).stream()
+        .map(
+            function -> {
+              AssetNode assetNode =
+                  new AssetNode(
+                      function.id(),
+                      function.name(),
+                      MetadataObject.Type.FUNCTION,
+                      schemaNode,
+                      objectIdToOwners.get(function.id()));
+              assetNodeById.put(assetNode.getId(), assetNode);
+              return assetNode;
+            })
+        .collect(Collectors.toSet());
+  }
+
   private Set<AssetNode> getTopicNodes(
       Namespace nsOfTopic,
       AssetNode schemaNode,
       boolean managedTopic,
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
-      throws IOException {
+      throws IOException, CatalogCollectionException {
     Set<AssetNode> topicNodes = new HashSet<>();
     try {
       topicNodes =
@@ -787,13 +979,18 @@ public class MetricsCollector implements Closeable {
     // if the topics are not managed, it means there may be external topics that have not been
     // imported, so we need to use topicDispatcher to get the full topics
     if (!managedTopic) {
-      Set<AssetNode> topicsFromDispatcher =
-          Arrays.stream(topicDispatcher.listTopics(nsOfTopic))
-              .map(
-                  topic ->
-                      new AssetNode(-1, topic.name(), MetadataObject.Type.TOPIC, schemaNode, null))
-              .collect(Collectors.toSet());
-      topicNodes.addAll(topicsFromDispatcher);
+      try {
+        Set<AssetNode> topicsFromDispatcher =
+            Arrays.stream(topicDispatcher.listTopics(nsOfTopic))
+                .map(
+                    topic ->
+                        new AssetNode(
+                            -1, topic.name(), MetadataObject.Type.TOPIC, schemaNode, null))
+                .collect(Collectors.toSet());
+        topicNodes.addAll(topicsFromDispatcher);
+      } catch (Exception e) {
+        throw new CatalogCollectionException(e);
+      }
     }
     return topicNodes;
   }
@@ -818,5 +1015,11 @@ public class MetricsCollector implements Closeable {
               return assetNode;
             })
         .collect(Collectors.toSet());
+  }
+
+  private static class CatalogCollectionException extends Exception {
+    private CatalogCollectionException(Throwable cause) {
+      super(cause);
+    }
   }
 }

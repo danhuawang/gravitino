@@ -42,12 +42,16 @@ class TestIncrementalMetricsWorker {
     when(service.getDirtyMetalake(10L)).thenReturn(dirty);
     when(collector.metalakeLock(10L)).thenReturn(new Object());
     when(collector.findActiveMetalake(10L)).thenReturn(Optional.of(metalake));
+    when(collector.refreshAndPublishDirtyMetalake(
+            eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong()))
+        .thenReturn(MetricsCollector.CollectionOutcome.COMPLETE);
     runSubmittedTasksImmediately(collector);
 
     worker.pollOnce();
 
     verify(collector)
-        .collectAndPublish(eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong());
+        .refreshAndPublishDirtyMetalake(
+            eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong());
     verify(service).deleteDirtyIfRevision(10L, 3L);
     worker.close();
   }
@@ -67,7 +71,7 @@ class TestIncrementalMetricsWorker {
 
     worker.pollOnce();
 
-    verify(collector, never()).collectAndPublish(any(), any(), anyLong());
+    verify(collector, never()).refreshAndPublishDirtyMetalake(any(), any(), anyLong());
     verify(service, never()).deleteDirtyIfRevision(anyLong(), anyLong());
     worker.close();
   }
@@ -86,7 +90,8 @@ class TestIncrementalMetricsWorker {
     when(collector.findActiveMetalake(11L)).thenReturn(Optional.of(metalake));
     doThrow(new RuntimeException("calculation failed"))
         .when(collector)
-        .collectAndPublish(eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong());
+        .refreshAndPublishDirtyMetalake(
+            eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong());
     runSubmittedTasksImmediately(collector);
 
     worker.pollOnce();
@@ -134,7 +139,8 @@ class TestIncrementalMetricsWorker {
     when(collector.findActiveMetalake(12L)).thenReturn(Optional.of(metalake));
     doThrow(new RuntimeException("calculation failed"))
         .when(collector)
-        .collectAndPublish(eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong());
+        .refreshAndPublishDirtyMetalake(
+            eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong());
     runSubmittedTasksImmediately(collector);
 
     long beforePoll = System.currentTimeMillis();
@@ -147,6 +153,36 @@ class TestIncrementalMetricsWorker {
             eq(12L), eq(5L), eq(4), retryAfter.capture(), eq("calculation failed"));
     assertTrue(retryAfter.getValue() >= beforePoll + 800L);
     assertTrue(retryAfter.getValue() <= afterPoll + 1_000L);
+    worker.close();
+  }
+
+  @Test
+  void testIncompleteResultRetainsMarkerAndRecoveryClearsIt() throws Exception {
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricDataService service = mock(MetricDataService.class);
+    IncrementalMetricsWorker worker = newWorker(collector, service);
+    MetricDirtyPO dirty = dirty(13L, 6L, System.currentTimeMillis() - 2_000, null, 0);
+    BaseMetalake metalake = mock(BaseMetalake.class);
+    when(service.listDueDirtyMetalakes(anyLong(), anyLong(), anyLong()))
+        .thenReturn(Collections.singletonList(dirty));
+    when(service.getDirtyMetalake(13L)).thenReturn(dirty);
+    when(collector.metalakeLock(13L)).thenReturn(new Object());
+    when(collector.findActiveMetalake(13L)).thenReturn(Optional.of(metalake));
+    when(collector.refreshAndPublishDirtyMetalake(
+            eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong()))
+        .thenReturn(
+            MetricsCollector.CollectionOutcome.INCOMPLETE,
+            MetricsCollector.CollectionOutcome.COMPLETE);
+    runSubmittedTasksImmediately(collector);
+
+    worker.pollOnce();
+    verify(service)
+        .markRetryIfRevision(
+            eq(13L), eq(6L), eq(1), anyLong(), eq("Dashboard metric collection is incomplete"));
+    verify(service, never()).deleteDirtyIfRevision(13L, 6L);
+
+    worker.pollOnce();
+    verify(service).deleteDirtyIfRevision(13L, 6L);
     worker.close();
   }
 

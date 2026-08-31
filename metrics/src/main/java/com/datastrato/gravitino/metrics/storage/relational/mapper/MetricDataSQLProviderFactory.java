@@ -91,6 +91,17 @@ public class MetricDataSQLProviderFactory {
     return getProvider().listTagNameMetadataObjectRelsByMetalakeId(metalakeId);
   }
 
+  /**
+   * Returns the query for metadata objects covered by current, enabled policies.
+   *
+   * @param metalakeId metalake ID
+   * @return enabled policy relation query
+   */
+  public static String listEnabledPolicyMetadataObjectIdsByMetalakeId(
+      @Param("metalakeId") long metalakeId) {
+    return getProvider().listEnabledPolicyMetadataObjectIdsByMetalakeId(metalakeId);
+  }
+
   public static String insertMetricsData(
       @Param("metalakeId") long metalakeId,
       @Param("userId") long userId,

@@ -45,6 +45,16 @@ public class DashboardMetricsEventListener implements EventListenerPlugin {
           OperationType.ALTER_TABLE,
           OperationType.RENAME_TABLE,
           OperationType.REGISTER_TABLE,
+          // View operations.
+          OperationType.CREATE_VIEW,
+          OperationType.ALTER_VIEW,
+          OperationType.REPLACE_VIEW,
+          OperationType.DROP_VIEW,
+          OperationType.RENAME_VIEW,
+          // Function operations.
+          OperationType.REGISTER_FUNCTION,
+          OperationType.ALTER_FUNCTION,
+          OperationType.DROP_FUNCTION,
           // Fileset operations.
           OperationType.DROP_FILESET,
           OperationType.ALTER_FILESET,
@@ -63,6 +73,13 @@ public class DashboardMetricsEventListener implements EventListenerPlugin {
           OperationType.DELETE_TAG,
           OperationType.ALTER_TAG,
           OperationType.ASSOCIATE_TAGS_FOR_METADATA_OBJECT,
+          // Policy operations.
+          OperationType.CREATE_POLICY,
+          OperationType.ALTER_POLICY,
+          OperationType.DELETE_POLICY,
+          OperationType.ENABLE_POLICY,
+          OperationType.DISABLE_POLICY,
+          OperationType.ASSOCIATE_POLICIES_FOR_METADATA_OBJECT,
           // User operations.
           OperationType.ADD_USER,
           OperationType.REMOVE_USER,

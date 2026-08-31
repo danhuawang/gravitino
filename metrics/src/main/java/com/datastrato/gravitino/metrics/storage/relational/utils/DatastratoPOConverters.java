@@ -5,6 +5,7 @@
 package com.datastrato.gravitino.metrics.storage.relational.utils;
 
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
+import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import java.util.List;
 import java.util.TreeMap;
@@ -27,14 +28,20 @@ public class DatastratoPOConverters {
               String name = entry.getKey();
               List<MetricPO> pos = entry.getValue();
 
-              double[] values = pos.stream().mapToDouble(MetricPO::getMetricValue).toArray();
+              Double[] values = pos.stream().map(MetricPO::getMetricValue).toArray(Double[]::new);
               long[] timestamps =
                   pos.stream().mapToLong(po -> po.getCreatedTime().getTime()).toArray();
+              MetricState[] states =
+                  pos.stream().map(MetricPO::getMetricState).toArray(MetricState[]::new);
+              String[] messages =
+                  pos.stream().map(MetricPO::getMetricMessage).toArray(String[]::new);
 
               return MetricDTO.builder()
                   .withName(name)
                   .withValues(values)
                   .withTimestamps(timestamps)
+                  .withStates(states)
+                  .withMessages(messages)
                   .build();
             })
         .toArray(MetricDTO[]::new);

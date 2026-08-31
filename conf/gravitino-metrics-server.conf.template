@@ -36,13 +36,6 @@ gravitino.cache.implementation = caffeine
 gravitino.authorization.enable = true
 gravitino.authorization.serviceAdmins = anonymous
 
-# tag group for dashboard metrics collection
-# note: The tags should be created by the user in advance.
-# gravitino.datastrato.dashboardMetrics.piiTags=pii1,pii2
-# gravitino.datastrato.dashboardMetrics.publicTags=public1,public2
-# gravitino.datastrato.dashboardMetrics.confidentialTags=confidential1, confidential2
-# gravitino.datastrato.dashboardMetrics.privateTags=private1,private2
-
 # Incremental dashboard metrics worker configuration.
 # Only one running Gravitino Metrics Service instance is supported.
 # Interval in milliseconds for polling metalakes pending a metrics refresh.

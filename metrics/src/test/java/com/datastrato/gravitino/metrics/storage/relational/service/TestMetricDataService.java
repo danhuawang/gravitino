@@ -16,6 +16,7 @@ import com.datastrato.gravitino.metrics.AssetNode;
 import com.datastrato.gravitino.metrics.MetalakeSnapshot;
 import com.datastrato.gravitino.metrics.MetricsCollector;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
+import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.google.common.collect.Lists;
@@ -31,6 +32,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.commons.io.FileUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
@@ -122,6 +124,72 @@ class TestMetricDataService {
     assertEquals(assetCount.getMetricName(), result[0].name());
     assertEquals(assetCount.getMetricValue(), result[0].values()[0]);
     Assertions.assertTrue(result[0].timestamps()[0] > 0);
+    assertEquals(MetricState.COMPLETE, result[0].states()[0]);
+    assertNull(result[0].messages()[0]);
+  }
+
+  @Test
+  void testUnavailableMetricRoundTripAndAtomicDirtyMarker() {
+    long timestamp = System.currentTimeMillis() + 5_000;
+    MetricPO unavailable =
+        MetricPO.builder()
+            .withMetricName("by_catalog::failed::asset_count")
+            .withMetricValue(null)
+            .withMetricState(MetricState.UNAVAILABLE)
+            .withMetricMessage("Metric data is temporarily unavailable.")
+            .build();
+
+    service.replaceCurrentMetricsAndMarkDirty(
+        1L,
+        Collections.singletonMap(
+            MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ,
+            Collections.singletonList(unavailable)),
+        timestamp,
+        timestamp);
+
+    MetricDTO[] result =
+        service.getMetricsByNameAndTimestamp(
+            metalakeName1,
+            "u1",
+            new String[] {"by_catalog::failed::asset_count"},
+            timestamp,
+            timestamp);
+    assertEquals(1, result.length);
+    assertNull(result[0].values()[0]);
+    assertEquals(MetricState.UNAVAILABLE, result[0].states()[0]);
+    assertEquals("Metric data is temporarily unavailable.", result[0].messages()[0]);
+    assertEquals(result[0].values().length, result[0].timestamps().length);
+    assertEquals(result[0].values().length, result[0].states().length);
+    assertEquals(result[0].values().length, result[0].messages().length);
+    assertTrue(service.getDirtyMetalake(1L) != null);
+  }
+
+  @Test
+  void testEnabledPolicyRelationsUseOnlyTheCurrentPolicyVersion() throws SQLException {
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+        Statement statement = conn.createStatement()) {
+      statement.executeUpdate(
+          "INSERT INTO policy_meta"
+              + " (policy_id, policy_name, policy_type, metalake_id, audit_info,"
+              + " current_version, last_version, deleted_at) VALUES"
+              + " (1001, 'enabled_policy', 'custom', 1, '{}', 2, 2, 0),"
+              + " (1002, 'disabled_policy', 'custom', 1, '{}', 2, 2, 0)");
+      statement.executeUpdate(
+          "INSERT INTO policy_version_info"
+              + " (metalake_id, policy_id, version, enabled, deleted_at) VALUES"
+              + " (1, 1001, 1, FALSE, 0), (1, 1001, 2, TRUE, 0),"
+              + " (1, 1002, 1, TRUE, 0), (1, 1002, 2, FALSE, 0)");
+      statement.executeUpdate(
+          "INSERT INTO policy_relation_meta"
+              + " (policy_id, metadata_object_id, metadata_object_type, audit_info, deleted_at)"
+              + " VALUES (1001, 7001, 'SCHEMA', '{}', 0), (1002, 7002, 'TABLE', '{}', 0)");
+
+      assertEquals(Set.of(7001L), service.listEnabledPolicyMetadataObjectIdsByMetalakeId(1L));
+
+      statement.executeUpdate("DELETE FROM policy_relation_meta WHERE policy_id IN (1001, 1002)");
+      statement.executeUpdate("DELETE FROM policy_version_info WHERE policy_id IN (1001, 1002)");
+      statement.executeUpdate("DELETE FROM policy_meta WHERE policy_id IN (1001, 1002)");
+    }
   }
 
   @Test
@@ -374,7 +442,7 @@ class TestMetricDataService {
     assertEquals(1, result.length);
     Assertions.assertArrayEquals(
         new long[] {firstTimestamp, secondTimestamp, currentTimestamp}, result[0].timestamps());
-    Assertions.assertArrayEquals(new double[] {1.0, 2.0, 3.0}, result[0].values());
+    Assertions.assertArrayEquals(new Double[] {1.0, 2.0, 3.0}, result[0].values());
   }
 
   @Test

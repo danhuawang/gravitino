@@ -60,11 +60,11 @@ public class AssetNode {
     if (this == o) return true;
     if (!(o instanceof AssetNode)) return false;
     AssetNode assetNode = (AssetNode) o;
-    return Objects.equals(nameIdent, assetNode.nameIdent);
+    return type == assetNode.type && Objects.equals(nameIdent, assetNode.nameIdent);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(nameIdent);
+    return Objects.hash(nameIdent, type);
   }
 }

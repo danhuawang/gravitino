@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -136,9 +137,6 @@ class TestDashboardMetricsEventListener {
       for (OperationType operationType :
           new OperationType[] {
             OperationType.ADD_PARTITION,
-            OperationType.CREATE_VIEW,
-            OperationType.REGISTER_FUNCTION,
-            OperationType.CREATE_POLICY,
             OperationType.LINK_MODEL_VERSION,
             OperationType.DROP_METALAKE,
             OperationType.DISABLE_METALAKE
@@ -148,6 +146,48 @@ class TestDashboardMetricsEventListener {
         listener.onPostEvent(ignoredEvent);
       }
       verifyNoMoreInteractions(metricDataService);
+    }
+  }
+
+  @Test
+  void testViewFunctionAndPolicyMutationsMarkMetalakeDirty() {
+    MetricDataService metricDataService = mock(MetricDataService.class);
+    MetalakeMetaService metalakeMetaService = mock(MetalakeMetaService.class);
+    when(metalakeMetaService.getMetalakeIdByName("metalake")).thenReturn(40L);
+
+    try (MockedStatic<MetricDataService> metricServiceStatic =
+            Mockito.mockStatic(MetricDataService.class);
+        MockedStatic<MetalakeMetaService> metalakeServiceStatic =
+            Mockito.mockStatic(MetalakeMetaService.class)) {
+      metricServiceStatic.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      metalakeServiceStatic.when(MetalakeMetaService::getInstance).thenReturn(metalakeMetaService);
+      DashboardMetricsEventListener listener = new DashboardMetricsEventListener();
+      listener.init(Collections.emptyMap());
+
+      OperationType[] mutations = {
+        OperationType.CREATE_VIEW,
+        OperationType.ALTER_VIEW,
+        OperationType.REPLACE_VIEW,
+        OperationType.DROP_VIEW,
+        OperationType.RENAME_VIEW,
+        OperationType.REGISTER_FUNCTION,
+        OperationType.ALTER_FUNCTION,
+        OperationType.DROP_FUNCTION,
+        OperationType.CREATE_POLICY,
+        OperationType.ALTER_POLICY,
+        OperationType.DELETE_POLICY,
+        OperationType.ENABLE_POLICY,
+        OperationType.DISABLE_POLICY,
+        OperationType.ASSOCIATE_POLICIES_FOR_METADATA_OBJECT
+      };
+      for (OperationType mutation : mutations) {
+        Event event = successfulEvent(mutation);
+        when(event.identifier())
+            .thenReturn(NameIdentifier.of("metalake", "catalog", "schema", "object"));
+        listener.onPostEvent(event);
+      }
+
+      verify(metricDataService, times(mutations.length)).markMetalakeDirty(40L, 1234L);
     }
   }
 

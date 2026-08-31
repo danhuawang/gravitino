@@ -15,6 +15,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
+import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.dto.MetricsResponse;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.google.common.collect.ImmutableMap;
@@ -28,6 +29,7 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.rest.RESTUtils;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
@@ -107,14 +109,24 @@ public class TestMetricOperations extends JerseyTest {
     MetricDTO metric1 =
         MetricDTO.builder()
             .withName("metric1")
-            .withValues(new double[] {1, 2, 3})
+            .withValues(new Double[] {1.0, 2.0, 3.0})
             .withTimestamps(new long[] {1000, 2000, 3000})
+            .withStates(
+                new MetricState[] {
+                  MetricState.COMPLETE, MetricState.COMPLETE, MetricState.COMPLETE
+                })
+            .withMessages(new String[] {null, null, null})
             .build();
     MetricDTO metric2 =
         MetricDTO.builder()
             .withName("metric2")
-            .withValues(new double[] {4, 5, 6})
+            .withValues(new Double[] {4.0, null, 6.0})
             .withTimestamps(new long[] {4000, 5000, 6000})
+            .withStates(
+                new MetricState[] {
+                  MetricState.COMPLETE, MetricState.UNAVAILABLE, MetricState.COMPLETE
+                })
+            .withMessages(new String[] {null, "Metric data is temporarily unavailable.", null})
             .build();
     MetricDTO[] metrics = new MetricDTO[] {metric1, metric2};
 
@@ -132,7 +144,13 @@ public class TestMetricOperations extends JerseyTest {
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
 
-    MetricsResponse metricsResponse = response.readEntity(MetricsResponse.class);
+    String responseJson = response.readEntity(String.class);
+    Assertions.assertTrue(
+        responseJson.contains("\"states\":[\"COMPLETE\",\"UNAVAILABLE\",\"COMPLETE\"]"));
+    Assertions.assertFalse(responseJson.contains("\"complete\""));
+    Assertions.assertFalse(responseJson.contains("\"unavailable\""));
+    MetricsResponse metricsResponse =
+        JsonUtils.objectMapper().readValue(responseJson, MetricsResponse.class);
     Assertions.assertNotNull(metricsResponse);
     Assertions.assertEquals(
         ImmutableMap.of(metric1.name(), metric1, metric2.name(), metric2),

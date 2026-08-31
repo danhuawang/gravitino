@@ -78,6 +78,17 @@ public interface MetricDataMapper {
   List<TagNameMetadataObjectRelPO> listTagNameMetadataObjectRelsByMetalakeId(
       @Param("metalakeId") long metalakeId);
 
+  /**
+   * Lists metadata object IDs with at least one current, enabled policy relation.
+   *
+   * @param metalakeId metalake ID
+   * @return metadata object IDs covered by enabled policies
+   */
+  @SelectProvider(
+      type = MetricDataSQLProviderFactory.class,
+      method = "listEnabledPolicyMetadataObjectIdsByMetalakeId")
+  Set<Long> listEnabledPolicyMetadataObjectIdsByMetalakeId(@Param("metalakeId") long metalakeId);
+
   @SelectProvider(type = MetricDataSQLProviderFactory.class, method = "getTagCountByMetalakeId")
   long getTagCountByMetalakeId(@Param("metalakeId") long metalakeId);
 

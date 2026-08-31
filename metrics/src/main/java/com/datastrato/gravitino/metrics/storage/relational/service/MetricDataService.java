@@ -28,6 +28,7 @@ import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.storage.relational.po.SecurableObjectPO;
 import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
 import org.apache.gravitino.storage.relational.service.MetalakeMetaService;
@@ -60,22 +61,25 @@ public class MetricDataService {
     this.metricsCollector = metricsCollector;
   }
 
+  /** Supported dashboard metric names. */
   public enum Metric {
+    /** Number of visible TABLE, VIEW, TOPIC, FILESET, and MODEL assets. */
     ASSET_COUNT("asset_count"),
-    TAG_COUNT("tag_count"),
-    CATALOG_COUNT("catalog_count"),
-    SCHEMA_COUNT("schema_count"),
-    TABLE_COUNT("table_count"),
-    FILESET_COUNT("fileset_count"),
-    TOPIC_COUNT("topic_count"),
-    MODEL_COUNT("model_count"),
+
+    /** Number of visible assets with a direct or inherited tag. */
     TAGGED_ASSET_COUNT("tagged_asset_count"),
-    UNTAGGED_ASSET_COUNT("untagged_asset_count"),
-    PII_TAGGED_ASSET_COUNT("pii_tagged_asset_count"),
-    PUBLIC_TAGGED_ASSET_COUNT("public_tagged_asset_count"),
-    CONFIDENTIAL_TAGGED_ASSET_COUNT("confidential_tagged_asset_count"),
-    PRIVATE_TAGGED_ASSET_COUNT("private_tagged_asset_count"),
-    OWNED_ASSET_COUNT("owned_asset_count");
+
+    /** Number of visible assets with a direct owner. */
+    OWNED_ASSET_COUNT("owned_asset_count"),
+
+    /** Number of visible assets with a direct or inherited enabled policy. */
+    POLICY_COVERED_ASSET_COUNT("policy_covered_asset_count"),
+
+    /** Number of current, non-deleted policies in the metalake. */
+    POLICY_COUNT("policy_count"),
+
+    /** Number of current, non-deleted policies whose current version is disabled. */
+    DISABLED_POLICY_COUNT("disabled_policy_count");
 
     private final String name;
 
@@ -126,7 +130,7 @@ public class MetricDataService {
       NameIdentifier[] authResult =
           MetadataAuthzHelper.filterByExpression(
               metalakeName,
-              "METALAKE::OWNER",
+              AuthorizationExpressionConstants.METALAKE_OWNER_AUTHORIZATION_EXPRESSION,
               Entity.EntityType.METALAKE,
               new NameIdentifier[] {NameIdentifierUtil.ofMetalake(metalakeName)});
       userId = authResult.length == 0 ? userId : MetricsCollector.MOCK_USER_ID_FOR_METALAKE_OWNER;
@@ -172,15 +176,23 @@ public class MetricDataService {
    */
   public void replaceCurrentMetrics(
       long metalakeId, Map<Long, List<MetricPO>> metricsByUser, long updatedTime) {
-    List<MetricPO> metrics = flattenMetrics(metalakeId, metricsByUser, updatedTime);
-    SessionUtils.doWithCommit(
-        MetricDataMapper.class,
-        mapper -> {
-          mapper.deleteCurrentMetrics(metalakeId);
-          if (!metrics.isEmpty()) {
-            insertMetricsInBatches(mapper, metrics, false);
-          }
-        });
+    replaceMetrics(metalakeId, metricsByUser, updatedTime, false, null);
+  }
+
+  /**
+   * Atomically replaces current metrics and marks the metalake dirty for a follow-up retry.
+   *
+   * @param metalakeId the metalake ID
+   * @param metricsByUser metrics grouped by persisted user ID
+   * @param updatedTime the shared current snapshot timestamp
+   * @param dirtyEventTime timestamp used to create or advance the dirty marker
+   */
+  public void replaceCurrentMetricsAndMarkDirty(
+      long metalakeId,
+      Map<Long, List<MetricPO>> metricsByUser,
+      long updatedTime,
+      long dirtyEventTime) {
+    replaceMetrics(metalakeId, metricsByUser, updatedTime, false, dirtyEventTime);
   }
 
   /**
@@ -192,16 +204,20 @@ public class MetricDataService {
    */
   public void replaceCurrentAndAppendHistory(
       long metalakeId, Map<Long, List<MetricPO>> metricsByUser, long runTime) {
-    List<MetricPO> metrics = flattenMetrics(metalakeId, metricsByUser, runTime);
-    SessionUtils.doWithCommit(
-        MetricDataMapper.class,
-        mapper -> {
-          mapper.deleteCurrentMetrics(metalakeId);
-          if (!metrics.isEmpty()) {
-            insertMetricsInBatches(mapper, metrics, false);
-            insertMetricsInBatches(mapper, metrics, true);
-          }
-        });
+    replaceMetrics(metalakeId, metricsByUser, runTime, true, null);
+  }
+
+  /**
+   * Atomically replaces current metrics, appends history, and marks the metalake dirty.
+   *
+   * @param metalakeId the metalake ID
+   * @param metricsByUser metrics grouped by persisted user ID
+   * @param runTime the shared timestamp for current and history rows
+   * @param dirtyEventTime timestamp used to create or advance the dirty marker
+   */
+  public void replaceCurrentAndAppendHistoryAndMarkDirty(
+      long metalakeId, Map<Long, List<MetricPO>> metricsByUser, long runTime, long dirtyEventTime) {
+    replaceMetrics(metalakeId, metricsByUser, runTime, true, dirtyEventTime);
   }
 
   /**
@@ -322,6 +338,41 @@ public class MetricDataService {
         mapper -> mapper.listTagNameMetadataObjectRelsByMetalakeId(metalakeId));
   }
 
+  /**
+   * Lists metadata object IDs with at least one current, enabled policy relation.
+   *
+   * @param metalakeId metalake ID
+   * @return metadata object IDs covered directly by enabled policies
+   */
+  public Set<Long> listEnabledPolicyMetadataObjectIdsByMetalakeId(long metalakeId) {
+    return SessionUtils.getWithoutCommit(
+        MetricDataMapper.class,
+        mapper -> mapper.listEnabledPolicyMetadataObjectIdsByMetalakeId(metalakeId));
+  }
+
+  private void replaceMetrics(
+      long metalakeId,
+      Map<Long, List<MetricPO>> metricsByUser,
+      long timestamp,
+      boolean appendHistory,
+      @Nullable Long dirtyEventTime) {
+    List<MetricPO> metrics = flattenMetrics(metalakeId, metricsByUser, timestamp);
+    SessionUtils.doWithCommit(
+        MetricDataMapper.class,
+        mapper -> {
+          mapper.deleteCurrentMetrics(metalakeId);
+          if (!metrics.isEmpty()) {
+            insertMetricsInBatches(mapper, metrics, false);
+            if (appendHistory) {
+              insertMetricsInBatches(mapper, metrics, true);
+            }
+          }
+          if (dirtyEventTime != null) {
+            mapper.markMetalakeDirty(metalakeId, new Timestamp(dirtyEventTime));
+          }
+        });
+  }
+
   private static List<MetricPO> mergeMetrics(
       List<MetricPO> historyMetrics, List<MetricPO> currentMetrics) {
     Map<String, MetricPO> metricByNameAndTimestamp = new LinkedHashMap<>();
@@ -353,6 +404,8 @@ public class MetricDataService {
                             .withUserId(userId)
                             .withMetricName(metric.getMetricName())
                             .withMetricValue(metric.getMetricValue())
+                            .withMetricState(metric.getMetricState())
+                            .withMetricMessage(metric.getMetricMessage())
                             .withCreatedTime(sharedTimestamp)
                             .build())));
     return result;

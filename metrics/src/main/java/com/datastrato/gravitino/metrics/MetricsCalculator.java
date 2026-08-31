@@ -4,275 +4,471 @@
  */
 package com.datastrato.gravitino.metrics;
 
+import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
-import com.google.common.collect.Maps;
-import com.sun.security.auth.UserPrincipal;
 import java.io.IOException;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.EnumMap;
-import java.util.EnumSet;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.UserPrincipal;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/** Calculates dashboard asset metrics from one immutable metalake snapshot. */
 public class MetricsCalculator {
   private static final Logger LOG = LoggerFactory.getLogger(MetricsCalculator.class);
+  private static final String METRIC_NAME_SEPARATOR = "::";
+  private static final String BY_CATALOG_PREFIX = "by_catalog" + METRIC_NAME_SEPARATOR;
+  private static final String BY_ASSET_TYPE_PREFIX = "by_asset_type" + METRIC_NAME_SEPARATOR;
+  private static final String PARTIAL_MESSAGE = "Some catalog data is temporarily unavailable.";
+  private static final String UNAVAILABLE_MESSAGE = "Metric data is temporarily unavailable.";
+  private static final List<MetadataObject.Type> ASSET_TYPES =
+      Arrays.asList(
+          MetadataObject.Type.TABLE,
+          MetadataObject.Type.VIEW,
+          MetadataObject.Type.FUNCTION,
+          MetadataObject.Type.TOPIC,
+          MetadataObject.Type.FILESET,
+          MetadataObject.Type.MODEL);
+  private static final List<MetricDataService.Metric> ASSET_METRICS =
+      Arrays.asList(
+          MetricDataService.Metric.ASSET_COUNT,
+          MetricDataService.Metric.TAGGED_ASSET_COUNT,
+          MetricDataService.Metric.OWNED_ASSET_COUNT,
+          MetricDataService.Metric.POLICY_COVERED_ASSET_COUNT);
 
   private final MetalakeSnapshot metalakeSnapshot;
   private final String metalakeName;
-  private final EnumMap<MetricsCollector.TagCategory, Set<String>> categoryToTagNames;
 
-  public MetricsCalculator(
-      MetalakeSnapshot metalakeSnapshot,
-      EnumMap<MetricsCollector.TagCategory, Set<String>> categoryToTagNames) {
+  /**
+   * Creates a calculator for one metalake snapshot.
+   *
+   * @param metalakeSnapshot complete shared data plus per-catalog collection outcomes
+   */
+  public MetricsCalculator(MetalakeSnapshot metalakeSnapshot) {
     this.metalakeSnapshot = metalakeSnapshot;
     this.metalakeName = metalakeSnapshot.getAssetTreeRoot().getName();
-    this.categoryToTagNames = categoryToTagNames;
   }
 
+  /**
+   * Calculates metrics with every enabled catalog and asset visible.
+   *
+   * @return immutable metric rows
+   */
   public List<MetricPO> calculateMetricsForDisableAuthz() {
-    return calculateMetricsForUser("", false, false);
+    return calculateMetricsForUser("", null);
   }
 
+  /**
+   * Calculates metrics for the assets visible to one user.
+   *
+   * @param username user name
+   * @param enableAuthz whether authorization filtering is enabled
+   * @param forMetalakeOwner whether the result is stored under the metalake-owner synthetic ID
+   * @return immutable metric rows
+   */
   public List<MetricPO> calculateMetricsForUser(
       String username, boolean enableAuthz, boolean forMetalakeOwner) {
-    if (enableAuthz && !metalakeSnapshot.getUserNameToUserId().containsKey(username)) {
-      LOG.warn("User {} not found in snapshot, skipping metrics calculation", username);
-      return Collections.emptyList();
+    if (!enableAuthz) {
+      return calculateMetricsForUser(username, null);
     }
 
-    Set<AssetNode> visibleCatalogNodes;
-    Set<AssetNode> visibleSchemaNodes;
-    Set<AssetNode> visibleTableNodes;
-    Set<AssetNode> visibleFilesetNodes;
-    Set<AssetNode> visibleTopicNodes;
-    Set<AssetNode> visibleModelNodes;
-    if (enableAuthz) {
-      Principal principal = new UserPrincipal(username);
-      GravitinoAuthorizer authorizer = new MemoizedJcasbinAuthorizer();
-      authorizer.initialize();
-      visibleCatalogNodes = getVisibleCatalogNodes(metalakeName, principal, authorizer);
-      visibleSchemaNodes = getVisibleSchemaNodes(metalakeName, principal, authorizer);
-      visibleTableNodes = getVisibleTableNodes(metalakeName, principal, authorizer);
-      visibleFilesetNodes = getVisibleFilesetNodes(metalakeName, principal, authorizer);
-      visibleTopicNodes = getVisibleTopicNodes(metalakeName, principal, authorizer);
-      visibleModelNodes = getVisibleModelNodes(metalakeName, principal, authorizer);
+    GravitinoAuthorizer authorizer = new MemoizedJcasbinAuthorizer();
+    authorizer.initialize();
+    try {
+      return calculateMetricsForUser(username, authorizer);
+    } finally {
       try {
         authorizer.close();
       } catch (IOException e) {
         LOG.warn("Error closing authorizer", e);
       }
+    }
+  }
+
+  List<MetricPO> calculateMetricsForUser(
+      String username, @Nullable GravitinoAuthorizer authorizer) {
+    if (authorizer != null && !metalakeSnapshot.getUserNameToUserId().containsKey(username)) {
+      LOG.warn("User {} not found in snapshot, skipping metrics calculation", username);
+      return Collections.emptyList();
+    }
+
+    Set<AssetNode> visibleCatalogNodes;
+    Set<AssetNode> visibleTableNodes;
+    Set<AssetNode> visibleViewNodes;
+    Set<AssetNode> visibleFunctionNodes;
+    Set<AssetNode> visibleFilesetNodes;
+    Set<AssetNode> visibleTopicNodes;
+    Set<AssetNode> visibleModelNodes;
+    if (authorizer != null) {
+      Principal principal = new UserPrincipal(username);
+      visibleCatalogNodes =
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.CATALOG,
+              metalakeSnapshot.getCatalogNodes());
+      visibleTableNodes =
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.TABLE,
+              metalakeSnapshot.getTableNodes());
+      visibleViewNodes =
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.LOAD_VIEW_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.VIEW,
+              metalakeSnapshot.getViewNodes());
+      visibleFunctionNodes =
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.LOAD_FUNCTION_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.FUNCTION,
+              metalakeSnapshot.getFunctionNodes());
+      visibleFilesetNodes =
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.LOAD_FILESET_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.FILESET,
+              metalakeSnapshot.getFilesetNodes());
+      visibleTopicNodes =
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.LOAD_TOPICS_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.TOPIC,
+              metalakeSnapshot.getTopicNodes());
+      visibleModelNodes =
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.LOAD_MODEL_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.MODEL,
+              metalakeSnapshot.getModelNodes());
     } else {
-      // if authz is disabled, all assets are visible
       visibleCatalogNodes = new HashSet<>(metalakeSnapshot.getCatalogNodes());
-      visibleSchemaNodes = new HashSet<>(metalakeSnapshot.getSchemaNodes());
       visibleTableNodes = new HashSet<>(metalakeSnapshot.getTableNodes());
+      visibleViewNodes = new HashSet<>(metalakeSnapshot.getViewNodes());
+      visibleFunctionNodes = new HashSet<>(metalakeSnapshot.getFunctionNodes());
       visibleFilesetNodes = new HashSet<>(metalakeSnapshot.getFilesetNodes());
       visibleTopicNodes = new HashSet<>(metalakeSnapshot.getTopicNodes());
       visibleModelNodes = new HashSet<>(metalakeSnapshot.getModelNodes());
     }
 
-    Set<AssetNode> visibleAssetNodes = new HashSet<>(visibleCatalogNodes);
-    visibleAssetNodes.addAll(visibleSchemaNodes);
-    visibleAssetNodes.addAll(visibleTableNodes);
+    Set<AssetNode> visibleAssetNodes = new HashSet<>(visibleTableNodes);
+    visibleAssetNodes.addAll(visibleViewNodes);
+    visibleAssetNodes.addAll(visibleFunctionNodes);
     visibleAssetNodes.addAll(visibleFilesetNodes);
     visibleAssetNodes.addAll(visibleTopicNodes);
     visibleAssetNodes.addAll(visibleModelNodes);
 
-    // calculate tagged asset counts
-    EnumMap<MetricsCollector.TagCategory, Long> taggedCounts =
-        Maps.newEnumMap(MetricsCollector.TagCategory.class);
-    // Initialize all possible tag category counts to 0
-    for (MetricsCollector.TagCategory category : MetricsCollector.TagCategory.values()) {
-      taggedCounts.put(category, 0L);
+    Set<String> visibleCatalogNames =
+        visibleCatalogNodes.stream().map(AssetNode::getName).collect(Collectors.toSet());
+    Set<String> failedVisibleCatalogNames =
+        visibleCatalogNames.stream()
+            .filter(metalakeSnapshot.getFailedCatalogNames()::contains)
+            .collect(Collectors.toSet());
+    Set<String> successfulVisibleCatalogNames = new HashSet<>(visibleCatalogNames);
+    successfulVisibleCatalogNames.removeAll(failedVisibleCatalogNames);
+
+    Map<String, Set<AssetNode>> assetsByCatalog = new HashMap<>();
+    Map<MetadataObject.Type, Set<AssetNode>> assetsByType = new HashMap<>();
+    for (AssetNode node : visibleAssetNodes) {
+      assetsByCatalog.computeIfAbsent(catalogName(node), ignored -> new HashSet<>()).add(node);
+      assetsByType.computeIfAbsent(node.getType(), ignored -> new HashSet<>()).add(node);
     }
 
-    Map<AssetNode, EnumSet<MetricsCollector.TagCategory>> categoriesCache = new HashMap<>();
-    for (AssetNode assetNode : visibleAssetNodes) {
-      EnumSet<MetricsCollector.TagCategory> categories =
-          getInheritedTagCategories(
-              assetNode, metalakeSnapshot, categoriesCache, categoryToTagNames);
-
-      categories.forEach(c -> taggedCounts.put(c, taggedCounts.getOrDefault(c, 0L) + 1));
-    }
-
-    // prepare metrics
+    Map<AssetNode, Boolean> taggedCache = new HashMap<>();
+    Map<AssetNode, Boolean> policyCache = new HashMap<>();
     List<MetricPO> metrics = new ArrayList<>();
-    metrics.add(createMetricPO(MetricDataService.Metric.CATALOG_COUNT, visibleCatalogNodes.size()));
-    metrics.add(createMetricPO(MetricDataService.Metric.SCHEMA_COUNT, visibleSchemaNodes.size()));
-    metrics.add(createMetricPO(MetricDataService.Metric.TABLE_COUNT, visibleTableNodes.size()));
-    metrics.add(createMetricPO(MetricDataService.Metric.FILESET_COUNT, visibleFilesetNodes.size()));
-    metrics.add(createMetricPO(MetricDataService.Metric.TOPIC_COUNT, visibleTopicNodes.size()));
-    metrics.add(createMetricPO(MetricDataService.Metric.MODEL_COUNT, visibleModelNodes.size()));
-    metrics.add(createMetricPO(MetricDataService.Metric.ASSET_COUNT, visibleAssetNodes.size()));
-    metrics.add(createMetricPO(MetricDataService.Metric.TAG_COUNT, metalakeSnapshot.getTagCount()));
-    taggedCounts.forEach(
-        (c, count) ->
-            metrics.add(createMetricPO(MetricDataService.Metric.fromName(c.metricName()), count)));
-    Long taggedCount = taggedCounts.get(MetricsCollector.TagCategory.ANY_TAG);
-    metrics.add(
-        createMetricPO(
-            MetricDataService.Metric.UNTAGGED_ASSET_COUNT, visibleAssetNodes.size() - taggedCount));
-    if (forMetalakeOwner) {
-      long ownedAssetCount =
-          visibleAssetNodes.stream().filter(n -> !n.getOwners().isEmpty()).count();
-      metrics.add(createMetricPO(MetricDataService.Metric.OWNED_ASSET_COUNT, ownedAssetCount));
+
+    addAggregateMetrics(
+        metrics,
+        "",
+        visibleAssetNodes,
+        failedVisibleCatalogNames,
+        successfulVisibleCatalogNames,
+        taggedCache,
+        policyCache);
+    addPolicyMetrics(metrics);
+
+    visibleCatalogNodes.stream()
+        .sorted(Comparator.comparing(AssetNode::getName))
+        .forEach(
+            catalogNode -> {
+              String catalogName = catalogNode.getName();
+              String prefix = BY_CATALOG_PREFIX + catalogName + METRIC_NAME_SEPARATOR;
+              if (failedVisibleCatalogNames.contains(catalogName)) {
+                addUnavailableMetrics(metrics, prefix);
+                return;
+              }
+
+              Set<AssetNode> catalogAssets =
+                  assetsByCatalog.getOrDefault(catalogName, Collections.emptySet());
+              addCompleteMetrics(metrics, prefix, catalogAssets, taggedCache, policyCache);
+            });
+
+    for (MetadataObject.Type assetType : ASSET_TYPES) {
+      Set<AssetNode> typeAssets = assetsByType.getOrDefault(assetType, Collections.emptySet());
+      Set<String> failedDependencies =
+          failedVisibleCatalogNames.stream()
+              .filter(catalogName -> catalogSupports(catalogName, assetType))
+              .collect(Collectors.toSet());
+      Set<String> successfulDependencies =
+          successfulVisibleCatalogNames.stream()
+              .filter(catalogName -> catalogSupports(catalogName, assetType))
+              .collect(Collectors.toSet());
+      addAggregateMetrics(
+          metrics,
+          BY_ASSET_TYPE_PREFIX + assetType.name() + METRIC_NAME_SEPARATOR,
+          typeAssets,
+          failedDependencies,
+          successfulDependencies,
+          taggedCache,
+          policyCache);
     }
+
     return Collections.unmodifiableList(metrics);
   }
 
-  private MetricPO createMetricPO(MetricDataService.Metric metric, double value) {
-    return MetricPO.builder().withMetricName(metric.getName()).withMetricValue(value).build();
-  }
-
-  /**
-   * A recursive function to get all tag categories that an asset node belongs to, including
-   * inherited tags from its parents.
-   *
-   * @param node The asset node to check.
-   * @param metalakeSnapshot The snapshot object containing all preloaded data.
-   * @param cache A cache to store the computed results (Node -> EnumSet of TagCategory) to avoid
-   *     redundant calculations.
-   * @return An EnumSet containing all applicable tag categories.
-   */
-  private EnumSet<MetricsCollector.TagCategory> getInheritedTagCategories(
-      AssetNode node,
-      MetalakeSnapshot metalakeSnapshot,
-      Map<AssetNode, EnumSet<MetricsCollector.TagCategory>> cache,
-      EnumMap<MetricsCollector.TagCategory, Set<String>> categoryToTagNames) {
-
-    if (cache.containsKey(node)) {
-      return cache.get(node);
+  private void addAggregateMetrics(
+      List<MetricPO> metrics,
+      String prefix,
+      Set<AssetNode> assets,
+      Set<String> failedDependencies,
+      Set<String> successfulDependencies,
+      Map<AssetNode, Boolean> taggedCache,
+      Map<AssetNode, Boolean> policyCache) {
+    if (failedDependencies.isEmpty()) {
+      addCompleteMetrics(metrics, prefix, assets, taggedCache, policyCache);
+      return;
+    }
+    if (successfulDependencies.isEmpty()) {
+      addUnavailableMetrics(metrics, prefix);
+      return;
     }
 
-    // 1. Recursively retrieve the classification results of parent nodes
-    EnumSet<MetricsCollector.TagCategory> inheritedCategories;
+    AssetCounts counts = countAssets(assets, taggedCache, policyCache);
+    addMetrics(metrics, prefix, counts, MetricState.PARTIAL, PARTIAL_MESSAGE);
+  }
+
+  private void addCompleteMetrics(
+      List<MetricPO> metrics,
+      String prefix,
+      Set<AssetNode> assets,
+      Map<AssetNode, Boolean> taggedCache,
+      Map<AssetNode, Boolean> policyCache) {
+    addMetrics(
+        metrics, prefix, countAssets(assets, taggedCache, policyCache), MetricState.COMPLETE, null);
+  }
+
+  private void addUnavailableMetrics(List<MetricPO> metrics, String prefix) {
+    for (MetricDataService.Metric metric : ASSET_METRICS) {
+      metrics.add(
+          createMetricPO(
+              prefix + metric.getName(), null, MetricState.UNAVAILABLE, UNAVAILABLE_MESSAGE));
+    }
+  }
+
+  private void addPolicyMetrics(List<MetricPO> metrics) {
+    metrics.add(
+        createMetricPO(
+            MetricDataService.Metric.POLICY_COUNT.getName(),
+            (double) metalakeSnapshot.getPolicyCount(),
+            MetricState.COMPLETE,
+            null));
+    metrics.add(
+        createMetricPO(
+            MetricDataService.Metric.DISABLED_POLICY_COUNT.getName(),
+            (double) metalakeSnapshot.getDisabledPolicyCount(),
+            MetricState.COMPLETE,
+            null));
+  }
+
+  private void addMetrics(
+      List<MetricPO> metrics,
+      String prefix,
+      AssetCounts counts,
+      MetricState state,
+      @Nullable String message) {
+    metrics.add(
+        createMetricPO(
+            prefix + MetricDataService.Metric.ASSET_COUNT.getName(),
+            (double) counts.assetCount,
+            state,
+            message));
+    metrics.add(
+        createMetricPO(
+            prefix + MetricDataService.Metric.TAGGED_ASSET_COUNT.getName(),
+            (double) counts.taggedAssetCount,
+            state,
+            message));
+    metrics.add(
+        createMetricPO(
+            prefix + MetricDataService.Metric.OWNED_ASSET_COUNT.getName(),
+            (double) counts.ownedAssetCount,
+            state,
+            message));
+    metrics.add(
+        createMetricPO(
+            prefix + MetricDataService.Metric.POLICY_COVERED_ASSET_COUNT.getName(),
+            (double) counts.policyCoveredAssetCount,
+            state,
+            message));
+  }
+
+  private AssetCounts countAssets(
+      Set<AssetNode> assets,
+      Map<AssetNode, Boolean> taggedCache,
+      Map<AssetNode, Boolean> policyCache) {
+    long taggedAssetCount = assets.stream().filter(node -> isTagged(node, taggedCache)).count();
+    long ownedAssetCount = assets.stream().filter(node -> !node.getOwners().isEmpty()).count();
+    long policyCoveredAssetCount =
+        assets.stream().filter(node -> isPolicyCovered(node, policyCache)).count();
+    return new AssetCounts(
+        assets.size(), taggedAssetCount, ownedAssetCount, policyCoveredAssetCount);
+  }
+
+  private boolean isTagged(AssetNode node, Map<AssetNode, Boolean> cache) {
+    Boolean cached = cache.get(node);
+    if (cached != null) {
+      return cached;
+    }
+    boolean tagged =
+        metalakeSnapshot.getTaggedObjectIds().contains(node.getId())
+            || isParentMatching(node, parent -> isTagged(parent, cache));
+    cache.put(node, tagged);
+    return tagged;
+  }
+
+  private boolean isPolicyCovered(AssetNode node, Map<AssetNode, Boolean> cache) {
+    Boolean cached = cache.get(node);
+    if (cached != null) {
+      return cached;
+    }
+    boolean covered =
+        metalakeSnapshot.getEnabledPolicyObjectIds().contains(node.getId())
+            || isParentMatching(node, parent -> isPolicyCovered(parent, cache));
+    cache.put(node, covered);
+    return covered;
+  }
+
+  private boolean isParentMatching(AssetNode node, ParentPredicate predicate) {
     NameIdentifier parentIdent = node.getParentIdent();
-    if (parentIdent != null) {
-      AssetNode parentNode = metalakeSnapshot.getAssetNodeByIdent().get(parentIdent);
-      if (parentNode != null) {
-        // Copy the parent node's classification, to avoid modifying the collection in the cache
-        inheritedCategories =
-            EnumSet.copyOf(
-                getInheritedTagCategories(parentNode, metalakeSnapshot, cache, categoryToTagNames));
-      } else {
-        inheritedCategories = EnumSet.noneOf(MetricsCollector.TagCategory.class);
-      }
-    } else {
-      inheritedCategories = EnumSet.noneOf(MetricsCollector.TagCategory.class);
+    if (parentIdent == null) {
+      return false;
     }
+    AssetNode parent = metalakeSnapshot.getAssetNodeByIdent().get(parentIdent);
+    return parent != null && predicate.test(parent);
+  }
 
-    // 2. Check the direct tags of the current node and add them to the classification.
-    Set<String> directTags = metalakeSnapshot.getAssetIdentToTagNames().get(node.getNameIdent());
-    if (directTags != null && !directTags.isEmpty()) {
-      inheritedCategories.add(MetricsCollector.TagCategory.ANY_TAG);
-      categoryToTagNames.forEach(
-          (c, t) -> {
-            if (!Collections.disjoint(directTags, t)) {
-              inheritedCategories.add(c);
-            }
-          });
+  private boolean catalogSupports(String catalogName, MetadataObject.Type assetType) {
+    Catalog.Type catalogType = metalakeSnapshot.getCatalogTypes().get(catalogName);
+    if (catalogType == null) {
+      return false;
     }
-
-    cache.put(node, inheritedCategories);
-    return inheritedCategories;
+    if (assetType == MetadataObject.Type.FUNCTION) {
+      return catalogType != Catalog.Type.UNSUPPORTED;
+    }
+    switch (catalogType) {
+      case RELATIONAL:
+        if (assetType == MetadataObject.Type.VIEW) {
+          return metalakeSnapshot.getViewListingSupportByCatalog().getOrDefault(catalogName, true);
+        }
+        return assetType == MetadataObject.Type.TABLE;
+      case FILESET:
+        return assetType == MetadataObject.Type.FILESET;
+      case MESSAGING:
+        return assetType == MetadataObject.Type.TOPIC;
+      case MODEL:
+        return assetType == MetadataObject.Type.MODEL;
+      default:
+        return false;
+    }
   }
 
-  private Set<AssetNode> getVisibleCatalogNodes(
-      String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    AssetNode[] visibleCatalogNodes =
+  private static String catalogName(AssetNode node) {
+    return node.getNameIdent().namespace().level(1);
+  }
+
+  private static MetricPO createMetricPO(
+      String name, @Nullable Double value, MetricState state, @Nullable String message) {
+    return MetricPO.builder()
+        .withMetricName(name)
+        .withMetricValue(value)
+        .withMetricState(state)
+        .withMetricMessage(message)
+        .build();
+  }
+
+  private Set<AssetNode> getVisibleNodes(
+      String metalakeName,
+      Principal principal,
+      GravitinoAuthorizer authorizer,
+      String authorizationExpression,
+      Entity.EntityType entityType,
+      Set<AssetNode> nodes) {
+    AssetNode[] visibleNodes =
         MetadataAuthzHelper.filterByExpression(
             metalakeName,
-            AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.CATALOG,
-            metalakeSnapshot.getCatalogNodes().toArray(new AssetNode[0]),
+            authorizationExpression,
+            entityType,
+            nodes.toArray(new AssetNode[0]),
             AssetNode::getNameIdent,
             principal,
             authorizer);
-    return Arrays.stream(visibleCatalogNodes).collect(Collectors.toSet());
+    return Arrays.stream(visibleNodes).collect(Collectors.toSet());
   }
 
-  private Set<AssetNode> getVisibleSchemaNodes(
-      String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    AssetNode[] visibleSchemaNodes =
-        MetadataAuthzHelper.filterByExpression(
-            metalakeName,
-            AuthorizationExpressionConstants.LOAD_SCHEMA_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.SCHEMA,
-            metalakeSnapshot.getSchemaNodes().toArray(new AssetNode[0]),
-            AssetNode::getNameIdent,
-            principal,
-            authorizer);
-    return Arrays.stream(visibleSchemaNodes).collect(Collectors.toSet());
+  private interface ParentPredicate {
+    boolean test(AssetNode parent);
   }
 
-  private Set<AssetNode> getVisibleTableNodes(
-      String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    AssetNode[] visibleTableNodes =
-        MetadataAuthzHelper.filterByExpression(
-            metalakeName,
-            AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.TABLE,
-            metalakeSnapshot.getTableNodes().toArray(new AssetNode[0]),
-            AssetNode::getNameIdent,
-            principal,
-            authorizer);
-    return Arrays.stream(visibleTableNodes).collect(Collectors.toSet());
-  }
+  private static class AssetCounts {
+    private final long assetCount;
+    private final long taggedAssetCount;
+    private final long ownedAssetCount;
+    private final long policyCoveredAssetCount;
 
-  private Set<AssetNode> getVisibleFilesetNodes(
-      String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    AssetNode[] visibleFilesetNodes =
-        MetadataAuthzHelper.filterByExpression(
-            metalakeName,
-            AuthorizationExpressionConstants.LOAD_FILESET_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.FILESET,
-            metalakeSnapshot.getFilesetNodes().toArray(new AssetNode[0]),
-            AssetNode::getNameIdent,
-            principal,
-            authorizer);
-    return Arrays.stream(visibleFilesetNodes).collect(Collectors.toSet());
-  }
-
-  private Set<AssetNode> getVisibleTopicNodes(
-      String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    AssetNode[] visibleTopicNodes =
-        MetadataAuthzHelper.filterByExpression(
-            metalakeName,
-            AuthorizationExpressionConstants.LOAD_TOPICS_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.TOPIC,
-            metalakeSnapshot.getTopicNodes().toArray(new AssetNode[0]),
-            AssetNode::getNameIdent,
-            principal,
-            authorizer);
-    return Arrays.stream(visibleTopicNodes).collect(Collectors.toSet());
-  }
-
-  private Set<AssetNode> getVisibleModelNodes(
-      String metalakeName, Principal principal, GravitinoAuthorizer authorizer) {
-    AssetNode[] visibleModelNodes =
-        MetadataAuthzHelper.filterByExpression(
-            metalakeName,
-            AuthorizationExpressionConstants.LOAD_MODEL_AUTHORIZATION_EXPRESSION,
-            Entity.EntityType.MODEL,
-            metalakeSnapshot.getModelNodes().toArray(new AssetNode[0]),
-            AssetNode::getNameIdent,
-            principal,
-            authorizer);
-    return Arrays.stream(visibleModelNodes).collect(Collectors.toSet());
+    private AssetCounts(
+        long assetCount,
+        long taggedAssetCount,
+        long ownedAssetCount,
+        long policyCoveredAssetCount) {
+      this.assetCount = assetCount;
+      this.taggedAssetCount = taggedAssetCount;
+      this.ownedAssetCount = ownedAssetCount;
+      this.policyCoveredAssetCount = policyCoveredAssetCount;
+    }
   }
 }

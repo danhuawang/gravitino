@@ -16,6 +16,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.server.ServerConfig;
 import org.slf4j.Logger;
@@ -149,11 +150,19 @@ public class IncrementalMetricsWorker implements Closeable {
           return;
         }
 
-        metricsCollector.collectAndPublish(
-            metalake.get(), MetricsCollector.PublishMode.CURRENT_ONLY, System.currentTimeMillis());
-        metricDataService.deleteDirtyIfRevision(metalakeId, revision);
+        MetricsCollector.CollectionOutcome outcome =
+            metricsCollector.refreshAndPublishDirtyMetalake(
+                metalake.get(),
+                MetricsCollector.PublishMode.CURRENT_ONLY,
+                System.currentTimeMillis());
+        if (outcome == MetricsCollector.CollectionOutcome.COMPLETE) {
+          metricDataService.deleteDirtyIfRevision(metalakeId, revision);
+        } else {
+          scheduleRetry(dirty, "Dashboard metric collection is incomplete", null);
+        }
       } catch (Exception e) {
-        scheduleRetry(dirty, e);
+        String message = e.getMessage() == null ? e.toString() : e.getMessage();
+        scheduleRetry(dirty, message, e);
       }
     }
   }
@@ -166,7 +175,8 @@ public class IncrementalMetricsWorker implements Closeable {
         || dirty.getFirstDirtyAt().getTime() <= now - maxDebounceMs;
   }
 
-  private void scheduleRetry(MetricDirtyPO dirty, Exception failure) {
+  private void scheduleRetry(
+      MetricDirtyPO dirty, String failureMessage, @Nullable Exception failure) {
     int retryCount =
         dirty.getRetryCount() == Integer.MAX_VALUE ? Integer.MAX_VALUE : dirty.getRetryCount() + 1;
     long exponentialDelay = retryInitialMs;
@@ -177,15 +187,23 @@ public class IncrementalMetricsWorker implements Closeable {
     long jitter = ThreadLocalRandom.current().nextLong(-jitterBound, jitterBound + 1);
     long retryDelay = Math.min(retryMaxMs, Math.max(1, exponentialDelay + jitter));
     long retryAfter = System.currentTimeMillis() + retryDelay;
-    String message = failure.getMessage() == null ? failure.toString() : failure.getMessage();
     String truncatedError =
-        message.length() <= MAX_ERROR_LENGTH ? message : message.substring(0, MAX_ERROR_LENGTH);
+        failureMessage.length() <= MAX_ERROR_LENGTH
+            ? failureMessage
+            : failureMessage.substring(0, MAX_ERROR_LENGTH);
     metricDataService.markRetryIfRevision(
         dirty.getMetalakeId(), dirty.getRevision(), retryCount, retryAfter, truncatedError);
-    LOG.warn(
-        "Failed to recompute dashboard metrics for metalake {}, retry {} scheduled",
-        dirty.getMetalakeId(),
-        retryCount,
-        failure);
+    if (failure == null) {
+      LOG.warn(
+          "Dashboard metrics remain incomplete for metalake {}; retry {} scheduled",
+          dirty.getMetalakeId(),
+          retryCount);
+    } else {
+      LOG.warn(
+          "Failed to recompute dashboard metrics for metalake {}, retry {} scheduled",
+          dirty.getMetalakeId(),
+          retryCount,
+          failure);
+    }
   }
 }

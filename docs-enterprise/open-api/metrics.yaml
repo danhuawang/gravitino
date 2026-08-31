@@ -79,20 +79,46 @@ components:
 
     Metric:
       type: object
-      description: Represents a single time-series metric.
+      description: Represents a single time-series metric. All data-point arrays have equal length and matching indexes.
+      required:
+        - name
+        - values
+        - timestamps
+        - states
+        - messages
       properties:
         name:
           type: string
           description: The name of the metric
         values:
           type: array
-          description: The array of metric values.
+          description: The metric values. An unavailable data point is represented by null.
           items:
             type: number
             format: double
+            nullable: true
         timestamps:
           type: array
           description: The array of timestamps corresponding to the metric values.
           items:
             type: integer
             format: int64
+        states:
+          type: array
+          description: The collection state corresponding to each metric value.
+          items:
+            $ref: '#/components/schemas/MetricState'
+        messages:
+          type: array
+          description: Safe human-readable collection messages corresponding to each metric value.
+          items:
+            type: string
+            nullable: true
+
+    MetricState:
+      type: string
+      description: COMPLETE has a value from all dependencies; PARTIAL has a value from a successful subset; UNAVAILABLE has a null value.
+      enum:
+        - COMPLETE
+        - PARTIAL
+        - UNAVAILABLE

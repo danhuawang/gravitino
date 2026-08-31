@@ -6,239 +6,429 @@ package com.datastrato.gravitino.metrics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
-import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
-import org.apache.gravitino.NameIdentifier;
-import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
-import org.apache.gravitino.utils.NamespaceUtil;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
 class TestMetricsCalculator {
+  private static final String METALAKE = "test_metalake";
+  private static final String UNAVAILABLE_MESSAGE = "Metric data is temporarily unavailable.";
 
-  private static final long TEST_USER_ID = 1L;
-  private static final long ALLOW_ROLE_ID = 10L;
-  private static final long DENY_ROLE_ID = 20L;
+  @Test
+  void testCompleteMetricsUseOnlyAssetsAndNewMetricNames() {
+    SnapshotBuilder builder = new SnapshotBuilder();
+    AssetNode relational = builder.catalog(101L, "relational", Catalog.Type.RELATIONAL, false);
+    AssetNode relationalSchema = builder.schema(102L, "schema", relational);
+    builder.asset(103L, "table", MetadataObject.Type.TABLE, relationalSchema);
+    builder.asset(
+        104L, "view", MetadataObject.Type.VIEW, relationalSchema, ImmutableSet.of(owner()));
+    builder.asset(105L, "function", MetadataObject.Type.FUNCTION, relationalSchema);
+    AssetNode messaging = builder.catalog(201L, "messaging", Catalog.Type.MESSAGING, false);
+    AssetNode messagingSchema = builder.schema(202L, "schema", messaging);
+    AssetNode topic = builder.asset(203L, "topic", MetadataObject.Type.TOPIC, messagingSchema);
+    AssetNode fileset = builder.catalog(301L, "fileset", Catalog.Type.FILESET, false);
+    AssetNode filesetSchema = builder.schema(302L, "schema", fileset);
+    builder.asset(303L, "fileset", MetadataObject.Type.FILESET, filesetSchema);
+    AssetNode model = builder.catalog(401L, "model", Catalog.Type.MODEL, false);
+    AssetNode modelSchema = builder.schema(402L, "schema", model);
+    AssetNode modelAsset = builder.asset(403L, "model", MetadataObject.Type.MODEL, modelSchema);
 
-  private static MockedStatic<GravitinoEnv> mockedStaticGravitinoEnv;
+    builder.tag(relationalSchema);
+    builder.tag(topic);
+    builder.policy(relational);
+    builder.policy(modelAsset);
+    builder.policyCounts(3, 1);
 
-  private MetalakeSnapshot metalakeSnapshot;
-  private EnumMap<MetricsCollector.TagCategory, Set<String>> categoryToTagNames;
-  private MetricsCalculator metricsCalculator;
-  private String metalakeName = "testMetalake";
+    Map<String, MetricPO> metrics = calculate(builder.build());
 
-  @BeforeAll
-  static void setUpAuthorization() {
-    mockedStaticGravitinoEnv = mockStatic(GravitinoEnv.class);
-    GravitinoEnv gravitinoEnv = mock(GravitinoEnv.class);
-    mockedStaticGravitinoEnv.when(GravitinoEnv::getInstance).thenReturn(gravitinoEnv);
+    assertMetric(metrics, "asset_count", 6.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "tagged_asset_count", 4.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "owned_asset_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "policy_covered_asset_count", 4.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "policy_count", 3.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "disabled_policy_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::relational::asset_count", 3.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics, "by_asset_type::VIEW::owned_asset_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics,
+        "by_asset_type::TABLE::policy_covered_asset_count",
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics, "by_asset_type::TOPIC::tagged_asset_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics,
+        "by_asset_type::FUNCTION::policy_covered_asset_count",
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics,
+        "by_asset_type::MODEL::policy_covered_asset_count",
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertFalse(metrics.containsKey("by_catalog::relational::policy_count"));
+    assertFalse(metrics.containsKey("by_asset_type::TABLE::disabled_policy_count"));
+    assertEquals(46, metrics.size());
+  }
+
+  @Test
+  void testOneCatalogFailureMakesCatalogUnavailableAndDependenciesPartial() {
+    SnapshotBuilder builder = new SnapshotBuilder();
+    AssetNode healthy = builder.catalog(101L, "healthy", Catalog.Type.RELATIONAL, false);
+    AssetNode schema = builder.schema(102L, "schema", healthy);
+    builder.asset(103L, "table", MetadataObject.Type.TABLE, schema);
+    builder.catalog(201L, "failed", Catalog.Type.RELATIONAL, true);
+
+    Map<String, MetricPO> metrics = calculate(builder.build());
+
+    assertMetric(metrics, "by_catalog::healthy::asset_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics,
+        "by_catalog::failed::asset_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics,
+        "asset_count",
+        1.0,
+        MetricState.PARTIAL,
+        "Some catalog data is temporarily unavailable.");
+    assertMetric(
+        metrics,
+        "by_asset_type::TABLE::asset_count",
+        1.0,
+        MetricState.PARTIAL,
+        "Some catalog data is temporarily unavailable.");
+    assertMetric(
+        metrics,
+        "by_asset_type::FUNCTION::asset_count",
+        0.0,
+        MetricState.PARTIAL,
+        "Some catalog data is temporarily unavailable.");
+    assertMetric(metrics, "by_asset_type::TOPIC::asset_count", 0.0, MetricState.COMPLETE, null);
+  }
+
+  @Test
+  void testFailedCatalogWithoutViewListingDoesNotAffectViewMetrics() {
+    SnapshotBuilder builder = new SnapshotBuilder();
+    builder.catalog(101L, "failed", Catalog.Type.RELATIONAL, true);
+    builder.viewListingSupport("failed", false);
+
+    Map<String, MetricPO> metrics = calculate(builder.build());
+
+    assertMetric(
+        metrics,
+        "by_asset_type::TABLE::asset_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(metrics, "by_asset_type::VIEW::asset_count", 0.0, MetricState.COMPLETE, null);
+  }
+
+  @Test
+  void testAllRelevantCatalogsFailedMakesMetricUnavailable() {
+    SnapshotBuilder builder = new SnapshotBuilder();
+    builder.catalog(101L, "failed", Catalog.Type.RELATIONAL, true);
+    builder.policyCounts(2, 1);
+
+    Map<String, MetricPO> metrics = calculate(builder.build());
+
+    assertMetric(metrics, "asset_count", null, MetricState.UNAVAILABLE, UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics,
+        "by_asset_type::TABLE::asset_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics,
+        "by_asset_type::VIEW::asset_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics,
+        "by_asset_type::FUNCTION::asset_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(metrics, "by_asset_type::FILESET::asset_count", 0.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "policy_count", 2.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "disabled_policy_count", 1.0, MetricState.COMPLETE, null);
+  }
+
+  @Test
+  void testOwnedAssetCountUsesEveryAuthorizedUsersVisibleAssets() {
+    long roleId = 10L;
+    long userId = 20L;
+    Owner assetOwner = mock(Owner.class);
+    when(assetOwner.type()).thenReturn(Owner.Type.USER);
+    when(assetOwner.name()).thenReturn("asset_owner");
+
+    AssetNode root =
+        new AssetNode(1L, METALAKE, MetadataObject.Type.METALAKE, null, Collections.emptySet());
+    AssetNode catalog =
+        new AssetNode(2L, "catalog", MetadataObject.Type.CATALOG, root, Collections.emptySet());
+    AssetNode schema =
+        new AssetNode(3L, "schema", MetadataObject.Type.SCHEMA, catalog, Collections.emptySet());
+    AssetNode visibleTable =
+        new AssetNode(
+            4L, "visible_table", MetadataObject.Type.TABLE, schema, ImmutableSet.of(assetOwner));
+    AssetNode hiddenView =
+        new AssetNode(
+            5L, "hidden_view", MetadataObject.Type.VIEW, schema, ImmutableSet.of(assetOwner));
+    AssetNode visibleFunction =
+        new AssetNode(
+            6L, "visible_function", MetadataObject.Type.FUNCTION, schema, Collections.emptySet());
+    root.addChild(catalog);
+    catalog.addChild(schema);
+    schema.addChild(visibleTable);
+    schema.addChild(hiddenView);
+    schema.addChild(visibleFunction);
+
+    SecurableObject catalogGrant =
+        SecurableObjects.ofCatalog(
+            catalog.getName(), ImmutableList.of(Privileges.UseCatalog.allow()));
+    SecurableObject schemaGrant =
+        SecurableObjects.ofSchema(
+            catalogGrant, schema.getName(), ImmutableList.of(Privileges.UseSchema.allow()));
+    SecurableObject tableGrant =
+        SecurableObjects.ofTable(
+            schemaGrant, visibleTable.getName(), ImmutableList.of(Privileges.SelectTable.allow()));
+    SecurableObject functionGrant =
+        SecurableObjects.ofFunction(
+            schemaGrant,
+            visibleFunction.getName(),
+            ImmutableList.of(Privileges.ExecuteFunction.allow()));
+    MetalakeSnapshot snapshot =
+        MetalakeSnapshot.builder()
+            .assetTreeRoot(root)
+            .assetNodeById(
+                ImmutableMap.<Long, AssetNode>builder()
+                    .put(root.getId(), root)
+                    .put(catalog.getId(), catalog)
+                    .put(schema.getId(), schema)
+                    .put(visibleTable.getId(), visibleTable)
+                    .put(hiddenView.getId(), hiddenView)
+                    .put(visibleFunction.getId(), visibleFunction)
+                    .build())
+            .userNameToUserId(ImmutableMap.of("dashboard_user", userId, "asset_owner", 21L))
+            .roleIdToSecurableObjects(
+                ImmutableMap.of(
+                    roleId, ImmutableList.of(catalogGrant, schemaGrant, tableGrant, functionGrant)))
+            .userIdToRoleIds(ImmutableMap.of(userId, ImmutableSet.of(roleId)))
+            .taggedObjectIds(Collections.emptySet())
+            .catalogNodes(ImmutableSet.of(catalog))
+            .schemaNodes(ImmutableSet.of(schema))
+            .tableNodes(ImmutableSet.of(visibleTable))
+            .viewNodes(ImmutableSet.of(hiddenView))
+            .functionNodes(ImmutableSet.of(visibleFunction))
+            .filesetNodes(Collections.emptySet())
+            .topicNodes(Collections.emptySet())
+            .modelNodes(Collections.emptySet())
+            .enabledPolicyObjectIds(Collections.emptySet())
+            .failedCatalogNames(Collections.emptySet())
+            .catalogTypes(ImmutableMap.of("catalog", Catalog.Type.RELATIONAL))
+            .viewListingSupportByCatalog(ImmutableMap.of("catalog", true))
+            .build();
+
+    GravitinoEnv env = mock(GravitinoEnv.class);
     Config config = mock(Config.class);
-    when(gravitinoEnv.config()).thenReturn(config);
+    when(env.config()).thenReturn(config);
     when(config.get(Configs.ENABLE_AUTHORIZATION)).thenReturn(true);
     when(config.get(Configs.GRAVITINO_AUTHORIZATION_THREAD_POOL_SIZE)).thenReturn(2);
-  }
+    try (MockedStatic<GravitinoEnv> mockedEnv = mockStatic(GravitinoEnv.class)) {
+      mockedEnv.when(GravitinoEnv::getInstance).thenReturn(env);
+      MetricsCollector.getInstance().getMetalakeSnapshots().put(METALAKE, snapshot);
 
-  @AfterAll
-  static void tearDownAuthorization() {
-    mockedStaticGravitinoEnv.close();
-  }
+      Map<String, MetricPO> metrics =
+          new MetricsCalculator(snapshot)
+              .calculateMetricsForUser("dashboard_user", true, false).stream()
+                  .collect(Collectors.toMap(MetricPO::getMetricName, metric -> metric));
 
-  @BeforeEach
-  void setUp() {
-    metalakeSnapshot = mock(MetalakeSnapshot.class);
-    categoryToTagNames = new EnumMap<>(MetricsCollector.TagCategory.class);
-    AssetNode rootNode = mock(AssetNode.class);
-    when(rootNode.getName()).thenReturn(metalakeName);
-    when(metalakeSnapshot.getAssetTreeRoot()).thenReturn(rootNode);
-    when(metalakeSnapshot.getUserNameToUserId())
-        .thenReturn(ImmutableMap.of("testUser", 1L, "", -1L));
-
-    metricsCalculator = new MetricsCalculator(metalakeSnapshot, categoryToTagNames);
-  }
-
-  @AfterEach
-  void tearDown() {
-    MetricsCollector.getInstance().getMetalakeSnapshots().clear();
-  }
-
-  @Test
-  void testCalculateMetricsForDisableAuthz() {
-    // Mock assets
-    AssetNode rootNode = createMockAssetNode(metalakeName, null);
-    AssetNode catalog = createMockAssetNode("catalog1", rootNode.getNameIdent());
-    AssetNode schema = createMockAssetNode("schema1", catalog.getNameIdent());
-    AssetNode table = createMockAssetNode("table1", schema.getNameIdent());
-    when(table.getOwners()).thenReturn(ImmutableSet.of(mock(Owner.class)));
-
-    when(metalakeSnapshot.getCatalogNodes()).thenReturn(ImmutableSet.of(catalog));
-    when(metalakeSnapshot.getSchemaNodes()).thenReturn(ImmutableSet.of(schema));
-    when(metalakeSnapshot.getTableNodes()).thenReturn(ImmutableSet.of(table));
-    when(metalakeSnapshot.getFilesetNodes()).thenReturn(Collections.emptySet());
-    when(metalakeSnapshot.getTopicNodes()).thenReturn(Collections.emptySet());
-    when(metalakeSnapshot.getModelNodes()).thenReturn(Collections.emptySet());
-
-    NameIdentifier catalogIdent = catalog.getNameIdent();
-    NameIdentifier schemaIdent = schema.getNameIdent();
-    NameIdentifier tableIdent = table.getNameIdent();
-    when(metalakeSnapshot.getAssetIdentToTagNames())
-        .thenReturn(
-            ImmutableMap.of(
-                schemaIdent,
-                ImmutableSet.of("tag_on_schema"),
-                tableIdent,
-                ImmutableSet.of("tag_on_table")));
-    when(metalakeSnapshot.getTagCount()).thenReturn(2L);
-    when(metalakeSnapshot.getAssetNodeByIdent())
-        .thenReturn(ImmutableMap.of(catalogIdent, catalog, schemaIdent, schema, tableIdent, table));
-
-    List<MetricPO> metrics = metricsCalculator.calculateMetricsForDisableAuthz();
-    Map<String, Double> metricMap =
-        metrics.stream()
-            .collect(Collectors.toMap(MetricPO::getMetricName, MetricPO::getMetricValue));
-
-    assertEquals(1.0, metricMap.get(MetricDataService.Metric.CATALOG_COUNT.getName()));
-    assertEquals(1.0, metricMap.get(MetricDataService.Metric.SCHEMA_COUNT.getName()));
-    assertEquals(1.0, metricMap.get(MetricDataService.Metric.TABLE_COUNT.getName()));
-    assertEquals(0.0, metricMap.get(MetricDataService.Metric.FILESET_COUNT.getName()));
-    assertEquals(0.0, metricMap.get(MetricDataService.Metric.TOPIC_COUNT.getName()));
-    assertEquals(0.0, metricMap.get(MetricDataService.Metric.MODEL_COUNT.getName()));
-    assertEquals(3.0, metricMap.get(MetricDataService.Metric.ASSET_COUNT.getName()));
-    assertEquals(2.0, metricMap.get(MetricDataService.Metric.TAG_COUNT.getName()));
-    assertEquals(2.0, metricMap.get(MetricDataService.Metric.TAGGED_ASSET_COUNT.getName()));
-    assertEquals(1.0, metricMap.get(MetricDataService.Metric.UNTAGGED_ASSET_COUNT.getName()));
-    assertEquals(0.0, metricMap.get(MetricDataService.Metric.PII_TAGGED_ASSET_COUNT.getName()));
-    assertEquals(0.0, metricMap.get(MetricDataService.Metric.PUBLIC_TAGGED_ASSET_COUNT.getName()));
-    assertEquals(
-        0.0, metricMap.get(MetricDataService.Metric.CONFIDENTIAL_TAGGED_ASSET_COUNT.getName()));
-    assertEquals(0.0, metricMap.get(MetricDataService.Metric.PRIVATE_TAGGED_ASSET_COUNT.getName()));
-    assertFalse(metricMap.containsKey(MetricDataService.Metric.OWNED_ASSET_COUNT.getName()));
-  }
-
-  @Test
-  void testCalculateMetricsForUser_userNotFound() {
-    when(metalakeSnapshot.getUserNameToUserId()).thenReturn(Collections.emptyMap());
-    List<MetricPO> metrics = metricsCalculator.calculateMetricsForUser("unknownUser", true, false);
-    assertEquals(0, metrics.size());
-  }
-
-  @Test
-  void testCalculateMetricsForUserWithAllowedRole() {
-    SecurableObject allowedCatalog =
-        SecurableObjects.ofCatalog("catalog1", ImmutableList.of(Privileges.UseCatalog.allow()));
-    MetalakeSnapshot snapshot =
-        createRoleSnapshot(
-            ImmutableMap.of(ALLOW_ROLE_ID, ImmutableList.of(allowedCatalog)),
-            ImmutableSet.of(ALLOW_ROLE_ID));
-
-    List<MetricPO> metrics = calculateMetrics(snapshot);
-
-    assertEquals(1.0, metricValue(metrics, MetricDataService.Metric.CATALOG_COUNT));
-    assertEquals(1.0, metricValue(metrics, MetricDataService.Metric.ASSET_COUNT));
-  }
-
-  @Test
-  void testCalculateMetricsForUserWithDenyRoleOverridingAllowRole() {
-    SecurableObject allowedCatalog =
-        SecurableObjects.ofCatalog("catalog1", ImmutableList.of(Privileges.UseCatalog.allow()));
-    SecurableObject deniedCatalog =
-        SecurableObjects.ofCatalog("catalog1", ImmutableList.of(Privileges.UseCatalog.deny()));
-    MetalakeSnapshot snapshot =
-        createRoleSnapshot(
-            ImmutableMap.of(
-                ALLOW_ROLE_ID,
-                ImmutableList.of(allowedCatalog),
-                DENY_ROLE_ID,
-                ImmutableList.of(deniedCatalog)),
-            ImmutableSet.of(ALLOW_ROLE_ID, DENY_ROLE_ID));
-
-    List<MetricPO> metrics = calculateMetrics(snapshot);
-
-    assertEquals(0.0, metricValue(metrics, MetricDataService.Metric.CATALOG_COUNT));
-    assertEquals(0.0, metricValue(metrics, MetricDataService.Metric.ASSET_COUNT));
-  }
-
-  private List<MetricPO> calculateMetrics(MetalakeSnapshot snapshot) {
-    MetricsCollector.getInstance().getMetalakeSnapshots().put(metalakeName, snapshot);
-    return new MetricsCalculator(snapshot, categoryToTagNames)
-        .calculateMetricsForUser("testUser", true, false);
-  }
-
-  private MetalakeSnapshot createRoleSnapshot(
-      Map<Long, List<SecurableObject>> roleIdToSecurableObjects, Set<Long> roleIds) {
-    AssetNode root =
-        new AssetNode(
-            100L, metalakeName, MetadataObject.Type.METALAKE, null, Collections.emptySet());
-    AssetNode catalog =
-        new AssetNode(101L, "catalog1", MetadataObject.Type.CATALOG, root, Collections.emptySet());
-    root.addChild(catalog);
-
-    return new MetalakeSnapshot(
-        root,
-        ImmutableMap.of(root.getId(), root, catalog.getId(), catalog),
-        ImmutableMap.of("testUser", TEST_USER_ID),
-        roleIdToSecurableObjects,
-        ImmutableMap.of(TEST_USER_ID, roleIds),
-        0L,
-        Collections.emptyMap(),
-        ImmutableSet.of(catalog),
-        Collections.emptySet(),
-        Collections.emptySet(),
-        Collections.emptySet(),
-        Collections.emptySet(),
-        Collections.emptySet());
-  }
-
-  private static double metricValue(List<MetricPO> metrics, MetricDataService.Metric metric) {
-    return metrics.stream()
-        .filter(metricPO -> metric.getName().equals(metricPO.getMetricName()))
-        .findFirst()
-        .orElseThrow(() -> new AssertionError("Missing metric: " + metric.getName()))
-        .getMetricValue();
-  }
-
-  private AssetNode createMockAssetNode(String name, NameIdentifier parentIdent) {
-    AssetNode node = mock(AssetNode.class);
-
-    NameIdentifier ident;
-    if (parentIdent == null) {
-      ident = NameIdentifier.of(NamespaceUtil.ofMetalake(), name);
-    } else {
-      Namespace parentNs = parentIdent.namespace();
-      String[] levels = parentNs.levels();
-      String[] newLevels = Arrays.copyOf(levels, levels.length + 1);
-      newLevels[levels.length] = parentIdent.name();
-      ident = NameIdentifier.of(Namespace.of(newLevels), name);
+      assertMetric(metrics, "asset_count", 2.0, MetricState.COMPLETE, null);
+      assertMetric(metrics, "owned_asset_count", 1.0, MetricState.COMPLETE, null);
+      assertMetric(
+          metrics, "by_asset_type::FUNCTION::asset_count", 1.0, MetricState.COMPLETE, null);
+      assertMetric(
+          metrics, "by_asset_type::VIEW::owned_asset_count", 0.0, MetricState.COMPLETE, null);
+    } finally {
+      MetricsCollector.getInstance().getMetalakeSnapshots().remove(METALAKE);
     }
-    when(node.getNameIdent()).thenReturn(ident);
-    when(node.getParentIdent()).thenReturn(parentIdent);
-    when(node.getName()).thenReturn(name);
-    when(node.getOwners()).thenReturn(Collections.emptySet());
-    return node;
+  }
+
+  private static Map<String, MetricPO> calculate(MetalakeSnapshot snapshot) {
+    List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+    return metrics.stream().collect(Collectors.toMap(MetricPO::getMetricName, metric -> metric));
+  }
+
+  private static void assertMetric(
+      Map<String, MetricPO> metrics,
+      String name,
+      Double value,
+      MetricState state,
+      String expectedMessage) {
+    MetricPO metric = metrics.get(name);
+    assertNotNull(metric, "Missing metric: " + name);
+    assertEquals(value, metric.getMetricValue());
+    assertEquals(state, metric.getMetricState());
+    assertEquals(expectedMessage, metric.getMetricMessage());
+  }
+
+  private static Owner owner() {
+    return mock(Owner.class);
+  }
+
+  private static class SnapshotBuilder {
+    private final AssetNode root =
+        new AssetNode(1L, METALAKE, MetadataObject.Type.METALAKE, null, Collections.emptySet());
+    private final Map<Long, AssetNode> nodesById = new HashMap<>();
+    private final Set<AssetNode> catalogs = new HashSet<>();
+    private final Set<AssetNode> schemas = new HashSet<>();
+    private final Set<AssetNode> tables = new HashSet<>();
+    private final Set<AssetNode> views = new HashSet<>();
+    private final Set<AssetNode> functions = new HashSet<>();
+    private final Set<AssetNode> topics = new HashSet<>();
+    private final Set<AssetNode> filesets = new HashSet<>();
+    private final Set<AssetNode> models = new HashSet<>();
+    private final Set<Long> taggedObjectIds = new HashSet<>();
+    private final Set<Long> policyObjectIds = new HashSet<>();
+    private final Set<String> failedCatalogs = new HashSet<>();
+    private final Map<String, Catalog.Type> catalogTypes = new HashMap<>();
+    private final Map<String, Boolean> viewListingSupportByCatalog = new HashMap<>();
+    private long policyCount;
+    private long disabledPolicyCount;
+
+    private SnapshotBuilder() {
+      nodesById.put(root.getId(), root);
+    }
+
+    private AssetNode catalog(long id, String name, Catalog.Type type, boolean collectionFailed) {
+      AssetNode catalog =
+          new AssetNode(id, name, MetadataObject.Type.CATALOG, root, Collections.emptySet());
+      root.addChild(catalog);
+      nodesById.put(id, catalog);
+      catalogs.add(catalog);
+      catalogTypes.put(name, type);
+      if (collectionFailed) {
+        failedCatalogs.add(name);
+      }
+      return catalog;
+    }
+
+    private void viewListingSupport(String catalogName, boolean supported) {
+      viewListingSupportByCatalog.put(catalogName, supported);
+    }
+
+    private AssetNode schema(long id, String name, AssetNode catalog) {
+      AssetNode schema =
+          new AssetNode(id, name, MetadataObject.Type.SCHEMA, catalog, Collections.emptySet());
+      catalog.addChild(schema);
+      nodesById.put(id, schema);
+      schemas.add(schema);
+      return schema;
+    }
+
+    private AssetNode asset(long id, String name, MetadataObject.Type type, AssetNode schema) {
+      return asset(id, name, type, schema, Collections.emptySet());
+    }
+
+    private AssetNode asset(
+        long id, String name, MetadataObject.Type type, AssetNode schema, Set<Owner> owners) {
+      AssetNode asset = new AssetNode(id, name, type, schema, owners);
+      schema.addChild(asset);
+      nodesById.put(id, asset);
+      switch (type) {
+        case TABLE:
+          tables.add(asset);
+          break;
+        case VIEW:
+          views.add(asset);
+          break;
+        case FUNCTION:
+          functions.add(asset);
+          break;
+        case TOPIC:
+          topics.add(asset);
+          break;
+        case FILESET:
+          filesets.add(asset);
+          break;
+        case MODEL:
+          models.add(asset);
+          break;
+        default:
+          throw new IllegalArgumentException("Unsupported asset type: " + type);
+      }
+      return asset;
+    }
+
+    private void tag(AssetNode node) {
+      taggedObjectIds.add(node.getId());
+    }
+
+    private void policy(AssetNode node) {
+      policyObjectIds.add(node.getId());
+    }
+
+    private void policyCounts(long count, long disabledCount) {
+      policyCount = count;
+      disabledPolicyCount = disabledCount;
+    }
+
+    private MetalakeSnapshot build() {
+      return MetalakeSnapshot.builder()
+          .assetTreeRoot(root)
+          .assetNodeById(nodesById)
+          .userNameToUserId(ImmutableMap.of())
+          .roleIdToSecurableObjects(ImmutableMap.of())
+          .userIdToRoleIds(ImmutableMap.of())
+          .taggedObjectIds(taggedObjectIds)
+          .catalogNodes(catalogs)
+          .schemaNodes(schemas)
+          .tableNodes(tables)
+          .viewNodes(views)
+          .functionNodes(functions)
+          .filesetNodes(filesets)
+          .topicNodes(topics)
+          .modelNodes(models)
+          .enabledPolicyObjectIds(policyObjectIds)
+          .policyCount(policyCount)
+          .disabledPolicyCount(disabledPolicyCount)
+          .failedCatalogNames(failedCatalogs)
+          .catalogTypes(catalogTypes)
+          .viewListingSupportByCatalog(viewListingSupportByCatalog)
+          .build();
+    }
   }
 }

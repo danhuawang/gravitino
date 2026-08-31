@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -319,7 +320,9 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
   private void loadPolicyByRoleId(String metalakeName, Long roleId) {
     MetalakeSnapshot metalakeSnapshot = metalakeSnapshots.get(metalakeName);
     List<SecurableObject> securableObjects =
-        metalakeSnapshot.getRoleIdToSecurableObjects().get(roleId);
+        metalakeSnapshot
+            .getRoleIdToSecurableObjects()
+            .getOrDefault(roleId, Collections.emptyList());
 
     for (SecurableObject securableObject : securableObjects) {
       NameIdentifier ident = MetadataObjectUtil.toEntityIdent(metalakeName, securableObject);

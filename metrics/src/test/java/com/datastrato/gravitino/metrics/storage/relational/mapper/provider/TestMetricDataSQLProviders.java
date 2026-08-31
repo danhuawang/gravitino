@@ -32,7 +32,23 @@ class TestMetricDataSQLProviders {
         provider.getCurrentMetricPOsByUserIdMetricNamesAndTimestamp(1L, 2L, null, null, null);
 
     assertTrue(history.contains("ORDER BY dm.metric_name, dm.created_time"));
+    assertTrue(history.contains("metric_state as metricState"));
+    assertTrue(history.contains("metric_message as metricMessage"));
     assertTrue(current.contains("updated_time &gt;= #{startTimestamp"));
+    assertTrue(current.contains("metric_state as metricState"));
+    assertTrue(current.contains("metric_message as metricMessage"));
     assertTrue(current.contains("ORDER BY dmc.metric_name, dmc.updated_time"));
+  }
+
+  @Test
+  void testEnabledPolicyQueryUsesCurrentVersionAndExcludesDeletedRows() {
+    MetricDataBaseSQLProvider provider = new MetricDataBaseSQLProvider();
+    String query = provider.listEnabledPolicyMetadataObjectIdsByMetalakeId(1L);
+
+    assertTrue(query.contains("pm.current_version = pvi.version"));
+    assertTrue(query.contains("prm.deleted_at = 0"));
+    assertTrue(query.contains("pm.deleted_at = 0"));
+    assertTrue(query.contains("pvi.deleted_at = 0"));
+    assertTrue(query.contains("pvi.enabled = TRUE"));
   }
 }
