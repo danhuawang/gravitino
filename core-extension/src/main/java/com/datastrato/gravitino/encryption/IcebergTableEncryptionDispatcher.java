@@ -160,14 +160,18 @@ public final class IcebergTableEncryptionDispatcher implements DatastratoTableDi
       resolvedPolicy = policyResolver.resolve(ident);
     } catch (AmbiguousPolicyException e) {
       String decisionId = UUID.randomUUID().toString();
-      stashAuditExtras(
+      IcebergEncryptionAuditInfos.Builder extras =
           IcebergEncryptionAuditInfos.builder()
               .withPolicyNames(e.matchedPolicyNames())
               .withPolicyEvaluation(
                   IcebergEncryptionAuditInfos.Compliance.VIOLATION,
                   IcebergEncryptionContent.Enforcement.DENY_CREATE)
-              .withReason(IcebergEncryptionAuditInfos.Reason.AMBIGUOUS_POLICY)
-              .build());
+              .withReason(IcebergEncryptionAuditInfos.Reason.AMBIGUOUS_POLICY);
+      KmsReference requestedProviderKey = requestedProviderKey(requestedProperties);
+      if (requestedProviderKey != null) {
+        extras.withProviderKey(requestedProviderKey);
+      }
+      stashAuditExtras(extras.build());
       throw new AmbiguousPolicyException(
           e.matchedPolicyNames(), "%s decisionId=%s", e.getMessage(), decisionId);
     }
