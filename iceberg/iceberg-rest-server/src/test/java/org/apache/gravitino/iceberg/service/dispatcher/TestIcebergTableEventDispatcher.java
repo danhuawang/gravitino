@@ -59,9 +59,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Covers the audit-extras path on {@link IcebergTableEventDispatcher}: how facts stashed on {@link
- * RequestContext} reach the emitted Iceberg event, and that listener-failure propagation is
- * identical with or without extras. Event field mapping itself is covered by {@code
- * TestIcebergRequestContext}.
+ * RequestContext} reach the emitted Iceberg event. apache#12723 inner-dispatcher extras and
+ * encryption extras are unioned into {@code customInfo}. Listener failures are isolated only when
+ * extras are present.
  */
 public class TestIcebergTableEventDispatcher {
 
@@ -74,6 +74,7 @@ public class TestIcebergTableEventDispatcher {
   private static final String REQUEST_HEADER = "X-Request-Id";
   private static final String REQUEST_HEADER_VALUE = "req-1";
   private static final String EXTRA_KEY = "audit.reason";
+  private static final String ENCRYPTION_REASON_KEY = "icebergEncryption.reason";
 
   @AfterEach
   void cleanup() {
@@ -82,13 +83,12 @@ public class TestIcebergTableEventDispatcher {
   }
 
   /**
-   * This change is meant to be purely additive: extras enrich the event, and nothing about error
-   * propagation moves. A synchronous listener failure therefore has to reach the caller exactly as
-   * it does today, whether or not extras were stashed. Asserting both halves in one test is what
-   * makes a future swallow branch visible, since adding one would only break the extras case.
+   * Empty extras keep today's listener-failure propagation. When extras are present, including
+   * encryption extras, a synchronous listener failure is isolated so the table operation still
+   * succeeds.
    */
   @Test
-  void testAttachingExtrasDoesNotChangeListenerFailurePropagation() {
+  void testExtrasIsolateListenerFailureAndEmptyExtrasPropagate() {
     EventListenerPlugin listener = mock(EventListenerPlugin.class);
     when(listener.transformPreEvent(any())).thenAnswer(invocation -> invocation.getArgument(0));
     doThrow(new RuntimeException("listener failed")).when(listener).onPostEvent(any(Event.class));
@@ -100,9 +100,8 @@ public class TestIcebergTableEventDispatcher {
     Assertions.assertEquals("listener failed", withoutExtras.getMessage());
 
     RequestContext.setAuditExtras(ImmutableMap.of(EXTRA_KEY, "policy-applied"));
-    RuntimeException withExtras =
-        Assertions.assertThrows(RuntimeException.class, () -> createTable(dispatcher));
-    Assertions.assertEquals("listener failed", withExtras.getMessage());
+    Assertions.assertDoesNotThrow(() -> createTable(dispatcher));
+    Assertions.assertFalse(Thread.currentThread().isInterrupted());
   }
 
   /**
@@ -234,6 +233,86 @@ public class TestIcebergTableEventDispatcher {
         "Extras must not survive into a later operation");
     Assertions.assertSame(
         ((IcebergEvent) second).icebergRequestContext().httpHeaders(), second.customInfo());
+  }
+
+  @Test
+  void testCustomInfoUnionsInnerDispatcherAndEncryptionExtras() {
+    RecordingListener listener = new RecordingListener();
+    IcebergTableEventDispatcher dispatcher = dispatcher(listener, succeedingInner());
+    RequestContext.setAuditExtras(
+        ImmutableMap.of(EXTRA_KEY, "policy-applied", ENCRYPTION_REASON_KEY, "COMPLIANT"));
+
+    createTable(dispatcher);
+
+    Event event = listener.popPostEvent();
+    Assertions.assertEquals(IcebergCreateTableEvent.class, event.getClass());
+    Assertions.assertEquals(REQUEST_HEADER_VALUE, event.customInfo().get(REQUEST_HEADER));
+    Assertions.assertEquals("policy-applied", event.customInfo().get(EXTRA_KEY));
+    Assertions.assertEquals("COMPLIANT", event.customInfo().get(ENCRYPTION_REASON_KEY));
+    Assertions.assertFalse(
+        ((IcebergEvent) event).icebergRequestContext().httpHeaders().containsKey(EXTRA_KEY));
+    Assertions.assertFalse(
+        ((IcebergEvent) event)
+            .icebergRequestContext()
+            .httpHeaders()
+            .containsKey(ENCRYPTION_REASON_KEY));
+  }
+
+  @Test
+  void testLoadSuccessMergesEncryptionExtrasWithHeaders() {
+    RecordingListener listener = new RecordingListener();
+    IcebergTableEventDispatcher dispatcher = dispatcher(listener, succeedingInner());
+    RequestContext.setAuditExtras(ImmutableMap.of(ENCRYPTION_REASON_KEY, "COMPLIANT"));
+
+    dispatcher.loadTable(requestContext(), TABLE_ID);
+    Assertions.assertTrue(
+        RequestContext.takeAuditExtras().isEmpty(), "dispatch must take/clear thread-local extras");
+
+    Event terminal = listener.popPostEvent();
+    Assertions.assertEquals(IcebergLoadTableEvent.class, terminal.getClass());
+    Assertions.assertEquals("COMPLIANT", terminal.customInfo().get(ENCRYPTION_REASON_KEY));
+    Assertions.assertEquals(REQUEST_HEADER_VALUE, terminal.customInfo().get(REQUEST_HEADER));
+  }
+
+  @Test
+  void testExtrasIsolateListenerFailureOnLoadSuccess() {
+    EventListenerPlugin listener = mock(EventListenerPlugin.class);
+    doThrow(new RuntimeException("listener failed")).when(listener).onPostEvent(any());
+    IcebergTableEventDispatcher dispatcher = dispatcher(listener, succeedingInner());
+    RequestContext.setAuditExtras(ImmutableMap.of(ENCRYPTION_REASON_KEY, "COMPLIANT"));
+
+    Assertions.assertDoesNotThrow(() -> dispatcher.loadTable(requestContext(), TABLE_ID));
+    Assertions.assertFalse(Thread.currentThread().isInterrupted());
+  }
+
+  @Test
+  void testExtrasIsolateListenerFailureWithCyclicCause() {
+    RuntimeException first = new RuntimeException("first");
+    RuntimeException cyclic = new RuntimeException("cyclic", first);
+    first.initCause(cyclic);
+
+    EventListenerPlugin listener = mock(EventListenerPlugin.class);
+    doThrow(cyclic).when(listener).onPostEvent(any());
+    IcebergTableEventDispatcher dispatcher = dispatcher(listener, succeedingInner());
+    RequestContext.setAuditExtras(ImmutableMap.of(ENCRYPTION_REASON_KEY, "COMPLIANT"));
+
+    Assertions.assertDoesNotThrow(() -> dispatcher.loadTable(requestContext(), TABLE_ID));
+    Assertions.assertFalse(Thread.currentThread().isInterrupted());
+  }
+
+  @Test
+  void testExtrasIsolateListenerFailureOnLoadFailureEvent() {
+    EventListenerPlugin listener = mock(EventListenerPlugin.class);
+    doThrow(new RuntimeException("listener failed")).when(listener).onPostEvent(any());
+    IcebergTableOperationDispatcher inner = mock(IcebergTableOperationDispatcher.class);
+    when(inner.loadTable(any(), any())).thenThrow(new RuntimeException("missing table"));
+    IcebergTableEventDispatcher dispatcher = dispatcher(listener, inner);
+    RequestContext.setAuditExtras(ImmutableMap.of(ENCRYPTION_REASON_KEY, "COMPLIANT"));
+
+    RuntimeException thrown =
+        Assertions.assertThrows(
+            RuntimeException.class, () -> dispatcher.loadTable(requestContext(), TABLE_ID));
+    Assertions.assertEquals("missing table", thrown.getMessage());
   }
 
   private static void assertHeadersMergedWithExtras(Event event, String extraValue) {

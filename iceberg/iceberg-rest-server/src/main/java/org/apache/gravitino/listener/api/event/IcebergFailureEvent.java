@@ -53,6 +53,10 @@ public abstract class IcebergFailureEvent extends FailureEvent {
     return icebergRequestContext.remoteHostName();
   }
 
+  /**
+   * Returns HTTP headers unioned with inner-dispatcher extras, including encryption {@code
+   * icebergEncryption.*} facts. Distinct keys from both sources are kept.
+   */
   @Override
   public Map<String, String> customInfo() {
     return icebergRequestContext.customInfo();

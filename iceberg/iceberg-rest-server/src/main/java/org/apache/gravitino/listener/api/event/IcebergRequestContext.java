@@ -22,6 +22,7 @@ package org.apache.gravitino.listener.api.event;
 import com.google.common.collect.ImmutableMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.iceberg.service.IcebergRESTUtils;
@@ -31,7 +32,8 @@ import org.apache.gravitino.utils.PrincipalUtils;
  * The general request context information for Iceberg REST operations.
  *
  * <p>Optional {@link #auditExtras()} are facts an inner dispatcher wants on the terminal Iceberg
- * event. They are not HTTP headers and never appear in {@link #httpHeaders()}.
+ * event, including encryption {@code icebergEncryption.*} extras. They are not HTTP headers and
+ * never appear in {@link #httpHeaders()}.
  */
 public class IcebergRequestContext {
 
@@ -145,6 +147,8 @@ public class IcebergRequestContext {
 
   /**
    * Returns the immutable audit extras attached to this context. Empty when none were attached.
+   * Encryption extras use {@code icebergEncryption.*} keys and share this map with other
+   * inner-dispatcher facts.
    *
    * @return audit extras, never {@code null}
    */
@@ -156,10 +160,11 @@ public class IcebergRequestContext {
    * Returns a copy of this context with the given audit extras. Extras are not part of {@link
    * #httpHeaders()}. A {@code null} or empty map yields a context with empty extras.
    *
-   * @param extras optional facts for {@code customInfo()}, or {@code null} for none
+   * @param extras optional facts for {@code customInfo()}, including encryption extras, or {@code
+   *     null} for none
    * @return a new context; this instance is unchanged
    */
-  public IcebergRequestContext withAuditExtras(Map<String, String> extras) {
+  public IcebergRequestContext withAuditExtras(@Nullable Map<String, String> extras) {
     return new IcebergRequestContext(
         httpServletRequest,
         catalogName,
@@ -172,10 +177,10 @@ public class IcebergRequestContext {
 
   /**
    * Returns HTTP headers merged with {@link #auditExtras()}. When extras are empty, returns {@link
-   * #httpHeaders()} unchanged so existing callers keep today's header-only map. Extra keys overlay
-   * headers on conflict.
+   * #httpHeaders()} unchanged so existing callers keep today's header-only map. Distinct keys from
+   * headers, apache#12723 inner-dispatcher extras, and encryption extras are all kept.
    *
-   * @return headers, or headers overlaid with extras
+   * @return headers, or headers unioned with extras
    */
   public Map<String, String> customInfo() {
     if (auditExtras.isEmpty()) {
@@ -225,7 +230,7 @@ public class IcebergRequestContext {
     return httpServletRequest;
   }
 
-  private static Map<String, String> copyAuditExtras(Map<String, String> extras) {
+  private static Map<String, String> copyAuditExtras(@Nullable Map<String, String> extras) {
     if (extras == null || extras.isEmpty()) {
       return ImmutableMap.of();
     }

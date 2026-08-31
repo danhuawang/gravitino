@@ -53,8 +53,24 @@ public abstract class IcebergEvent extends Event {
     return icebergRequestContext.remoteHostName();
   }
 
+  /**
+   * Returns HTTP headers unioned with inner-dispatcher extras, including encryption {@code
+   * icebergEncryption.*} facts. Distinct keys from both sources are kept.
+   */
   @Override
   public Map<String, String> customInfo() {
     return icebergRequestContext.customInfo();
+  }
+
+  /**
+   * Unions HTTP headers with stashed extras. Delegates to {@link
+   * IcebergRequestContext#customInfo()} so apache#12723 inner-dispatcher facts and encryption
+   * extras share one map.
+   *
+   * @param context request context whose headers and extras should be merged
+   * @return headers ∪ extras; empty extras keep the headers map identity
+   */
+  static Map<String, String> mergeCustomInfo(IcebergRequestContext context) {
+    return context.customInfo();
   }
 }

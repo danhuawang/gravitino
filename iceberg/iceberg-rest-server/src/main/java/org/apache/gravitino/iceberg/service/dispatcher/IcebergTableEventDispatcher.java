@@ -19,6 +19,7 @@
 
 package org.apache.gravitino.iceberg.service.dispatcher;
 
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +27,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.iceberg.service.IcebergRESTUtils;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.api.event.BaseEvent;
+import org.apache.gravitino.listener.api.event.Event;
 import org.apache.gravitino.listener.api.event.IcebergCreateTableEvent;
 import org.apache.gravitino.listener.api.event.IcebergCreateTableFailureEvent;
 import org.apache.gravitino.listener.api.event.IcebergCreateTablePreEvent;
@@ -65,6 +67,8 @@ import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.PlanTableScanResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * {@code IcebergTableEventDispatcher} is a decorator for {@link IcebergTableOperationExecutor} that
@@ -73,9 +77,12 @@ import org.apache.iceberg.rest.responses.PlanTableScanResponse;
  *
  * <p>Create, update, and load attach optional extras stashed on {@link RequestContext} so an inner
  * dispatcher can contribute {@code customInfo} to the terminal Iceberg event without publishing a
- * sibling event that consumers would have to correlate.
+ * sibling event that consumers would have to correlate. Listener failures are isolated only when
+ * extras are present.
  */
 public class IcebergTableEventDispatcher implements IcebergTableOperationDispatcher {
+
+  private static final Logger LOG = LoggerFactory.getLogger(IcebergTableEventDispatcher.class);
 
   private IcebergTableOperationDispatcher icebergTableOperationDispatcher;
   private EventBus eventBus;
@@ -108,20 +115,21 @@ public class IcebergTableEventDispatcher implements IcebergTableOperationDispatc
           icebergTableOperationDispatcher.createTable(
               context, namespace, transformedCreateEvent.createTableRequest());
     } catch (Exception e) {
-      eventBus.dispatchEvent(
+      IcebergRequestContext failureContext = contextWithAuditExtras(context);
+      dispatchTerminalEvent(
           new IcebergCreateTableFailureEvent(
-              contextWithAuditExtras(context),
-              nameIdentifier,
-              transformedCreateEvent.createTableRequest(),
-              e));
+              failureContext, nameIdentifier, transformedCreateEvent.createTableRequest(), e),
+          failureContext);
       throw e;
     }
-    eventBus.dispatchEvent(
+    IcebergRequestContext successContext = contextWithAuditExtras(context);
+    dispatchTerminalEvent(
         new IcebergCreateTableEvent(
-            contextWithAuditExtras(context),
+            successContext,
             nameIdentifier,
             transformedCreateEvent.createTableRequest(),
-            loadTableResponse));
+            loadTableResponse),
+        successContext);
     return loadTableResponse;
   }
 
@@ -144,20 +152,24 @@ public class IcebergTableEventDispatcher implements IcebergTableOperationDispatc
           icebergTableOperationDispatcher.updateTable(
               context, tableIdentifier, transformedUpdateEvent.updateTableRequest());
     } catch (Exception e) {
-      eventBus.dispatchEvent(
+      IcebergRequestContext failureContext = contextWithAuditExtras(context);
+      dispatchTerminalEvent(
           new IcebergUpdateTableFailureEvent(
-              contextWithAuditExtras(context),
+              failureContext,
               gravitinoNameIdentifier,
               transformedUpdateEvent.updateTableRequest(),
-              e));
+              e),
+          failureContext);
       throw e;
     }
-    eventBus.dispatchEvent(
+    IcebergRequestContext successContext = contextWithAuditExtras(context);
+    dispatchTerminalEvent(
         new IcebergUpdateTableEvent(
-            contextWithAuditExtras(context),
+            successContext,
             gravitinoNameIdentifier,
             transformedUpdateEvent.updateTableRequest(),
-            loadTableResponse));
+            loadTableResponse),
+        successContext);
     return loadTableResponse;
   }
 
@@ -191,14 +203,16 @@ public class IcebergTableEventDispatcher implements IcebergTableOperationDispatc
     try {
       loadTableResponse = icebergTableOperationDispatcher.loadTable(context, tableIdentifier);
     } catch (Exception e) {
-      eventBus.dispatchEvent(
-          new IcebergLoadTableFailureEvent(
-              contextWithAuditExtras(context), gravitinoNameIdentifier, e));
+      IcebergRequestContext failureContext = contextWithAuditExtras(context);
+      dispatchTerminalEvent(
+          new IcebergLoadTableFailureEvent(failureContext, gravitinoNameIdentifier, e),
+          failureContext);
       throw e;
     }
-    eventBus.dispatchEvent(
-        new IcebergLoadTableEvent(
-            contextWithAuditExtras(context), gravitinoNameIdentifier, loadTableResponse));
+    IcebergRequestContext successContext = contextWithAuditExtras(context);
+    dispatchTerminalEvent(
+        new IcebergLoadTableEvent(successContext, gravitinoNameIdentifier, loadTableResponse),
+        successContext);
     return loadTableResponse;
   }
 
@@ -333,5 +347,38 @@ public class IcebergTableEventDispatcher implements IcebergTableOperationDispatc
   private static IcebergRequestContext contextWithAuditExtras(IcebergRequestContext context) {
     Map<String, String> extras = RequestContext.takeAuditExtras();
     return extras.isEmpty() ? context : context.withAuditExtras(extras);
+  }
+
+  private void dispatchTerminalEvent(Event event, IcebergRequestContext context) {
+    Map<String, String> extras = context.auditExtras();
+    if (extras == null || extras.isEmpty()) {
+      eventBus.dispatchEvent(event);
+      return;
+    }
+    try {
+      eventBus.dispatchEvent(event);
+    } catch (Exception e) {
+      if (causedByInterruption(e)) {
+        Thread.currentThread().interrupt();
+      }
+      LOG.warn(
+          "Failed to dispatch Iceberg table event with audit extras; "
+              + "operationType={}, operationStatus={}. Ignoring listener failure.",
+          event.operationType(),
+          event.operationStatus(),
+          e);
+    }
+  }
+
+  private static boolean causedByInterruption(Throwable failure) {
+    IdentityHashMap<Throwable, Boolean> seen = new IdentityHashMap<>();
+    Throwable current = failure;
+    while (current != null && seen.put(current, Boolean.TRUE) == null) {
+      if (current instanceof InterruptedException) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
   }
 }
