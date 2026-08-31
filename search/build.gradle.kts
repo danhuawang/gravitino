@@ -73,7 +73,11 @@ dependencies {
   testImplementation(libs.mockito.core)
 
   testRuntimeOnly(project(":plugins:idp-basic"))
+<<<<<<< HEAD
   testRuntimeOnly(project(":plugins:scim"))
+=======
+  testRuntimeOnly(project(":plugins:scim-v2"))
+>>>>>>> 1465aa6cc ([#1591] fix(scim-v2): remove legacy plugins/scim module)
   testRuntimeOnly(libs.junit.jupiter.engine)
 }
 

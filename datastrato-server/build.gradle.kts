@@ -1,5 +1,6 @@
 /*
- * Copyright 2024 Datastrato Inc.
+ * Copyright 2024 Datastrato Pvt Ltd.
+ * This software is licensed under the Apache License version 2.
  */
 
 plugins {
@@ -10,7 +11,6 @@ plugins {
 
 dependencies {
   implementation(project(":api"))
-  implementation(project(":catalogs:catalog-common"))
   implementation(project(":core"))
   implementation(project(":common"))
   implementation(project(":server"))
@@ -29,13 +29,13 @@ dependencies {
   implementation(libs.commons.lang3)
   implementation(libs.bundles.jersey)
   implementation(libs.bundles.log4j)
-  implementation(libs.metrics.jersey2)
 
   annotationProcessor(libs.lombok)
+
   compileOnly(libs.lombok)
 
   testImplementation(project(":plugins:idp-basic"))
-  testImplementation(project(":plugins:scim"))
+  testImplementation(project(":plugins:scim-v2"))
   testImplementation(project(":server-common"))
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")
@@ -45,7 +45,6 @@ dependencies {
   }
   testImplementation(libs.mockito.core)
   testImplementation(libs.mockito.inline)
-  testImplementation(libs.mybatis)
   testImplementation(libs.junit.jupiter.api)
 
   testRuntimeOnly(libs.junit.jupiter.engine)

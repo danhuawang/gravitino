@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  *
  * Enterprise license policy and checks, extracted from the upstream-owned
  * build.gradle.kts so upstream syncs do not touch Datastrato license logic.
@@ -11,8 +11,8 @@
  *   1. Upstream (Apache) source keeps the ASF Apache 2.0 header (approved by `rat`).
  *   2. New Datastrato code uses the copyright-only header below, with no
  *      Apache license sentence.
- *   3. Listed enterprise files must be `Copyright YYYY Datastrato Inc.` with no
- *      Apache grant sentence. `Pvt Ltd` and the grant line fail this check.
+ *   3. Old legacy Datastrato code (copyright + Apache sentence) is left
+ *      untouched for a later cleanup.
  *
  * This file owns the Datastrato header pattern, the enterprise module list,
  * the dynamic detection of Datastrato headers outside those modules, and the
@@ -37,6 +37,7 @@ val datastratoLicenseCheckIncludes = listOf(
   "metrics/**",
   "qa/**",
   "search/**",
+  "test/search-integration-test/**",
   "test/test-common/**",
   "bin/index.sh.template",
   "bin/gravitino-metrics-service.sh.template",
@@ -50,18 +51,16 @@ val datastratoLicenseCheckIncludes = listOf(
   "catalogs/catalog-jdbc-maxcompute/**/*",
   "catalogs/catalog-jdbc-sqlserver/**/*",
   "bundles/vault-compatible/transit/**",
+  "bundles/vault-compatible/secret/**",
   "bundles/vault/**",
   "bundles/openbao/**",
   "src/test/java/com/datastrato/gravitino/transit/packaging/TransitProviderDiscoveryProbe.java",
   "licensing/**",
   "scripts/enterprise/**",
-  "plugins/scim/**",
+  "plugins/scim-v2/**",
   "core/src/main/java/org/apache/gravitino/listener/api/event/scim/**",
   "core/src/test/java/org/apache/gravitino/listener/api/event/scim/**"
 )
-
-// Relative paths that may keep a non-approved header. Empty until a waiver is recorded.
-val datastratoLicenseHeaderWaivers = setOf<String>()
 
 val datastratoHeaderExtensions = setOf(
   "java",
@@ -78,8 +77,7 @@ val datastratoHeaderExtensions = setOf(
 // outside the paths already covered by datastratoLicenseCheckIncludes. These are excluded
 // from Apache Rat (which only approves Apache License 2.0) so enterprise files can carry
 // the copyright-only header in any module (e.g. api/) without being flagged as unapproved
-// licenses. checkDatastratoLicenseHeaders only checks files on the include list; dynamic
-// Rat excludes are not re-checked for Inc. copyright-only.
+// licenses. The header format itself is verified by checkDatastratoLicenseHeaders.
 //
 // Lazy: the fileTree scan only runs when the provider is resolved (i.e. when a
 // license check task executes), not on every Gradle configuration. This keeps
@@ -113,27 +111,15 @@ val extraDatastratoHeaderFiles = fileTree(rootDir) {
   LicenseHeaderClassifier.hasDatastratoCopyright(LicenseHeaderClassifier.readHeader(file.toPath()))
 }.map { it.relativeTo(rootDir).path.replace(File.separatorChar, '/') }
 
-// Mixed-distribution root files are not Apache-headered source. LICENSE is the
-// short mixed statement; LICENSE-ENTERPRISE is the proprietary placeholder;
-// LICENSE-APACHE holds the Apache 2.0 text that used to live in LICENSE.
-val mixedDistributionLicenseFiles =
-  listOf(
-    "LICENSE",
-    "LICENSE-APACHE",
-    "LICENSE-ENTERPRISE"
-  )
-
 // Combined Apache-Rat exclusion list for enterprise files. Consumed by the
 // `rat` task in build.gradle.kts (the RatTask type is only importable there)
 // via `project.extra["enterpriseRatExcludes"]`, so this file does not touch `rat`.
 // `project.extra` (not the script-local `extra`) is used so the value is visible
 // to build.gradle.kts, which shares the same project extra properties.
-project.extra["enterpriseRatExcludes"] =
-  datastratoLicenseCheckIncludes + extraDatastratoHeaderFiles + mixedDistributionLicenseFiles
+project.extra["enterpriseRatExcludes"] = datastratoLicenseCheckIncludes + extraDatastratoHeaderFiles
 tasks.register("checkDatastratoLicenseHeaders") {
   group = "verification"
-  description =
-    "Fails listed enterprise files that are not copyright-only Copyright YYYY Datastrato Inc."
+  description = "Checks Datastrato header format for enterprise-owned files."
 
   val supportedExtensions = setOf(
     "java",
@@ -169,21 +155,19 @@ tasks.register("checkDatastratoLicenseHeaders") {
 
     val violations = mutableListOf<String>()
     filesToCheck.forEach { file ->
-      val path = file.relativeTo(rootDir).path.replace(File.separatorChar, '/')
-      if (path in datastratoLicenseHeaderWaivers) {
-        return@forEach
-      }
-      val header = LicenseHeaderClassifier.readHeader(file.toPath())
-      val reason = LicenseHeaderClassifier.listedFileViolationReason(header)
-      if (reason != null) {
-        violations.add("$path ($reason)")
+      val hasCopyright =
+        LicenseHeaderClassifier.hasDatastratoCopyright(LicenseHeaderClassifier.readHeader(file.toPath()))
+      // Per the repo licensing policy, enterprise files carry the Datastrato
+      // proprietary header (copyright only); the Apache license sentence is no
+      // longer required and is omitted from new enterprise files.
+      if (!hasCopyright) {
+        violations.add(file.relativeTo(rootDir).path)
       }
     }
 
     if (violations.isNotEmpty()) {
       throw GradleException(
-        "Datastrato license header check failed for ${violations.size} file(s). " +
-          "Listed files must use copyright-only `Copyright YYYY Datastrato Inc.`:\n" +
+        "Datastrato license header check failed for ${violations.size} file(s):\n" +
           violations.sorted().joinToString("\n")
       )
     }

@@ -1031,8 +1031,6 @@ tasks {
         ":lance:lance-rest-server:copyLibAndConfigs",
         ":maintenance:optimizer:copyLibAndConfigs",
         ":plugins:idp-basic:copyLibAndConfigs",
-        ":plugins:scim:copyLibAndConfigs",
-        ":plugins:scim:service:copyLibAndConfigs",
         ":plugins:scim-v2:copyLibAndConfigs",
         ":plugins:scim-v2:service:copyLibAndConfigs"
       )
