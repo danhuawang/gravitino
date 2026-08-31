@@ -33,7 +33,7 @@ class TestScimTokenRESTFeature {
     return ImmutableMap.of(
         AuxiliaryServiceManager.GRAVITINO_AUX_SERVICE_PREFIX
             + AuxiliaryServiceManager.AUX_SERVICE_NAMES,
-        "scim-v2",
+        "scim",
         OAuthConfig.PRINCIPAL_MAPPER.getKey(),
         ScimOAuthPrincipalMapper.PRINCIPAL_MAPPER_CLASS_NAME,
         OAuthConfig.GROUPS_FIELDS.getKey(),
@@ -104,7 +104,7 @@ class TestScimTokenRESTFeature {
             ImmutableMap.of(
                 AuxiliaryServiceManager.GRAVITINO_AUX_SERVICE_PREFIX
                     + AuxiliaryServiceManager.AUX_SERVICE_NAMES,
-                "scim-v2",
+                "scim",
                 OAuthConfig.PRINCIPAL_MAPPER.getKey(),
                 ScimOAuthPrincipalMapper.PRINCIPAL_MAPPER_CLASS_NAME,
                 OAuthConfig.GROUPS_FIELDS.getKey(),
@@ -130,7 +130,7 @@ class TestScimTokenRESTFeature {
             ImmutableMap.of(
                 AuxiliaryServiceManager.GRAVITINO_AUX_SERVICE_PREFIX
                     + AuxiliaryServiceManager.AUX_SERVICE_NAMES,
-                "scim-v2",
+                "scim",
                 OAuthConfig.PRINCIPAL_MAPPER.getKey(),
                 ScimOAuthPrincipalMapper.PRINCIPAL_MAPPER_CLASS_NAME,
                 OAuthConfig.GROUPS_FIELDS.getKey(),
@@ -153,7 +153,7 @@ class TestScimTokenRESTFeature {
             ImmutableMap.of(
                 AuxiliaryServiceManager.GRAVITINO_AUX_SERVICE_PREFIX
                     + AuxiliaryServiceManager.AUX_SERVICE_NAMES,
-                "scim-v2",
+                "scim",
                 OAuthConfig.PRINCIPAL_MAPPER.getKey(),
                 ScimOAuthPrincipalMapper.PRINCIPAL_MAPPER_CLASS_NAME,
                 OAuthConfig.GROUPS_FIELDS.getKey(),

@@ -7,10 +7,10 @@ info:
   version: 1.4.0-SNAPSHOT
   description: |
     **Gravitino Enterprise only.** These APIs require a valid Gravitino Enterprise
-    license and the `scim-v2` plugin.
+    license and the `scim` plugin.
 
     OpenAPI specification for SCIM integration token administration APIs exposed
-    by the `scim-v2` plugin on the main Gravitino REST server (port 8090).
+    by the `scim` plugin on the main Gravitino REST server (port 8090).
 
     Enable the token admin API by registering
     `com.datastrato.gravitino.scim.v2.web.rest.feature` in

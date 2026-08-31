@@ -25,12 +25,12 @@ import org.apache.gravitino.server.web.JettyServerConfig;
 import org.awaitility.Awaitility;
 
 /**
- * Boots production {@link ScimRESTService} (child-first {@code scim-v2-server/libs}) against
+ * Boots production {@link ScimRESTService} (child-first {@code scim-server/libs}) against
  * MiniGravitino.
  */
 final class ScimEmbeddedAuxServer implements AutoCloseable {
 
-  private static final String SCIM_CONFIG_PREFIX = "gravitino.scim-v2.";
+  private static final String SCIM_CONFIG_PREFIX = "gravitino.scim.";
   private static final String CHILD_FIRST_LOADER =
       "com.datastrato.gravitino.scim.v2.service.classloader.ScimAuxClassLoaders$ScimChildFirstClassLoader";
 
@@ -58,7 +58,7 @@ final class ScimEmbeddedAuxServer implements AutoCloseable {
             });
     if (StringUtils.isBlank(serviceInit.get(AuxiliaryServiceManager.AUX_SERVICE_CLASSPATH))) {
       throw new IllegalStateException(
-          "Missing gravitino.scim-v2.classpath; set it to distribution/package/scim-v2-server/libs");
+          "Missing gravitino.scim.classpath; set it to distribution/package/scim-server/libs");
     }
 
     ScimRESTService service = new ScimRESTService();
@@ -90,7 +90,7 @@ final class ScimEmbeddedAuxServer implements AutoCloseable {
     assertNotSame(
         Class.forName("org.eclipse.jetty.server.Server"),
         scimJetty,
-        "SCIM must use Jetty from scim-v2-server/libs, not the main server Jetty");
+        "SCIM must use Jetty from scim-server/libs, not the main server Jetty");
   }
 
   @Override

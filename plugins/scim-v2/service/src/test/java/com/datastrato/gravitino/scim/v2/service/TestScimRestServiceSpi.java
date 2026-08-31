@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 class TestScimRestServiceSpi {
 
   private static final Path SCIM_SERVER_LIBS =
-      Path.of(System.getenv("GRAVITINO_HOME"), "distribution/package/scim-v2-server/libs");
+      Path.of(System.getenv("GRAVITINO_HOME"), "distribution/package/scim-server/libs");
 
   private static final String SPI_PATH =
       "META-INF/services/org.apache.gravitino.auxiliary.GravitinoAuxiliaryService";
@@ -78,15 +78,13 @@ class TestScimRestServiceSpi {
                     || name.startsWith("jetty-servlet-")
                     || name.startsWith("jetty-http-");
               });
-      assertTrue(
-          hasJetty11, "scim-v2-server/libs should include Jetty 11 jars for isolated startup");
+      assertTrue(hasJetty11, "scim-server/libs should include Jetty 11 jars for isolated startup");
     }
   }
 
   private static Path findScimServiceJar() throws Exception {
     try (Stream<Path> jars = Files.list(SCIM_SERVER_LIBS)) {
-      return jars.filter(
-              path -> path.getFileName().toString().startsWith("gravitino-scim-v2-service"))
+      return jars.filter(path -> path.getFileName().toString().startsWith("gravitino-scim-service"))
           .findFirst()
           .orElse(null);
     }

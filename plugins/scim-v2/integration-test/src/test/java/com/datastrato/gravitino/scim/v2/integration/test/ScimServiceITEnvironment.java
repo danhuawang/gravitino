@@ -31,12 +31,12 @@ import org.apache.gravitino.utils.PrincipalUtils;
 
 /**
  * Integration harness: MiniGravitino (Jersey 2) plus production {@code ScimRESTService} (Jersey 3
- * via child-first {@code scim-v2-server/libs}).
+ * via child-first {@code scim-server/libs}).
  */
 final class ScimServiceITEnvironment implements AutoCloseable {
 
-  private static final String SCIM_CONFIG_PREFIX = "gravitino.scim-v2.";
-  private static final String SCIM_LIBS_RELATIVE_PATH = "distribution/package/scim-v2-server/libs";
+  private static final String SCIM_CONFIG_PREFIX = "gravitino.scim.";
+  private static final String SCIM_LIBS_RELATIVE_PATH = "distribution/package/scim-server/libs";
 
   private final Map<String, String> customConfigs = Maps.newHashMap();
   private MiniGravitino miniGravitino;

@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Verifies the SCIM HTTP stack loads through {@link ScimAuxClassLoaders} the same way {@code
- * ScimRESTService} bootstraps at runtime: child-first jars under {@code scim-v2-server/libs}, with
+ * ScimRESTService} bootstraps at runtime: child-first jars under {@code scim-server/libs}, with
  * Gravitino / SCIM extension types delegated to the bridge loader.
  */
 class TestScimAuxClasspath {
@@ -43,7 +43,7 @@ class TestScimAuxClasspath {
     previousContextClassLoader = Thread.currentThread().getContextClassLoader();
     String gravitinoHome = System.getenv("GRAVITINO_HOME");
     assumeTrue(gravitinoHome != null && !gravitinoHome.isBlank(), "GRAVITINO_HOME must be set");
-    scimServerLibs = Path.of(gravitinoHome, "distribution/package/scim-v2-server/libs");
+    scimServerLibs = Path.of(gravitinoHome, "distribution/package/scim-server/libs");
     assumeTrue(Files.isDirectory(scimServerLibs), "Run copyLibAndConfigs before this test");
   }
 
@@ -71,7 +71,7 @@ class TestScimAuxClasspath {
       assertSame(child, jerseyServlet.getClassLoader());
 
       // When Jetty is also visible on the bridge (IT / server classpath), it must be a different
-      // Class object than the Jetty 11 type from scim-v2-server/libs.
+      // Class object than the Jetty 11 type from scim-server/libs.
       try {
         Class<?> bridgeJetty = bridge.loadClass(JETTY_SERVER);
         assertNotSame(bridgeJetty, jettyClass);

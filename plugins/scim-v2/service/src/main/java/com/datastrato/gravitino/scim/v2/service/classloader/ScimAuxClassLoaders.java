@@ -23,9 +23,9 @@ import org.apache.commons.lang3.StringUtils;
  *
  * <p>{@link org.apache.gravitino.utils.IsolatedClassLoader} treats non-catalog classes as shared,
  * so Jetty/Jersey would come from the main server classpath. This loader prefers {@code
- * scim-v2-server/libs} for the SCIMple stack and delegates Gravitino / SCIM extension types so
- * {@code GravitinoEnv} and {@code ScimTokenManager} stay shared. Types not present in {@code
- * scim-v2-server/libs} (for example {@code java.*} / shared logging) fall through to the bridge
+ * scim-server/libs} for the SCIMple stack and delegates Gravitino / SCIM extension types so {@code
+ * GravitinoEnv} and {@code ScimTokenManager} stay shared. Types not present in {@code
+ * scim-server/libs} (for example {@code java.*} / shared logging) fall through to the bridge
  * loader.
  */
 public final class ScimAuxClassLoaders {
@@ -37,7 +37,7 @@ public final class ScimAuxClassLoaders {
 
   /**
    * Creates a child-first classloader from comma-separated lib directories ({@code
-   * gravitino.scim-v2.classpath}).
+   * gravitino.scim.classpath}).
    *
    * @param gravitinoBridge classloader that can see Gravitino server + SCIM extension types
    * @param classpathCsv directories absolute or relative to {@code GRAVITINO_HOME}
@@ -82,7 +82,7 @@ public final class ScimAuxClassLoaders {
   }
 
   /**
-   * Child-first loader for {@code scim-v2-server/libs}.
+   * Child-first loader for {@code scim-server/libs}.
    *
    * <p>Package-private; unit tests in this package cover delegation rules. Integration tests assert
    * isolation via class name.

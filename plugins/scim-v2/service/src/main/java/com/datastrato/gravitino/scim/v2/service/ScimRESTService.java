@@ -22,14 +22,14 @@ import org.slf4j.LoggerFactory;
  * <p>Free of Jetty / Jersey / Jakarta imports so {@link
  * org.apache.gravitino.utils.IsolatedClassLoader} does not link those types from the main server
  * classpath. Bootstraps {@link ScimRESTServiceImpl} inside a child-first classloader from {@code
- * gravitino.scim-v2.classpath}.
+ * gravitino.scim.classpath}.
  */
 public class ScimRESTService implements GravitinoAuxiliaryService {
 
   private static final Logger LOG = LoggerFactory.getLogger(ScimRESTService.class);
 
   /** Auxiliary service short name registered in {@code gravitino.auxService.names}. */
-  public static final String SERVICE_NAME = "scim-v2";
+  public static final String SERVICE_NAME = "scim";
 
   // Literal name only: do not reference ScimRESTServiceImpl.class or the SPI class links
   // Jetty/Jersey/Jakarta through the implementation.
@@ -51,7 +51,7 @@ public class ScimRESTService implements GravitinoAuxiliaryService {
     String classpath = properties.get(AuxiliaryServiceManager.AUX_SERVICE_CLASSPATH);
     if (StringUtils.isBlank(classpath)) {
       throw new IllegalArgumentException(
-          "SCIM aux service requires classpath (gravitino.scim-v2.classpath), e.g. scim-v2-server/libs");
+          "SCIM aux service requires classpath (gravitino.scim.classpath), e.g. scim-server/libs");
     }
 
     ClassLoader previous = Thread.currentThread().getContextClassLoader();

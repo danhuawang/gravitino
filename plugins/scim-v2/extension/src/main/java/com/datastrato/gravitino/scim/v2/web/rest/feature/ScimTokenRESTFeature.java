@@ -34,7 +34,7 @@ public class ScimTokenRESTFeature implements Feature {
   private static final Logger LOG = LoggerFactory.getLogger(ScimTokenRESTFeature.class);
   private static final Splitter AUX_SERVICE_NAME_SPLITTER =
       Splitter.on(',').omitEmptyStrings().trimResults();
-  private static final String SCIM_V2_AUX_SERVICE_NAME = "scim-v2";
+  private static final String SCIM_AUX_SERVICE_NAME = "scim";
 
   /** Extension package name registered through {@code gravitino.server.rest.extensionPackages}. */
   public static final String SCIM_TOKEN_REST_EXTENSION_PACKAGE =
@@ -64,7 +64,7 @@ public class ScimTokenRESTFeature implements Feature {
     if (!isScimV2AuxServiceEnabled(config)) {
       LOG.error(
           "gravitino.server.rest.extensionPackages includes the SCIM v2 token admin plugin ({}) but "
-              + "'scim-v2' is not listed in gravitino.auxService.names.",
+              + "'scim' is not listed in gravitino.auxService.names.",
           SCIM_TOKEN_REST_EXTENSION_PACKAGE);
       System.exit(1);
     }
@@ -115,6 +115,6 @@ public class ScimTokenRESTFeature implements Feature {
       return false;
     }
     return AUX_SERVICE_NAME_SPLITTER.splitToList(auxServiceNames).stream()
-        .anyMatch(name -> SCIM_V2_AUX_SERVICE_NAME.equalsIgnoreCase(name));
+        .anyMatch(name -> SCIM_AUX_SERVICE_NAME.equalsIgnoreCase(name));
   }
 }

@@ -13,7 +13,7 @@ public final class ScimConfigs {
 
   /** Configuration key for SCIM v2 error history retention days. */
   public static final String ERROR_HISTORY_RETENTION_DAYS_KEY =
-      "gravitino.scim-v2.errorHistory.retentionDays";
+      "gravitino.scim.errorHistory.retentionDays";
 
   /** Default number of days to retain SCIM v2 error history rows. */
   public static final int DEFAULT_ERROR_HISTORY_RETENTION_DAYS = 30;

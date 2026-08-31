@@ -20,7 +20,7 @@ dependencies {
   testImplementation(project(":server"))
   testImplementation(project(":server-common"))
 
-  // MiniGravitino stays on Jersey 2 / Jetty 9; SCIM HTTP stack loads from scim-v2-server/libs.
+  // MiniGravitino stays on Jersey 2 / Jetty 9; SCIM HTTP stack loads from scim-server/libs.
   testImplementation(libs.javax.ws.rs.api)
   testImplementation(libs.bundles.jersey)
   testImplementation(libs.servlet)

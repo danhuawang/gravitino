@@ -8,7 +8,7 @@ license: "Copyright 2026 Datastrato Pvt Ltd."
 ## Introduction
 
 Apache Gravitino Enterprise can accept **SCIM 2.0** user and group provisioning from cloud
-Identity Providers (IdPs) such as Microsoft Entra ID or Okta. The `scim-v2` plugin stores synchronized
+Identity Providers (IdPs) such as Microsoft Entra ID or Okta. The `scim` plugin stores synchronized
 identities in the relational metadata store (`user_meta`, `group_meta`, and `scim_user_group_rel`) scoped
 by metalake.
 
@@ -23,7 +23,7 @@ For token API request and response schemas, see the
 [SCIM Token Admin OpenAPI](open-api/scim/openapi.yaml).
 
 :::note
-**Gravitino Enterprise only.** SCIM requires a valid Enterprise license and the `scim-v2` plugin.
+**Gravitino Enterprise only.** SCIM requires a valid Enterprise license and the `scim` plugin.
 See [License management](license-management) for license setup.
 :::
 
@@ -42,7 +42,7 @@ The IdP never calls Gravitino management APIs directly. It uses the SCIM base UR
 with a metalake-scoped integration token. Metalake owners create and rotate those tokens through
 the main REST API on port **8090**.
 
-When SCIM is fully configured (`gravitino.auxService.names` includes `scim-v2`, the token admin
+When SCIM is fully configured (`gravitino.auxService.names` includes `scim`, the token admin
 extension is registered, and the OAuth SCIM settings in [Configuration](#configuration) are set),
 **OAuth group membership for authorization** on metalake-scoped APIs (`/api/metalakes/{metalake}/...`)
 is read from `scim_user_group_rel` in the database, not from JWT `groups` claims. The extension
@@ -56,7 +56,7 @@ caller is; SCIM defines **which groups** that user belongs to inside the metalak
 
 Before you enable SCIM or call `/api/metalakes/{metalake}/scim/tokens`, ensure the following:
 
-1. **Enterprise license** — Gravitino starts with a valid Enterprise license and the `scim-v2` plugin
+1. **Enterprise license** — Gravitino starts with a valid Enterprise license and the `scim` plugin
    on the classpath.
 
 2. **Relational entity store** — SCIM persists tokens and membership in the relational backend
@@ -78,15 +78,15 @@ Before you enable SCIM or call `/api/metalakes/{metalake}/scim/tokens`, ensure t
 
    ```properties
    gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.v2.web.rest.feature
-   gravitino.auxService.names = scim-v2
-   gravitino.scim-v2.classpath = scim-v2-server/libs
+   gravitino.auxService.names = scim
+   gravitino.scim.classpath = scim-server/libs
 
    gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper
    gravitino.authenticator.oauth.groupsFields =
    gravitino.server.webserver.customFilters = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthRequestPathFilter
    ```
 
-   `gravitino.auxService.names` must include `scim-v2` even when you are only exercising token admin on
+   `gravitino.auxService.names` must include `scim` even when you are only exercising token admin on
    **8090** today. IdP provisioning on **9201** uses the same auxiliary service and classpath settings.
 
 6. **Transport security** — Prefer [HTTPS](/security/how-to-use-https) when integration tokens and
@@ -103,8 +103,8 @@ required keys at startup and **fails to start** if any are missing or incompatib
 | Configuration item                                            | Description                                                                                | Example                                                                          |
 |---------------------------------------------------------------|--------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
 | `gravitino.server.rest.extensionPackages`                     | Registers token admin APIs and SCIM OAuth wiring on **8090** (required)                    | `com.datastrato.gravitino.scim.v2.web.rest.feature`                                 |
-| `gravitino.auxService.names`                                  | Enables the SCIM auxiliary service (required with the extension package)                   | `scim-v2`                                                                           |
-| `gravitino.scim-v2.classpath`                                    | Directory with SCIM JARs, for example `scim-v2-server/libs` (required with aux service)       | `scim-v2-server/libs`                                                               |
+| `gravitino.auxService.names`                                  | Enables the SCIM auxiliary service (required with the extension package)                   | `scim`                                                                           |
+| `gravitino.scim.classpath`                                    | Directory with SCIM JARs, for example `scim-server/libs` (required with aux service)       | `scim-server/libs`                                                               |
 | `gravitino.authenticator.oauth.principalMapper`               | OAuth principal mapper that loads groups from `scim_user_group_rel` (required with SCIM)   | `com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper`             |
 | `gravitino.authenticator.oauth.groupsFields`                  | Must be **empty** so JWT group claims do not override SCIM membership (required with SCIM) | (empty)                                                                          |
 | `gravitino.server.webserver.customFilters`                    | Servlet filter that captures metalake scope from the request path (required with SCIM)     | `com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthRequestPathFilter`           |
@@ -125,8 +125,8 @@ gravitino.authenticators = oauth
 gravitino.authorization.enable = true
 
 gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.v2.web.rest.feature
-gravitino.auxService.names = scim-v2
-gravitino.scim-v2.classpath = scim-v2-server/libs
+gravitino.auxService.names = scim
+gravitino.scim.classpath = scim-server/libs
 
 gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper
 gravitino.authenticator.oauth.groupsFields =
@@ -384,8 +384,8 @@ gravitino.authenticators = oauth
 gravitino.authorization.enable = true
 
 gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.v2.web.rest.feature
-gravitino.auxService.names = scim-v2
-gravitino.scim-v2.classpath = scim-v2-server/libs
+gravitino.auxService.names = scim
+gravitino.scim.classpath = scim-server/libs
 
 gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper
 gravitino.authenticator.oauth.groupsFields =

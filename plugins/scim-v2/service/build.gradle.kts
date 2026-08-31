@@ -10,9 +10,9 @@ plugins {
 
 // HTTP-layer deps compile against Jetty 11 / Jersey 3 / SCIMple, but must not land on the main
 // Gravitino (Jetty 9 / Jersey 2) runtime classpath. Production and ITs load them only through
-// ScimAuxClassLoaders from distribution/package/scim-v2-server/libs.
+// ScimAuxClassLoaders from distribution/package/scim-server/libs.
 val scimServerLib by configurations.creating {
-  description = "SCIMple stack for scim-v2-server/libs; loaded at runtime by ScimAuxClassLoaders"
+  description = "SCIMple stack for scim-server/libs; loaded at runtime by ScimAuxClassLoaders"
   isCanBeConsumed = false
   isCanBeResolved = true
   isTransitive = true
@@ -36,7 +36,7 @@ dependencies {
   implementation(libs.jackson.databind)
   implementation(libs.bundles.metrics)
 
-  // Compile + package the SCIM HTTP stack once; runtime only via scim-v2-server/libs.
+  // Compile + package the SCIM HTTP stack once; runtime only via scim-server/libs.
   val scimHttpCompileDeps =
     listOf(
       libs.scim.core,
@@ -107,7 +107,7 @@ dependencies {
 
 tasks {
   jar {
-    archiveBaseName.set("gravitino-scim-v2-service")
+    archiveBaseName.set("gravitino-scim-service")
   }
 
   val copyLibs by registering(Copy::class) {
@@ -122,13 +122,13 @@ tasks {
       exclude("jackson-annotations-*.jar")
       exclude("javax.servlet-api-*.jar")
     }
-    into("$rootDir/distribution/package/scim-v2-server/libs")
+    into("$rootDir/distribution/package/scim-server/libs")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
   }
 
   register("copyLibAndConfigs", Copy::class) {
     group = "gravitino distribution"
-    description = "Copy scim-v2-server isolated libs into distribution package"
+    description = "Copy scim-server isolated libs into distribution package"
     dependsOn(copyLibs)
   }
 

@@ -18,8 +18,8 @@ import org.apache.gravitino.config.ConfigConstants;
  * SCIM auxiliary service configuration.
  *
  * <p>{@link org.apache.gravitino.auxiliary.AuxiliaryServiceManager} forwards {@code
- * gravitino.scim-v2.*} entries with the {@code scim-v2.} prefix stripped (e.g. {@code userMapper},
- * {@code httpPort}).
+ * gravitino.scim.*} entries with the {@code scim.} prefix stripped (e.g. {@code userMapper}, {@code
+ * httpPort}).
  */
 public final class ScimConfig extends Config implements OverwriteDefaultConfig {
 

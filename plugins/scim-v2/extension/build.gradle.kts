@@ -66,13 +66,13 @@ artifacts {
 
 tasks {
   jar {
-    archiveBaseName.set("gravitino-scim-v2-plugin")
+    archiveBaseName.set("gravitino-scim-plugin")
   }
 
   val copyLibs by registering(Copy::class) {
     dependsOn(jar)
     from(layout.buildDirectory.dir("libs")) {
-      include("gravitino-scim-v2-plugin-*.jar")
+      include("gravitino-scim-plugin-*.jar")
       exclude("*-javadoc.jar", "*-sources.jar")
     }
     into("$rootDir/distribution/package/libs")
@@ -81,7 +81,7 @@ tasks {
 
   register("copyLibAndConfigs", Copy::class) {
     group = "gravitino distribution"
-    description = "Copy scim-v2 plugin jar into distribution package libs"
+    description = "Copy scim plugin jar into distribution package libs"
     dependsOn(copyLibs)
   }
 
