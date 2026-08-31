@@ -40,6 +40,7 @@ import org.apache.gravitino.iceberg.service.dispatcher.IcebergNamespaceEventDisp
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergNamespaceHookDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergNamespaceOperationDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergNamespaceOperationExecutor;
+import org.apache.gravitino.iceberg.service.dispatcher.IcebergTableEncryptionDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergTableEventDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergTableHookDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergTableOperationDispatcher;
@@ -148,11 +149,13 @@ public class RESTService implements GravitinoAuxiliaryService {
     IcebergNamespaceOperationDispatcher namespaceOperationDispatcher =
         new IcebergNamespaceOperationExecutor(icebergCatalogWrapperManager, cleanupManager);
 
-    // Table: HookDispatcher -> EventDispatcher -> OperationExecutor
+    // Table: HookDispatcher -> EventDispatcher -> EncryptionDispatcher -> OperationExecutor
     IcebergTableOperationDispatcher icebergTableOperationDispatcher =
         new IcebergTableOperationExecutor(icebergCatalogWrapperManager, cleanupManager);
+    IcebergTableOperationDispatcher icebergTableEncryptionDispatcher =
+        new IcebergTableEncryptionDispatcher(icebergTableOperationDispatcher);
     IcebergTableOperationDispatcher icebergTableEventDispatcher =
-        new IcebergTableEventDispatcher(icebergTableOperationDispatcher, eventBus, metalakeName);
+        new IcebergTableEventDispatcher(icebergTableEncryptionDispatcher, eventBus, metalakeName);
     if (authorizationContext.isAuthorizationEnabled()) {
       icebergTableEventDispatcher =
           new IcebergTableHookDispatcher(icebergTableEventDispatcher, namespaceOperationDispatcher);
