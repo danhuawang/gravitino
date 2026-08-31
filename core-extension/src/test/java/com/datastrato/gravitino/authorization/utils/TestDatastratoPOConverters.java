@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Inc.
  */
 package com.datastrato.gravitino.authorization.utils;
 

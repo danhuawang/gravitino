@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Inc.
  *
  * Enterprise license policy and checks, extracted from the upstream-owned
  * build.gradle.kts so upstream syncs do not touch Datastrato license logic.

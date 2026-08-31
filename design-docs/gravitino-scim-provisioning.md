@@ -1,6 +1,5 @@
 <!--
-  Copyright 2026 Datastrato Pvt Ltd.
-  This software is licensed under the Apache License version 2.
+  Copyright 2026 Datastrato Inc.
 -->
 
 # Design of SCIM 2.0 User and Group Provisioning in Gravitino
