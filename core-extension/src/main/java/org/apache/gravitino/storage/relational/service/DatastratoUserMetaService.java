@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package org.apache.gravitino.storage.relational.service;
 
@@ -13,6 +13,7 @@ import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -98,14 +99,15 @@ public class DatastratoUserMetaService {
   /**
    * Batch-updates {@code enabled} for users under a metalake.
    *
-   * <p>Validates first (every distinct name must exist and must not have an {@code externalId}).
-   * Only when validation passes is the UPDATE executed. Validation failure does not run the UPDATE.
+   * <p>Validates first (every distinct name must exist). Local users update {@code user_meta};
+   * provisioned users (present in {@code scim_user_meta}) update {@code scim_user_meta.enabled}.
+   * Validation failure does not run any UPDATE.
    *
    * @param metalake The metalake name.
    * @param usernames User names to update.
    * @param enabled Target enabled value.
    * @return Distinct user names that were updated.
-   * @throws IllegalArgumentException If any user is missing or has an external id.
+   * @throws IllegalArgumentException If any user is missing.
    */
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
@@ -129,7 +131,26 @@ public class DatastratoUserMetaService {
         mapper -> {
           List<UserPO> users = mapper.listUserMetasByMetalakeNameAndNames(metalake, names);
           validateUsersForBatchEnabledUpdate(metalake, names, users);
-          int updated = mapper.batchUpdateEnabledByMetalakeNameAndNames(metalake, names, enabled);
+
+          Set<String> provisionedNames = new HashSet<>(mapper.selectScimUserNamesByNames(names));
+          List<String> localNames = new ArrayList<>();
+          List<String> scimNames = new ArrayList<>();
+          for (String name : names) {
+            if (provisionedNames.contains(name)) {
+              scimNames.add(name);
+            } else {
+              localNames.add(name);
+            }
+          }
+
+          int updated = 0;
+          if (!localNames.isEmpty()) {
+            updated +=
+                mapper.batchUpdateEnabledByMetalakeNameAndNames(metalake, localNames, enabled);
+          }
+          if (!scimNames.isEmpty()) {
+            updated += mapper.batchUpdateScimUserEnabledByUserNames(scimNames, enabled);
+          }
           if (updated != expectedCount) {
             // Throw before commit so doWithCommitAndFetchResult rolls back the UPDATE.
             throw new IllegalArgumentException(
@@ -157,19 +178,6 @@ public class DatastratoUserMetaService {
           String.format(
               "Cannot batch update enabled for users under metalake %s: users do not exist: %s",
               metalake, missing));
-    }
-
-    List<String> provisioned =
-        users.stream()
-            .filter(user -> StringUtils.isNotBlank(user.getExternalId()))
-            .map(UserPO::getUserName)
-            .collect(Collectors.toList());
-    if (!provisioned.isEmpty()) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Cannot batch update enabled for users under metalake %s: users have an externalId:"
-                  + " %s",
-              metalake, provisioned));
     }
   }
 }

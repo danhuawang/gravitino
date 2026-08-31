@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
@@ -21,6 +21,8 @@ import org.apache.ibatis.annotations.Param;
  */
 public class DatastratoUserMetaBaseSQLProvider {
 
+  private static final String SCIM_USER_ALIAS = "su";
+
   /**
    * Lists active users under a metalake by name.
    *
@@ -31,23 +33,30 @@ public class DatastratoUserMetaBaseSQLProvider {
   public String listUserMetasByMetalakeNameAndNames(
       @Param("metalakeName") String metalakeName, @Param("userNames") List<String> userNames) {
     return "<script>"
-        + "SELECT user_id as userId, user_name as userName,"
-        + " metalake_id as metalakeId,"
-        + " external_id as externalId, enabled as enabled,"
-        + " audit_info as auditInfo, current_version as currentVersion,"
-        + " last_version as lastVersion, deleted_at as deletedAt"
+        + "SELECT ut.user_id as userId, ut.user_name as userName,"
+        + " ut.metalake_id as metalakeId,"
+        + " "
+        + coalescedExternalId("ut")
+        + " as externalId,"
+        + " "
+        + coalescedEnabled("ut")
+        + " as enabled,"
+        + " ut.audit_info as auditInfo, ut.current_version as currentVersion,"
+        + " ut.last_version as lastVersion, ut.deleted_at as deletedAt"
         + " FROM "
         + USER_TABLE_NAME
-        + " WHERE deleted_at = 0"
-        + " AND metalake_id = "
+        + " ut"
+        + scimUserJoin("ut")
+        + " WHERE ut.deleted_at = 0"
+        + " AND ut.metalake_id = "
         + metalakeIdByNameSubquery()
-        + " AND user_name IN "
+        + " AND ut.user_name IN "
         + userNameInClause()
         + "</script>";
   }
 
   /**
-   * Builds a batch UPDATE for users that already passed validation.
+   * Builds a batch UPDATE for local users that already passed validation.
    *
    * @param metalakeName The metalake name.
    * @param userNames Distinct user names.
@@ -67,8 +76,53 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " WHERE deleted_at = 0"
         + " AND metalake_id = "
         + metalakeIdByNameSubquery()
-        + " AND external_id IS NULL"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " "
+        + SCIM_USER_ALIAS
+        + " WHERE "
+        + SCIM_USER_ALIAS
+        + ".user_name = "
+        + USER_TABLE_NAME
+        + ".user_name AND "
+        + SCIM_USER_ALIAS
+        + ".deleted_at = 0)"
         + " AND user_name IN "
+        + userNameInClause()
+        + "</script>";
+  }
+
+  /**
+   * Returns usernames that have an active row in {@code scim_user_meta}.
+   *
+   * @param userNames Usernames to check.
+   * @return MyBatis script SQL.
+   */
+  public String selectScimUserNamesByNames(@Param("userNames") List<String> userNames) {
+    return "<script>"
+        + "SELECT user_name FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " WHERE deleted_at = 0 AND user_name IN "
+        + userNameInClause()
+        + "</script>";
+  }
+
+  /**
+   * Batch-updates {@code enabled} for provisioned users in {@code scim_user_meta}.
+   *
+   * @param userNames Distinct usernames.
+   * @param enabled Target enabled value.
+   * @return MyBatis script SQL.
+   */
+  public String batchUpdateScimUserEnabledByUserNames(
+      @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled) {
+    return "<script>"
+        + "UPDATE "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " SET enabled = #{enabled},"
+        + " last_version = current_version,"
+        + " current_version = current_version + 1"
+        + " WHERE deleted_at = 0 AND user_name IN "
         + userNameInClause()
         + "</script>";
   }
@@ -153,7 +207,12 @@ public class DatastratoUserMetaBaseSQLProvider {
   public String listUserWithGroupsPOsByMetalakeName(@Param("metalakeName") String metalakeName) {
     return "SELECT ut.user_id as userId, ut.user_name as userName,"
         + " ut.metalake_id as metalakeId,"
-        + " ut.external_id as externalId, ut.enabled as enabled,"
+        + " "
+        + coalescedExternalId("ut")
+        + " as externalId,"
+        + " "
+        + coalescedEnabled("ut")
+        + " as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
         + " ut.deleted_at as deletedAt,"
@@ -163,7 +222,9 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " CASE WHEN iu.user_name IS NOT NULL THEN 1 ELSE 0 END as inBuiltInIdp"
         + " FROM "
         + USER_TABLE_NAME
-        + " ut JOIN "
+        + " ut"
+        + scimUserJoin("ut")
+        + " JOIN "
         + MetalakeMetaMapper.TABLE_NAME
         + " mt ON ut.metalake_id = mt.metalake_id AND mt.deleted_at = 0 AND mt.metalake_name ="
         + " #{metalakeName}"
@@ -187,12 +248,18 @@ public class DatastratoUserMetaBaseSQLProvider {
    */
   public String countUsersByEnabledByMetalake(@Param("metalakeName") String metalakeName) {
     return "SELECT COUNT(*) AS total,"
-        + " COALESCE(SUM(CASE WHEN COALESCE(ut.enabled, true) THEN 1 ELSE 0 END), 0) AS active,"
-        + " COALESCE(SUM(CASE WHEN NOT COALESCE(ut.enabled, true) THEN 1 ELSE 0 END), 0)"
+        + " COALESCE(SUM(CASE WHEN "
+        + coalescedEnabledWithDefault("ut")
+        + " THEN 1 ELSE 0 END), 0) AS active,"
+        + " COALESCE(SUM(CASE WHEN NOT "
+        + coalescedEnabledWithDefault("ut")
+        + " THEN 1 ELSE 0 END), 0)"
         + " AS suspended"
         + " FROM "
         + USER_TABLE_NAME
-        + " ut INNER JOIN "
+        + " ut"
+        + scimUserJoin("ut")
+        + " INNER JOIN "
         + MetalakeMetaMapper.TABLE_NAME
         + " mt ON ut.metalake_id = mt.metalake_id AND mt.deleted_at = 0"
         + " WHERE mt.metalake_name = #{metalakeName} AND ut.deleted_at = 0";
@@ -201,7 +268,12 @@ public class DatastratoUserMetaBaseSQLProvider {
   private String usersForMetalakeGroupSelectAndFrom() {
     return "SELECT ut.user_id as userId, ut.user_name as userName,"
         + " ut.metalake_id as metalakeId,"
-        + " ut.external_id as externalId, ut.enabled as enabled,"
+        + " "
+        + coalescedExternalId("ut")
+        + " as externalId,"
+        + " "
+        + coalescedEnabled("ut")
+        + " as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
         + " ut.deleted_at as deletedAt,"
@@ -219,6 +291,7 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0"
         + " AND gt.group_name = #{groupName}"
         + membershipUsersJoinForGroup()
+        + scimUserJoin("ut")
         + " LEFT JOIN "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
         + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0 LEFT OUTER JOIN ("
@@ -235,9 +308,11 @@ public class DatastratoUserMetaBaseSQLProvider {
 
   private String membershipUsersJoinForGroup() {
     return " LEFT JOIN "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg ON sg.group_name = gt.group_name AND sg.deleted_at = 0"
+        + " LEFT JOIN "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0"
-        + " AND (gt.external_id IS NULL OR gt.external_id = '')"
+        + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 AND sg.group_id IS NULL"
         + " LEFT JOIN "
         + DatastratoUserMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
         + " iugr ON iugr.group_id = ig.group_id AND iugr.deleted_at = 0"
@@ -246,13 +321,15 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " ium ON ium.user_id = iugr.user_id AND ium.deleted_at = 0"
         + " LEFT JOIN "
         + DatastratoUserMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " sur ON sur.metalake_id = mt.metalake_id AND sur.group_id = gt.group_id AND sur.deleted_at = 0"
-        + " AND gt.external_id IS NOT NULL AND gt.external_id <> ''"
+        + " sur ON sur.group_id = sg.group_id AND sur.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " sum ON sum.user_id = sur.user_id AND sum.deleted_at = 0"
         + " LEFT JOIN "
         + USER_TABLE_NAME
         + " ut ON ut.metalake_id = mt.metalake_id AND ut.deleted_at = 0"
-        + " AND (((gt.external_id IS NULL OR gt.external_id = '') AND ut.user_name = ium.user_name)"
-        + " OR (gt.external_id IS NOT NULL AND gt.external_id <> '' AND ut.user_id = sur.user_id))";
+        + " AND ((sg.group_id IS NULL AND ut.user_name = ium.user_name)"
+        + " OR (sg.group_id IS NOT NULL AND ut.user_name = sum.user_name))";
   }
 
   private String usersWithOriginSelectAndFrom(boolean innerJoinUser, String extraFilter) {
@@ -266,7 +343,12 @@ public class DatastratoUserMetaBaseSQLProvider {
                 + " ut ON ut.metalake_id = mt.metalake_id AND ut.deleted_at = 0";
     return "SELECT ut.user_id as userId, ut.user_name as userName,"
         + " ut.metalake_id as metalakeId,"
-        + " ut.external_id as externalId, ut.enabled as enabled,"
+        + " "
+        + coalescedExternalId("ut")
+        + " as externalId,"
+        + " "
+        + coalescedEnabled("ut")
+        + " as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
         + " ut.deleted_at as deletedAt,"
@@ -280,6 +362,7 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + userJoin
+        + scimUserJoin("ut")
         + " LEFT JOIN "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
         + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0 LEFT OUTER JOIN ("
@@ -293,6 +376,32 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " AS rot ON rot.role_id = rt.role_id"
         + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
         + (extraFilter == null ? "" : extraFilter);
+  }
+
+  protected String scimUserJoin(String userTableAlias) {
+    return " LEFT JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " "
+        + SCIM_USER_ALIAS
+        + " ON "
+        + SCIM_USER_ALIAS
+        + ".user_name = "
+        + userTableAlias
+        + ".user_name AND "
+        + SCIM_USER_ALIAS
+        + ".deleted_at = 0";
+  }
+
+  protected String coalescedExternalId(String userTableAlias) {
+    return "COALESCE(" + SCIM_USER_ALIAS + ".external_id, " + userTableAlias + ".external_id)";
+  }
+
+  protected String coalescedEnabled(String userTableAlias) {
+    return "COALESCE(" + SCIM_USER_ALIAS + ".enabled, " + userTableAlias + ".enabled)";
+  }
+
+  protected String coalescedEnabledWithDefault(String userTableAlias) {
+    return "COALESCE(" + coalescedEnabled(userTableAlias) + ", true)";
   }
 
   protected String metalakeIdByNameSubquery() {
@@ -358,7 +467,9 @@ public class DatastratoUserMetaBaseSQLProvider {
         + GroupMetaMapper.GROUP_TABLE_NAME
         + " g ON g.group_name = ig.group_name AND g.metalake_id = u.metalake_id AND g.deleted_at ="
         + " 0"
-        + " WHERE u.deleted_at = 0 AND (u.external_id IS NULL OR u.external_id = '')";
+        + " WHERE u.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su WHERE su.user_name = u.user_name AND su.deleted_at = 0)";
   }
 
   private String scimGroupMembershipSelect() {
@@ -370,11 +481,17 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " mm ON u.metalake_id = mm.metalake_id AND mm.deleted_at = 0 AND mm.metalake_name ="
         + " #{metalakeName}"
         + " JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su ON su.user_name = u.user_name AND su.deleted_at = 0"
+        + " JOIN "
         + DatastratoUserMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " sr ON sr.user_id = u.user_id AND sr.metalake_id = u.metalake_id AND sr.deleted_at = 0"
+        + " sr ON sr.user_id = su.user_id AND sr.deleted_at = 0"
+        + " JOIN "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg ON sg.group_id = sr.group_id AND sg.deleted_at = 0"
         + " JOIN "
         + GroupMetaMapper.GROUP_TABLE_NAME
-        + " g ON g.group_id = sr.group_id AND g.metalake_id = u.metalake_id AND g.deleted_at = 0"
-        + " WHERE u.deleted_at = 0 AND u.external_id IS NOT NULL AND u.external_id != ''";
+        + " g ON g.group_name = sg.group_name AND g.metalake_id = u.metalake_id AND g.deleted_at = 0"
+        + " WHERE u.deleted_at = 0";
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
@@ -16,6 +16,8 @@ import org.apache.ibatis.annotations.Param;
 
 /** Base SQL for enterprise group_meta reads with built-in IdP origin checks. */
 public class DatastratoGroupMetaBaseSQLProvider {
+
+  private static final String SCIM_GROUP_ALIAS = "sg";
 
   /**
    * Lists active IdP group names with whether each is already in the metalake.
@@ -110,24 +112,33 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " ut ON ut.metalake_id = gt.metalake_id AND ut.user_name = ium.user_name"
         + " AND ut.deleted_at = 0"
         + " WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0"
-        + " AND (gt.external_id IS NULL OR gt.external_id = ''))";
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0))";
   }
 
   private String scimGroupHasMemberExists() {
     return "EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg INNER JOIN "
         + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " sur INNER JOIN "
+        + " sur ON sur.group_id = sg.group_id AND sur.deleted_at = 0"
+        + " INNER JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su ON su.user_id = sur.user_id AND su.deleted_at = 0"
+        + " INNER JOIN "
         + UserMetaMapper.USER_TABLE_NAME
-        + " ut ON ut.user_id = sur.user_id AND ut.metalake_id = gt.metalake_id AND ut.deleted_at = 0"
-        + " WHERE sur.group_id = gt.group_id AND sur.metalake_id = gt.metalake_id AND sur.deleted_at = 0"
-        + " AND gt.external_id IS NOT NULL AND gt.external_id <> '')";
+        + " ut ON ut.metalake_id = gt.metalake_id AND ut.user_name = su.user_name AND ut.deleted_at = 0"
+        + " WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0)";
   }
 
   private String groupUserCountSelect() {
-    return " COALESCE(CASE WHEN gt.external_id IS NULL OR gt.external_id = '' THEN ("
-        + localGroupUserCountSubquery()
-        + ") ELSE ("
+    return " COALESCE(CASE WHEN EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0) THEN ("
         + scimGroupUserCountSubquery()
+        + ") ELSE ("
+        + localGroupUserCountSubquery()
         + ") END, 0) as userCount";
   }
 
@@ -149,17 +160,25 @@ public class DatastratoGroupMetaBaseSQLProvider {
 
   private String scimGroupUserCountSubquery() {
     return "SELECT COUNT(DISTINCT ut.user_id) FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg INNER JOIN "
         + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " sur INNER JOIN "
+        + " sur ON sur.group_id = sg.group_id AND sur.deleted_at = 0"
+        + " INNER JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su ON su.user_id = sur.user_id AND su.deleted_at = 0"
+        + " INNER JOIN "
         + UserMetaMapper.USER_TABLE_NAME
-        + " ut ON ut.user_id = sur.user_id AND ut.metalake_id = gt.metalake_id AND ut.deleted_at = 0"
-        + " WHERE sur.group_id = gt.group_id AND sur.metalake_id = gt.metalake_id AND sur.deleted_at = 0";
+        + " ut ON ut.metalake_id = gt.metalake_id AND ut.user_name = su.user_name AND ut.deleted_at = 0"
+        + " WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0";
   }
 
   private String groupsForMetalakeUserSelectAndFrom() {
     return "SELECT gt.group_id as groupId, gt.group_name as groupName,"
         + " gt.metalake_id as metalakeId,"
-        + " gt.external_id as externalId,"
+        + " "
+        + coalescedExternalId("gt")
+        + " as externalId,"
         + " gt.audit_info as auditInfo,"
         + " gt.current_version as currentVersion, gt.last_version as lastVersion,"
         + " gt.deleted_at as deletedAt,"
@@ -177,6 +196,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " ut ON ut.metalake_id = mt.metalake_id AND ut.deleted_at = 0"
         + " AND ut.user_name = #{userName}"
         + membershipGroupsJoinForUser()
+        + scimGroupJoin("gt")
         + " LEFT JOIN "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
         + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 LEFT OUTER JOIN ("
@@ -193,9 +213,11 @@ public class DatastratoGroupMetaBaseSQLProvider {
 
   private String membershipGroupsJoinForUser() {
     return " LEFT JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su ON su.user_name = ut.user_name AND su.deleted_at = 0"
+        + " LEFT JOIN "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-        + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0"
-        + " AND (ut.external_id IS NULL OR ut.external_id = '')"
+        + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0 AND su.user_id IS NULL"
         + " LEFT JOIN "
         + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
         + " iugr ON iugr.user_id = iu.user_id AND iugr.deleted_at = 0"
@@ -204,13 +226,15 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " igm ON igm.group_id = iugr.group_id AND igm.deleted_at = 0"
         + " LEFT JOIN "
         + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " sur ON sur.metalake_id = mt.metalake_id AND sur.user_id = ut.user_id AND sur.deleted_at = 0"
-        + " AND ut.external_id IS NOT NULL AND ut.external_id <> ''"
+        + " sur ON sur.user_id = su.user_id AND sur.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sgm ON sgm.group_id = sur.group_id AND sgm.deleted_at = 0"
         + " LEFT JOIN "
         + GROUP_TABLE_NAME
         + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0"
-        + " AND (((ut.external_id IS NULL OR ut.external_id = '') AND gt.group_name = igm.group_name)"
-        + " OR (ut.external_id IS NOT NULL AND ut.external_id <> '' AND gt.group_id = sur.group_id))";
+        + " AND ((su.user_id IS NULL AND gt.group_name = igm.group_name)"
+        + " OR (su.user_id IS NOT NULL AND gt.group_name = sgm.group_name))";
   }
 
   private String groupsWithOriginSelectAndFrom(boolean innerJoinGroup, String extraFilter) {
@@ -224,7 +248,9 @@ public class DatastratoGroupMetaBaseSQLProvider {
                 + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0";
     return "SELECT gt.group_id as groupId, gt.group_name as groupName,"
         + " gt.metalake_id as metalakeId,"
-        + " gt.external_id as externalId,"
+        + " "
+        + coalescedExternalId("gt")
+        + " as externalId,"
         + " gt.audit_info as auditInfo,"
         + " gt.current_version as currentVersion, gt.last_version as lastVersion,"
         + " gt.deleted_at as deletedAt,"
@@ -239,6 +265,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + groupJoin
+        + scimGroupJoin("gt")
         + " LEFT JOIN "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
         + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 LEFT OUTER JOIN ("
@@ -252,6 +279,24 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " AS rot ON rot.role_id = rt.role_id"
         + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
         + (extraFilter == null ? "" : extraFilter);
+  }
+
+  protected String scimGroupJoin(String groupTableAlias) {
+    return " LEFT JOIN "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " "
+        + SCIM_GROUP_ALIAS
+        + " ON "
+        + SCIM_GROUP_ALIAS
+        + ".group_name = "
+        + groupTableAlias
+        + ".group_name AND "
+        + SCIM_GROUP_ALIAS
+        + ".deleted_at = 0";
+  }
+
+  protected String coalescedExternalId(String groupTableAlias) {
+    return "COALESCE(" + SCIM_GROUP_ALIAS + ".external_id, " + groupTableAlias + ".external_id)";
   }
 
   protected String jsonArrayAgg(String expr) {

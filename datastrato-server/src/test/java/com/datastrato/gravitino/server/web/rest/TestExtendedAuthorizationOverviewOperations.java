@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.server.web.rest;
 
@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.UserEnabledCounts;
 import com.datastrato.gravitino.dto.authorization.AuthorizationSummaryDTO;
 import com.datastrato.gravitino.dto.authorization.CatalogAuthorizationDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
@@ -90,6 +91,8 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "entityStore", entityStore, true);
     FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "accessControlDispatcher", accessControlDispatcher, true);
+    FieldUtils.writeField(
         ExtendedDatastratoGravitinoEnv.getInstance(),
         "accessControlDispatcher",
         accessControlDispatcher,
@@ -155,6 +158,8 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     ExtendedGroupDTO group1 = mockExtendedGroup("group1", Lists.newArrayList("role2"), 2);
     ExtendedGroupDTO emptyGroup = mockExtendedGroup("empty", Collections.emptyList(), 0);
     when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[] {user1, user2});
+    when(accessControlDispatcher.countUsersByEnabled("metalake1"))
+        .thenReturn(new UserEnabledCounts(2, 1, 1));
     when(accessControlDispatcher.listExtendedGroups("metalake1"))
         .thenReturn(new ExtendedGroupDTO[] {group1, emptyGroup});
 
@@ -212,6 +217,8 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     when(accessControlDispatcher.listRolesWithSecurableObjects("metalake1"))
         .thenReturn(new Role[0]);
     when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[0]);
+    when(accessControlDispatcher.countUsersByEnabled("metalake1"))
+        .thenReturn(UserEnabledCounts.empty());
     when(accessControlDispatcher.listExtendedGroups("metalake1"))
         .thenReturn(new ExtendedGroupDTO[0]);
 

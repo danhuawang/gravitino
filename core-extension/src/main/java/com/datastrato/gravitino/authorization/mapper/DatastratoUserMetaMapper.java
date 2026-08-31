@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.authorization.mapper;
 
@@ -15,6 +15,7 @@ public interface DatastratoUserMetaMapper {
 
   String IDP_USER_TABLE_NAME = "idp_user_meta";
   String IDP_USER_GROUP_REL_TABLE_NAME = "idp_user_group_rel";
+  String SCIM_USER_TABLE_NAME = "scim_user_meta";
   String SCIM_USER_GROUP_REL_TABLE_NAME = "scim_user_group_rel";
 
   @SelectProvider(
@@ -30,6 +31,30 @@ public interface DatastratoUserMetaMapper {
       @Param("metalakeName") String metalakeName,
       @Param("userNames") List<String> userNames,
       @Param("enabled") boolean enabled);
+
+  /**
+   * Returns usernames that have an active row in {@code scim_user_meta}.
+   *
+   * @param userNames Usernames to check.
+   * @return Provisioned usernames present in the requested set.
+   */
+  @SelectProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "selectScimUserNamesByNames")
+  List<String> selectScimUserNamesByNames(@Param("userNames") List<String> userNames);
+
+  /**
+   * Batch-updates {@code enabled} for provisioned users in {@code scim_user_meta}.
+   *
+   * @param userNames Distinct usernames.
+   * @param enabled Target enabled value.
+   * @return Number of rows updated.
+   */
+  @UpdateProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "batchUpdateScimUserEnabledByUserNames")
+  int batchUpdateScimUserEnabledByUserNames(
+      @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled);
 
   @SelectProvider(
       type = DatastratoUserMetaSQLProviderFactory.class,

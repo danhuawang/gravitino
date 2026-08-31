@@ -1,10 +1,11 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.UserEnabledCounts;
 import com.datastrato.gravitino.dto.authorization.AuthorizationSummaryDTO;
 import com.datastrato.gravitino.dto.authorization.CatalogAuthorizationDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
@@ -40,7 +41,6 @@ import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.metalake.MetalakeManager;
-import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -111,6 +111,7 @@ public class ExtendedAuthorizationOverviewOperations {
             MetalakeManager.checkMetalakeInUse(metalake);
             Role[] roles = loadVisibleRoles(metalake);
             User[] users = accessControlDispatcher.listUsers(metalake);
+            UserEnabledCounts enabledCounts = accessControlDispatcher.countUsersByEnabled(metalake);
             ExtendedGroupDTO[] groups = accessControlDispatcher.listExtendedGroups(metalake);
             Map<String, Set<String>> usersByRole = initializeMembersByRole(roles);
             Map<String, Set<String>> groupsByRole = initializeMembersByRole(roles);
@@ -156,7 +157,7 @@ public class ExtendedAuthorizationOverviewOperations {
 
             return Utils.ok(
                 new AuthorizationOverviewResponse(
-                    buildSummary(users, groups, roleDTOs, unassignedRoles),
+                    buildSummary(enabledCounts, groups, roleDTOs, unassignedRoles),
                     catalogDTOs,
                     roleDTOs,
                     unassignedRoles));
@@ -167,17 +168,16 @@ public class ExtendedAuthorizationOverviewOperations {
   }
 
   private AuthorizationSummaryDTO buildSummary(
-      User[] users,
+      UserEnabledCounts enabledCounts,
       ExtendedGroupDTO[] groups,
       RoleMembershipDTO[] roles,
       String[] unassignedRoles) {
-    int activeUserCount = (int) Arrays.stream(users).filter(User::enabled).count();
     int emptyGroupCount =
         (int) Arrays.stream(groups).filter(group -> group.userCount() == 0).count();
     return new AuthorizationSummaryDTO(
-        users.length,
-        activeUserCount,
-        users.length - activeUserCount,
+        (int) enabledCounts.total(),
+        (int) enabledCounts.active(),
+        (int) enabledCounts.suspended(),
         groups.length,
         emptyGroupCount,
         roles.length,
@@ -186,7 +186,7 @@ public class ExtendedAuthorizationOverviewOperations {
 
   private Role[] loadVisibleRoles(String metalake) {
     Role[] roles = accessControlDispatcher.listRolesWithSecurableObjects(metalake);
-    return MetadataAuthzHelper.filterByExpression(
+    return MetadataListingHelper.filterByExpression(
         metalake,
         AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION,
         Entity.EntityType.ROLE,

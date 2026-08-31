@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
@@ -107,6 +107,9 @@ public class TestDatastratoRoleAssignmentBaseSQLProvider {
     assertTrue(sql.contains("rel.audit_info as assignmentAuditInfo"));
     assertTrue(sql.contains("FROM idp_user_meta iu"));
     assertTrue(sql.contains("as inBuiltInIdp"));
+    assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("COALESCE(su.external_id, principal.external_id) as externalId"));
+    assertTrue(sql.contains("COALESCE(su.enabled, principal.enabled) as enabled"));
     assertTrue(sql.contains("rt.role_name = #{role}"));
     assertTrue(sql.contains("LEFT JOIN user_role_rel rel"));
     assertTrue(sql.contains("LEFT JOIN user_meta principal"));
@@ -121,10 +124,12 @@ public class TestDatastratoRoleAssignmentBaseSQLProvider {
 
     assertTrue(sql.contains("rel.audit_info as assignmentAuditInfo"));
     assertTrue(sql.contains("as userCount"));
-    assertTrue(sql.contains("EXISTS (SELECT 1 FROM idp_group_meta source_group"));
-    assertTrue(sql.contains("SELECT COUNT(DISTINCT ut.user_id) FROM idp_group_meta"));
-    assertTrue(sql.contains("INNER JOIN idp_user_group_rel"));
-    assertTrue(sql.contains("FROM scim_user_group_rel"));
+    assertTrue(sql.contains("scim_group_meta"));
+    assertTrue(sql.contains("COALESCE(sg.external_id, principal.external_id) as externalId"));
+    assertTrue(sql.contains("COUNT(DISTINCT ut.user_id)"));
+    assertTrue(sql.contains("idp_group_meta"));
+    assertTrue(sql.contains("scim_user_group_rel"));
+    assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("LEFT JOIN group_role_rel rel"));
     assertTrue(sql.contains("LEFT JOIN group_meta principal"));
     assertTrue(sql.contains("WHERE mt.metalake_name = #{metalake}"));

@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
@@ -78,8 +78,9 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
       @Param("metalake") String metalake, @Param("role") String role) {
     return "SELECT mt.metalake_id as requestedMetalakeId, rt.role_id as roleId,"
         + " principal.user_id as userId, principal.user_name as userName,"
-        + " principal.metalake_id as metalakeId, principal.external_id as externalId,"
-        + " principal.enabled as enabled, principal.audit_info as auditInfo,"
+        + " principal.metalake_id as metalakeId,"
+        + " COALESCE(su.external_id, principal.external_id) as externalId,"
+        + " COALESCE(su.enabled, principal.enabled) as enabled, principal.audit_info as auditInfo,"
         + " principal.current_version as currentVersion,"
         + " principal.last_version as lastVersion, principal.deleted_at as deletedAt,"
         + " rel.audit_info as assignmentAuditInfo,"
@@ -91,6 +92,9 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
         + " LEFT JOIN "
         + USER_TABLE_NAME
         + " principal ON principal.user_id = rel.user_id AND principal.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su ON su.user_name = principal.user_name AND su.deleted_at = 0"
         + " WHERE mt.metalake_name = #{metalake} AND mt.deleted_at = 0"
         + " ORDER BY principal.user_name";
   }
@@ -106,7 +110,8 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
       @Param("metalake") String metalake, @Param("role") String role) {
     return "SELECT mt.metalake_id as requestedMetalakeId, rt.role_id as roleId,"
         + " principal.group_id as groupId, principal.group_name as groupName,"
-        + " principal.metalake_id as metalakeId, principal.external_id as externalId,"
+        + " principal.metalake_id as metalakeId,"
+        + " COALESCE(sg.external_id, principal.external_id) as externalId,"
         + " principal.audit_info as auditInfo, principal.current_version as currentVersion,"
         + " principal.last_version as lastVersion, principal.deleted_at as deletedAt,"
         + " rel.audit_info as assignmentAuditInfo,"
@@ -115,6 +120,9 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
         + " LEFT JOIN "
         + GROUP_TABLE_NAME
         + " principal ON principal.group_id = rel.group_id AND principal.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg ON sg.group_name = principal.group_name AND sg.deleted_at = 0"
         + " WHERE mt.metalake_name = #{metalake} AND mt.deleted_at = 0"
         + " ORDER BY principal.group_name";
   }
@@ -204,12 +212,12 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
 
   private String groupUserCountSelect() {
     return " COALESCE(CASE WHEN EXISTS (SELECT 1 FROM "
-        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
         + " source_group WHERE source_group.group_name = principal.group_name"
         + " AND source_group.deleted_at = 0) THEN ("
-        + localGroupUserCountSubquery()
-        + ") ELSE ("
         + scimGroupUserCountSubquery()
+        + ") ELSE ("
+        + localGroupUserCountSubquery()
         + ") END, 0) as userCount";
   }
 
@@ -231,12 +239,17 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
 
   private String scimGroupUserCountSubquery() {
     return "SELECT COUNT(DISTINCT ut.user_id) FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg INNER JOIN "
         + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " sur INNER JOIN "
+        + " sur ON sur.group_id = sg.group_id AND sur.deleted_at = 0"
+        + " INNER JOIN "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su ON su.user_id = sur.user_id AND su.deleted_at = 0"
+        + " INNER JOIN "
         + USER_TABLE_NAME
-        + " ut ON ut.user_id = sur.user_id"
-        + " AND ut.metalake_id = principal.metalake_id AND ut.deleted_at = 0"
-        + " WHERE sur.group_id = principal.group_id"
-        + " AND sur.metalake_id = principal.metalake_id AND sur.deleted_at = 0";
+        + " ut ON ut.metalake_id = principal.metalake_id AND ut.user_name = su.user_name"
+        + " AND ut.deleted_at = 0"
+        + " WHERE sg.group_name = principal.group_name AND sg.deleted_at = 0";
   }
 }

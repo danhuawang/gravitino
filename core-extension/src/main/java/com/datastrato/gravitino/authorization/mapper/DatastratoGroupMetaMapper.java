@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.authorization.mapper;
 
@@ -12,6 +12,7 @@ public interface DatastratoGroupMetaMapper {
 
   String IDP_GROUP_TABLE_NAME = "idp_group_meta";
   String IDP_USER_GROUP_REL_TABLE_NAME = "idp_user_group_rel";
+  String SCIM_GROUP_TABLE_NAME = "scim_group_meta";
   String SCIM_USER_GROUP_REL_TABLE_NAME = "scim_user_group_rel";
 
   /**

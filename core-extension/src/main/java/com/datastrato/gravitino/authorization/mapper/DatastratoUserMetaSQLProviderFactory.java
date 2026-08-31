@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Inc.
+ * Copyright 2026 Datastrato Pvt Ltd.
  */
 package com.datastrato.gravitino.authorization.mapper;
 
@@ -32,6 +32,15 @@ public class DatastratoUserMetaSQLProviderFactory {
       @Param("userNames") List<String> userNames,
       @Param("enabled") boolean enabled) {
     return getProvider().batchUpdateEnabledByMetalakeNameAndNames(metalakeName, userNames, enabled);
+  }
+
+  public static String selectScimUserNamesByNames(@Param("userNames") List<String> userNames) {
+    return getProvider().selectScimUserNamesByNames(userNames);
+  }
+
+  public static String batchUpdateScimUserEnabledByUserNames(
+      @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled) {
+    return getProvider().batchUpdateScimUserEnabledByUserNames(userNames, enabled);
   }
 
   public static String listUsersWithMetalakeStatus(@Param("metalakeName") String metalakeName) {
