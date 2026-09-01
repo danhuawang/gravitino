@@ -7,6 +7,7 @@ import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getS
 import static java.util.Collections.emptyMap;
 import static org.apache.gravitino.Entity.EntityType.TABLE;
 
+import com.datastrato.gravitino.search.client.SearchClient;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.test.OpenSearchContainer;

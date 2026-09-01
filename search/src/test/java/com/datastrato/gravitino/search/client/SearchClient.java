@@ -1,7 +1,7 @@
 /*
  * Copyright 2024 Datastrato Inc.
  */
-package com.datastrato.gravitino.integration.test;
+package com.datastrato.gravitino.search.client;
 
 import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS_DTO;
 
