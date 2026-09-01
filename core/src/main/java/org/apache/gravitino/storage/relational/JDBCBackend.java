@@ -209,7 +209,6 @@ public class JDBCBackend implements RelationalBackend {
   public <E extends Entity & HasIdentifier> E update(
       NameIdentifier ident, Entity.EntityType entityType, Function<E, E> updater)
       throws IOException, NoSuchEntityException, EntityAlreadyExistsException {
-<<<<<<< HEAD
     if (!BaseEntityCache.isCacheable(entityType)) {
       return updateEntity(ident, entityType, updater);
     }
@@ -231,46 +230,6 @@ public class JDBCBackend implements RelationalBackend {
       if (transactionOwner && !committed) {
         SessionUtils.rollbackTransaction();
       }
-=======
-    switch (entityType) {
-      case METALAKE:
-        return (E) MetalakeMetaService.getInstance().updateMetalake(ident, updater);
-      case CATALOG:
-        return (E) CatalogMetaService.getInstance().updateCatalog(ident, updater);
-      case SCHEMA:
-        return (E) SchemaMetaService.getInstance().updateSchema(ident, updater);
-      case TABLE:
-        return (E) TableMetaService.getInstance().updateTable(ident, updater);
-      case FILESET:
-        return (E) FilesetMetaService.getInstance().updateFileset(ident, updater);
-      case TOPIC:
-        return (E) TopicMetaService.getInstance().updateTopic(ident, updater);
-      case USER:
-        return (E) UserMetaService.getInstance().updateUser(ident, updater);
-      case GROUP:
-        return (E) GroupMetaService.getInstance().updateGroup(ident, updater);
-      case ROLE:
-        return (E) RoleMetaService.getInstance().updateRole(ident, updater);
-      case TAG:
-        return (E) TagMetaService.getInstance().updateTag(ident, updater);
-      case MODEL:
-        return (E) ModelMetaService.getInstance().updateModel(ident, updater);
-      case MODEL_VERSION:
-        return (E) ModelVersionMetaService.getInstance().updateModelVersion(ident, updater);
-      case FUNCTION:
-        return (E) FunctionMetaService.getInstance().updateFunction(ident, updater);
-      case POLICY:
-        return (E) PolicyMetaService.getInstance().updatePolicy(ident, updater);
-      case JOB_TEMPLATE:
-        return (E) JobTemplateMetaService.getInstance().updateJobTemplate(ident, updater);
-      case JOB:
-        return (E) JobMetaService.getInstance().updateJob(ident, updater);
-      case VIEW:
-        return (E) ViewMetaService.getInstance().updateView(ident, updater);
-      default:
-        throw new UnsupportedEntityTypeException(
-            "Unsupported entity type: %s for update operation", entityType);
->>>>>>> upstream/branch-1.3
     }
   }
 
@@ -987,6 +946,8 @@ public class JDBCBackend implements RelationalBackend {
         return (E) PolicyMetaService.getInstance().updatePolicy(ident, updater);
       case JOB_TEMPLATE:
         return (E) JobTemplateMetaService.getInstance().updateJobTemplate(ident, updater);
+      case JOB:
+        return (E) JobMetaService.getInstance().updateJob(ident, updater);
       case VIEW:
         return (E) ViewMetaService.getInstance().updateView(ident, updater);
       default:

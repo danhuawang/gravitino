@@ -144,6 +144,7 @@ public class JobMetaBaseSQLProvider {
         + JobMetaMapper.TABLE_NAME
         + " SET job_execution_id = #{newJobMeta.jobExecutionId},"
         + " job_run_status = #{newJobMeta.jobRunStatus},"
+        + " job_started_at = #{newJobMeta.jobStartedAt},"
         + " job_finished_at = #{newJobMeta.jobFinishedAt},"
         + " audit_info = #{newJobMeta.auditInfo},"
         + " current_version = #{newJobMeta.currentVersion},"

@@ -248,7 +248,8 @@ public class TestJobMetaService extends TestJDBCBackend {
             jobTemplate.name(), JobHandle.Status.QUEUED, METALAKE_NAME);
     JobMetaService.getInstance().insertJob(job, false);
 
-    // Update the job to STARTED, setting a new audit info.
+    // Update the job to STARTED, setting startedAt and a new audit info.
+    long startedAt = System.currentTimeMillis();
     AuditInfo startedAuditInfo =
         AuditInfo.builder()
             .withCreator(job.auditInfo().creator())
@@ -269,10 +270,12 @@ public class TestJobMetaService extends TestJDBCBackend {
                         .withNamespace(oldJob.namespace())
                         .withStatus(JobHandle.Status.STARTED)
                         .withAuditInfo(startedAuditInfo)
+                        .withStartedAt(startedAt)
                         .withFinishedAt(oldJob.finishedAt())
                         .build());
 
     Assertions.assertEquals(JobHandle.Status.STARTED, startedJob.status());
+    Assertions.assertEquals(startedAt, startedJob.startedAt());
     Assertions.assertEquals(startedAuditInfo, startedJob.auditInfo());
     Assertions.assertEquals(0L, startedJob.finishedAt());
 
@@ -284,7 +287,7 @@ public class TestJobMetaService extends TestJDBCBackend {
 
     // A second, independent update must keep working (e.g. an internal version counter bumped by
     // the first update must not break a subsequent one).
-    long finishedAt = System.currentTimeMillis();
+    long finishedAt = startedAt + 1000;
     JobEntity finishedJob =
         JobMetaService.getInstance()
             .updateJob(
@@ -297,10 +300,12 @@ public class TestJobMetaService extends TestJDBCBackend {
                         .withNamespace(oldJob.namespace())
                         .withStatus(JobHandle.Status.SUCCEEDED)
                         .withAuditInfo(oldJob.auditInfo())
+                        .withStartedAt(oldJob.startedAt())
                         .withFinishedAt(finishedAt)
                         .build());
 
     Assertions.assertEquals(JobHandle.Status.SUCCEEDED, finishedJob.status());
+    Assertions.assertEquals(startedAt, finishedJob.startedAt());
     Assertions.assertEquals(finishedAt, finishedJob.finishedAt());
 
     fetchedJob =
@@ -352,6 +357,7 @@ public class TestJobMetaService extends TestJDBCBackend {
                             .withNamespace(oldJob.namespace())
                             .withStatus(oldJob.status())
                             .withAuditInfo(oldJob.auditInfo())
+                            .withStartedAt(oldJob.startedAt())
                             .withFinishedAt(oldJob.finishedAt())
                             .build()));
   }

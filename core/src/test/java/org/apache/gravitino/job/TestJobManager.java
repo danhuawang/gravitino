@@ -649,12 +649,14 @@ public class TestJobManager {
             .withJobTemplateName(queuedSnapshot.jobTemplateName())
             .withStatus(JobHandle.Status.SUCCEEDED)
             .withAuditInfo(queuedSnapshot.auditInfo())
+            .withStartedAt(12345L)
             .withFinishedAt(67890L)
             .build();
     stubEntityStoreUpdateToApply(latestSucceeded);
 
     JobEntity result = jobManager.cancelJob(metalake, queuedSnapshot.name());
     Assertions.assertEquals(JobHandle.Status.SUCCEEDED, result.status());
+    Assertions.assertEquals(12345L, result.startedAt());
     Assertions.assertEquals(67890L, result.finishedAt());
   }
 
@@ -679,12 +681,14 @@ public class TestJobManager {
             .withJobTemplateName(queuedSnapshot.jobTemplateName())
             .withStatus(JobHandle.Status.CANCELLING)
             .withAuditInfo(queuedSnapshot.auditInfo())
+            .withStartedAt(12345L)
             .withFinishedAt(0L)
             .build();
     stubEntityStoreUpdateToApply(latestCancelling);
 
     JobEntity result = jobManager.cancelJob(metalake, queuedSnapshot.name());
     Assertions.assertEquals(JobHandle.Status.CANCELLING, result.status());
+    Assertions.assertEquals(12345L, result.startedAt());
     Assertions.assertEquals(0L, result.finishedAt());
   }
 
@@ -717,23 +721,14 @@ public class TestJobManager {
     when(jobExecutor.getJobStatus(job.jobExecutionId())).thenReturn(JobHandle.Status.SUCCEEDED);
     Assertions.assertDoesNotThrow(() -> jobManager.pullAndUpdateJobStatus());
 
-<<<<<<< HEAD
-    ArgumentCaptor<JobEntity> captor = ArgumentCaptor.forClass(JobEntity.class);
-    verify(entityStore, times(1)).put(captor.capture(), anyBoolean());
-
-    // Once a job transitions to a terminal status, finishedAt must be set.
-    JobEntity updatedJob = captor.getValue();
-=======
     // Once a job transitions to a terminal status, finishedAt must be set.
     JobEntity updatedJob = captureUpdatedJobEntity(job);
->>>>>>> upstream/branch-1.3
     Assertions.assertEquals(JobHandle.Status.SUCCEEDED, updatedJob.status());
     Assertions.assertNotNull(updatedJob.finishedAt());
     Assertions.assertTrue(updatedJob.finishedAt() > 0);
   }
 
   @Test
-<<<<<<< HEAD
   public void testPullJobStatusStartedAt() throws IOException {
     JobEntity job =
         JobEntity.builder()
@@ -747,11 +742,6 @@ public class TestJobManager {
             .withStartedAt(0L)
             .withFinishedAt(0L)
             .build();
-=======
-  public void testPullJobStatusSkipsJobDeletedConcurrently() throws IOException {
-    JobEntity deletedJob = newJobEntity("shell_job", JobHandle.Status.QUEUED);
-    JobEntity survivingJob = newJobEntity("shell_job", JobHandle.Status.QUEUED);
->>>>>>> upstream/branch-1.3
 
     BaseMetalake mockMetalake =
         BaseMetalake.builder()
@@ -766,16 +756,14 @@ public class TestJobManager {
         .when(() -> MetalakeManager.listInUseMetalakes(entityStore))
         .thenReturn(ImmutableList.of(metalake));
 
-<<<<<<< HEAD
     when(jobManager.listJobs(metalake, Optional.empty())).thenReturn(ImmutableList.of(job));
 
     // QUEUED -> STARTED: startedAt must be set, finishedAt must remain unset.
+    stubEntityStoreUpdateToApply(job);
     when(jobExecutor.getJobStatus(job.jobExecutionId())).thenReturn(JobHandle.Status.STARTED);
     Assertions.assertDoesNotThrow(() -> jobManager.pullAndUpdateJobStatus());
 
-    ArgumentCaptor<JobEntity> startedCaptor = ArgumentCaptor.forClass(JobEntity.class);
-    verify(entityStore, times(1)).put(startedCaptor.capture(), anyBoolean());
-    JobEntity startedJob = startedCaptor.getValue();
+    JobEntity startedJob = captureUpdatedJobEntity(job);
     Assertions.assertEquals(JobHandle.Status.STARTED, startedJob.status());
     Assertions.assertNotNull(startedJob.startedAt());
     Assertions.assertTrue(startedJob.startedAt() > 0);
@@ -784,13 +772,12 @@ public class TestJobManager {
     // STARTED -> SUCCEEDED: finishedAt must be set, and the previously-recorded startedAt must
     // be carried forward unchanged, not overwritten.
     Mockito.clearInvocations(entityStore);
+    stubEntityStoreUpdateToApply(startedJob);
     when(jobManager.listJobs(metalake, Optional.empty())).thenReturn(ImmutableList.of(startedJob));
     when(jobExecutor.getJobStatus(job.jobExecutionId())).thenReturn(JobHandle.Status.SUCCEEDED);
     Assertions.assertDoesNotThrow(() -> jobManager.pullAndUpdateJobStatus());
 
-    ArgumentCaptor<JobEntity> finishedCaptor = ArgumentCaptor.forClass(JobEntity.class);
-    verify(entityStore, times(1)).put(finishedCaptor.capture(), anyBoolean());
-    JobEntity finishedJob = finishedCaptor.getValue();
+    JobEntity finishedJob = captureUpdatedJobEntity(startedJob);
     Assertions.assertEquals(JobHandle.Status.SUCCEEDED, finishedJob.status());
     Assertions.assertEquals(startedJob.startedAt(), finishedJob.startedAt());
     Assertions.assertNotNull(finishedJob.finishedAt());
@@ -832,13 +819,12 @@ public class TestJobManager {
         .thenReturn(ImmutableList.of(metalake));
 
     when(jobManager.listJobs(metalake, Optional.empty())).thenReturn(ImmutableList.of(queuedJob));
+    stubEntityStoreUpdateToApply(queuedJob);
     when(jobExecutor.getJobStatus(queuedJob.jobExecutionId()))
         .thenReturn(JobHandle.Status.SUCCEEDED);
     Assertions.assertDoesNotThrow(() -> jobManager.pullAndUpdateJobStatus());
 
-    ArgumentCaptor<JobEntity> captor = ArgumentCaptor.forClass(JobEntity.class);
-    verify(entityStore, times(1)).put(captor.capture(), anyBoolean());
-    JobEntity succeededJob = captor.getValue();
+    JobEntity succeededJob = captureUpdatedJobEntity(queuedJob);
     Assertions.assertEquals(JobHandle.Status.SUCCEEDED, succeededJob.status());
     Assertions.assertEquals(0L, succeededJob.startedAt());
     Assertions.assertNotNull(succeededJob.finishedAt());
@@ -859,7 +845,54 @@ public class TestJobManager {
             .withAuditInfo(
                 AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
             .withStartedAt(0L)
-=======
+            .withFinishedAt(0L)
+            .build();
+
+    BaseMetalake mockMetalake =
+        BaseMetalake.builder()
+            .withName(metalake)
+            .withId(idGenerator.nextId())
+            .withVersion(SchemaVersion.V_0_1)
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+    when(entityStore.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenReturn(ImmutableList.of(mockMetalake));
+    mockedMetalake
+        .when(() -> MetalakeManager.listInUseMetalakes(entityStore))
+        .thenReturn(ImmutableList.of(metalake));
+
+    when(jobManager.listJobs(metalake, Optional.empty()))
+        .thenReturn(ImmutableList.of(cancellingJob));
+    stubEntityStoreUpdateToApply(cancellingJob);
+    when(jobExecutor.getJobStatus(cancellingJob.jobExecutionId()))
+        .thenReturn(JobHandle.Status.CANCELLED);
+    Assertions.assertDoesNotThrow(() -> jobManager.pullAndUpdateJobStatus());
+
+    JobEntity cancelledJob = captureUpdatedJobEntity(cancellingJob);
+    Assertions.assertEquals(JobHandle.Status.CANCELLED, cancelledJob.status());
+    Assertions.assertEquals(0L, cancelledJob.startedAt());
+    Assertions.assertNotNull(cancelledJob.finishedAt());
+    Assertions.assertTrue(cancelledJob.finishedAt() > 0);
+  }
+
+  @Test
+  public void testPullJobStatusSkipsJobDeletedConcurrently() throws IOException {
+    JobEntity deletedJob = newJobEntity("shell_job", JobHandle.Status.QUEUED);
+    JobEntity survivingJob = newJobEntity("shell_job", JobHandle.Status.QUEUED);
+
+    BaseMetalake mockMetalake =
+        BaseMetalake.builder()
+            .withName(metalake)
+            .withId(idGenerator.nextId())
+            .withVersion(SchemaVersion.V_0_1)
+            .withAuditInfo(AuditInfo.EMPTY)
+            .build();
+    when(entityStore.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenReturn(ImmutableList.of(mockMetalake));
+    mockedMetalake
+        .when(() -> MetalakeManager.listInUseMetalakes(entityStore))
+        .thenReturn(ImmutableList.of(metalake));
+
     when(jobManager.listJobs(metalake, Optional.empty()))
         .thenReturn(ImmutableList.of(deletedJob, survivingJob));
     when(jobExecutor.getJobStatus(deletedJob.jobExecutionId()))
@@ -898,7 +931,7 @@ public class TestJobManager {
     // listJobs() observes the job as QUEUED, but by the time entityStore.update() re-fetches it,
     // a concurrent writer (e.g. another poll run) has already finished the job with a different
     // terminal status. The stale QUEUED snapshot - and the executor status derived from it - must
-    // not be allowed to regress that terminal state or clobber its recorded finishedAt.
+    // not be allowed to regress that terminal state or clobber its recorded startedAt/finishedAt.
     JobEntity queuedSnapshot = newJobEntity("shell_job", JobHandle.Status.QUEUED);
     JobEntity latestSucceeded =
         JobEntity.builder()
@@ -908,6 +941,7 @@ public class TestJobManager {
             .withJobTemplateName(queuedSnapshot.jobTemplateName())
             .withStatus(JobHandle.Status.SUCCEEDED)
             .withAuditInfo(queuedSnapshot.auditInfo())
+            .withStartedAt(12345L)
             .withFinishedAt(67890L)
             .build();
 
@@ -935,6 +969,7 @@ public class TestJobManager {
 
     JobEntity result = captureUpdatedJobEntity(latestSucceeded);
     Assertions.assertEquals(JobHandle.Status.SUCCEEDED, result.status());
+    Assertions.assertEquals(12345L, result.startedAt());
     Assertions.assertEquals(67890L, result.finishedAt());
   }
 
@@ -943,7 +978,7 @@ public class TestJobManager {
     // listJobs() observes the job as QUEUED, but a concurrent cancelJob() moves it to CANCELLING
     // before entityStore.update() re-fetches it. The executor reports STARTED for this poll
     // (a legitimate observation for the same jobExecutionId) - that must not move the job back
-    // out of CANCELLING.
+    // out of CANCELLING, nor overwrite the startedAt it already carries.
     JobEntity queuedSnapshot = newJobEntity("shell_job", JobHandle.Status.QUEUED);
     JobEntity latestCancelling =
         JobEntity.builder()
@@ -953,7 +988,7 @@ public class TestJobManager {
             .withJobTemplateName(queuedSnapshot.jobTemplateName())
             .withStatus(JobHandle.Status.CANCELLING)
             .withAuditInfo(queuedSnapshot.auditInfo())
->>>>>>> upstream/branch-1.3
+            .withStartedAt(12345L)
             .withFinishedAt(0L)
             .build();
 
@@ -971,20 +1006,6 @@ public class TestJobManager {
         .thenReturn(ImmutableList.of(metalake));
 
     when(jobManager.listJobs(metalake, Optional.empty()))
-<<<<<<< HEAD
-        .thenReturn(ImmutableList.of(cancellingJob));
-    when(jobExecutor.getJobStatus(cancellingJob.jobExecutionId()))
-        .thenReturn(JobHandle.Status.CANCELLED);
-    Assertions.assertDoesNotThrow(() -> jobManager.pullAndUpdateJobStatus());
-
-    ArgumentCaptor<JobEntity> captor = ArgumentCaptor.forClass(JobEntity.class);
-    verify(entityStore, times(1)).put(captor.capture(), anyBoolean());
-    JobEntity cancelledJob = captor.getValue();
-    Assertions.assertEquals(JobHandle.Status.CANCELLED, cancelledJob.status());
-    Assertions.assertEquals(0L, cancelledJob.startedAt());
-    Assertions.assertNotNull(cancelledJob.finishedAt());
-    Assertions.assertTrue(cancelledJob.finishedAt() > 0);
-=======
         .thenReturn(ImmutableList.of(queuedSnapshot));
     stubEntityStoreUpdateToApply(latestCancelling);
     when(jobExecutor.getJobStatus(queuedSnapshot.jobExecutionId()))
@@ -993,8 +1014,8 @@ public class TestJobManager {
 
     JobEntity result = captureUpdatedJobEntity(latestCancelling);
     Assertions.assertEquals(JobHandle.Status.CANCELLING, result.status());
+    Assertions.assertEquals(12345L, result.startedAt());
     Assertions.assertEquals(0L, result.finishedAt());
->>>>>>> upstream/branch-1.3
   }
 
   @Test
