@@ -16,6 +16,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.NameIdentifier;
@@ -157,6 +158,43 @@ class TestCatalogConnectionTestMetaService {
     result = service.getValidTestResult(CATALOG, ConnectionTestType.CATALOG).orElseThrow();
     assertEquals(ConnectionTestResult.Status.FAILED, result.status());
     assertEquals("Equal timestamp last commit wins", result.errorMessage());
+  }
+
+  @Test
+  void testRecordTestResultFromIndependentlyLoadedCatalog() {
+    Map<String, String> properties = Map.of("jdbc-url", "jdbc:mysql://host/db");
+
+    assertTrue(
+        service.recordTestResult(
+            CATALOG,
+            "jdbc-mysql",
+            properties,
+            ConnectionTestType.credential("s3-token"),
+            ConnectionTestResult.Status.PASSED,
+            1000L,
+            null));
+    assertTrue(
+        service.getValidTestResult(CATALOG, ConnectionTestType.credential("s3-token")).isPresent());
+    assertTrue(service.getValidTestResult(CATALOG, ConnectionTestType.CATALOG).isEmpty());
+
+    assertFalse(
+        service.recordTestResult(
+            CATALOG,
+            "changed-provider",
+            properties,
+            ConnectionTestType.credential("gcs-token"),
+            ConnectionTestResult.Status.PASSED,
+            1001L,
+            null));
+    assertFalse(
+        service.recordTestResult(
+            CATALOG,
+            "jdbc-mysql",
+            Map.of("jdbc-url", "jdbc:mysql://changed/db"),
+            ConnectionTestType.credential("gcs-token"),
+            ConnectionTestResult.Status.PASSED,
+            1001L,
+            null));
   }
 
   @Test

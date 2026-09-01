@@ -11,7 +11,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.datastrato.gravitino.catalog.connection.CatalogConnectionSnapshot;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestType;
@@ -24,15 +23,23 @@ import java.util.Map;
 import java.util.Optional;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.Catalog;
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.catalog.CatalogDispatcher;
+import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.credential.Credential;
 import org.apache.gravitino.credential.CredentialContext;
 import org.apache.gravitino.credential.CredentialProvider;
 import org.apache.gravitino.credential.PathBasedCredentialContext;
 import org.apache.gravitino.dto.responses.ErrorResponse;
+import org.apache.gravitino.exceptions.NoSuchCatalogException;
+import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -49,11 +56,31 @@ public class TestCredentialProviderOperations extends JerseyTest {
   private static volatile Map<String, String> testProperties;
 
   private final ConnectionTestStore connectionTestStore = mock(ConnectionTestStore.class);
+  private final CatalogDispatcher catalogDispatcher = mock(CatalogDispatcher.class);
+
+  /** Simulates the overlapping connection root resource registered by the production server. */
+  @Path("/web/metalakes/{metalake}/connections")
+  public static class CompetingConnectionOperations {
+
+    /**
+     * Returns an empty connection response.
+     *
+     * @return An empty response.
+     */
+    @GET
+    public Response listConnections() {
+      return Response.ok().build();
+    }
+  }
 
   private static class MockCredentialProviderOperations extends CredentialProviderOperations {
     @Inject
-    MockCredentialProviderOperations(ConnectionTestStore connectionTestStore) {
-      super(connectionTestStore, Clock.fixed(Instant.ofEpochMilli(123456L), ZoneOffset.UTC));
+    MockCredentialProviderOperations(
+        CatalogDispatcher catalogDispatcher, ConnectionTestStore connectionTestStore) {
+      super(
+          catalogDispatcher,
+          connectionTestStore,
+          Clock.fixed(Instant.ofEpochMilli(123456L), ZoneOffset.UTC));
     }
 
     @Override
@@ -82,6 +109,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
     }
 
     ResourceConfig resourceConfig = new ResourceConfig();
+    resourceConfig.register(CompetingConnectionOperations.class);
     resourceConfig.register(MockCredentialProviderOperations.class);
     resourceConfig.register(
         new AbstractBinder() {
@@ -89,24 +117,49 @@ public class TestCredentialProviderOperations extends JerseyTest {
           protected void configure() {
             bind(connectionTestStore).to(ConnectionTestStore.class).ranked(2);
             bindFactory(MockServletRequestFactory.class).to(HttpServletRequest.class);
+            bind(catalogDispatcher).to(CatalogDispatcher.class).ranked(2);
           }
         });
     return resourceConfig;
   }
 
+  private Catalog catalog(String name, Map<String, String> properties) {
+    BaseCatalog<?> catalog = mock(BaseCatalog.class);
+    CatalogEntity entity = mock(CatalogEntity.class);
+    when(catalog.name()).thenReturn(name);
+    when(catalog.provider()).thenReturn("fileset");
+    when(catalog.propertiesWithCredentialProviders()).thenReturn(properties);
+    when(catalog.entity()).thenReturn(entity);
+    when(entity.getProperties()).thenReturn(properties);
+    return catalog;
+  }
+
+  private Catalog genericCatalog(String name, Map<String, String> properties) {
+    Catalog catalog = mock(Catalog.class);
+    when(catalog.name()).thenReturn(name);
+    when(catalog.provider()).thenReturn("fileset");
+    when(catalog.properties()).thenReturn(properties);
+    return catalog;
+  }
+
+  private void loadCatalog(String name, Map<String, String> properties) {
+    loadCatalog(catalog(name, properties));
+  }
+
+  private void loadCatalog(Catalog loadedCatalog) {
+    when(catalogDispatcher.loadCatalog(any())).thenReturn(loadedCatalog);
+  }
+
   /** Verifies a successful configured-provider probe is persisted and returns HTTP 200. */
   @Test
   public void testExistingCredentialProviderPersistsPassedResult() throws IOException {
-    CatalogConnectionSnapshot snapshot =
-        new CatalogConnectionSnapshot(
-            10L,
-            1L,
-            "catalog",
-            "fileset",
-            Map.of("key", "saved-value", "credential-providers", "test-provider"));
-    when(connectionTestStore.loadCatalogConnectionSnapshot(any())).thenReturn(snapshot);
+    Map<String, String> properties =
+        Map.of("key", "saved-value", "credential-providers", "test-provider");
+    loadCatalog(genericCatalog("catalog", properties));
     when(connectionTestStore.recordTestResult(
-            eq(snapshot),
+            eq(NameIdentifier.of("metalake", "catalog")),
+            eq("fileset"),
+            eq(properties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             anyLong(),
@@ -138,24 +191,23 @@ public class TestCredentialProviderOperations extends JerseyTest {
     verify(provider).close();
     verify(connectionTestStore)
         .recordTestResult(
-            eq(snapshot),
+            eq(NameIdentifier.of("metalake", "catalog")),
+            eq("fileset"),
+            eq(properties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             eq(123456L),
             eq(null));
+    verify(connectionTestStore, never()).getValidTestResult(any(), eq(ConnectionTestType.CATALOG));
+    verify(connectionTestStore, never()).loadCatalogConnectionSnapshot(any());
   }
 
   /** Verifies a failed configured-provider probe persists a safe failure result. */
   @Test
   public void testExistingCredentialProviderPersistsFailedResult() throws IOException {
-    CatalogConnectionSnapshot snapshot =
-        new CatalogConnectionSnapshot(
-            11L,
-            1L,
-            "failed-catalog",
-            "fileset",
-            Map.of("key", "saved-value", "credential-providers", "test-provider"));
-    when(connectionTestStore.loadCatalogConnectionSnapshot(any())).thenReturn(snapshot);
+    Map<String, String> properties =
+        Map.of("key", "saved-value", "credential-providers", "test-provider");
+    loadCatalog("failed-catalog", properties);
     CredentialProvider provider = mock(CredentialProvider.class);
     when(provider.getCredentialOptional(any())).thenReturn(Optional.empty());
     testProvider = provider;
@@ -177,7 +229,9 @@ public class TestCredentialProviderOperations extends JerseyTest {
     Assertions.assertNull(errorResponse.getStack());
     verify(connectionTestStore)
         .recordTestResult(
-            eq(snapshot),
+            eq(NameIdentifier.of("metalake", "failed-catalog")),
+            eq("fileset"),
+            eq(properties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.FAILED),
             eq(123456L),
@@ -188,16 +242,13 @@ public class TestCredentialProviderOperations extends JerseyTest {
   /** Verifies a passed probe does not persist a failure when result storage fails. */
   @Test
   public void testPassedProbeDoesNotPersistFailureWhenStorageFails() {
-    CatalogConnectionSnapshot snapshot =
-        new CatalogConnectionSnapshot(
-            12L,
-            1L,
-            "storage-failure",
-            "fileset",
-            Map.of("key", "saved-value", "credential-providers", "test-provider"));
-    when(connectionTestStore.loadCatalogConnectionSnapshot(any())).thenReturn(snapshot);
+    Map<String, String> properties =
+        Map.of("key", "saved-value", "credential-providers", "test-provider");
+    loadCatalog("storage-failure", properties);
     when(connectionTestStore.recordTestResult(
-            eq(snapshot),
+            eq(NameIdentifier.of("metalake", "storage-failure")),
+            eq("fileset"),
+            eq(properties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             anyLong(),
@@ -221,7 +272,9 @@ public class TestCredentialProviderOperations extends JerseyTest {
     Assertions.assertNull(errorResponse.getStack());
     verify(connectionTestStore, never())
         .recordTestResult(
-            eq(snapshot),
+            eq(NameIdentifier.of("metalake", "storage-failure")),
+            eq("fileset"),
+            eq(properties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.FAILED),
             anyLong(),
@@ -244,6 +297,8 @@ public class TestCredentialProviderOperations extends JerseyTest {
     Assertions.assertEquals("Invalid credential provider test request", invalidError.getMessage());
     Assertions.assertNull(invalidError.getStack());
 
+    when(catalogDispatcher.loadCatalog(any()))
+        .thenThrow(new NoSuchCatalogException("Catalog does not exist"));
     Response missing =
         target(path)
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -255,14 +310,8 @@ public class TestCredentialProviderOperations extends JerseyTest {
   /** Verifies a canonical provider absent from the Catalog configuration cannot be tested. */
   @Test
   public void testUnconfiguredCredentialProviderIsRejected() {
-    CatalogConnectionSnapshot snapshot =
-        new CatalogConnectionSnapshot(
-            13L,
-            1L,
-            "catalog",
-            "fileset",
-            Collections.singletonMap("credential-providers", "s3-token"));
-    when(connectionTestStore.loadCatalogConnectionSnapshot(any())).thenReturn(snapshot);
+    Map<String, String> properties = Collections.singletonMap("credential-providers", "s3-token");
+    loadCatalog("catalog", properties);
     testCredentialType = null;
 
     Response response =
@@ -275,25 +324,35 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
     Assertions.assertNull(testCredentialType);
-    verify(connectionTestStore, never()).recordTestResult(any(), any(), any(), anyLong(), any());
+    verify(connectionTestStore, never())
+        .recordTestResult(any(), any(), any(), any(), any(), anyLong(), any());
+  }
+
+  /** Verifies null BaseCatalog properties are treated as an empty property map. */
+  @Test
+  public void testNullBaseCatalogPropertiesUseEmptyMap() {
+    assertNullPropertiesRejected(catalog("catalog", null));
+  }
+
+  /** Verifies null generic Catalog properties are treated as an empty property map. */
+  @Test
+  public void testNullGenericCatalogPropertiesUseEmptyMap() {
+    assertNullPropertiesRejected(genericCatalog("catalog", null));
   }
 
   /** Verifies a stale or superseded result is not reported as successful. */
   @Test
   public void testRejectedPassedResultIsNotReportedAsSuccessful() {
-    CatalogConnectionSnapshot snapshot =
-        new CatalogConnectionSnapshot(
-            14L,
-            1L,
-            "catalog",
-            "fileset",
-            Collections.singletonMap("credential-providers", "test-provider"));
-    when(connectionTestStore.loadCatalogConnectionSnapshot(any())).thenReturn(snapshot);
+    Map<String, String> properties =
+        Collections.singletonMap("credential-providers", "test-provider");
+    loadCatalog("catalog", properties);
     CredentialProvider provider = mock(CredentialProvider.class);
     when(provider.getCredentialOptional(any())).thenReturn(Optional.of(mock(Credential.class)));
     testProvider = provider;
     when(connectionTestStore.recordTestResult(
-            eq(snapshot),
+            eq(NameIdentifier.of("metalake", "catalog")),
+            eq("fileset"),
+            eq(properties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             anyLong(),
@@ -317,10 +376,34 @@ public class TestCredentialProviderOperations extends JerseyTest {
         errorResponse.getMessage());
     verify(connectionTestStore)
         .recordTestResult(
-            eq(snapshot),
+            eq(NameIdentifier.of("metalake", "catalog")),
+            eq("fileset"),
+            eq(properties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             eq(123456L),
             eq(null));
+  }
+
+  private void assertNullPropertiesRejected(Catalog catalog) {
+    loadCatalog(catalog);
+    testCredentialType = null;
+
+    Response response =
+        target(
+                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                    + "test-provider/test")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.json("{\"path\":\"s3://bucket/path\"}"));
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(
+        "Credential provider test-provider is not configured on Catalog metalake.catalog",
+        errorResponse.getMessage());
+    Assertions.assertNull(testCredentialType);
+    verify(connectionTestStore, never())
+        .recordTestResult(any(), any(), any(), any(), any(), anyLong(), any());
   }
 }

@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.catalog.connection;
 
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import javax.annotation.Nullable;
 import org.apache.gravitino.NameIdentifier;
@@ -19,6 +21,36 @@ public interface ConnectionTestStore {
    */
   @Nullable
   CatalogConnectionSnapshot loadCatalogConnectionSnapshot(NameIdentifier identifier);
+
+  /**
+   * Records a completed test result for Catalog properties loaded independently from the test
+   * store.
+   *
+   * @param testedCatalog The Catalog identifier used for the test.
+   * @param testedProvider The Catalog provider used for the test.
+   * @param testedProperties The persisted Catalog properties used for the test.
+   * @param testType The Catalog or credential connection test type.
+   * @param status The completed result.
+   * @param lastTestedAt The completion time in epoch milliseconds.
+   * @param errorMessage A safe non-empty message for failures, otherwise {@code null}.
+   * @return {@code true} when the tested configuration is still current and was persisted.
+   */
+  default boolean recordTestResult(
+      NameIdentifier testedCatalog,
+      String testedProvider,
+      Map<String, String> testedProperties,
+      String testType,
+      ConnectionTestResult.Status status,
+      long lastTestedAt,
+      @Nullable String errorMessage) {
+    CatalogConnectionSnapshot current = loadCatalogConnectionSnapshot(testedCatalog);
+    if (current == null
+        || !Objects.equals(current.provider(), testedProvider)
+        || !Objects.equals(current.properties(), testedProperties)) {
+      return false;
+    }
+    return recordTestResult(current, testType, status, lastTestedAt, errorMessage);
+  }
 
   /**
    * Records a completed connection test result only while the Catalog still matches the snapshot

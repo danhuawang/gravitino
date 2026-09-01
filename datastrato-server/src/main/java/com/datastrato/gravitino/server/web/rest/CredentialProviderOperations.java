@@ -3,7 +3,6 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
-import com.datastrato.gravitino.catalog.connection.CatalogConnectionSnapshot;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestType;
@@ -22,9 +21,12 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.catalog.CatalogDispatcher;
+import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.credential.CredentialProvider;
 import org.apache.gravitino.credential.CredentialProviderFactory;
 import org.apache.gravitino.credential.PathBasedCredentialContext;
@@ -42,7 +44,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Provides enterprise REST APIs for credential providers. */
-@Path("/web")
+@Path("/web/metalakes/{metalake}/connections/{connection}/credential-providers")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces("application/vnd.gravitino.v1+json")
 public class CredentialProviderOperations {
@@ -52,6 +54,7 @@ public class CredentialProviderOperations {
       "Failed to test the credential provider";
 
   private final ConnectionTestStore connectionTestStore;
+  private final CatalogDispatcher catalogDispatcher;
   private final Clock clock;
 
   @Context private HttpServletRequest httpRequest;
@@ -59,15 +62,19 @@ public class CredentialProviderOperations {
   /**
    * Creates credential provider REST operations using the system clock.
    *
+   * @param catalogDispatcher The Catalog dispatcher.
    * @param connectionTestStore The persistent connection test store.
    */
   @Inject
-  public CredentialProviderOperations(ConnectionTestStore connectionTestStore) {
-    this(connectionTestStore, Clock.systemUTC());
+  public CredentialProviderOperations(
+      CatalogDispatcher catalogDispatcher, ConnectionTestStore connectionTestStore) {
+    this(catalogDispatcher, connectionTestStore, Clock.systemUTC());
   }
 
   @VisibleForTesting
-  CredentialProviderOperations(ConnectionTestStore connectionTestStore, Clock clock) {
+  CredentialProviderOperations(
+      CatalogDispatcher catalogDispatcher, ConnectionTestStore connectionTestStore, Clock clock) {
+    this.catalogDispatcher = catalogDispatcher;
     this.connectionTestStore = connectionTestStore;
     this.clock = clock;
   }
@@ -82,9 +89,7 @@ public class CredentialProviderOperations {
    * @return A successful response when a credential is generated, or an error response.
    */
   @POST
-  @Path(
-      "/metalakes/{metalake}/connections/{connection}/credential-providers/"
-          + "{credentialType}/test")
+  @Path("/{credentialType}/test")
   @AuthorizationExpression(
       expression = "ANY(OWNER, METALAKE, CATALOG)",
       accessMetadataType = MetadataObject.Type.CATALOG)
@@ -120,12 +125,10 @@ public class CredentialProviderOperations {
           httpRequest,
           () -> {
             NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, connection);
-            CatalogConnectionSnapshot snapshot =
-                connectionTestStore.loadCatalogConnectionSnapshot(identifier);
-            if (snapshot == null) {
-              throw new NoSuchCatalogException("Catalog %s does not exist", identifier);
-            }
-            if (!isCredentialProviderConfigured(credentialType, snapshot.properties())) {
+            Catalog catalog = catalogDispatcher.loadCatalog(identifier);
+            Map<String, String> properties = credentialProperties(catalog);
+            Map<String, String> persistedProperties = persistedProperties(catalog);
+            if (!isCredentialProviderConfigured(credentialType, properties)) {
               return Utils.illegalArguments(
                   String.format(
                       "Credential provider %s is not configured on Catalog %s",
@@ -133,10 +136,12 @@ public class CredentialProviderOperations {
             }
 
             try {
-              testCredentialProvider(credentialType, request.getPath(), snapshot.properties());
+              testCredentialProvider(credentialType, request.getPath(), properties);
             } catch (Exception e) {
               connectionTestStore.recordTestResult(
-                  snapshot,
+                  identifier,
+                  catalog.provider(),
+                  persistedProperties,
                   testType,
                   ConnectionTestResult.Status.FAILED,
                   clock.millis(),
@@ -146,7 +151,13 @@ public class CredentialProviderOperations {
 
             boolean recorded =
                 connectionTestStore.recordTestResult(
-                    snapshot, testType, ConnectionTestResult.Status.PASSED, clock.millis(), null);
+                    identifier,
+                    catalog.provider(),
+                    persistedProperties,
+                    testType,
+                    ConnectionTestResult.Status.PASSED,
+                    clock.millis(),
+                    null);
             if (!recorded) {
               return Utils.internalError(
                   "Credential provider test result could not be recorded because the Catalog "
@@ -184,6 +195,22 @@ public class CredentialProviderOperations {
             String.format("Credential provider %s did not generate a credential", credentialType));
       }
     }
+  }
+
+  private Map<String, String> credentialProperties(Catalog catalog) {
+    Map<String, String> properties =
+        catalog instanceof BaseCatalog
+            ? ((BaseCatalog<?>) catalog).propertiesWithCredentialProviders()
+            : catalog.properties();
+    return properties == null ? Collections.emptyMap() : properties;
+  }
+
+  private Map<String, String> persistedProperties(Catalog catalog) {
+    Map<String, String> properties =
+        catalog instanceof BaseCatalog
+            ? ((BaseCatalog<?>) catalog).entity().getProperties()
+            : catalog.properties();
+    return properties == null ? Collections.emptyMap() : properties;
   }
 
   private boolean isCredentialProviderConfigured(
