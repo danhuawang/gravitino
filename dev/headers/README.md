@@ -41,6 +41,11 @@ stale year.
 `rewrite-datastrato-headers.py` is the one-off M3 pass for **existing**
 Datastrato headers. Do not use `apply` for that rewrite.
 
+`./gradlew checkDatastratoLicenseHeaders` then requires listed enterprise
+source to be `Copyright YYYY Datastrato Inc.` with no Apache grant line.
+`checkNewFileLicenseHeaders` only rejects a newly added Datastrato file that
+still has the grant line.
+
 Critical paths (locked by `dev/headers/test/run.sh`):
 
 1. Keep `YYYY`; `Pvt Ltd` → `Inc.`; drop the Apache grant line, including on an already-`Inc.` header.

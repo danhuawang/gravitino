@@ -16,18 +16,34 @@ import java.util.regex.Pattern;
 /**
  * Header classification for the repo licensing policy.
  *
- * <p>A new file violates the policy iff its header region carries both a Datastrato copyright line
- * and the Apache license sentence (see {@link #APACHE_SENTENCE}).
- * Upstream-ported ASF files (no Datastrato copyright) and copyright-only Datastrato files pass.
+ * <p>{@link #isViolation(Path)} is the new-file rule: a file fails iff its header region carries
+ * both a Datastrato copyright ({@code Pvt Ltd} or {@code Inc.}) and {@link #APACHE_SENTENCE}.
+ * Upstream ASF ports and copyright-only Datastrato files pass, including {@code Pvt Ltd}.
+ *
+ * <p>{@link #isListedFileViolation(String)} is the listed-file rule used by {@code
+ * checkDatastratoLicenseHeaders}: the header must be copyright-only {@code Copyright YYYY
+ * Datastrato Inc.}. {@code Pvt Ltd}, the Apache grant line, and a missing Datastrato copyright
+ * fail. The year is not checked.
  */
 public final class LicenseHeaderClassifier {
 
   private static final Pattern DATASTRATO_HEADER =
       Pattern.compile("Copyright\\s+\\d{4}\\s+Datastrato (?:Pvt Ltd|Inc)\\.");
 
+  private static final Pattern APPROVED_DATASTRATO_HEADER =
+      Pattern.compile("Copyright\\s+\\d{4}\\s+Datastrato Inc\\.");
+
   /** Apache license sentence that new Datastrato files must NOT carry. */
   public static final String APACHE_SENTENCE =
       "This software is licensed under the Apache License version 2.";
+
+  /** Listed-file failure when the header is not {@code Copyright YYYY Datastrato Inc.}. */
+  public static final String LISTED_MISSING_APPROVED_HEADER =
+      "missing Copyright YYYY Datastrato Inc.";
+
+  /** Listed-file failure when the header still carries {@link #APACHE_SENTENCE}. */
+  public static final String LISTED_APACHE_GRANT_NOT_ALLOWED =
+      "Apache grant sentence is not allowed";
 
   /** Number of leading lines considered the header region. */
   public static final int HEADER_LINE_COUNT = 20;
@@ -81,14 +97,46 @@ public final class LicenseHeaderClassifier {
     }
   }
 
-  /** Whether {@code header} contains the Datastrato copyright line. */
+  /**
+   * Whether {@code header} contains a Datastrato copyright line ({@code Pvt Ltd} or {@code Inc.}).
+   */
   public static boolean hasDatastratoCopyright(String header) {
     return DATASTRATO_HEADER.matcher(header).find();
+  }
+
+  /**
+   * Whether {@code header} contains the approved listed-file form {@code Copyright YYYY Datastrato
+   * Inc.}.
+   */
+  public static boolean hasApprovedDatastratoCopyright(String header) {
+    return APPROVED_DATASTRATO_HEADER.matcher(header).find();
   }
 
   /** Whether {@code header} contains the Apache license sentence. */
   public static boolean hasApacheSentence(String header) {
     return header.contains(APACHE_SENTENCE);
+  }
+
+  /**
+   * Whether a listed enterprise file fails the post-migration check: it lacks {@code Datastrato
+   * Inc.} copyright, or still carries {@link #APACHE_SENTENCE}.
+   */
+  public static boolean isListedFileViolation(String header) {
+    return listedFileViolationReason(header) != null;
+  }
+
+  /**
+   * Why a listed enterprise file fails {@code checkDatastratoLicenseHeaders}, or {@code null} if it
+   * passes.
+   */
+  public static String listedFileViolationReason(String header) {
+    if (!hasApprovedDatastratoCopyright(header)) {
+      return LISTED_MISSING_APPROVED_HEADER;
+    }
+    if (hasApacheSentence(header)) {
+      return LISTED_APACHE_GRANT_NOT_ALLOWED;
+    }
+    return null;
   }
 
   /**

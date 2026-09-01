@@ -62,6 +62,112 @@ class TestLicenseHeaderClassifier {
   }
 
   @Test
+  void listedFileAcceptsIncCopyrightOnlyAndKeepsYear() {
+    String current = "/*\n * Copyright 2026 Datastrato Inc.\n */";
+    assertTrue(LicenseHeaderClassifier.hasApprovedDatastratoCopyright(current));
+    assertFalse(LicenseHeaderClassifier.isListedFileViolation(current));
+    assertNull(LicenseHeaderClassifier.listedFileViolationReason(current));
+
+    String keptYear = "/*\n * Copyright 2024 Datastrato Inc.\n */";
+    assertTrue(LicenseHeaderClassifier.hasApprovedDatastratoCopyright(keptYear));
+    assertFalse(LicenseHeaderClassifier.isListedFileViolation(keptYear));
+    assertNull(LicenseHeaderClassifier.listedFileViolationReason(keptYear));
+  }
+
+  @Test
+  void listedFileRejectsPvtLtd() {
+    String pvtLtd = "/*\n * Copyright 2026 Datastrato Pvt Ltd.\n */";
+    assertTrue(LicenseHeaderClassifier.hasDatastratoCopyright(pvtLtd));
+    assertFalse(LicenseHeaderClassifier.hasApprovedDatastratoCopyright(pvtLtd));
+    assertTrue(LicenseHeaderClassifier.isListedFileViolation(pvtLtd));
+    assertEquals(
+        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
+        LicenseHeaderClassifier.listedFileViolationReason(pvtLtd));
+
+    String pvtLtdAndGrant =
+        "/*\n * Copyright 2024 Datastrato Pvt Ltd.\n * "
+            + LicenseHeaderClassifier.APACHE_SENTENCE
+            + "\n */";
+    assertEquals(
+        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
+        LicenseHeaderClassifier.listedFileViolationReason(pvtLtdAndGrant));
+  }
+
+  @Test
+  void listedFileRejectsApacheGrantEvenOnInc() {
+    String apacheGrant =
+        "/*\n * Copyright 2026 Datastrato Inc.\n * "
+            + LicenseHeaderClassifier.APACHE_SENTENCE
+            + "\n */";
+    assertTrue(LicenseHeaderClassifier.hasApprovedDatastratoCopyright(apacheGrant));
+    assertTrue(LicenseHeaderClassifier.isListedFileViolation(apacheGrant));
+    assertEquals(
+        LicenseHeaderClassifier.LISTED_APACHE_GRANT_NOT_ALLOWED,
+        LicenseHeaderClassifier.listedFileViolationReason(apacheGrant));
+  }
+
+  @Test
+  void listedFileRejectsMissingAndAsfHeaders() {
+    assertEquals(
+        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
+        LicenseHeaderClassifier.listedFileViolationReason("package pkg;"));
+    assertEquals(
+        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
+        LicenseHeaderClassifier.listedFileViolationReason(
+            "/*\n * Licensed to the Apache Software Foundation (ASF) under one\n */"));
+    assertEquals(
+        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
+        LicenseHeaderClassifier.listedFileViolationReason(
+            "/*\n * SPDX-License-Identifier: Apache-2.0\n */"));
+  }
+
+  @Test
+  void listedFileIgnoresCopyrightAfterHeaderWindow(@TempDir Path dir) throws IOException {
+    Path buriedInc = dir.resolve("BuriedInc.java");
+    List<String> missingHeader = new ArrayList<>();
+    missingHeader.add("class BuriedInc {");
+    for (int i = 0; i < 19; i++) {
+      missingHeader.add("  int a" + i + ";");
+    }
+    missingHeader.add("  // Copyright 2026 Datastrato Inc.");
+    missingHeader.add("}");
+    Files.write(buriedInc, missingHeader);
+    assertTrue(Files.readAllLines(buriedInc).size() > 20);
+    assertEquals(
+        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
+        LicenseHeaderClassifier.listedFileViolationReason(
+            LicenseHeaderClassifier.readHeader(buriedInc)));
+
+    Path approvedWithBuriedPvt = dir.resolve("ApprovedBuried.java");
+    List<String> approved = new ArrayList<>();
+    approved.add("/*");
+    approved.add(" * Copyright 2024 Datastrato Inc.");
+    approved.add(" */");
+    approved.add("class ApprovedBuried {");
+    for (int i = 0; i < 16; i++) {
+      approved.add("  int a" + i + ";");
+    }
+    approved.add("  // Copyright 2024 Datastrato Pvt Ltd.");
+    approved.add("  // " + LicenseHeaderClassifier.APACHE_SENTENCE);
+    approved.add("}");
+    Files.write(approvedWithBuriedPvt, approved);
+    assertTrue(Files.readAllLines(approvedWithBuriedPvt).size() > 20);
+    assertNull(
+        LicenseHeaderClassifier.listedFileViolationReason(
+            LicenseHeaderClassifier.readHeader(approvedWithBuriedPvt)));
+  }
+
+  @Test
+  void newFileCheckStillAllowsPvtLtdCopyrightOnly(@TempDir Path dir) throws IOException {
+    Path file = dir.resolve("PvtLtdOnly.java");
+    Files.write(
+        file, Arrays.asList("/*", " * Copyright 2026 Datastrato Pvt Ltd.", " */", "package pkg;"));
+    assertFalse(LicenseHeaderClassifier.isViolation(file));
+    assertTrue(
+        LicenseHeaderClassifier.isListedFileViolation(LicenseHeaderClassifier.readHeader(file)));
+  }
+
+  @Test
   void readsOnlyHeaderRegion(@TempDir Path dir) throws IOException {
     Path file = dir.resolve("Buried.java");
     List<String> lines = new ArrayList<>();
