@@ -37,7 +37,6 @@ val datastratoLicenseCheckIncludes = listOf(
   "metrics/**",
   "qa/**",
   "search/**",
-  "test/search-integration-test/**",
   "test/test-common/**",
   "bin/index.sh.template",
   "bin/gravitino-metrics-service.sh.template",

@@ -5,6 +5,7 @@ package com.datastrato.gravitino.integration.test;
 
 import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
 
+import com.datastrato.gravitino.search.client.SearchClient;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.test.OpenSearchContainer;

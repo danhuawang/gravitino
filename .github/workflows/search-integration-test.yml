@@ -106,7 +106,7 @@ jobs:
       - name: Run Search Integration Test
         id: integrationTest
         run: >
-          ./gradlew :test:search-integration-test:test  -PskipTests -PtestMode=deploy -PjdkVersion=17 -PskipDockerTests=false
+          ./gradlew :search:test -PskipTests -PtestMode=deploy -PjdkVersion=17 -PskipDockerTests=false
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v4
@@ -125,7 +125,6 @@ jobs:
             catalogs/**/*.log
             catalogs/**/*.tar
             distribution/**/*.log
-            test/search-integration-test/build/reports
+            search/build/reports
             distribution/package/logs/*.out
             distribution/package/logs/*.log
-
