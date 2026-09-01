@@ -18,9 +18,19 @@ configure<NodeExtension> {
 }
 
 tasks {
+  // LICENSE-ENTERPRISE does not define public commercial license metadata, so these
+  // proprietary specifications cannot satisfy Redocly's license-presence rules.
   val lintOpenAPI by registering(NpxTask::class) {
     command.set("@redocly/cli@1.23.1")
-    args.set(listOf("lint", "--extends=recommended-strict", "${project.projectDir}/open-api/openapi.yaml"))
+    args.set(
+      listOf(
+        "lint",
+        "--extends=recommended-strict",
+        "--skip-rule=info-license",
+        "--skip-rule=info-license-strict",
+        "${project.projectDir}/open-api/openapi.yaml"
+      )
+    )
     environment.set(mapOf("npm_config_cache" to "${project.projectDir}/.npm-cache"))
   }
 
@@ -30,6 +40,8 @@ tasks {
       listOf(
         "lint",
         "--extends=recommended-strict",
+        "--skip-rule=info-license",
+        "--skip-rule=info-license-strict",
         "${project.projectDir}/open-api/scim/openapi.yaml"
       )
     )
