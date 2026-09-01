@@ -2,7 +2,7 @@
 title: How to use SCIM provisioning
 slug: /how-to-use-scim-provisioning
 keyword: security authentication scim provisioning
-license: "Copyright 2026 Datastrato Inc."
+license: "Copyright 2026 Datastrato Pvt Ltd."
 ---
 
 ## Introduction
@@ -115,7 +115,6 @@ required keys at startup and **fails to start** if any are missing or incompatib
 | `gravitino.scim.userMapper.regex.pattern`                     | Regex pattern when `userMapper=regex`; first capture group is stored (optional)            | `([^@]+)@.*`                                                                     |
 | `gravitino.scim.groupMapper`                                  | Map SCIM `displayName` to `group_meta.group_name` before create/filter (optional)          | `regex`                                                                          |
 | `gravitino.scim.groupMapper.regex.pattern`                    | Regex pattern when `groupMapper=regex`; first capture group is stored (optional)           | `^/(.*)`                                                                         |
-| `gravitino.scim.errorHistory.retentionDays`                   | Days to retain IdP-facing SCIM protocol failure rows in `scim_error_history` (optional)    | `30` (must be a positive integer)                                                |
 
 Example:
 
@@ -142,9 +141,6 @@ gravitino.scim.userMapper.regex.pattern = ([^@]+)@.*
 
 gravitino.scim.groupMapper = regex
 gravitino.scim.groupMapper.regex.pattern = ^/(.*)
-
-# Optional: how long to keep protocol failure rows (default 30 days)
-# gravitino.scim.errorHistory.retentionDays = 30
 ```
 
 Build the IdP SCIM base URL from your listener host, `gravitino.scim.httpPort` (default
@@ -455,28 +451,6 @@ curl -s -H "Accept: application/vnd.gravitino.v1+json" \
 Grant roles to provisioned users or groups (see [Access control](/security/access-control)).
 Sign in through OAuth and call Gravitino APIs with the user access token. Group membership for
 authorization should reflect the IdP-assigned groups synced through SCIM.
-
----
-
-## Protocol error history
-
-Eligible failed IdP-facing SCIM **Users** and **Groups** calls on port **9201** are recorded into
-the enterprise table `scim_error_history` after the HTTP response is known. Recording is
-**best-effort**: failures are queued asynchronously and may be dropped if the bounded recorder
-queue is full under extreme load. Each persisted row stores the metalake, HTTP method and path,
-status, optional RFC 7644 `scimType`, a truncated error detail, the SCIM token name (principal),
-and `created_at`.
-
-| Behavior  | Detail                                                                                                                                               |
-|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| In scope  | Metalake-scoped `/Users` and `/Groups` responses with status **≥ 400**, except **404** (best-effort persistence)                                     |
-| Skipped   | **404** (user/group/metalake not found probes), successful responses, ServiceProviderConfig/Schemas/metadata paths, and token admin APIs on **8090** |
-| Retention | `gravitino.scim.errorHistory.retentionDays` (default **30**, must be a **positive integer**)                                                         |
-| Cleanup   | A dedicated cleaner deletes rows older than the retention window **once per day**                                                                    |
-
-There is no public REST API to list these rows in the current release; operators query
-`scim_error_history` in the entity-store JDBC database when investigating provisioning failures.
-File audit logs (`gravitino_audit.log`) remain available for the same traffic.
 
 ---
 
