@@ -1033,7 +1033,8 @@ tasks {
         ":plugins:idp-basic:copyLibAndConfigs",
         ":plugins:scim:copyLibAndConfigs",
         ":plugins:scim:service:copyLibAndConfigs",
-        ":plugins:scim-v2:copyLibAndConfigs"
+        ":plugins:scim-v2:copyLibAndConfigs",
+        ":plugins:scim-v2:service:copyLibAndConfigs"
       )
     if (!skipWeb) {
       dependencies.add(":web:web:build")
