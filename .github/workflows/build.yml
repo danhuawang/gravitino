@@ -225,7 +225,6 @@ jobs:
             -x :catalogs-contrib:catalog-jdbc-clickhouse:test
             -x :catalogs-contrib:catalog-jdbc-hologres:test
             -x :catalogs-contrib:catalog-jdbc-oceanbase:test
-            -x :test:search-integration-test:build
             -x :qa:gravitino-service-e2e-test:test
             -x :plugins:idp-basic:test
             -x :plugins:scim:test

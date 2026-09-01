@@ -6,6 +6,7 @@ package com.datastrato.gravitino.integration.test;
 import static com.datastrato.gravitino.search.dto.SearchEntitiesDTO.Builder.getSearchEntitiesDTOByType;
 import static java.util.Collections.emptyMap;
 
+import com.datastrato.gravitino.search.client.SearchClient;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.test.OpenSearchContainer;
 import com.google.common.collect.ImmutableMap;

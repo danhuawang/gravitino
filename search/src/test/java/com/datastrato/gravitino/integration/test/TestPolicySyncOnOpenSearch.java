@@ -10,6 +10,7 @@ import static org.apache.gravitino.Entity.EntityType.POLICY;
 import static org.apache.gravitino.Entity.EntityType.SCHEMA;
 import static org.apache.gravitino.Entity.EntityType.TABLE;
 
+import com.datastrato.gravitino.search.client.SearchClient;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchPolicyEntityDTO;

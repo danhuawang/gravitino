@@ -5,7 +5,7 @@ keywords:
 - jdbc
 - Oracle
 - metadata
-license: "This software is licensed under the Apache License version 2."
+license: "Copyright 2026 Datastrato Inc."
 ---
 
 import Tabs from '@theme/Tabs';

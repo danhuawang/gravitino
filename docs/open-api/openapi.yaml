@@ -597,10 +597,12 @@ components:
           - "CATALOG"
           - "SCHEMA"
           - "TABLE"
+          - "VIEW"
           - "COLUMN"
           - "FILESET"
           - "TOPIC"
           - "MODEL"
+          - "FUNCTION"
           - "ROLE"
     metadataObjectFullName:
       name: metadataObjectFullName
@@ -637,4 +639,3 @@ components:
     KerberosAuth:
       type: http
       scheme: negotiate
-
