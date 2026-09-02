@@ -51,6 +51,20 @@ OCEANBASE_JDBC_VERSION=${OCEANBASE_JDBC_VERSION:-"2.4.18"}
 OCEANBASE_JDBC_DRIVER_NAME="oceanbase-client-${OCEANBASE_JDBC_VERSION}.jar"
 OCEANBASE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/oceanbase/oceanbase-client/${OCEANBASE_JDBC_VERSION}/${OCEANBASE_JDBC_DRIVER_NAME}"
 
+# Paimon filesystem jars. These are self-contained shaded jars (bundle hadoop-aws /
+# hadoop-aliyun and the cloud SDKs internally). The version is read from
+# gradle/libs.versions.toml so the downloaded paimon-s3 / paimon-oss jars always match
+# the paimon version Gradle packages into the catalog.
+PAIMON_VERSION=$(grep -E "^paimon[[:space:]]*=" "${gravitino_home}/gradle/libs.versions.toml" | head -1 | sed -E "s/.*=[[:space:]]*['\"]([^'\"]+)['\"].*/\1/")
+if [ -z "${PAIMON_VERSION}" ]; then
+  echo "ERROR: failed to resolve paimon version from gradle/libs.versions.toml"
+  exit 1
+fi
+PAIMON_S3_JAR_NAME="paimon-s3-${PAIMON_VERSION}.jar"
+PAIMON_S3_DOWNLOAD_URL="https://repo1.maven.org/maven2/org/apache/paimon/paimon-s3/${PAIMON_VERSION}/${PAIMON_S3_JAR_NAME}"
+PAIMON_OSS_JAR_NAME="paimon-oss-${PAIMON_VERSION}.jar"
+PAIMON_OSS_DOWNLOAD_URL="https://repo1.maven.org/maven2/org/apache/paimon/paimon-oss/${PAIMON_VERSION}/${PAIMON_OSS_JAR_NAME}"
+
 # Prepare compile Gravitino packages
 "${gravitino_home}"/gradlew clean
 "${gravitino_home}"/gradlew compileDistribution -x test -x :docs:build -x :docs-enterprise:build -x :clients:client-python:build
@@ -130,6 +144,34 @@ cp "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${gravitino_click
 gravitino_oceanbase_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-oceanbase/libs"
 download_file "${gravitino_dir}/packages/${OCEANBASE_JDBC_DRIVER_NAME}" "${OCEANBASE_JDBC_DOWNLOAD_URL}"
 cp "${gravitino_dir}/packages/${OCEANBASE_JDBC_DRIVER_NAME}" "${gravitino_oceanbase_catalog_dir}"
+
+# Download and install Paimon S3/OSS FileIO jars so the lakehouse-paimon catalog can
+# access s3:// and oss:// warehouses out of the box. Paimon does not bundle these by
+# default (same policy as upstream Paimon), so they are added to the image here.
+paimon_lib_dir="${gravitino_dir}/packages/gravitino/catalogs/lakehouse-paimon/libs"
+mkdir -p "${paimon_lib_dir}"
+download_file "${gravitino_dir}/packages/${PAIMON_S3_JAR_NAME}" "${PAIMON_S3_DOWNLOAD_URL}"
+cp "${gravitino_dir}/packages/${PAIMON_S3_JAR_NAME}" "${paimon_lib_dir}"
+download_file "${gravitino_dir}/packages/${PAIMON_OSS_JAR_NAME}" "${PAIMON_OSS_DOWNLOAD_URL}"
+cp "${gravitino_dir}/packages/${PAIMON_OSS_JAR_NAME}" "${paimon_lib_dir}"
+
+# Copy the AWS and Aliyun bundles to the Paimon catalog libs for S3 / OSS credential vending.
+# Fail the build if a required bundle is missing (find -exec cp would otherwise exit 0
+# and silently ship an image without credential-vending support).
+copy_required_bundle() {
+  local bundle_dir="$1"
+  local pattern="$2"
+  local dest_dir="$3"
+  local jar
+  jar=$(find "${bundle_dir}" -name "${pattern}" ! -name '*-empty.jar' | head -1)
+  if [ -z "${jar}" ]; then
+    echo "ERROR: required bundle '${pattern}' not found in ${bundle_dir}"
+    exit 1
+  fi
+  cp -v "${jar}" "${dest_dir}"
+}
+copy_required_bundle "${gravitino_home}/bundles/aws-bundle/build/libs" 'gravitino-aws-bundle-*.jar' "${paimon_lib_dir}"
+copy_required_bundle "${gravitino_home}/bundles/aliyun-bundle/build/libs" 'gravitino-aliyun-bundle-*.jar' "${paimon_lib_dir}"
 
 # Keeping the container running at all times
 cat <<EOF >> "${gravitino_dir}/packages/gravitino/bin/gravitino.sh"
