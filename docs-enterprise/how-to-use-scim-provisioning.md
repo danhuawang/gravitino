@@ -77,13 +77,13 @@ Before you enable SCIM or call `/api/metalakes/{metalake}/scim/tokens`, ensure t
    In `gravitino.conf`, set **all** of the following:
 
    ```properties
-   gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.v2.web.rest.feature
+   gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.web.rest.feature
    gravitino.auxService.names = scim
    gravitino.scim.classpath = scim-server/libs
 
-   gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper
+   gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper
    gravitino.authenticator.oauth.groupsFields =
-   gravitino.server.webserver.customFilters = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthRequestPathFilter
+   gravitino.server.webserver.customFilters = com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter
    ```
 
    `gravitino.auxService.names` must include `scim` even when you are only exercising token admin on
@@ -102,12 +102,12 @@ required keys at startup and **fails to start** if any are missing or incompatib
 
 | Configuration item                                            | Description                                                                                | Example                                                                          |
 |---------------------------------------------------------------|--------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
-| `gravitino.server.rest.extensionPackages`                     | Registers token admin APIs and SCIM OAuth wiring on **8090** (required)                    | `com.datastrato.gravitino.scim.v2.web.rest.feature`                                 |
+| `gravitino.server.rest.extensionPackages`                     | Registers token admin APIs and SCIM OAuth wiring on **8090** (required)                    | `com.datastrato.gravitino.scim.web.rest.feature`                                 |
 | `gravitino.auxService.names`                                  | Enables the SCIM auxiliary service (required with the extension package)                   | `scim`                                                                           |
 | `gravitino.scim.classpath`                                    | Directory with SCIM JARs, for example `scim-server/libs` (required with aux service)       | `scim-server/libs`                                                               |
-| `gravitino.authenticator.oauth.principalMapper`               | OAuth principal mapper that loads groups from `scim_user_group_rel` (required with SCIM)   | `com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper`             |
+| `gravitino.authenticator.oauth.principalMapper`               | OAuth principal mapper that loads groups from `scim_user_group_rel` (required with SCIM)   | `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper`             |
 | `gravitino.authenticator.oauth.groupsFields`                  | Must be **empty** so JWT group claims do not override SCIM membership (required with SCIM) | (empty)                                                                          |
-| `gravitino.server.webserver.customFilters`                    | Servlet filter that captures metalake scope from the request path (required with SCIM)     | `com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthRequestPathFilter`           |
+| `gravitino.server.webserver.customFilters`                    | Servlet filter that captures metalake scope from the request path (required with SCIM)     | `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter`           |
 | `gravitino.authenticator.oauth.principalMapper.regex.pattern` | Regex applied to the JWT identity claim before username lookup (optional)                  | `([^@]+)@.*` (align with `userMapper` when the IdP sends email-style identities) |
 | `gravitino.scim.httpPort`                                     | SCIM protocol listener port (optional)                                                     | `9201`                                                                           |
 | `gravitino.scim.host`                                         | SCIM listener bind address (optional)                                                      | `0.0.0.0`                                                                        |
@@ -124,13 +124,13 @@ Example:
 gravitino.authenticators = oauth
 gravitino.authorization.enable = true
 
-gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.v2.web.rest.feature
+gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.web.rest.feature
 gravitino.auxService.names = scim
 gravitino.scim.classpath = scim-server/libs
 
-gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper
+gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper
 gravitino.authenticator.oauth.groupsFields =
-gravitino.server.webserver.customFilters = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthRequestPathFilter
+gravitino.server.webserver.customFilters = com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter
 
 # Optional: align JWT username normalization with SCIM userName mapping
 gravitino.authenticator.oauth.principalMapper.regex.pattern = ([^@]+)@.*
@@ -353,7 +353,7 @@ provisioned `user_meta.user_name` (use `gravitino.scim.userMapper` if the IdP se
 email-style SCIM `userName` values).
 
 When SCIM is enabled, Gravitino **requires** `gravitino.authenticator.oauth.principalMapper` to be
-`com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper` and
+`com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper` and
 `gravitino.authenticator.oauth.groupsFields` to be empty. At runtime:
 
 1. `ScimOAuthRequestPathFilter` (via `gravitino.server.webserver.customFilters`) records the
@@ -383,13 +383,13 @@ Append SCIM and OAuth settings to `gravitino.conf` (see [Configuration](#configu
 gravitino.authenticators = oauth
 gravitino.authorization.enable = true
 
-gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.v2.web.rest.feature
+gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.web.rest.feature
 gravitino.auxService.names = scim
 gravitino.scim.classpath = scim-server/libs
 
-gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthPrincipalMapper
+gravitino.authenticator.oauth.principalMapper = com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper
 gravitino.authenticator.oauth.groupsFields =
-gravitino.server.webserver.customFilters = com.datastrato.gravitino.scim.v2.basic.oauth.ScimOAuthRequestPathFilter
+gravitino.server.webserver.customFilters = com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter
 ```
 
 Start Gravitino:

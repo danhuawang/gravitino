@@ -24,7 +24,6 @@ class TestScimTokenSummary {
     ScimTokenMetaPO tokenMeta =
         ScimTokenMetaPO.builder()
             .withTokenId(1L)
-            .withMetalakeId(10L)
             .withTokenName("prod")
             .withTokenHash("hash")
             .withExpiresAt(5000L)
@@ -48,7 +47,6 @@ class TestScimTokenSummary {
     ScimTokenMetaPO tokenMeta =
         ScimTokenMetaPO.builder()
             .withTokenId(1L)
-            .withMetalakeId(10L)
             .withTokenName("prod")
             .withTokenHash("hash")
             .withExpiresAt(1000L)

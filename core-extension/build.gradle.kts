@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
+ * Copyright 2024 Datastrato Inc.
  */
 
 plugins {
@@ -24,10 +24,10 @@ dependencies {
   annotationProcessor(libs.lombok)
   compileOnly(libs.lombok)
   compileOnly(project(":plugins:idp-basic"))
-  compileOnly(project(":plugins:scim-v2"))
+  compileOnly(project(":plugins:scim"))
 
   testImplementation(project(":plugins:idp-basic"))
-  testImplementation(project(":plugins:scim-v2"))
+  testImplementation(project(":plugins:scim"))
   testImplementation(libs.commons.io)
   testImplementation(libs.commons.lang3)
   testImplementation(libs.junit.jupiter.api)

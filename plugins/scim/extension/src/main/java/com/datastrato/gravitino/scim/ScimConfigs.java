@@ -18,10 +18,7 @@ public final class ScimConfigs {
   /** Default number of days to retain SCIM error history rows. */
   public static final int DEFAULT_ERROR_HISTORY_RETENTION_DAYS = 30;
 
-  /**
-   * Days to retain SCIM protocol error history. A dedicated cleaner deletes rows older than this
-   * once per day.
-   */
+  /** Days to retain SCIM protocol error history. */
   public static final ConfigEntry<Integer> ERROR_HISTORY_RETENTION_DAYS =
       new ConfigBuilder(ERROR_HISTORY_RETENTION_DAYS_KEY)
           .doc(

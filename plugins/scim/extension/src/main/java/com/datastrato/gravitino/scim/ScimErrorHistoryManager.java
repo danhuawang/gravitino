@@ -50,10 +50,7 @@ public final class ScimErrorHistoryManager {
           },
           new ThreadPoolExecutor.DiscardPolicy());
   private static final Pattern USERS_OR_GROUPS_PATH =
-      Pattern.compile(
-          "^"
-              + Pattern.quote(ScimUtils.METALAKE_SCIM_PREFIX)
-              + "[^/]+/(Users|Groups)(?:/[^/]+)?/?$");
+      Pattern.compile("^" + Pattern.quote(ScimUtils.SCIM_PREFIX) + "(Users|Groups)(?:/[^/]+)?/?$");
 
   private static final class InstanceHolder {
     private static final ScimErrorHistoryManager INSTANCE = new ScimErrorHistoryManager();
@@ -79,9 +76,8 @@ public final class ScimErrorHistoryManager {
   }
 
   /**
-   * Records a failed metalake-scoped SCIM protocol request. Never throws to the HTTP path.
+   * Records a failed instance-scoped SCIM protocol request. Never throws to the HTTP path.
    *
-   * @param metalakeName metalake name from the request path, or blank when unknown
    * @param httpMethod HTTP method
    * @param requestPath request URI
    * @param httpStatus HTTP status code
@@ -90,7 +86,6 @@ public final class ScimErrorHistoryManager {
    * @param principal authenticated SCIM token name, or blank when unknown
    */
   public void recordHttpFailure(
-      @Nullable String metalakeName,
       String httpMethod,
       String requestPath,
       int httpStatus,
@@ -112,8 +107,6 @@ public final class ScimErrorHistoryManager {
               ERROR_HISTORY_META_SERVICE.insertScimErrorHistory(
                   ScimErrorHistoryPO.builder()
                       .withErrorId(generator.nextId())
-                      .withMetalakeId(0L)
-                      .withMetalakeName(StringUtils.defaultString(metalakeName))
                       .withHttpMethod(
                           StringUtils.defaultString(httpMethod).toUpperCase(Locale.ROOT))
                       .withRequestPath(
@@ -143,20 +136,17 @@ public final class ScimErrorHistoryManager {
   }
 
   /**
-   * Counts error history rows for the given metalake.
+   * Counts error history rows.
    *
-   * @param metalakeName target metalake name
-   * @return row count, or {@code 0} when the metalake is unknown
+   * @return row count
    */
-  public long countScimErrorHistory(String metalakeName) {
-    Preconditions.checkArgument(
-        StringUtils.isNotBlank(metalakeName), "metalakeName must not be blank");
-    return ERROR_HISTORY_META_SERVICE.countScimErrorHistory(metalakeName);
+  public long countScimErrorHistory() {
+    return ERROR_HISTORY_META_SERVICE.countScimErrorHistory();
   }
 
   /**
-   * Returns whether a metalake-scoped Users/Groups failure should be persisted. HTTP 404 and
-   * non-error statuses are skipped.
+   * Returns whether a Users/Groups failure should be persisted. HTTP 404 and non-error statuses are
+   * skipped.
    *
    * @param httpStatus HTTP status
    * @param requestPath request URI

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
+ * Copyright 2024 Datastrato Inc.
  */
 package com.datastrato.gravitino;
 
@@ -34,7 +34,7 @@ import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoViewEventDispatcher;
 import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
-import com.datastrato.gravitino.scim.v2.ScimUserGroupRelManager;
+import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.google.common.annotations.VisibleForTesting;
 import java.util.function.Supplier;
 import org.apache.gravitino.Config;

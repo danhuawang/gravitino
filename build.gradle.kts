@@ -1031,8 +1031,8 @@ tasks {
         ":lance:lance-rest-server:copyLibAndConfigs",
         ":maintenance:optimizer:copyLibAndConfigs",
         ":plugins:idp-basic:copyLibAndConfigs",
-        ":plugins:scim-v2:copyLibAndConfigs",
-        ":plugins:scim-v2:service:copyLibAndConfigs"
+        ":plugins:scim:copyLibAndConfigs",
+        ":plugins:scim:service:copyLibAndConfigs"
       )
     if (!skipWeb) {
       dependencies.add(":web:web:build")
@@ -1372,7 +1372,6 @@ tasks {
         it.name != "license-tools" &&
         it.parent?.name != "plugins" &&
         it.parent?.name != "scim" &&
-        it.parent?.name != "scim-v2" &&
         it.name != "mcp-server"
       ) {
         from(it.configurations.runtimeClasspath) {
@@ -1682,7 +1681,6 @@ tasks {
         !it.path.startsWith(":bundles:") &&
         it.parent?.name != "plugins" &&
         it.parent?.name != "scim" &&
-        it.parent?.name != "scim-v2" &&
         it.parent?.name != "maintenance" &&
         it.parent?.name != "test" &&
         it.parent?.name != "licensing" &&

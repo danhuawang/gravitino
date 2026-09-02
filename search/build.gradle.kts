@@ -66,7 +66,7 @@ dependencies {
   testImplementation(libs.mockito.core)
 
   testRuntimeOnly(project(":plugins:idp-basic"))
-  testRuntimeOnly(project(":plugins:scim-v2"))
+  testRuntimeOnly(project(":plugins:scim"))
   testRuntimeOnly(libs.junit.jupiter.engine)
 }
 

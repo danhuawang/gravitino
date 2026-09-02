@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
+ * Copyright 2024 Datastrato Inc.
  */
 
 plugins {
@@ -34,7 +34,7 @@ dependencies {
   compileOnly(libs.lombok)
 
   testImplementation(project(":plugins:idp-basic"))
-  testImplementation(project(":plugins:scim-v2"))
+  testImplementation(project(":plugins:scim"))
   testImplementation(project(":server-common"))
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")

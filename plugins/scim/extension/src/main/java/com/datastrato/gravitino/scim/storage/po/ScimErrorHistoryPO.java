@@ -12,11 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-/**
- * Persistent object for SCIM protocol error history rows in {@code scim_error_history}.
- *
- * <p>{@code metalakeName} is used only to resolve {@code metalake_id} on insert and is not stored.
- */
+/** Persistent object for SCIM protocol error history rows. */
 @Getter
 @EqualsAndHashCode
 @ToString
@@ -25,8 +21,6 @@ import lombok.ToString;
 @Builder(setterPrefix = "with")
 public class ScimErrorHistoryPO {
   private Long errorId;
-  private Long metalakeId;
-  private String metalakeName;
   private String httpMethod;
   private String requestPath;
   private Integer httpStatus;

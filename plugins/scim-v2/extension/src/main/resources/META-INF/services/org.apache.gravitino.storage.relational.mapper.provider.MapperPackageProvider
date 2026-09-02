@@ -1,8 +1,0 @@
-#
-# Copyright 2026 Datastrato Inc.
-#
-com.datastrato.gravitino.scim.v2.storage.mapper.provider.ScimTokenMapperPackageProvider
-com.datastrato.gravitino.scim.v2.storage.mapper.provider.ScimUserGroupRelMapperPackageProvider
-com.datastrato.gravitino.scim.v2.storage.mapper.provider.ScimErrorHistoryMapperPackageProvider
-com.datastrato.gravitino.scim.v2.storage.mapper.provider.ScimUserMetaMapperPackageProvider
-com.datastrato.gravitino.scim.v2.storage.mapper.provider.ScimGroupMetaMapperPackageProvider

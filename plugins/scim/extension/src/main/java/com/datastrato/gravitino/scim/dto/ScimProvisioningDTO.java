@@ -13,17 +13,13 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 
-/** One metalake row in the SCIM Provisioning overview list. */
+/** SCIM provisioning overview row. */
 @Getter
 @EqualsAndHashCode
 @ToString
 @Builder(setterPrefix = "with")
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ScimProvisioningDTO {
-
-  @JsonProperty("metalake")
-  private final String metalake;
-
   @JsonProperty("endpoint")
   private final String endpoint;
 
@@ -33,41 +29,15 @@ public class ScimProvisioningDTO {
   @JsonProperty("lastUsedAt")
   private final long lastUsedAt;
 
-  /** Default constructor for Jackson deserialization. */
   public ScimProvisioningDTO() {
-    this(null, null, 0L, 0L);
+    this(null, 0L, 0L);
   }
 
-  /**
-   * Creates a provisioning overview DTO.
-   *
-   * @param metalake metalake name
-   * @param endpoint SCIM base path for the metalake
-   * @param tokenCount active token count
-   * @param lastUsedAt max {@code last_used_at}; {@code 0} means never
-   * @return DTO
-   */
-  public static ScimProvisioningDTO of(
-      String metalake, String endpoint, long tokenCount, long lastUsedAt) {
-    return ScimProvisioningDTO.builder()
-        .withMetalake(metalake)
-        .withEndpoint(endpoint)
-        .withTokenCount(tokenCount)
-        .withLastUsedAt(lastUsedAt)
-        .build();
-  }
-
-  /**
-   * Creates a provisioning overview DTO from a service-layer summary.
-   *
-   * @param summary provisioning overview row
-   * @return DTO
-   */
   public static ScimProvisioningDTO from(ScimProvisioningSummary summary) {
-    return of(
-        summary.getMetalake(),
-        summary.getEndpoint(),
-        summary.getTokenCount(),
-        summary.getLastUsedAt());
+    return ScimProvisioningDTO.builder()
+        .withEndpoint(summary.getEndpoint())
+        .withTokenCount(summary.getTokenCount())
+        .withLastUsedAt(summary.getLastUsedAt())
+        .build();
   }
 }

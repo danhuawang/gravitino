@@ -12,7 +12,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 
-/** SCIM provisioning overview stats for one metalake. */
+/** SCIM provisioning overview stats. */
 @Getter
 @EqualsAndHashCode
 @ToString
@@ -20,7 +20,6 @@ import lombok.ToString;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder(setterPrefix = "with")
 public class ScimProvisioningStatsPO {
-  private String metalakeName;
   private Long tokenCount;
   private Long lastUsedAt;
 }

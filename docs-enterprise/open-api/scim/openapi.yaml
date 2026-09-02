@@ -13,7 +13,7 @@ info:
     by the `scim` plugin on the main Gravitino REST server (port 8090).
 
     Enable the token admin API by registering
-    `com.datastrato.gravitino.scim.v2.web.rest.feature` in
+    `com.datastrato.gravitino.scim.web.rest.feature` in
     `gravitino.server.rest.extensionPackages`.
 
     All token create/rotate/delete endpoints require main-server authentication and

@@ -45,18 +45,17 @@ public class ScimErrorHistoryMetaService {
   }
 
   /**
-   * Counts error history rows for the given metalake.
+   * Counts error history rows.
    *
-   * @param metalakeName target metalake name
-   * @return row count, or {@code 0} when the metalake is unknown
+   * @return row count
    */
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "countScimErrorHistory")
-  public long countScimErrorHistory(String metalakeName) {
+  public long countScimErrorHistory() {
     Long count =
         SessionUtils.getWithoutCommit(
-            ScimErrorHistoryMapper.class, mapper -> mapper.countByMetalake(metalakeName));
+            ScimErrorHistoryMapper.class, ScimErrorHistoryMapper::countAll);
     return count == null ? 0L : count;
   }
 

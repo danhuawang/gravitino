@@ -8,8 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.datastrato.gravitino.scim.storage.po.ScimErrorHistoryPO;
 import java.io.IOException;
-import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
-import org.apache.gravitino.storage.relational.po.MetalakePO;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -28,45 +26,17 @@ class TestScimErrorHistoryStorage extends AbstractScimMetaStorageTest {
   @MethodSource("storageProvider")
   void testInsertAndCount(String type) throws IOException {
     init(type);
-    assertEquals(0L, mapper.countByMetalake("test_metalake"));
-    insertMetalake();
-    mapper.insert(row(1L, "test_metalake", System.currentTimeMillis()));
-    mapper.insert(row(2L, "missing", System.currentTimeMillis()));
-    ScimErrorHistoryPO stored = mapper.selectByErrorId(1L);
-    assertEquals(10L, stored.getMetalakeId());
-    assertEquals("POST", stored.getHttpMethod());
-    assertEquals("/scim/v2/metalakes/test_metalake/Users", stored.getRequestPath());
-    assertEquals(409, stored.getHttpStatus());
-    assertEquals("uniqueness", stored.getScimType());
-    assertEquals("already exists", stored.getErrorDetail());
-    assertEquals("entra", stored.getPrincipal());
-    assertEquals(0L, mapper.selectByErrorId(2L).getMetalakeId());
-    assertEquals(1L, mapper.countByMetalake("test_metalake"));
-    assertEquals(0L, mapper.countByMetalake("missing"));
+    assertEquals(0L, mapper.countAll());
+    mapper.insert(row(1L, System.currentTimeMillis()));
+    mapper.insert(row(2L, System.currentTimeMillis()));
+    assertEquals(2L, mapper.countAll());
   }
 
-  private void insertMetalake() {
-    sharedSession
-        .getMapper(MetalakeMetaMapper.class)
-        .insertMetalakeMeta(
-            MetalakePO.builder()
-                .withMetalakeId(10L)
-                .withMetalakeName("test_metalake")
-                .withAuditInfo("{}")
-                .withSchemaVersion("1.0")
-                .withCurrentVersion(1L)
-                .withLastVersion(0L)
-                .withDeletedAt(0L)
-                .build());
-  }
-
-  private static ScimErrorHistoryPO row(long errorId, String metalakeName, long createdAt) {
+  private static ScimErrorHistoryPO row(long errorId, long createdAt) {
     return ScimErrorHistoryPO.builder()
         .withErrorId(errorId)
-        .withMetalakeId(0L)
-        .withMetalakeName(metalakeName)
         .withHttpMethod("POST")
-        .withRequestPath("/scim/v2/metalakes/" + metalakeName + "/Users")
+        .withRequestPath("/scim/v2/Users")
         .withHttpStatus(409)
         .withScimType("uniqueness")
         .withErrorDetail("already exists")

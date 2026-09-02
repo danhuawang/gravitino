@@ -13,7 +13,7 @@ import java.util.Map;
 import org.apache.gravitino.storage.relational.JDBCBackend.JDBCBackendType;
 import org.apache.ibatis.annotations.Param;
 
-/** Factory that selects the SCIM error history SQL provider for the active JDBC backend. */
+/** Factory for SCIM error history SQL providers. */
 public class ScimErrorHistorySQLProviderFactory {
   private static final ScimErrorHistoryBaseSQLProvider MYSQL_PROVIDER =
       new ScimErrorHistoryBaseSQLProvider();
@@ -23,12 +23,9 @@ public class ScimErrorHistorySQLProviderFactory {
       new ScimErrorHistoryPostgreSQLProvider();
   private static final Map<JDBCBackendType, ScimErrorHistoryBaseSQLProvider> PROVIDER_MAP =
       ImmutableMap.of(
-          JDBCBackendType.MYSQL,
-          MYSQL_PROVIDER,
-          JDBCBackendType.H2,
-          H2_PROVIDER,
-          JDBCBackendType.POSTGRESQL,
-          POSTGRESQL_PROVIDER);
+          JDBCBackendType.MYSQL, MYSQL_PROVIDER,
+          JDBCBackendType.H2, H2_PROVIDER,
+          JDBCBackendType.POSTGRESQL, POSTGRESQL_PROVIDER);
 
   private ScimErrorHistorySQLProviderFactory() {}
 
@@ -36,18 +33,8 @@ public class ScimErrorHistorySQLProviderFactory {
     return currentProvider().insert(errorHistory);
   }
 
-  public static String selectByErrorId(@Param("errorId") Long errorId) {
-    return currentProvider().selectByErrorId(errorId);
-  }
-
-  /**
-   * Builds the metalake-scoped count statement for the active backend.
-   *
-   * @param metalakeName target metalake name
-   * @return SQL statement
-   */
-  public static String countByMetalake(@Param("metalakeName") String metalakeName) {
-    return currentProvider().countByMetalake(metalakeName);
+  public static String countAll() {
+    return currentProvider().countAll();
   }
 
   public static String deleteByCreatedAtBefore(

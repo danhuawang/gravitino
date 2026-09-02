@@ -57,7 +57,7 @@ val datastratoLicenseCheckIncludes = listOf(
   "src/test/java/com/datastrato/gravitino/transit/packaging/TransitProviderDiscoveryProbe.java",
   "licensing/**",
   "scripts/enterprise/**",
-  "plugins/scim-v2/**",
+  "plugins/scim/**",
   "core/src/main/java/org/apache/gravitino/listener/api/event/scim/**",
   "core/src/test/java/org/apache/gravitino/listener/api/event/scim/**"
 )
