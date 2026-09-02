@@ -7,6 +7,7 @@ package com.datastrato.gravitino.search.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import java.util.List;
 import lombok.EqualsAndHashCode;
 
@@ -84,7 +85,7 @@ public class SearchModelEntityDTO extends SearchEntityDTO {
     public static class Builder {
       private int version;
       private List<String> uri;
-      private List<String> aliases;
+      private List<String> aliases = ImmutableList.of();
 
       public Builder withUri(List<String> uri) {
         this.uri = uri;
@@ -104,8 +105,7 @@ public class SearchModelEntityDTO extends SearchEntityDTO {
       public SearchModelVersionDTO build() {
         Preconditions.checkArgument(
             uri != null && !uri.isEmpty(), "\"uri\" cannot be null or empty");
-        Preconditions.checkArgument(
-            aliases != null && !aliases.isEmpty(), "\"aliases\" cannot be null or empty");
+        Preconditions.checkArgument(aliases != null, "\"aliases\" cannot be null");
         return new SearchModelVersionDTO(this);
       }
     }

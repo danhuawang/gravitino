@@ -7,9 +7,7 @@ import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchModelEntityPO.SearchModelVersionPO;
 import com.datastrato.gravitino.search.utils.EntityConverterUtils;
 import com.google.common.collect.ImmutableList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.apache.gravitino.Auditable;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.catalog.EntityCombinedModel;
@@ -40,26 +38,21 @@ class ModelSearchEntitySource extends LeafSearchEntitySource {
 
   private List<SearchModelVersionPO> getModelVersions(
       SearchEntityIdentifier searchEntityIdentifier) {
-    int[] versions =
+    ModelVersion[] modelVersions =
         GravitinoEnv.getInstance()
             .modelDispatcher()
-            .listModelVersions(searchEntityIdentifier.entityIdent());
-    if (versions == null || versions.length == 0) {
+            .listModelVersionInfos(searchEntityIdentifier.entityIdent());
+    if (modelVersions == null || modelVersions.length == 0) {
       return ImmutableList.of();
     }
 
     ImmutableList.Builder<SearchModelVersionPO> builder = ImmutableList.builder();
-    for (int version : versions) {
-      ModelVersion modelVersion =
-          GravitinoEnv.getInstance()
-              .modelDispatcher()
-              .getModelVersion(searchEntityIdentifier.entityIdent(), version);
-
+    for (ModelVersion modelVersion : modelVersions) {
       builder.add(
           new SearchModelVersionPO.Builder()
-              .withAliases(Arrays.stream(modelVersion.aliases()).collect(Collectors.toList()))
-              .withVersion(version)
-              .withUri(ImmutableList.of(modelVersion.uri()))
+              .withAliases(ImmutableList.copyOf(modelVersion.aliases()))
+              .withVersion(modelVersion.version())
+              .withUri(ImmutableList.sortedCopyOf(modelVersion.uris().values()))
               .build());
     }
 
