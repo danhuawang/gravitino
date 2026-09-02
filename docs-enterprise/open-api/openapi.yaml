@@ -31,6 +31,21 @@ security:
   - BasicAuth: []
 
 paths:
+  /search/query:
+    $ref: "./search.yaml#/paths/~1search~1query"
+
+  /search/rebuild/metalakes/{metalake}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./search.yaml#/paths/~1search~1rebuild~1metalakes~1%7Bmetalake%7D"
+
+  /search/sync/metalakes/{metalake}/objects:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./search.yaml#/paths/~1search~1sync~1metalakes~1%7Bmetalake%7D~1objects"
+
+  /search/task/{taskId}/status:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./search.yaml#/paths/~1search~1task~1%7BtaskId%7D~1status"
+
   /web/metalakes/{metalake}/connections/{connection}/credential-providers/{credentialType}/test:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./credential-providers.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1connections~1%7Bconnection%7D~1credential-providers~1%7BcredentialType%7D~1test"

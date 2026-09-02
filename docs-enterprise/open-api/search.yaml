@@ -1,0 +1,520 @@
+# Copyright 2026 Datastrato Inc.
+
+---
+
+paths:
+  /search/query:
+    get:
+      tags:
+        - search
+      summary: Search metadata
+      operationId: searchEntities
+      description: |
+        Searches metadata in a metalake. The keyword can contain free text and filters such as
+        `catalog_name:catalog`, `entity_type:TABLE`, and `tag_name:tag`. Results are grouped by
+        entity type, and pagination is applied independently to each group.
+      parameters:
+        - name: metalake
+          in: query
+          description: The name of the metalake to search
+          required: true
+          schema:
+            type: string
+        - name: keyword
+          in: query
+          description: The free-text query and optional search filters. Omit it to list all indexed metadata.
+          required: false
+          schema:
+            type: string
+        - name: pageNumber
+          in: query
+          description: The zero-based page number for each entity-type group
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+        - name: pageSize
+          in: query
+          description: The maximum number of entities returned in each entity-type group
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 10
+      responses:
+        "200":
+          description: |-
+            Returns matching metadata grouped by entity type. If query processing fails internally,
+            the response contains an empty entity list.
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/SearchQueryResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+
+  /search/rebuild/metalakes/{metalake}:
+    post:
+      tags:
+        - search
+      summary: Rebuild a metalake search index
+      operationId: rebuildSearchIndex
+      description: |
+        Starts an asynchronous rebuild of all search indexes for the specified metalake. Use the
+        returned task identifier with the task-status endpoint to monitor the rebuild.
+      parameters:
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      responses:
+        "200":
+          description: Returns the identifier of the submitted rebuild task
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/SyncMetadataResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5XX":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /search/sync/metalakes/{metalake}/objects:
+    post:
+      tags:
+        - search
+      summary: Synchronize metadata with the search index
+      operationId: syncMetadataObjects
+      description: |
+        Starts an asynchronous search-index synchronization for a metadata object. Set both
+        `metadataType` and `metadataFullName` to synchronize a specific object. Omit both fields,
+        or send an empty JSON object, to synchronize all metadata in the metalake. Use the returned
+        task identifier with the task-status endpoint to monitor the synchronization.
+      parameters:
+        - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      requestBody:
+        description: |-
+          The object to synchronize and whether its descendants should also be synchronized. Send an
+          empty JSON object (`{}`) to synchronize all metadata in the metalake.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncMetadataRequest"
+      responses:
+        "200":
+          description: Returns the identifier of the submitted synchronization task
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/SyncMetadataResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5XX":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /search/task/{taskId}/status:
+    get:
+      tags:
+        - search
+      summary: Get a search task status
+      operationId: getSearchTaskStatus
+      description: Returns the current status of an asynchronous search-index task
+      parameters:
+        - name: taskId
+          in: path
+          description: The identifier returned when the asynchronous task was submitted
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Returns the current task status
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/TaskStatusResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5XX":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    SearchQueryResponse:
+      type: object
+      description: Metadata search results grouped by entity type
+      required:
+        - code
+        - entities
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        entities:
+          type: array
+          description: The result groups that contain matches
+          items:
+            $ref: "#/components/schemas/SearchResultGroup"
+
+    SearchResultGroup:
+      type: object
+      description: Search results for one entity type
+      required:
+        - totalSize
+        - type
+        - entities
+      properties:
+        totalSize:
+          type: integer
+          format: int32
+          minimum: 0
+          description: The total number of matches for this entity type before pagination
+        type:
+          $ref: "#/components/schemas/SearchEntityType"
+        entities:
+          type: array
+          description: The requested page of matching entities
+          items:
+            $ref: "#/components/schemas/SearchEntity"
+
+    SearchEntityType:
+      type: string
+      description: The type of a searchable metadata entity
+      enum:
+        - catalog
+        - schema
+        - table
+        - view
+        - function
+        - fileset
+        - topic
+        - model
+        - tag
+        - policy
+        - user
+        - group
+        - role
+
+    SearchEntity:
+      type: object
+      description: |
+        An indexed metadata entity. `provider` and `type` are returned for catalogs; `columns` is
+        returned for tables and views; `latest_version` and `model_versions` are returned for
+        models; and `policy_type`, `enabled`, and `content` are returned for policies.
+      required:
+        - entityId
+        - entityType
+        - inUse
+        - metalake
+        - entityName
+        - updateTime
+      properties:
+        entityId:
+          type: integer
+          format: int64
+          description: The unique identifier of the entity
+        entityType:
+          $ref: "#/components/schemas/SearchEntityType"
+        inUse:
+          type: boolean
+          description: Whether the entity is currently in use
+        metalake:
+          type: string
+          description: The metalake that contains the entity
+        entityName:
+          type: string
+          description: The name of the entity
+        entityComment:
+          type: string
+          description: The comment associated with the entity
+        catalogName:
+          type: string
+          description: The catalog that contains the entity, when applicable
+        fullQualifiedName:
+          type: string
+          description: The fully qualified name of the entity
+        tags:
+          type: array
+          description: Tags associated with the entity
+          items:
+            $ref: "#/components/schemas/SearchTag"
+        policyNames:
+          type: array
+          description: Names of policies associated with the entity
+          items:
+            type: string
+        searchAudit:
+          $ref: "#/components/schemas/SearchAudit"
+        owner:
+          type: string
+          description: The owner of the entity
+        userPermissions:
+          type: array
+          description: User permissions projected into the search index
+          items:
+            $ref: "#/components/schemas/SearchPermission"
+        rolePermissions:
+          type: array
+          description: Role permissions projected into the search index
+          items:
+            $ref: "#/components/schemas/SearchPermission"
+        entityProperties:
+          type: array
+          description: Entity properties represented as key-value pairs
+          items:
+            $ref: "#/components/schemas/SearchProperty"
+        updateTime:
+          type: integer
+          format: int64
+          description: The last index update time in milliseconds since the Unix epoch
+        provider:
+          type: string
+          description: The provider of a catalog entity
+        type:
+          type: string
+          description: The catalog type of a catalog entity
+          enum:
+            - relational
+            - fileset
+            - messaging
+            - model
+        columns:
+          type: array
+          description: Columns of a table or view entity
+          items:
+            $ref: "#/components/schemas/SearchColumn"
+        latest_version:
+          type: integer
+          format: int32
+          description: The latest version number of a model entity
+        model_versions:
+          type: array
+          description: Versions of a model entity
+          items:
+            $ref: "#/components/schemas/SearchModelVersion"
+        policy_type:
+          type: string
+          description: The type of a policy entity
+        enabled:
+          type: boolean
+          description: Whether a policy entity is enabled
+        content:
+          type: string
+          description: The serialized content of a policy entity
+
+    SearchTag:
+      type: object
+      description: A tag projected into a search entity
+      required:
+        - tagName
+      properties:
+        tagName:
+          type: string
+          description: The name of the tag
+        tagComment:
+          type: string
+          description: The comment associated with the tag
+        properties:
+          type: object
+          description: Tag properties
+          additionalProperties:
+            type: string
+
+    SearchAudit:
+      type: object
+      description: Audit information projected into a search entity
+      properties:
+        createTime:
+          type: string
+          description: The ISO-8601 local date-time when the entity was created
+        creator:
+          type: string
+          description: The principal that created the entity
+        lastModifiedTime:
+          type: string
+          description: The ISO-8601 local date-time when the entity was last modified
+        lastModifier:
+          type: string
+          description: The principal that last modified the entity
+
+    SearchPermission:
+      type: object
+      description: A user or role permission projected into a search entity
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: The user or role name
+        permission:
+          type: string
+          description: The serialized permission value
+
+    SearchProperty:
+      type: object
+      description: A search entity property
+      required:
+        - key
+        - value
+      properties:
+        key:
+          type: string
+          description: The property key
+        value:
+          type: string
+          description: The property value
+
+    SearchColumn:
+      type: object
+      description: A table or view column projected into a search entity
+      required:
+        - columnName
+      properties:
+        columnName:
+          type: string
+          description: The name of the column
+        columnComment:
+          type: string
+          description: The comment associated with the column
+
+    SearchModelVersion:
+      type: object
+      description: A version of a model projected into a search entity
+      required:
+        - version
+        - uri
+        - aliases
+      properties:
+        version:
+          type: integer
+          format: int32
+          description: The model version number
+        uri:
+          type: array
+          description: Artifact URIs for this model version
+          items:
+            type: string
+        aliases:
+          type: array
+          description: Aliases assigned to this model version
+          items:
+            type: string
+
+    SyncMetadataRequest:
+      type: object
+      description: |
+        A metadata synchronization request. `metadataType` and `metadataFullName` must either both
+        be set or both be omitted.
+      oneOf:
+        - required:
+            - metadataFullName
+            - metadataType
+        - not:
+            anyOf:
+              - required:
+                  - metadataFullName
+              - required:
+                  - metadataType
+      properties:
+        metadataFullName:
+          type: string
+          minLength: 1
+          pattern: ".*\\S.*"
+          description: The dot-separated full name of the metadata object
+        metadataType:
+          type: string
+          minLength: 1
+          pattern: ".*\\S.*"
+          description: |
+            The case-insensitive metadata type. Supported values are metalake, catalog, schema,
+            table, view, function, fileset, topic, model, tag, policy, and role.
+        cascade:
+          type: boolean
+          default: false
+          description: Whether to synchronize descendant metadata objects
+
+    SyncMetadataResponse:
+      type: object
+      description: The response returned after submitting an asynchronous search task
+      required:
+        - code
+        - taskId
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        taskId:
+          type: string
+          description: The identifier of the submitted task
+
+    TaskStatusResponse:
+      type: object
+      description: The response containing the current state of a search task
+      required:
+        - code
+        - taskStatus
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        taskStatus:
+          $ref: "#/components/schemas/SearchTaskStatus"
+
+    SearchTaskStatus:
+      type: object
+      description: The state and details of an asynchronous search task
+      required:
+        - taskId
+        - subTaskNum
+        - taskStatus
+        - metalake
+        - cascade
+      properties:
+        taskId:
+          type: string
+          description: The task identifier
+        subTaskNum:
+          type: integer
+          format: int32
+          minimum: 0
+          description: The number of subtasks created for this task
+        taskStatus:
+          type: string
+          description: |-
+            The current state of the task. `COMPLETED` is terminal but does not guarantee that every
+            entity was synchronized or that a rebuild is complete; inspect `message` for reported
+            failures.
+          enum:
+            - SUBMITTED
+            - RUNNING
+            - COMPLETED
+            - FAILED
+            - INTERRUPTED
+        message:
+          type: string
+          description: Progress information or an error message for the task
+        metalake:
+          type: string
+          description: The metalake processed by the task
+        metadataObject:
+          type: string
+          description: The metadata object processed by the task
+        cascade:
+          type: boolean
+          description: Whether descendant metadata objects are included in the task
+        taskCreateTime:
+          type: integer
+          format: int64
+          description: The task creation time in milliseconds since the Unix epoch
+        taskUpdateTime:
+          type: integer
+          format: int64
+          description: The last task update time in milliseconds since the Unix epoch
