@@ -9,6 +9,7 @@ import com.datastrato.gravitino.license.mapper.LicenseNodeMapper;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Clock;
@@ -64,6 +65,32 @@ class TestLicenseManager {
   @AfterAll
   static void tearDownDb() {
     SqlSessionFactoryHelper.getInstance().close();
+  }
+
+  /**
+   * Inserts (or updates) a license node with an explicit {@code registered_at} value, bypassing the
+   * database-generated clock used by {@link LicenseNodeMapper#upsertNode}. Node ranking orders by
+   * {@code registered_at} before {@code node_id}, so tests that assert a specific rank must control
+   * this value directly rather than relying on real-clock insertion order, which can tie or reorder
+   * under fast/parallel test execution. {@code registeredAtMs} must stay close to the real current
+   * time (e.g. {@code System.currentTimeMillis() + smallOffset}) so the row is not immediately
+   * swept up as stale by {@code deleteStaleNodes}, which compares against the database's real wall
+   * clock rather than the {@link LicenseManager}'s injectable {@code clock}.
+   */
+  private static void upsertNodeAt(String nodeId, long registeredAtMs) throws SQLException {
+    try (Connection conn = DriverManager.getConnection(JDBC_URL, "sa", "");
+        PreparedStatement stmt =
+            conn.prepareStatement(
+                "INSERT INTO license_nodes (node_id, registered_at, last_heartbeat) "
+                    + "VALUES (?, ?, ?) "
+                    + "ON DUPLICATE KEY UPDATE registered_at = ?, last_heartbeat = ?")) {
+      stmt.setString(1, nodeId);
+      stmt.setLong(2, registeredAtMs);
+      stmt.setLong(3, registeredAtMs);
+      stmt.setLong(4, registeredAtMs);
+      stmt.setLong(5, registeredAtMs);
+      stmt.executeUpdate();
+    }
   }
 
   private static String buildKey(long expiresAtDays, int graceDays, int maxNodes) throws Exception {
@@ -315,10 +342,11 @@ class TestLicenseManager {
   @Test
   void testHeartbeatExceedsMaxNodesTriggersExitAfterGracePeriod() throws Exception {
     String testNodeId = "mgr-zzz-exceed";
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-aaa-exceed"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-bbb-exceed"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-ccc-exceed"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode(testNodeId));
+    long base = System.currentTimeMillis();
+    upsertNodeAt("mgr-aaa-exceed", base + 1);
+    upsertNodeAt("mgr-bbb-exceed", base + 2);
+    upsertNodeAt("mgr-ccc-exceed", base + 3);
+    upsertNodeAt(testNodeId, base + 4);
 
     int countBefore =
         SessionUtils.doWithCommitAndFetchResult(
@@ -363,10 +391,11 @@ class TestLicenseManager {
   @Test
   void testHeartbeatGracePeriodFirstViolationNoExit() throws Exception {
     String testNodeId = "mgr-zzz-grace1";
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-aaa-grace1"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-bbb-grace1"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-ccc-grace1"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode(testNodeId));
+    long base = System.currentTimeMillis();
+    upsertNodeAt("mgr-aaa-grace1", base + 1);
+    upsertNodeAt("mgr-bbb-grace1", base + 2);
+    upsertNodeAt("mgr-ccc-grace1", base + 3);
+    upsertNodeAt(testNodeId, base + 4);
 
     long future = LocalDate.of(2030, 1, 1).toEpochDay();
     LicenseManager mgr = new LicenseManager();
@@ -397,10 +426,11 @@ class TestLicenseManager {
   @Test
   void testHeartbeatGracePeriodResetsOnRecovery() throws Exception {
     String testNodeId = "mgr-zzz-grace3";
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-aaa-grace3"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-bbb-grace3"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode("mgr-ccc-grace3"));
-    SessionUtils.doWithCommit(LicenseNodeMapper.class, m -> m.upsertNode(testNodeId));
+    long base = System.currentTimeMillis();
+    upsertNodeAt("mgr-aaa-grace3", base + 1);
+    upsertNodeAt("mgr-bbb-grace3", base + 2);
+    upsertNodeAt("mgr-ccc-grace3", base + 3);
+    upsertNodeAt(testNodeId, base + 4);
 
     long future = LocalDate.of(2030, 1, 1).toEpochDay();
     LicenseManager mgr = new LicenseManager();
