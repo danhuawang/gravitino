@@ -133,6 +133,37 @@ paths:
         "5xx":
           $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /scim/tokens/overview:
+    get:
+      tags:
+        - SCIM Token
+      summary: Get SCIM token overview
+      description: >
+        Returns the Identity Provider provisioning token panel payload: instance-level
+        last activity (`lastUsedAt`), active token count, and token rows (`tokenName`,
+        `createdAt`, `lastUsedAt`, `expiresAt`). Plaintext token values are never returned.
+      operationId: getScimTokenOverview
+      responses:
+        "200":
+          description: Returns the SCIM token overview
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenOverviewResponse"
+              examples:
+                ScimTokenOverviewResponse:
+                  $ref: "#/components/examples/ScimTokenOverviewResponse"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "401":
+          description: Unauthorized - Missing or invalid main-server authentication
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /metalakes/{metalake}/scim/tokens/{tokenName}/rotate:
     parameters:
       - $ref: "../../../docs/open-api/openapi.yaml#/components/parameters/metalake"
@@ -331,6 +362,54 @@ components:
           items:
             $ref: "#/components/schemas/ScimTokenSummary"
 
+    ScimTokenOverviewItem:
+      type: object
+      required:
+        - tokenName
+        - expiresAt
+        - createdAt
+        - lastUsedAt
+      properties:
+        tokenName:
+          type: string
+          description: Operator-readable token name
+        expiresAt:
+          type: integer
+          format: int64
+          description: Expiry epoch millis; `0` means no expiry
+        createdAt:
+          type: integer
+          format: int64
+          description: Creation time in epoch millis
+        lastUsedAt:
+          type: integer
+          format: int64
+          description: Last authenticated SCIM use in epoch millis; `0` means never
+
+    ScimTokenOverviewResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        lastUsedAt:
+          type: integer
+          format: int64
+          description: >
+            Max `last_used_at` across active tokens in epoch millis;
+            `0` means never used
+        tokenCount:
+          type: integer
+          format: int64
+          description: Number of active (`deleted_at = 0`) SCIM tokens
+        tokens:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScimTokenOverviewItem"
+
     ScimTokenResponse:
       type: object
       properties:
@@ -447,6 +526,33 @@ components:
             "expiresAt": 0,
             "status": "valid",
             "createdAt": 1710100000000,
+            "lastUsedAt": 0
+          }
+        ]
+      }
+
+    ScimTokenOverviewResponse:
+      value: {
+        "code": 0,
+        "lastUsedAt": 1710003600000,
+        "tokenCount": 3,
+        "tokens": [
+          {
+            "tokenName": "entra",
+            "expiresAt": 0,
+            "createdAt": 1710000000000,
+            "lastUsedAt": 1710003600000
+          },
+          {
+            "tokenName": "entra-2026-08",
+            "expiresAt": 0,
+            "createdAt": 1710100000000,
+            "lastUsedAt": 1710000000000
+          },
+          {
+            "tokenName": "old-okta",
+            "expiresAt": 0,
+            "createdAt": 1700000000000,
             "lastUsedAt": 0
           }
         ]

@@ -16,6 +16,7 @@ import com.datastrato.gravitino.scim.ScimUtils;
 import com.datastrato.gravitino.scim.basic.token.ScimTokenGenerator;
 import com.datastrato.gravitino.scim.model.CreatedScimToken;
 import com.datastrato.gravitino.scim.model.ScimProvisioningSummary;
+import com.datastrato.gravitino.scim.model.ScimTokenOverview;
 import com.datastrato.gravitino.scim.model.ScimTokenSummary;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import java.util.List;
@@ -154,6 +155,26 @@ class TestScimTokenManager extends AbstractScimManagerTest {
     assertEquals("valid", tokens.get(1).getStatus());
     assertTrue(tokens.get(1).getLastUsedAt() > 0L);
     assertTrue(tokens.get(1).getCreatedAt() > 0L);
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testGetScimTokenOverview(String type) throws Exception {
+    initManagerTest(type);
+    runManagerCallAndReturnAs("alice", () -> manager.createScimToken("prod", null));
+    runManagerCallAndReturnAs("alice", () -> manager.createScimToken("staging", null));
+    ScimTokenMetaPO prod = scimTokenMetaMapper.selectByName("prod");
+    closeSession();
+    manager.updateScimTokenLastUsedAt(prod.getTokenId());
+    refreshSession();
+
+    ScimTokenOverview overview = manager.getScimTokenOverview();
+    assertEquals(2L, overview.getTokenCount());
+    assertTrue(overview.getLastUsedAt() > 0L);
+    assertEquals(2, overview.getTokens().size());
+    assertEquals(
+        overview.getLastUsedAt(),
+        overview.getTokens().stream().mapToLong(ScimTokenSummary::getLastUsedAt).max().orElse(0L));
   }
 
   @ParameterizedTest

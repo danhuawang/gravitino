@@ -9,6 +9,7 @@ import com.datastrato.gravitino.scim.basic.token.ScimTokenGenerator.GeneratedTok
 import com.datastrato.gravitino.scim.model.CreatedScimToken;
 import com.datastrato.gravitino.scim.model.ScimProvisioningSummary;
 import com.datastrato.gravitino.scim.model.ScimToken;
+import com.datastrato.gravitino.scim.model.ScimTokenOverview;
 import com.datastrato.gravitino.scim.model.ScimTokenSummary;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import com.datastrato.gravitino.scim.storage.relational.ScimGarbageCollector;
@@ -191,6 +192,16 @@ public class ScimTokenManager implements Closeable {
   /** Returns the latest {@code last_used_at} among active SCIM tokens. */
   public long getMaxScimTokenLastUsedAt() {
     return TOKEN_META_SERVICE.getMaxScimTokenLastUsedAt();
+  }
+
+  /**
+   * Returns the SCIM token overview for the Identity Provider admin UI.
+   *
+   * @return overview with {@code lastUsedAt}, {@code tokenCount}, and token rows
+   */
+  public ScimTokenOverview getScimTokenOverview() {
+    List<ScimTokenSummary> tokens = listScimTokens();
+    return ScimTokenOverview.of(getMaxScimTokenLastUsedAt(), tokens);
   }
 
   /** Builds the SCIM provisioning overview row. */

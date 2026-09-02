@@ -50,6 +50,9 @@ paths:
   /metalakes/{metalake}/scim/tokens:
     $ref: "./scim-tokens.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1scim~1tokens"
 
+  /scim/tokens/overview:
+    $ref: "./scim-tokens.yaml#/paths/~1scim~1tokens~1overview"
+
   /metalakes/{metalake}/scim/tokens/{tokenName}/rotate:
     $ref: "./scim-tokens.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1scim~1tokens~1%7BtokenName%7D~1rotate"
 

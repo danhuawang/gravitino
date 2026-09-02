@@ -11,6 +11,7 @@ import com.datastrato.gravitino.scim.dto.requests.RotateScimTokenRequest;
 import com.datastrato.gravitino.scim.dto.responses.ScimProvisioningListResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenDeleteResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenListResponse;
+import com.datastrato.gravitino.scim.dto.responses.ScimTokenOverviewResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenResponse;
 import com.datastrato.gravitino.scim.web.rest.feature.ScimTokenRESTFeature;
 import com.google.common.collect.Maps;
@@ -89,8 +90,8 @@ class ScimTokenRESTApiIT extends BaseIT {
 
   @Test
   void testListProvisioning() throws Exception {
-    createToken("overview-a", null);
-    createToken("overview-b", null);
+    createToken("provisioning-a", null);
+    createToken("provisioning-b", null);
     ScimProvisioningListResponse list =
         read(get("/scim/provisioning", OWNER), ScimProvisioningListResponse.class);
     Assertions.assertEquals(1, list.getProvisioning().size());
@@ -112,6 +113,22 @@ class ScimTokenRESTApiIT extends BaseIT {
     Assertions.assertEquals(0L, byName.get("list-a").getLastUsedAt());
     Assertions.assertTrue(byName.get("list-b").getExpiresAt() > 0L);
     Assertions.assertEquals(0L, byName.get("list-b").getLastUsedAt());
+  }
+
+  @Test
+  void testGetTokenOverview() throws Exception {
+    createToken("overview-a", null);
+    createToken("overview-b", null);
+
+    ScimTokenOverviewResponse overview =
+        read(get("/scim/tokens/overview", OWNER), ScimTokenOverviewResponse.class);
+    overview.validate();
+    Assertions.assertTrue(overview.getTokenCount() >= 2L);
+    Assertions.assertEquals(overview.getTokenCount(), overview.getTokens().size());
+    var byName = index(overview.getTokens(), t -> t.getTokenName());
+    Assertions.assertTrue(byName.containsKey("overview-a"));
+    Assertions.assertTrue(byName.get("overview-a").getCreatedAt() > 0L);
+    Assertions.assertEquals(0L, byName.get("overview-a").getLastUsedAt());
   }
 
   @Test

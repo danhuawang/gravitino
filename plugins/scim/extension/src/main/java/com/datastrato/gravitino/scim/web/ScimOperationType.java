@@ -10,5 +10,6 @@ public enum ScimOperationType {
   ROTATE,
   DELETE,
   LIST,
+  LIST_OVERVIEW,
   LIST_PROVISIONING
 }

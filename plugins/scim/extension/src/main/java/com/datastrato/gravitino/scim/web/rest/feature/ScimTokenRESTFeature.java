@@ -12,6 +12,7 @@ import com.datastrato.gravitino.scim.web.rest.ScimAuthorizationFilter;
 import com.datastrato.gravitino.scim.web.rest.ScimProvisioningOperations;
 import com.datastrato.gravitino.scim.web.rest.ScimTokenBinder;
 import com.datastrato.gravitino.scim.web.rest.ScimTokenOperations;
+import com.datastrato.gravitino.scim.web.rest.ScimTokenOverviewOperations;
 import com.google.common.base.Splitter;
 import java.util.List;
 import javax.ws.rs.core.Feature;
@@ -19,7 +20,6 @@ import javax.ws.rs.core.FeatureContext;
 import javax.ws.rs.ext.Provider;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
-import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.auxiliary.AuxiliaryServiceManager;
 import org.apache.gravitino.server.authentication.OAuthConfig;
@@ -52,6 +52,7 @@ public class ScimTokenRESTFeature implements Feature {
     context.register(ScimAuthorizationFilter.class);
     context.register(ScimTokenBinder.class);
     context.register(ScimTokenOperations.class);
+    context.register(ScimTokenOverviewOperations.class);
     context.register(ScimProvisioningOperations.class);
     LOG.info(
         "SCIM OAuth authorization uses scim_user_group_rel via {}",
@@ -82,10 +83,6 @@ public class ScimTokenRESTFeature implements Feature {
       LOG.error(
           "gravitino.server.webserver.customFilters must include {} for SCIM.",
           ScimOAuthRequestPathFilter.FILTER_CLASS_NAME);
-      System.exit(1);
-    }
-    if (!Boolean.TRUE.equals(config.get(Configs.ENABLE_AUTHORIZATION))) {
-      LOG.error("gravitino.authorization.enable must be true for SCIM token admin APIs.");
       System.exit(1);
     }
   }
