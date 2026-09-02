@@ -111,7 +111,7 @@ class TestJobDTOSerDe(unittest.TestCase):
         self.assertIsNone(job_dto.finished_at())
 
     def test_ser_de_with_runtime_job_template(self):
-        audit = AuditDTO(_creator="test", _create_time=datetime.now(timezone.utc))
+        audit = AuditDTO(_creator="test", _create_time="2023-10-01T00:00:00Z")
         runtime_job_template = ShellJobTemplateDTO(
             _job_type=JobType.SHELL,
             _name="resolved-template",
@@ -144,7 +144,7 @@ class TestJobDTOSerDe(unittest.TestCase):
             _job_id="job-1002",
             _job_template_name="test_template",
             _status=JobHandle.Status.QUEUED,
-            _audit=AuditDTO(_creator="test", _create_time=datetime.now(timezone.utc)),
+            _audit=AuditDTO(_creator="test", _create_time="2023-10-01T00:00:00Z"),
         )
 
         json_str = job_dto.to_json()
