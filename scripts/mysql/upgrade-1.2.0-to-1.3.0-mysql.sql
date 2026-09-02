@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS `idp_user_meta` (
     `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'idp user id',
     `user_name` VARCHAR(128) NOT NULL COMMENT 'idp username',
     `password_hash` VARCHAR(1024) NOT NULL COMMENT 'idp user password hash',
+    `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'whether the user is enabled, 0 is disabled, 1 is enabled',
     `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp user current version',
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp user last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'idp user deleted at',
@@ -128,6 +129,9 @@ CREATE TABLE IF NOT EXISTS `idp_user_group_rel` (
     KEY `idx_iuig_uid` (`user_id`),
     KEY `idx_iuig_gid` (`group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'local IdP user group relation';
+
+ALTER TABLE `idp_user_meta`
+    ADD COLUMN `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'whether the user is enabled, 0 is disabled, 1 is enabled' AFTER `password_hash`;
 
 CREATE TABLE IF NOT EXISTS `iceberg_cleanup_job` (
   `id`                BIGINT(20)    UNSIGNED NOT NULL COMMENT 'globally unique cleanup job id',

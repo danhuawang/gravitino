@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS idp_user_meta (
     user_id BIGINT NOT NULL,
     user_name VARCHAR(128) NOT NULL,
     password_hash VARCHAR(1024) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
     current_version INT NOT NULL DEFAULT 1,
     last_version INT NOT NULL DEFAULT 1,
     deleted_at BIGINT NOT NULL DEFAULT 0,
@@ -123,6 +124,7 @@ COMMENT ON TABLE idp_user_meta IS 'local IdP user metadata';
 COMMENT ON COLUMN idp_user_meta.user_id IS 'idp user id';
 COMMENT ON COLUMN idp_user_meta.user_name IS 'idp username';
 COMMENT ON COLUMN idp_user_meta.password_hash IS 'idp user password hash';
+COMMENT ON COLUMN idp_user_meta.enabled IS 'whether the user is enabled, 0 is disabled, 1 is enabled';
 COMMENT ON COLUMN idp_user_meta.current_version IS 'idp user current version';
 COMMENT ON COLUMN idp_user_meta.last_version IS 'idp user last version';
 COMMENT ON COLUMN idp_user_meta.deleted_at IS 'idp user deleted at';
@@ -166,6 +168,10 @@ COMMENT ON COLUMN idp_user_group_rel.group_id IS 'idp group id';
 COMMENT ON COLUMN idp_user_group_rel.current_version IS 'idp relation current version';
 COMMENT ON COLUMN idp_user_group_rel.last_version IS 'idp relation last version';
 COMMENT ON COLUMN idp_user_group_rel.deleted_at IS 'idp relation deleted at';
+
+ALTER TABLE idp_user_meta
+    ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+COMMENT ON COLUMN idp_user_meta.enabled IS 'whether the user is enabled, 0 is disabled, 1 is enabled';
 
 CREATE TABLE IF NOT EXISTS iceberg_cleanup_job (
   id                BIGINT        NOT NULL PRIMARY KEY,
