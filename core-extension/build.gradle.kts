@@ -12,12 +12,15 @@ dependencies {
   implementation(project(":api"))
   implementation(project(":core"))
   implementation(project(":common"))
+  implementation(project(":common-extension"))
 
   implementation(libs.bundles.log4j)
   implementation(libs.commons.codec)
   implementation(libs.commons.dbcp2)
   implementation(libs.commons.lang3)
   implementation(libs.guava)
+  implementation(libs.jackson.annotations)
+  implementation(libs.jackson.databind)
   implementation(libs.mybatis)
   implementation(libs.trino.jdbc)
 
@@ -32,6 +35,10 @@ dependencies {
   testImplementation(libs.commons.lang3)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.mockito.core)
+  testImplementation(libs.mysql.driver)
+  testImplementation(libs.postgresql.driver)
+  testImplementation(libs.testcontainers.mysql)
+  testImplementation(libs.testcontainers.postgresql)
   testAnnotationProcessor(libs.lombok)
   testCompileOnly(libs.lombok)
 

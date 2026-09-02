@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Datastrato Pvt Ltd.
+ * Copyright 2024 Datastrato Inc.
  */
 
 plugins {
@@ -47,20 +47,27 @@ dependencies {
 
   annotationProcessor(libs.lombok)
 
+  testImplementation(project(":clients:client-java"))
   testImplementation(project(":core-extension", "testArtifacts"))
   testImplementation(project(":integration-test-common", "testArtifacts"))
+  testImplementation(project(":server"))
   testImplementation(project(":test:test-common"))
 
   testImplementation(project(":iceberg:iceberg-rest-server"))
+  testImplementation(project(":lance:lance-common")) {
+    exclude(group = "*")
+  }
   testImplementation(libs.iceberg.core)
   testImplementation(libs.awaitility)
   testImplementation(libs.commons.lang3)
+  testImplementation(libs.httpclient5)
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")
   }
   testImplementation(libs.jersey.test.framework.provider.jetty) {
     exclude(group = "org.junit.jupiter")
   }
+  testImplementation(libs.mysql.driver)
   testImplementation(libs.testcontainers)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.mockito.core)
@@ -107,6 +114,10 @@ tasks.javadoc {
 // Make the execution order explicit to satisfy Gradle task validation.
 tasks.named<Test>("test") {
   dependsOn(":iceberg:iceberg-rest-server:copyDepends")
+
+  if (project.hasProperty("skipITs")) {
+    exclude("**/integration/test/**")
+  }
 }
 
 // compileTestJava also consumes the copied Iceberg REST server artifact.
