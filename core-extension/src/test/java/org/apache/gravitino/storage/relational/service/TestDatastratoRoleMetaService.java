@@ -150,11 +150,30 @@ public class TestDatastratoRoleMetaService {
               + "group_id BIGINT NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
+          "CREATE TABLE scim_user_meta ("
+              + "user_id BIGINT NOT NULL PRIMARY KEY,"
+              + "user_name VARCHAR(128) NOT NULL,"
+              + "external_id VARCHAR(256),"
+              + "enabled BOOLEAN NOT NULL DEFAULT TRUE,"
+              + "current_version INT NOT NULL DEFAULT 1,"
+              + "last_version INT NOT NULL DEFAULT 1,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE scim_group_meta ("
+              + "group_id BIGINT NOT NULL PRIMARY KEY,"
+              + "group_name VARCHAR(128) NOT NULL,"
+              + "group_comment VARCHAR(1024) DEFAULT '',"
+              + "external_id VARCHAR(256),"
+              + "current_version INT NOT NULL DEFAULT 1,"
+              + "last_version INT NOT NULL DEFAULT 1,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
           "CREATE TABLE scim_user_group_rel ("
               + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
-              + "metalake_id BIGINT NOT NULL,"
               + "user_id BIGINT NOT NULL,"
               + "group_id BIGINT NOT NULL,"
+              + "current_version INT NOT NULL DEFAULT 1,"
+              + "last_version INT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
     }
     SqlSessionFactoryHelper.getInstance().init(config);
@@ -175,6 +194,8 @@ public class TestDatastratoRoleMetaService {
       statement.execute("DELETE FROM group_role_rel");
       statement.execute("DELETE FROM idp_user_group_rel");
       statement.execute("DELETE FROM scim_user_group_rel");
+      statement.execute("DELETE FROM scim_user_meta");
+      statement.execute("DELETE FROM scim_group_meta");
       statement.execute("DELETE FROM idp_user_meta");
       statement.execute("DELETE FROM idp_group_meta");
       statement.execute("DELETE FROM role_meta");
@@ -209,7 +230,7 @@ public class TestDatastratoRoleMetaService {
         userStatement.addBatch();
         userStatement.setLong(1, 12L);
         userStatement.setString(2, "userProvisioned");
-        userStatement.setString(3, "provisioned-user-id");
+        userStatement.setString(3, "legacy-user-id");
         userStatement.setString(4, entityAudit);
         userStatement.addBatch();
         userStatement.executeBatch();
@@ -226,7 +247,7 @@ public class TestDatastratoRoleMetaService {
         groupStatement.addBatch();
         groupStatement.setLong(1, 22L);
         groupStatement.setString(2, "groupProvisioned");
-        groupStatement.setString(3, "provisioned-group-id");
+        groupStatement.setString(3, "legacy-group-id");
         groupStatement.setString(4, entityAudit);
         groupStatement.addBatch();
         groupStatement.executeBatch();
@@ -241,9 +262,17 @@ public class TestDatastratoRoleMetaService {
           "INSERT INTO idp_user_group_rel (user_id, group_id, deleted_at)"
               + " VALUES (1000, 2000, 0)");
       statement.execute(
+          "INSERT INTO scim_user_meta (user_id, user_name, external_id, enabled, deleted_at)"
+              + " VALUES (10, 'user1', NULL, TRUE, 0),"
+              // SCIM externalId/enabled must win over conflicting legacy user_meta values.
+              + " (12, 'userProvisioned', 'provisioned-user-id', FALSE, 0)");
+      statement.execute(
+          "INSERT INTO scim_group_meta (group_id, group_name, external_id, deleted_at)"
+              + " VALUES (22, 'groupProvisioned', 'provisioned-group-id', 0)");
+      statement.execute(
           "INSERT INTO scim_user_group_rel"
-              + " (metalake_id, user_id, group_id, deleted_at)"
-              + " VALUES (1, 10, 22, 0), (1, 12, 22, 0)");
+              + " (user_id, group_id, deleted_at)"
+              + " VALUES (10, 22, 0), (12, 22, 0)");
     }
 
     String roleAudit = JsonUtils.anyFieldMapper().writeValueAsString(buildRoleAudit());
@@ -320,6 +349,8 @@ public class TestDatastratoRoleMetaService {
     assertAssignmentAudit(assignments.get(0).assignmentAudit());
     assertEquals("userProvisioned", assignments.get(1).user().name());
     assertFalse(assignments.get(1).inBuiltInIdp());
+    assertEquals("provisioned-user-id", assignments.get(1).user().externalId());
+    assertFalse(assignments.get(1).user().enabled());
     assertAssignmentAudit(assignments.get(1).assignmentAudit());
 
     assertTrue(service.listUserAssignmentsByRole("metalake1", "roleNoAssignments").isEmpty());
@@ -345,6 +376,7 @@ public class TestDatastratoRoleMetaService {
     assertEquals(1, assignments.get(0).userCount());
     assertAssignmentAudit(assignments.get(0).assignmentAudit());
     assertEquals("groupProvisioned", assignments.get(1).group().name());
+    assertEquals("provisioned-group-id", assignments.get(1).group().externalId());
     assertEquals(2, assignments.get(1).userCount());
     assertAssignmentAudit(assignments.get(1).assignmentAudit());
 
