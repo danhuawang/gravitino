@@ -202,6 +202,83 @@ public class TestCredentialProviderOperations extends JerseyTest {
     verify(connectionTestStore, never()).loadCatalogConnectionSnapshot(any());
   }
 
+  /**
+   * Verifies proposed property updates are applied in memory without changing the persisted test
+   * status.
+   */
+  @Test
+  public void testProposedCredentialUpdatesAreNotPersisted() throws IOException {
+    Map<String, String> properties =
+        Map.of(
+            "credential-providers", "s3-token", "key", "saved-value", "remove-me", "saved-value");
+    loadCatalog("catalog", properties);
+    CredentialProvider provider = mock(CredentialProvider.class);
+    when(provider.getCredentialOptional(any())).thenReturn(Optional.of(mock(Credential.class)));
+    testProvider = provider;
+
+    Response response =
+        target(
+                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                    + "test-provider/test")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                Entity.json(
+                    "{\"path\":\"s3://bucket/path\",\"updates\":["
+                        + "{\"@type\":\"setProperty\",\"property\":\"key\","
+                        + "\"value\":\"proposed-value\"},"
+                        + "{\"@type\":\"removeProperty\",\"property\":\"remove-me\"},"
+                        + "{\"@type\":\"setProperty\",\"property\":\"credential-providers\","
+                        + "\"value\":\"test-provider\"},"
+                        + "{\"@type\":\"updateComment\",\"newComment\":\"ignored\"},"
+                        + "{\"@type\":\"setSecretBinding\",\"property\":\"secret-key\","
+                        + "\"provider\":\"vault\",\"plaintext\":\"proposed-secret\"}"
+                        + "]}"));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    Assertions.assertEquals(
+        Map.of(
+            "credential-providers",
+            "test-provider",
+            "key",
+            "proposed-value",
+            "secret-key",
+            "proposed-secret"),
+        testProperties);
+    verify(provider).close();
+    verify(connectionTestStore, never())
+        .recordTestResult(any(), any(), any(), any(), any(), anyLong(), any());
+  }
+
+  /** Verifies a failed probe with proposed updates does not replace the persisted test status. */
+  @Test
+  public void testFailedProposedCredentialUpdateIsNotPersisted() throws IOException {
+    Map<String, String> properties =
+        Map.of("credential-providers", "test-provider", "key", "saved-value");
+    loadCatalog("catalog", properties);
+    CredentialProvider provider = mock(CredentialProvider.class);
+    when(provider.getCredentialOptional(any())).thenReturn(Optional.empty());
+    testProvider = provider;
+
+    Response response =
+        target(
+                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                    + "test-provider/test")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                Entity.json(
+                    "{\"path\":\"s3://bucket/path\",\"updates\":["
+                        + "{\"@type\":\"setProperty\",\"property\":\"key\","
+                        + "\"value\":\"proposed-value\"}]}"));
+
+    Assertions.assertEquals(
+        Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), response.getStatus());
+    verify(provider).close();
+    verify(connectionTestStore, never())
+        .recordTestResult(any(), any(), any(), any(), any(), anyLong(), any());
+  }
+
   /** Verifies a failed configured-provider probe persists a safe failure result. */
   @Test
   public void testExistingCredentialProviderPersistsFailedResult() throws IOException {
@@ -305,6 +382,36 @@ public class TestCredentialProviderOperations extends JerseyTest {
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.json("{\"path\":\"s3://bucket/path\"}"));
     Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), missing.getStatus());
+  }
+
+  /** Verifies malformed and unsupported proposed updates produce client-facing errors. */
+  @Test
+  public void testProposedCredentialUpdateValidation() {
+    String path =
+        "/web/metalakes/metalake/connections/catalog/credential-providers/" + "test-provider/test";
+
+    Response malformed =
+        target(path)
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                Entity.json(
+                    "{\"path\":\"s3://bucket/path\",\"updates\":["
+                        + "{\"@type\":\"setProperty\",\"property\":\"key\"}]}"));
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), malformed.getStatus());
+
+    Response unsupported =
+        target(path)
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                Entity.json(
+                    "{\"path\":\"s3://bucket/path\",\"updates\":["
+                        + "{\"@type\":\"setSecretReference\",\"property\":\"secret-key\","
+                        + "\"provider\":\"vault\",\"attributes\":{\"path\":\"secret/path\"}}"
+                        + "]}"));
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), unsupported.getStatus());
+    verify(catalogDispatcher, never()).loadCatalog(any());
   }
 
   /** Verifies a canonical provider absent from the Catalog configuration cannot be tested. */

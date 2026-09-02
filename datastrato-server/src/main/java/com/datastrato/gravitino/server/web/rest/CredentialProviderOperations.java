@@ -10,6 +10,8 @@ import com.datastrato.gravitino.dto.requests.CredentialProviderTestRequest;
 import com.google.common.annotations.VisibleForTesting;
 import java.time.Clock;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -31,6 +33,7 @@ import org.apache.gravitino.credential.CredentialProvider;
 import org.apache.gravitino.credential.CredentialProviderFactory;
 import org.apache.gravitino.credential.PathBasedCredentialContext;
 import org.apache.gravitino.credential.config.CredentialConfig;
+import org.apache.gravitino.dto.requests.CatalogUpdateRequest;
 import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -80,12 +83,13 @@ public class CredentialProviderOperations {
   }
 
   /**
-   * Tests a credential provider configured on an existing connection and persists the result.
+   * Tests a credential provider configured on an existing connection.
    *
    * @param metalake The metalake name.
    * @param connection The Catalog name used as the connection name.
    * @param credentialType The canonical credential provider type.
-   * @param request The storage path used for the credential probe.
+   * @param request The storage path and optional proposed Catalog updates used for the credential
+   *     probe.
    * @return A successful response when a credential is generated, or an error response.
    */
   @POST
@@ -126,8 +130,9 @@ public class CredentialProviderOperations {
           () -> {
             NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, connection);
             Catalog catalog = catalogDispatcher.loadCatalog(identifier);
-            Map<String, String> properties = credentialProperties(catalog);
-            Map<String, String> persistedProperties = persistedProperties(catalog);
+            boolean hasProposedUpdates = !request.getUpdates().isEmpty();
+            Map<String, String> properties =
+                applyProposedUpdates(credentialProperties(catalog), request.getUpdates());
             if (!isCredentialProviderConfigured(credentialType, properties)) {
               return Utils.illegalArguments(
                   String.format(
@@ -138,30 +143,34 @@ public class CredentialProviderOperations {
             try {
               testCredentialProvider(credentialType, request.getPath(), properties);
             } catch (Exception e) {
-              connectionTestStore.recordTestResult(
-                  identifier,
-                  catalog.provider(),
-                  persistedProperties,
-                  testType,
-                  ConnectionTestResult.Status.FAILED,
-                  clock.millis(),
-                  SAFE_CREDENTIAL_FAILURE_MESSAGE);
-              throw e;
-            }
-
-            boolean recorded =
+              if (!hasProposedUpdates) {
                 connectionTestStore.recordTestResult(
                     identifier,
                     catalog.provider(),
-                    persistedProperties,
+                    persistedProperties(catalog),
                     testType,
-                    ConnectionTestResult.Status.PASSED,
+                    ConnectionTestResult.Status.FAILED,
                     clock.millis(),
-                    null);
-            if (!recorded) {
-              return Utils.internalError(
-                  "Credential provider test result could not be recorded because the Catalog "
-                      + "configuration changed or a newer result already exists");
+                    SAFE_CREDENTIAL_FAILURE_MESSAGE);
+              }
+              throw e;
+            }
+
+            if (!hasProposedUpdates) {
+              boolean recorded =
+                  connectionTestStore.recordTestResult(
+                      identifier,
+                      catalog.provider(),
+                      persistedProperties(catalog),
+                      testType,
+                      ConnectionTestResult.Status.PASSED,
+                      clock.millis(),
+                      null);
+              if (!recorded) {
+                return Utils.internalError(
+                    "Credential provider test result could not be recorded because the Catalog "
+                        + "configuration changed or a newer result already exists");
+              }
             }
             return Utils.ok(new BaseResponse());
           });
@@ -211,6 +220,34 @@ public class CredentialProviderOperations {
             ? ((BaseCatalog<?>) catalog).entity().getProperties()
             : catalog.properties();
     return properties == null ? Collections.emptyMap() : properties;
+  }
+
+  private Map<String, String> applyProposedUpdates(
+      Map<String, String> properties, List<CatalogUpdateRequest> updates) {
+    if (updates.isEmpty()) {
+      return properties;
+    }
+
+    Map<String, String> effectiveProperties = new HashMap<>(properties);
+    for (CatalogUpdateRequest update : updates) {
+      if (update instanceof CatalogUpdateRequest.SetCatalogPropertyRequest) {
+        CatalogUpdateRequest.SetCatalogPropertyRequest setProperty =
+            (CatalogUpdateRequest.SetCatalogPropertyRequest) update;
+        effectiveProperties.put(setProperty.getProperty(), setProperty.getValue());
+      } else if (update instanceof CatalogUpdateRequest.RemoveCatalogPropertyRequest) {
+        CatalogUpdateRequest.RemoveCatalogPropertyRequest removeProperty =
+            (CatalogUpdateRequest.RemoveCatalogPropertyRequest) update;
+        effectiveProperties.remove(removeProperty.getProperty());
+      } else if (update instanceof CatalogUpdateRequest.SetCatalogSecretBindingRequest) {
+        CatalogUpdateRequest.SetCatalogSecretBindingRequest setSecret =
+            (CatalogUpdateRequest.SetCatalogSecretBindingRequest) update;
+        effectiveProperties.put(setSecret.getProperty(), setSecret.getPlaintext());
+      } else if (update instanceof CatalogUpdateRequest.SetCatalogSecretReferenceRequest) {
+        throw new IllegalArgumentException(
+            "setSecretReference updates are not supported by credential provider tests");
+      }
+    }
+    return effectiveProperties;
   }
 
   private boolean isCredentialProviderConfigured(
