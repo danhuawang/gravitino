@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS `scim_token_meta` (
     `token_name` VARCHAR(256) NOT NULL COMMENT 'scim token name',
     `token_hash` VARCHAR(64) NOT NULL COMMENT 'SHA-256 hex digest of scim token value',
     `expires_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'token expiry time in ms, 0 means never expires',
-    `audit_info` MEDIUMTEXT NOT NULL COMMENT 'scim token audit info',
+    `audit_info` CLOB NOT NULL COMMENT 'scim token audit info',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'scim token deleted at',
     `updated_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'updated at',
     PRIMARY KEY (`token_id`),

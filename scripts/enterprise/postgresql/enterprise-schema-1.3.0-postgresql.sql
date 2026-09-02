@@ -19,6 +19,15 @@ CREATE TABLE IF NOT EXISTS scim_token_meta (
 );
 COMMENT ON TABLE scim_token_meta IS 'scim token metadata';
 
+COMMENT ON COLUMN scim_token_meta.token_id IS 'token id';
+COMMENT ON COLUMN scim_token_meta.token_name IS 'scim token name';
+COMMENT ON COLUMN scim_token_meta.token_hash IS 'SHA-256 hex digest of scim token value';
+COMMENT ON COLUMN scim_token_meta.expires_at IS 'token expiry time in ms, 0 means never expires';
+COMMENT ON COLUMN scim_token_meta.audit_info IS 'scim token audit info';
+COMMENT ON COLUMN scim_token_meta.deleted_at IS 'scim token deleted at';
+COMMENT ON COLUMN scim_token_meta.updated_at IS 'updated at';
+COMMENT ON COLUMN scim_token_meta.last_used_at IS 'last authenticated SCIM request time in ms, 0 means never';
+
 CREATE TABLE IF NOT EXISTS scim_user_meta (
     user_id BIGINT NOT NULL,
     user_name VARCHAR(128) NOT NULL,
@@ -32,6 +41,14 @@ CREATE TABLE IF NOT EXISTS scim_user_meta (
     UNIQUE (external_id, deleted_at)
 );
 COMMENT ON TABLE scim_user_meta IS 'scim user metadata';
+
+COMMENT ON COLUMN scim_user_meta.user_id IS 'scim user id';
+COMMENT ON COLUMN scim_user_meta.user_name IS 'scim username';
+COMMENT ON COLUMN scim_user_meta.external_id IS 'SCIM externalId';
+COMMENT ON COLUMN scim_user_meta.enabled IS 'maps SCIM User active, 0 disabled, 1 enabled';
+COMMENT ON COLUMN scim_user_meta.current_version IS 'scim user current version';
+COMMENT ON COLUMN scim_user_meta.last_version IS 'scim user last version';
+COMMENT ON COLUMN scim_user_meta.deleted_at IS 'scim user deleted at';
 CREATE UNIQUE INDEX IF NOT EXISTS uk_sun_norm_del ON scim_user_meta (LOWER(user_name), deleted_at);
 
 CREATE TABLE IF NOT EXISTS scim_group_meta (
@@ -47,6 +64,14 @@ CREATE TABLE IF NOT EXISTS scim_group_meta (
     UNIQUE (external_id, deleted_at)
 );
 COMMENT ON TABLE scim_group_meta IS 'scim group metadata';
+
+COMMENT ON COLUMN scim_group_meta.group_id IS 'scim group id';
+COMMENT ON COLUMN scim_group_meta.group_name IS 'scim group name';
+COMMENT ON COLUMN scim_group_meta.group_comment IS 'scim group comment';
+COMMENT ON COLUMN scim_group_meta.external_id IS 'SCIM externalId';
+COMMENT ON COLUMN scim_group_meta.current_version IS 'scim group current version';
+COMMENT ON COLUMN scim_group_meta.last_version IS 'scim group last version';
+COMMENT ON COLUMN scim_group_meta.deleted_at IS 'scim group deleted at';
 CREATE UNIQUE INDEX IF NOT EXISTS uk_sgn_norm_del ON scim_group_meta (LOWER(group_name), deleted_at);
 
 CREATE TABLE IF NOT EXISTS scim_user_group_rel (
@@ -63,6 +88,13 @@ CREATE INDEX IF NOT EXISTS scim_user_group_rel_idx_user_id ON scim_user_group_re
 CREATE INDEX IF NOT EXISTS scim_user_group_rel_idx_group_id ON scim_user_group_rel (group_id);
 COMMENT ON TABLE scim_user_group_rel IS 'scim user group relation';
 
+COMMENT ON COLUMN scim_user_group_rel.id IS 'auto increment id';
+COMMENT ON COLUMN scim_user_group_rel.user_id IS 'scim user id';
+COMMENT ON COLUMN scim_user_group_rel.group_id IS 'scim group id';
+COMMENT ON COLUMN scim_user_group_rel.current_version IS 'relation current version';
+COMMENT ON COLUMN scim_user_group_rel.last_version IS 'relation last version';
+COMMENT ON COLUMN scim_user_group_rel.deleted_at IS 'relation deleted at';
+
 CREATE TABLE IF NOT EXISTS scim_error_history (
     error_id BIGINT NOT NULL,
     http_method VARCHAR(16) NOT NULL,
@@ -76,6 +108,15 @@ CREATE TABLE IF NOT EXISTS scim_error_history (
 );
 CREATE INDEX IF NOT EXISTS scim_error_history_idx_created ON scim_error_history (created_at);
 COMMENT ON TABLE scim_error_history IS 'scim protocol error history';
+
+COMMENT ON COLUMN scim_error_history.error_id IS 'error history id';
+COMMENT ON COLUMN scim_error_history.http_method IS 'HTTP method';
+COMMENT ON COLUMN scim_error_history.request_path IS 'SCIM request path';
+COMMENT ON COLUMN scim_error_history.http_status IS 'HTTP status code';
+COMMENT ON COLUMN scim_error_history.scim_type IS 'RFC 7644 scimType when present';
+COMMENT ON COLUMN scim_error_history.error_detail IS 'truncated SCIM error detail';
+COMMENT ON COLUMN scim_error_history.principal IS 'authenticated SCIM token name';
+COMMENT ON COLUMN scim_error_history.created_at IS 'created at in ms';
 
 CREATE TABLE IF NOT EXISTS catalog_connection_test_meta (
     catalog_id BIGINT NOT NULL,
