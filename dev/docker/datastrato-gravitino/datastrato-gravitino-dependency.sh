@@ -76,7 +76,7 @@ mkdir -p "${gravitino_dir}/packages"
 cp -r "${gravitino_home}/distribution/package-all" "${gravitino_dir}/packages/gravitino"
 
 # make sure bundles are built
-"${gravitino_home}"/gradlew :bundles:gcp:build :bundles:gcp-bundle:build :bundles:iceberg-gcp-bundle:build :bundles:aws:build :bundles:aws-bundle:build :bundles:iceberg-aws-bundle:build :bundles:azure:build :bundles:azure-bundle:build :bundles:iceberg-azure-bundle:build :bundles:aliyun:build :bundles:aliyun-bundle:build :bundles:iceberg-aliyun-bundle:build -x test
+"${gravitino_home}"/gradlew :bundles:gcp:build :bundles:gcp-bundle:build :bundles:iceberg-gcp-bundle:build :bundles:aws:build :bundles:aws-bundle:build :bundles:iceberg-aws-bundle:build :bundles:azure:build :bundles:azure-bundle:build :bundles:iceberg-azure-bundle:build :bundles:aliyun:build :bundles:aliyun-bundle:build :bundles:iceberg-aliyun-bundle:build :bundles:tencent:build :bundles:tencent-bundle:build -x test
 
 # Copy the all file system bundles to the Hadoop catalog libs
 cp -r ${gravitino_home}/bundles/*-bundle/build/libs/*.jar "${gravitino_dir}/packages/gravitino/catalogs/fileset/libs"
