@@ -166,6 +166,8 @@ paths:
   /web/security/directory/groups:
     $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups"
 
+  /web/security/directory/groups/delete:
+    $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups~1delete"
 
   /web/security/metalakes/{metalake}/users/enabled:
     # escape the path name by replacing `{ }` with `%7B %7D`
@@ -190,6 +192,10 @@ paths:
   /web/security/metalakes/{metalake}/groups:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./groups.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1groups"
+
+  /web/security/metalakes/{metalake}/groups/{group}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./groups.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1groups~1%7Bgroup%7D"
 
   /web/security/metalakes/{metalake}/groups/{group}/users:
     # escape the path name by replacing `{ }` with `%7B %7D`

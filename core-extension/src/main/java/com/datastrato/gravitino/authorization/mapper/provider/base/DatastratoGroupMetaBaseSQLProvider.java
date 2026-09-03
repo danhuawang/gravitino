@@ -9,6 +9,7 @@ import static org.apache.gravitino.storage.relational.mapper.RoleMetaMapper.ROLE
 
 import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
@@ -42,7 +43,25 @@ public class DatastratoGroupMetaBaseSQLProvider {
   }
 
   /**
-   * Lists metalake groups with roles and whether each name exists in the built-in IdP.
+   * Loads a metalake group with roles, identity-store origin, and {@code userCount} in one JOIN.
+   *
+   * <p>Same origin / {@code userCount} rules as {@link #listGroupsByMetalakeWithOrigin}.
+   *
+   * @param metalakeName The metalake name.
+   * @param groupName The group name.
+   * @return JOIN SQL.
+   */
+  public String getGroupByMetalakeWithOrigin(
+      @Param("metalakeName") String metalakeName, @Param("groupName") String groupName) {
+    return groupsWithOriginSelectAndFrom(true, " AND gt.group_name = #{groupName}")
+        + " GROUP BY gt.group_id";
+  }
+
+  /**
+   * Lists metalake groups with roles and identity-store origin in one query.
+   *
+   * <p>{@code origin} is Local when the name exists in {@code idp_group_meta}, Provisioned when it
+   * exists in {@code scim_group_meta} (and not IdP), otherwise JIT.
    *
    * @param metalakeName The metalake name.
    * @return JOIN SQL.
@@ -52,7 +71,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
   }
 
   /**
-   * Loads metalake groups by name with roles and built-in IdP membership in one JOIN.
+   * Loads metalake groups by name with roles and identity-store origin in one JOIN.
    *
    * @param metalakeName The metalake name.
    * @param groupNames Group names to load.
@@ -67,7 +86,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
   }
 
   /**
-   * Lists metalake groups for a user with roles and built-in IdP membership in one JOIN.
+   * Lists metalake groups for a user with roles and identity-store origin in one JOIN.
    *
    * @param metalakeName The metalake name.
    * @param userName The username.
@@ -130,6 +149,73 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + directoryGroupMetalakeAggregation()
         + ") metalakes ON metalakes.groupName = identity.groupName"
         + " ORDER BY identity.groupName";
+  }
+
+  /**
+   * Returns group names that have an active row in {@code idp_group_meta}.
+   *
+   * @param groupNames Group names to check.
+   * @return MyBatis script SQL.
+   */
+  public String selectIdpGroupNamesByNames(@Param("groupNames") List<String> groupNames) {
+    return "<script>"
+        + "SELECT group_name FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " WHERE deleted_at = 0 AND group_name IN "
+        + groupNameInClause()
+        + "</script>";
+  }
+
+  /**
+   * Returns active IdP user ids for the given names.
+   *
+   * @param userNames Usernames to resolve.
+   * @return MyBatis script SQL.
+   */
+  public String selectIdpUserIdsByNames(@Param("userNames") List<String> userNames) {
+    return "<script>"
+        + "SELECT user_name as userName, user_id as userId FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " WHERE deleted_at = 0 AND user_name IN "
+        + userNameInClause()
+        + "</script>";
+  }
+
+  /**
+   * Inserts a Local Directory Group into {@code idp_group_meta}.
+   *
+   * @param groupId Generated group id.
+   * @param groupName Group name.
+   * @param groupComment Group comment.
+   * @return Insert SQL.
+   */
+  public String insertIdpGroup(
+      @Param("groupId") long groupId,
+      @Param("groupName") String groupName,
+      @Param("groupComment") String groupComment) {
+    return "INSERT INTO "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " (group_id, group_name, group_comment, current_version, last_version, deleted_at)"
+        + " VALUES (#{groupId}, #{groupName}, COALESCE(#{groupComment}, ''), 1, 1, 0)";
+  }
+
+  /**
+   * Batch-inserts {@code idp_user_group_rel} rows for a new Directory Group.
+   *
+   * @param relations Relation rows.
+   * @return MyBatis script SQL.
+   */
+  public String batchInsertIdpUserGroupRels(
+      @Param("relations") List<IdpUserGroupRelInsertPO> relations) {
+    return "<script>"
+        + "INSERT INTO "
+        + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+        + " (id, user_id, group_id, current_version, last_version, deleted_at)"
+        + " VALUES "
+        + "<foreach item='item' collection='relations' separator=','>"
+        + "(#{item.id}, #{item.userId}, #{item.groupId}, 1, 1, 0)"
+        + "</foreach>"
+        + "</script>";
   }
 
   private String directoryGroupIdentityUnion() {
@@ -279,7 +365,15 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " "
         + jsonArrayAgg("rot.role_id")
         + " as roleIds,"
-        + " MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) as inBuiltInIdp"
+        + " CASE WHEN MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " WHEN MAX(CASE WHEN "
+        + SCIM_GROUP_ALIAS
+        + ".group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " ELSE "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " END as originCode"
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + " mt INNER JOIN "
@@ -351,7 +445,15 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " "
         + jsonArrayAgg("rot.role_id")
         + " as roleIds,"
-        + " MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) as inBuiltInIdp,"
+        + " CASE WHEN MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " WHEN MAX(CASE WHEN "
+        + SCIM_GROUP_ALIAS
+        + ".group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " ELSE "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " END as originCode,"
         + groupUserCountSelect()
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
@@ -397,6 +499,12 @@ public class DatastratoGroupMetaBaseSQLProvider {
   protected String groupNameInClause() {
     return "<foreach collection='groupNames' item='groupName' open='(' separator=',' close=')'>"
         + "#{groupName}"
+        + "</foreach>";
+  }
+
+  protected String userNameInClause() {
+    return "<foreach collection='userNames' item='userName' open='(' separator=',' close=')'>"
+        + "#{userName}"
         + "</foreach>";
   }
 }

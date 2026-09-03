@@ -7,13 +7,18 @@ import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.authorization.IdpNameStatusDTO;
+import com.datastrato.gravitino.dto.requests.DirectoryGroupAddRequest;
+import com.datastrato.gravitino.dto.requests.DirectoryGroupDeleteRequest;
 import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
 import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
+import com.datastrato.gravitino.dto.responses.DirectoryGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.IdpGroupNameListResponse;
+import java.util.ArrayList;
 import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
@@ -24,6 +29,7 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.dto.responses.NameListResponse;
 import org.apache.gravitino.metalake.MetalakeManager;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -78,9 +84,69 @@ public class ExtendedGroupOperations {
   }
 
   /**
-   * Lists groups under a metalake for the security UI, including {@code origin} ({@code Local} vs
-   * {@code Provisioned}) from a JOIN to {@code idp_group_meta}, and {@code userCount} for the
-   * Groups table.
+   * Creates a Local Directory Group in {@code idp_group_meta} and adds IdP user members.
+   *
+   * @param request Group name, optional comment, and optional member usernames.
+   * @return The created Directory Group.
+   */
+  @POST
+  @Path("directory/groups")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  public Response addDirectoryGroup(DirectoryGroupAddRequest request) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            request.validate();
+            return Utils.ok(
+                new DirectoryGroupResponse(
+                    DirectoryGroupDTO.from(
+                        accessControlDispatcher.addDirectoryGroup(
+                            request.getName(), request.getComment(), request.getMembers()))));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(
+          OperationType.ADD, request == null ? "" : request.getName(), "", e);
+    }
+  }
+
+  /**
+   * Soft-deletes Local Directory Groups via the built-in IdP manager.
+   *
+   * @param request Groups with name and origin; every origin must be Local.
+   * @return Soft-deleted group names.
+   */
+  @POST
+  @Path("directory/groups/delete")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  public Response deleteDirectoryGroups(DirectoryGroupDeleteRequest request) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            request.validate();
+            List<String> names = new ArrayList<>(request.getGroups().length);
+            List<IdentitySource> origins = new ArrayList<>(request.getGroups().length);
+            for (DirectoryGroupDeleteRequest.DirectoryGroupDelete group : request.getGroups()) {
+              names.add(group.getName());
+              origins.add(group.getOrigin());
+            }
+            return Utils.ok(
+                new NameListResponse(
+                    accessControlDispatcher
+                        .deleteDirectoryGroups(names, origins)
+                        .toArray(new String[0])));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(OperationType.REMOVE, "", "", e);
+    }
+  }
+
+  /**
+   * Lists groups under a metalake for the security UI, including {@code origin} and {@code
+   * userCount}.
    *
    * @param metalake The metalake name.
    * @return Groups.
@@ -103,6 +169,36 @@ public class ExtendedGroupOperations {
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.LIST, "", metalake, e);
+    }
+  }
+
+  /**
+   * Gets a metalake group for the security Overview page ({@code origin} + {@code userCount} in one
+   * SQL).
+   *
+   * @param metalake The metalake name.
+   * @param group The group name.
+   * @return The metalake group with {@code origin} and {@code userCount}.
+   */
+  @GET
+  @Path("metalakes/{metalake}/groups/{group}")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  public Response getGroup(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      @PathParam("group") @AuthorizationMetadata(type = Entity.EntityType.GROUP) String group) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            MetalakeManager.checkMetalakeInUse(metalake);
+            return Utils.ok(
+                new ExtendedGroupResponse(
+                    accessControlDispatcher.getExtendedGroup(metalake, group)));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(OperationType.GET, group, metalake, e);
     }
   }
 
@@ -171,8 +267,9 @@ public class ExtendedGroupOperations {
   /**
    * Lists metalake users that belong to the group.
    *
-   * <p>Local groups ({@code externalId} blank) resolve membership from the built-in IdP.
-   * Provisioned groups resolve membership from SCIM.
+   * <p>Membership is resolved from IdP when the group is in {@code idp_group_meta} (and not SCIM),
+   * otherwise from SCIM when the group is in {@code scim_group_meta}. Each user includes {@code
+   * origin} and identity-store {@code enabled}.
    *
    * @param metalake The metalake name.
    * @param group The group name.

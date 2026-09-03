@@ -36,6 +36,88 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+    post:
+      tags:
+        - groups
+      summary: Add Directory Group
+      operationId: addDirectoryGroup
+      description: |
+        Create a Local Directory Group in `idp_group_meta` and add built-in IdP users as members.
+
+        Validates that every listed member exists in `idp_user_meta` first, then inserts the group
+        and writes `idp_user_group_rel` membership rows in one transaction. Does not create
+        metalake `group_meta` rows.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectoryGroupAddRequest"
+            examples:
+              DirectoryGroupAddRequest:
+                $ref: "#/components/examples/DirectoryGroupAddRequest"
+
+      responses:
+        "200":
+          description: Returns the created Directory Group
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/DirectoryGroupResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - One or more members do not exist in the built-in IdP
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "409":
+          description: Conflict - The group name already exists in `idp_group_meta`
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/directory/groups/delete:
+    post:
+      tags:
+        - groups
+      summary: Delete Directory Groups
+      operationId: deleteDirectoryGroups
+      description: |
+        Soft-delete Local Directory Groups via the built-in IdP (`idp_group_meta` and
+        `idp_user_group_rel`).
+
+        Validates that every listed `origin` is `Local` (request field only; no existence check).
+        Then soft-deletes each group through the IdP manager with force (memberships removed).
+        Metalake `group_meta` rows are left unchanged.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectoryGroupDeleteRequest"
+            examples:
+              DirectoryGroupDeleteRequest:
+                $ref: "#/components/examples/DirectoryGroupDeleteRequest"
+
+      responses:
+        "200":
+          description: Returns the soft-deleted group names
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/NameListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/metalakes/{metalake}/groups:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
@@ -47,10 +129,13 @@ paths:
       description: |
         List groups under a metalake for the enterprise security Groups page.
 
-        Returns OSS group fields plus `origin` and `userCount`. `origin` is `Local` when the group
-        name exists in the built-in IdP (`idp_group_meta`) and `Provisioned` otherwise. `userCount`
-        is the number of metalake users in the group (local groups from built-in IdP membership,
-        provisioned groups from SCIM).
+        Returns OSS group fields plus `origin` and `userCount`. `origin` is:
+        - `Local` when the group name exists in `idp_group_meta`
+        - `Provisioned` when it exists in `scim_group_meta` (and not IdP)
+        - `JIT` when it exists in neither identity store
+
+        `userCount` is the number of metalake users in the group (Members): Local from IdP
+        membership, Provisioned from SCIM, JIT is `0`.
 
       responses:
         "200":
@@ -121,6 +206,48 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/security/metalakes/{metalake}/groups/{group}:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
+    get:
+      tags:
+        - groups
+      summary: Get a metalake group for the security UI
+      operationId: getSecurityGroup
+      description: |
+        Get a metalake group for the enterprise security group Overview page.
+
+        Returns OSS group fields plus `origin` and `userCount`. `origin` is:
+        - `Local` when the group name exists in `idp_group_meta`
+        - `Provisioned` when it exists in `scim_group_meta` (and not IdP)
+        - `JIT` when it exists in neither identity store
+
+        `userCount` is the number of metalake users in the group (Members on the Overview page):
+        Local from IdP membership, Provisioned from SCIM, JIT is `0`.
+        `auditInfo.createTime` maps to Added.
+
+      responses:
+        "200":
+          description: Returns the group
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ExtendedGroupResponse"
+        "404":
+          description: Not Found - The target metalake or group does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchGroupException:
+                  $ref: "../../docs/open-api/groups.yaml#/components/examples/NoSuchGroupException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/metalakes/{metalake}/groups/{group}/users:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
@@ -133,9 +260,18 @@ paths:
       description: |
         List metalake users that belong to the group for the security group Members tab.
 
-        Local groups (`externalId` blank) resolve membership from the built-in IdP. Provisioned
-        groups resolve membership from SCIM. Each user includes `origin` and the user's metalake
-        roles.
+        Membership comes from the identity store for the group: `idp_user_group_rel` when the
+        group name exists in `idp_group_meta` (and not SCIM), otherwise `scim_user_group_rel` when
+        it exists in `scim_group_meta`.
+
+        Each user includes `origin` and `enabled` (Status):
+        - `origin` is `Local` when the username exists in `idp_user_meta`, `Provisioned` when it
+          exists in `scim_user_meta` (and not IdP), otherwise `JIT`
+        - `enabled` comes from `idp_user_meta` or `scim_user_meta`, defaulting to Active when
+          neither has a row
+
+        Footer member count is the length of the returned `users` array (no separate `userCount`
+        field on this response).
 
       responses:
         "200":
@@ -196,11 +332,15 @@ components:
     IdentitySource:
       type: string
       description: |
-        Source of the identity. Serialized as `origin`. `Local` when the name exists in the
-        built-in IdP (`idp_group_meta`) and `Provisioned` otherwise.
+        Source of the identity. Serialized as `origin`.
+
+        - `Local`: name exists in the built-in IdP (`idp_group_meta`)
+        - `Provisioned`: name exists in SCIM (`scim_group_meta`) and not IdP
+        - `JIT`: name exists in metalake `group_meta` but not in IdP or SCIM
       enum:
         - Local
         - Provisioned
+        - JIT
 
     ExtendedGroup:
       allOf:
@@ -216,8 +356,8 @@ components:
               type: integer
               format: int32
               description: >
-                Number of metalake users in the group for the security Groups table. Local groups
-                count built-in IdP membership; provisioned groups count SCIM membership.
+                Number of metalake users in the group (Members). Counted from IdP membership for
+                Local, SCIM membership for Provisioned, and `0` for JIT.
 
     IdpNameStatus:
       type: object
@@ -282,6 +422,67 @@ components:
             minLength: 1
           description: Optional metalake roles to grant to the group
 
+    DirectoryGroupDeleteRequest:
+      type: object
+      required:
+        - groups
+      properties:
+        groups:
+          type: array
+          minItems: 1
+          description: Directory groups to delete; every origin must be Local
+          items:
+            $ref: "#/components/schemas/DirectoryGroupDelete"
+
+    DirectoryGroupDelete:
+      type: object
+      required:
+        - name
+        - origin
+      properties:
+        name:
+          type: string
+          description: Group name
+        origin:
+          $ref: "#/components/schemas/IdentitySource"
+
+    DirectoryGroupAddRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Group name to create in idp_group_meta
+        comment:
+          type: string
+          maxLength: 1024
+          description: Optional group comment
+        members:
+          type: array
+          description: Built-in IdP usernames to add as members
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+
+    DirectoryGroupResponse:
+      type: object
+      required:
+        - code
+        - group
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        group:
+          $ref: "#/components/schemas/DirectoryGroupDTO"
+
     ExtendedGroupResponse:
       type: object
       properties:
@@ -338,6 +539,22 @@ components:
         name: contractors
         roles:
           - Analyst
+
+    DirectoryGroupDeleteRequest:
+      value:
+        groups:
+          - name: contractors
+            origin: Local
+          - name: governance
+            origin: Local
+
+    DirectoryGroupAddRequest:
+      value:
+        name: contractors
+        comment: External analysts on time-boxed access
+        members:
+          - sam.o
+          - lee.p
 
     DirectoryGroupListResponse:
       value:

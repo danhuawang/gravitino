@@ -4,7 +4,10 @@
 package com.datastrato.gravitino.authorization.mapper;
 
 import com.datastrato.gravitino.authorization.po.DirectoryGroupPO;
+import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
+import com.datastrato.gravitino.authorization.po.IdpUserIdPO;
 import java.util.List;
+import org.apache.ibatis.annotations.InsertProvider;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
 
@@ -38,6 +41,19 @@ public interface DatastratoGroupMetaMapper {
       method = "listGroupsByMetalakeWithOrigin")
   List<IdpNameStatusPO.GroupWithOrigin> listGroupsByMetalakeWithOrigin(
       @Param("metalakeName") String metalakeName);
+
+  /**
+   * Loads one metalake group with roles, identity-store origin, and {@code userCount} in one JOIN.
+   *
+   * @param metalakeName The metalake name.
+   * @param groupName The group name.
+   * @return The JOIN row, or {@code null} when missing.
+   */
+  @SelectProvider(
+      type = DatastratoGroupMetaSQLProviderFactory.class,
+      method = "getGroupByMetalakeWithOrigin")
+  IdpNameStatusPO.GroupWithOrigin getGroupByMetalakeWithOrigin(
+      @Param("metalakeName") String metalakeName, @Param("groupName") String groupName);
 
   /**
    * Loads metalake groups by name with roles and built-in IdP membership in one JOIN.
@@ -94,4 +110,51 @@ public interface DatastratoGroupMetaMapper {
       type = DatastratoGroupMetaSQLProviderFactory.class,
       method = "listDirectoryGroups")
   List<DirectoryGroupPO> listDirectoryGroups();
+
+  /**
+   * Returns group names that have an active row in {@code idp_group_meta}.
+   *
+   * @param groupNames Group names to check.
+   * @return Group names present in the requested set.
+   */
+  @SelectProvider(
+      type = DatastratoGroupMetaSQLProviderFactory.class,
+      method = "selectIdpGroupNamesByNames")
+  List<String> selectIdpGroupNamesByNames(@Param("groupNames") List<String> groupNames);
+
+  /**
+   * Returns active IdP user ids for the given names.
+   *
+   * @param userNames Usernames to resolve.
+   * @return User name / id rows present in {@code idp_user_meta}.
+   */
+  @SelectProvider(
+      type = DatastratoGroupMetaSQLProviderFactory.class,
+      method = "selectIdpUserIdsByNames")
+  List<IdpUserIdPO> selectIdpUserIdsByNames(@Param("userNames") List<String> userNames);
+
+  /**
+   * Inserts a Local Directory Group into {@code idp_group_meta}.
+   *
+   * @param groupId Generated group id.
+   * @param groupName Group name.
+   * @param groupComment Group comment.
+   * @return Number of rows inserted.
+   */
+  @InsertProvider(type = DatastratoGroupMetaSQLProviderFactory.class, method = "insertIdpGroup")
+  int insertIdpGroup(
+      @Param("groupId") long groupId,
+      @Param("groupName") String groupName,
+      @Param("groupComment") String groupComment);
+
+  /**
+   * Batch-inserts {@code idp_user_group_rel} rows for a new Directory Group.
+   *
+   * @param relations Relation rows.
+   * @return Number of rows inserted.
+   */
+  @InsertProvider(
+      type = DatastratoGroupMetaSQLProviderFactory.class,
+      method = "batchInsertIdpUserGroupRels")
+  int batchInsertIdpUserGroupRels(@Param("relations") List<IdpUserGroupRelInsertPO> relations);
 }

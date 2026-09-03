@@ -352,6 +352,8 @@ public class TestDatastratoAccessControlDispatcher {
     Assertions.assertThrows(
         IllegalArgumentException.class, () -> dispatcher.getExtendedUser(" ", "alice"));
     Assertions.assertThrows(
+        IllegalArgumentException.class, () -> dispatcher.getExtendedGroup("metalake", " "));
+    Assertions.assertThrows(
         IllegalArgumentException.class, () -> dispatcher.listExtendedGroupsForUser("", "alice"));
     Assertions.assertThrows(
         IllegalArgumentException.class, () -> dispatcher.listExtendedUsersForGroup(" ", "g"));

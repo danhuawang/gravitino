@@ -173,6 +173,32 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
         dispatcher.deleteDirectoryUsers(List.of("missing.user"), List.of(IdentitySource.LOCAL)));
     verify(idp).removeUser("missing.user");
   }
+
+  @Test
+  public void testDeleteDirectoryGroupsCallsIdpRemoveGroup() {
+    when(idp.removeGroup("governance", true)).thenReturn(true);
+    when(idp.removeGroup("ops", true)).thenReturn(true);
+
+    Assertions.assertEquals(
+        List.of("governance", "ops"),
+        dispatcher.deleteDirectoryGroups(
+            List.of("governance", "ops"), List.of(IdentitySource.LOCAL, IdentitySource.LOCAL)));
+    verify(idp).removeGroup("governance", true);
+    verify(idp).removeGroup("ops", true);
+  }
+
+  @Test
+  public void testDeleteDirectoryGroupsRejectsNonLocalOrigin() {
+    IllegalArgumentException ex =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                dispatcher.deleteDirectoryGroups(
+                    List.of("platform"), List.of(IdentitySource.PROVISIONED)));
+    Assertions.assertTrue(ex.getMessage().contains("only Local origin is supported"));
+    verify(idp, never()).removeGroup(any(), anyBoolean());
+  }
+
   private void stubIdpUser(String name) {
     when(idp.getUser(name)).thenReturn(new IdpUser(name, Collections.emptyList()));
   }

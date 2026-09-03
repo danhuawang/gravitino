@@ -24,8 +24,8 @@ import org.apache.gravitino.storage.relational.utils.POConverters;
  * MyBatis row types for built-in IdP JOIN queries.
  *
  * <p>The top-level type maps IdP picker rows ({@code name} + {@code status}). Nested types map
- * metalake user list rows with identity-store origin and group list rows with an {@code
- * inBuiltInIdp} flag. All are read-only and are not written to the database.
+ * metalake user/group list rows with identity-store origin. All are read-only and are not written
+ * to the database.
  */
 public class IdpNameStatusPO {
 
@@ -125,7 +125,7 @@ public class IdpNameStatusPO {
   public static ExtendedGroupDTO toExtendedGroup(GroupWithOrigin row, String metalakeName) {
     Namespace namespace = AuthorizationUtils.ofGroupNamespace(metalakeName);
     return ExtendedGroupDTO.from(
-        POConverters.fromExtendedGroupPO(row, namespace), row.inBuiltInIdp(), row.userCount());
+        POConverters.fromExtendedGroupPO(row, namespace), row.origin(), row.userCount());
   }
 
   /**
@@ -305,31 +305,33 @@ public class IdpNameStatusPO {
     }
   }
 
-  /** Metalake group row plus whether the name exists in {@code idp_group_meta}. */
+  /** Metalake group row plus identity-store origin and metalake member count. */
   public static final class GroupWithOrigin extends ExtendedGroupPO {
 
-    private Integer inBuiltInIdp;
+    private Integer originCode;
     private Integer userCount;
 
     /**
-     * @return {@code 1} when the name exists in {@code idp_group_meta}, otherwise {@code 0}.
+     * @return Origin code from SQL ({@link IdentitySource#ORIGIN_CODE_LOCAL}, {@link
+     *     IdentitySource#ORIGIN_CODE_PROVISIONED}, or {@link IdentitySource#ORIGIN_CODE_JIT}).
      */
-    public Integer getInBuiltInIdp() {
-      return inBuiltInIdp;
+    public Integer getOriginCode() {
+      return originCode;
     }
 
     /**
-     * @param inBuiltInIdp {@code 1} when the name exists in {@code idp_group_meta}.
+     * @param originCode Origin code from SQL.
      */
-    public void setInBuiltInIdp(Integer inBuiltInIdp) {
-      this.inBuiltInIdp = inBuiltInIdp;
+    public void setOriginCode(Integer originCode) {
+      this.originCode = originCode;
     }
 
     /**
-     * @return {@code true} when the name exists in {@code idp_group_meta}.
+     * @return Identity source for the security Groups table.
      */
-    public boolean inBuiltInIdp() {
-      return isFlagTrue(inBuiltInIdp);
+    public IdentitySource origin() {
+      return IdentitySource.fromOriginCode(
+          originCode == null ? IdentitySource.ORIGIN_CODE_JIT : originCode);
     }
 
     /**

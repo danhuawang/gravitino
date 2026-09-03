@@ -5,6 +5,7 @@ package org.apache.gravitino.storage.relational.service;
 
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_MAX_CONNECTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -168,5 +169,59 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
     assertEquals(1, platform.memberCount());
     assertEquals(IdentitySource.PROVISIONED, platform.origin());
     assertEquals(List.of("Contoso"), platform.metalakes());
+  }
+
+  @Test
+  public void testAddDirectoryGroupWithMembers() throws Exception {
+    DirectoryGroup created =
+        DatastratoGroupMetaService.getInstance()
+            .addDirectoryGroup("ops", "Operations", List.of("sam.o", "lee.p"));
+
+    assertEquals("ops", created.name());
+    assertEquals(2, created.memberCount());
+    assertEquals(IdentitySource.LOCAL, created.origin());
+    assertTrue(created.metalakes().isEmpty());
+
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      try (var comment =
+          statement.executeQuery(
+              "SELECT group_comment FROM idp_group_meta WHERE group_name = 'ops' AND deleted_at ="
+                  + " 0")) {
+        assertTrue(comment.next());
+        assertEquals("Operations", comment.getString(1));
+      }
+      try (var members =
+          statement.executeQuery(
+              "SELECT u.user_name FROM idp_user_group_rel r"
+                  + " JOIN idp_user_meta u ON u.user_id = r.user_id"
+                  + " JOIN idp_group_meta g ON g.group_id = r.group_id"
+                  + " WHERE g.group_name = 'ops' AND r.deleted_at = 0"
+                  + " ORDER BY u.user_name")) {
+        assertTrue(members.next());
+        assertEquals("lee.p", members.getString(1));
+        assertTrue(members.next());
+        assertEquals("sam.o", members.getString(1));
+      }
+    }
+  }
+
+  @Test
+  public void testAddDirectoryGroupRejectsMissingMember() {
+    assertThrows(
+        org.apache.gravitino.exceptions.NotFoundException.class,
+        () ->
+            DatastratoGroupMetaService.getInstance()
+                .addDirectoryGroup("ops", "", List.of("missing.user")));
+  }
+
+  @Test
+  public void testAddDirectoryGroupRejectsDuplicate() {
+    DatastratoGroupMetaService.getInstance().addDirectoryGroup("dup.group", null, List.of());
+    assertThrows(
+        org.apache.gravitino.exceptions.AlreadyExistsException.class,
+        () ->
+            DatastratoGroupMetaService.getInstance()
+                .addDirectoryGroup("dup.group", null, List.of()));
   }
 }

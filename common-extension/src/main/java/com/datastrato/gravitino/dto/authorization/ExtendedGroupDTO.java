@@ -67,9 +67,19 @@ public class ExtendedGroupDTO extends GroupDTO {
     return from(group, IdentitySource.fromIdpMembership(inBuiltInIdp), userCount);
   }
 
-  private static ExtendedGroupDTO from(Group group, IdentitySource origin, int userCount) {
+  /**
+   * Builds an {@link ExtendedGroupDTO} from a {@link Group}, identity origin, and user count.
+   *
+   * @param group The metalake group.
+   * @param origin Local / Provisioned / JIT.
+   * @param userCount Number of metalake users in the group.
+   * @return The extended group DTO.
+   */
+  public static ExtendedGroupDTO from(Group group, IdentitySource origin, int userCount) {
     Preconditions.checkArgument(group != null, "group cannot be null");
+    Preconditions.checkArgument(origin != null, "origin cannot be null");
     Preconditions.checkArgument(StringUtils.isNotBlank(group.name()), "group name cannot be blank");
+    Preconditions.checkArgument(userCount >= 0, "userCount cannot be negative");
     List<String> roles = group.roles() == null ? Collections.emptyList() : group.roles();
     return new ExtendedGroupDTO(
         group.id(),

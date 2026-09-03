@@ -4,6 +4,7 @@
 package com.datastrato.gravitino.authorization.mapper;
 
 import com.datastrato.gravitino.authorization.mapper.provider.base.DatastratoGroupMetaBaseSQLProvider;
+import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
 import com.google.common.collect.ImmutableMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +31,11 @@ public class DatastratoGroupMetaSQLProviderFactory {
     return getProvider().listGroupsByMetalakeWithOrigin(metalakeName);
   }
 
+  public static String getGroupByMetalakeWithOrigin(
+      @Param("metalakeName") String metalakeName, @Param("groupName") String groupName) {
+    return getProvider().getGroupByMetalakeWithOrigin(metalakeName, groupName);
+  }
+
   public static String listGroupsByMetalakeAndNamesWithOrigin(
       @Param("metalakeName") String metalakeName, @Param("groupNames") List<String> groupNames) {
     return getProvider().listGroupsByMetalakeAndNamesWithOrigin(metalakeName, groupNames);
@@ -46,6 +52,26 @@ public class DatastratoGroupMetaSQLProviderFactory {
 
   public static String listDirectoryGroups() {
     return getProvider().listDirectoryGroups();
+  }
+
+  public static String selectIdpGroupNamesByNames(@Param("groupNames") List<String> groupNames) {
+    return getProvider().selectIdpGroupNamesByNames(groupNames);
+  }
+
+  public static String selectIdpUserIdsByNames(@Param("userNames") List<String> userNames) {
+    return getProvider().selectIdpUserIdsByNames(userNames);
+  }
+
+  public static String insertIdpGroup(
+      @Param("groupId") long groupId,
+      @Param("groupName") String groupName,
+      @Param("groupComment") String groupComment) {
+    return getProvider().insertIdpGroup(groupId, groupName, groupComment);
+  }
+
+  public static String batchInsertIdpUserGroupRels(
+      @Param("relations") List<IdpUserGroupRelInsertPO> relations) {
+    return getProvider().batchInsertIdpUserGroupRels(relations);
   }
 
   private static DatastratoGroupMetaBaseSQLProvider getProvider() {
