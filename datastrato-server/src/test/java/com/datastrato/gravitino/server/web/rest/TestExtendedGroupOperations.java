@@ -116,8 +116,8 @@ public class TestExtendedGroupOperations extends JerseyTest {
   @Test
   public void testListGroups() {
     String metalake = "metalake";
-    Group local = buildGroup(1L, "contractors", "has-ext", Collections.singletonList("pii_reader"));
-    Group provisioned = buildGroup(2L, "governance", null, Collections.singletonList("Gov Admin"));
+    Group local = buildGroup(1L, "contractors", Collections.singletonList("pii_reader"));
+    Group provisioned = buildGroup(2L, "governance", Collections.singletonList("Gov Admin"));
     when(accessControlDispatcher.listExtendedGroups(metalake))
         .thenReturn(
             new ExtendedGroupDTO[] {
@@ -135,18 +135,16 @@ public class TestExtendedGroupOperations extends JerseyTest {
     Assertions.assertEquals(0, body.getCode());
     Assertions.assertEquals(2, body.getGroups().length);
     Assertions.assertEquals("contractors", body.getGroups()[0].name());
-    Assertions.assertEquals("has-ext", body.getGroups()[0].externalId());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getGroups()[0].origin());
     Assertions.assertEquals(12, body.getGroups()[0].userCount());
     Assertions.assertEquals("governance", body.getGroups()[1].name());
-    Assertions.assertNull(body.getGroups()[1].externalId());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getGroups()[1].origin());
     Assertions.assertEquals(8, body.getGroups()[1].userCount());
   }
 
   @Test
   public void testListGroupUsers() {
-    ExtendedUserDTO user = ExtendedUserDTO.from(buildUser("alice", null), true);
+    ExtendedUserDTO user = ExtendedUserDTO.from(buildUser("alice"), true);
     when(accessControlDispatcher.listExtendedUsersForGroup("metalake", "contractors"))
         .thenReturn(new ExtendedUserDTO[] {user});
     ExtendedUserListResponse body =
@@ -172,7 +170,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
   @Test
   public void testAddLocalGroup() {
     String metalake = "metalake";
-    Group added = buildGroup(1L, "contractors", null, Collections.singletonList("Analyst"));
+    Group added = buildGroup(1L, "contractors", Collections.singletonList("Analyst"));
     when(accessControlDispatcher.addLocalGroup(
             eq(metalake), eq("contractors"), eq(List.of("Analyst"))))
         .thenReturn(added);
@@ -218,25 +216,22 @@ public class TestExtendedGroupOperations extends JerseyTest {
     when(entityStore.get(any(), any(), any())).thenReturn(metalake);
   }
 
-  private static Group buildGroup(Long id, String name, String externalId, List<String> roles) {
+  private static Group buildGroup(Long id, String name, List<String> roles) {
     return GroupEntity.builder()
         .withId(id)
         .withName(name)
         .withNamespace(Namespace.of("metalake", "system", "group"))
-        .withExternalId(externalId)
         .withRoleNames(roles)
         .withAuditInfo(
             AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
         .build();
   }
 
-  private static User buildUser(String name, String externalId) {
+  private static User buildUser(String name) {
     return UserEntity.builder()
         .withId(1L)
         .withName(name)
         .withNamespace(Namespace.of("metalake", "system", "user"))
-        .withExternalId(externalId)
-        .withEnabled(true)
         .withRoleNames(Collections.emptyList())
         .withAuditInfo(
             AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
