@@ -9,6 +9,7 @@ import static org.apache.gravitino.storage.relational.mapper.UserMetaMapper.USER
 
 import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.GroupMetaMapper;
@@ -129,6 +130,95 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
+   * Returns usernames that have an active row in {@code idp_user_meta}.
+   *
+   * @param userNames Usernames to check.
+   * @return MyBatis script SQL.
+   */
+  public String selectIdpUserNamesByNames(@Param("userNames") List<String> userNames) {
+    return "<script>"
+        + "SELECT user_name FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " WHERE deleted_at = 0 AND user_name IN "
+        + userNameInClause()
+        + "</script>";
+  }
+
+  /**
+   * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
+   *
+   * @param userNames Distinct usernames already validated as Local IdP users.
+   * @param enabled Target enabled value.
+   * @return MyBatis script SQL.
+   */
+  public String batchUpdateIdpUserEnabledByUserNames(
+      @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled) {
+    return "<script>"
+        + "UPDATE "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " SET enabled = #{enabled},"
+        + " last_version = current_version,"
+        + " current_version = current_version + 1"
+        + " WHERE deleted_at = 0 AND user_name IN "
+        + userNameInClause()
+        + "</script>";
+  }
+
+  /**
+   * Returns active IdP group ids for the given names.
+   *
+   * @param groupNames Group names to resolve.
+   * @return MyBatis script SQL.
+   */
+  public String selectIdpGroupIdsByNames(@Param("groupNames") List<String> groupNames) {
+    return "<script>"
+        + "SELECT group_name as groupName, group_id as groupId FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " WHERE deleted_at = 0 AND group_name IN "
+        + groupNameInClause()
+        + "</script>";
+  }
+
+  /**
+   * Inserts a Local Directory User into {@code idp_user_meta}.
+   *
+   * @param userId Generated user id.
+   * @param userName Username.
+   * @param passwordHash Hashed password.
+   * @param enabled Whether the user is enabled.
+   * @return Insert SQL.
+   */
+  public String insertIdpUser(
+      @Param("userId") long userId,
+      @Param("userName") String userName,
+      @Param("passwordHash") String passwordHash,
+      @Param("enabled") boolean enabled) {
+    return "INSERT INTO "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " (user_id, user_name, password_hash, enabled, current_version, last_version, deleted_at)"
+        + " VALUES (#{userId}, #{userName}, #{passwordHash}, #{enabled}, 1, 1, 0)";
+  }
+
+  /**
+   * Batch-inserts {@code idp_user_group_rel} rows for a new Directory User.
+   *
+   * @param relations Relation rows.
+   * @return MyBatis script SQL.
+   */
+  public String batchInsertIdpUserGroupRels(
+      @Param("relations") List<IdpUserGroupRelInsertPO> relations) {
+    return "<script>"
+        + "INSERT INTO "
+        + DatastratoUserMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+        + " (id, user_id, group_id, current_version, last_version, deleted_at)"
+        + " VALUES "
+        + "<foreach item='item' collection='relations' separator=','>"
+        + "(#{item.id}, #{item.userId}, #{item.groupId}, 1, 1, 0)"
+        + "</foreach>"
+        + "</script>";
+  }
+
+  /**
    * Lists active IdP usernames with whether each is already in the metalake.
    *
    * @param metalakeName The metalake name.
@@ -150,7 +240,9 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Loads a metalake user with roles and built-in IdP membership in one JOIN.
+   * Loads a metalake user with roles and identity-store origin in one JOIN.
+   *
+   * <p>Same origin / {@code enabled} rules as {@link #listUserWithGroupsPOsByMetalakeName}.
    *
    * @param metalakeName The metalake name.
    * @param userName The username.
@@ -163,7 +255,7 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Lists metalake users with roles and whether each name exists in the built-in IdP.
+   * Lists metalake users with roles and identity-store origin in one JOIN.
    *
    * @param metalakeName The metalake name.
    * @return JOIN SQL.
@@ -173,7 +265,7 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Loads metalake users by name with roles and built-in IdP membership in one JOIN.
+   * Loads metalake users by name with roles and identity-store origin in one JOIN.
    *
    * @param metalakeName The metalake name.
    * @param userNames Usernames to load.
@@ -188,7 +280,7 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Lists metalake users in a group with roles and built-in IdP membership in one JOIN.
+   * Lists metalake users in a group with roles and identity-store origin in one JOIN.
    *
    * @param metalakeName The metalake name.
    * @param groupName The group name.
@@ -200,7 +292,11 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Lists metalake users with roles, group names, and built-in IdP membership in one query.
+   * Lists metalake users with roles, group names, and identity-store origin in one query.
+   *
+   * <p>{@code origin} is Local when the name exists in {@code idp_user_meta}, Provisioned when it
+   * exists in {@code scim_user_meta} (and not IdP), otherwise JIT. {@code enabled} comes from IdP
+   * then SCIM, defaulting to {@code true} when neither has a row.
    *
    * @param metalakeName The metalake name.
    * @return MyBatis SQL.
@@ -211,16 +307,24 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " "
         + coalescedExternalId("ut")
         + " as externalId,"
-        + " "
-        + coalescedEnabled("ut")
-        + " as enabled,"
+        + " COALESCE(iu.enabled, "
+        + SCIM_USER_ALIAS
+        + ".enabled, TRUE) as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
         + " ut.deleted_at as deletedAt,"
         + " roles.roleNames as roleNames,"
         + " roles.roleIds as roleIds,"
         + " userGroups.groupNames as groupNames,"
-        + " CASE WHEN iu.user_name IS NOT NULL THEN 1 ELSE 0 END as inBuiltInIdp"
+        + " CASE WHEN iu.user_name IS NOT NULL THEN "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " WHEN "
+        + SCIM_USER_ALIAS
+        + ".user_name IS NOT NULL THEN "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " ELSE "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " END as originCode"
         + " FROM "
         + USER_TABLE_NAME
         + " ut"
@@ -376,7 +480,7 @@ public class DatastratoUserMetaBaseSQLProvider {
         + coalescedExternalId("ut")
         + " as externalId,"
         + " "
-        + coalescedEnabled("ut")
+        + identityStoreEnabled()
         + " as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
@@ -387,7 +491,8 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " "
         + jsonArrayAgg("rot.role_id")
         + " as roleIds,"
-        + " MAX(CASE WHEN iu.user_name IS NOT NULL THEN 1 ELSE 0 END) as inBuiltInIdp"
+        + " "
+        + originCodeSelect()
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + " mt INNER JOIN "
@@ -451,7 +556,7 @@ public class DatastratoUserMetaBaseSQLProvider {
         + coalescedExternalId("ut")
         + " as externalId,"
         + " "
-        + coalescedEnabled("ut")
+        + identityStoreEnabled()
         + " as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
@@ -462,7 +567,8 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " "
         + jsonArrayAgg("rot.role_id")
         + " as roleIds,"
-        + " MAX(CASE WHEN iu.user_name IS NOT NULL THEN 1 ELSE 0 END) as inBuiltInIdp"
+        + " "
+        + originCodeSelect()
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + userJoin
@@ -480,6 +586,24 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " AS rot ON rot.role_id = rt.role_id"
         + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
         + (extraFilter == null ? "" : extraFilter);
+  }
+
+  /** Local / Provisioned / JIT origin code; uses MAX for GROUP BY role joins. */
+  private String originCodeSelect() {
+    return "CASE WHEN MAX(CASE WHEN iu.user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " WHEN MAX(CASE WHEN "
+        + SCIM_USER_ALIAS
+        + ".user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " ELSE "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " END as originCode";
+  }
+
+  /** IdP then SCIM enabled, default Active when neither identity store has a row. */
+  private String identityStoreEnabled() {
+    return "COALESCE(iu.enabled, " + SCIM_USER_ALIAS + ".enabled, TRUE)";
   }
 
   protected String scimUserJoin(String userTableAlias) {

@@ -4,6 +4,7 @@
 package com.datastrato.gravitino.authorization.mapper;
 
 import com.datastrato.gravitino.authorization.mapper.provider.base.DatastratoUserMetaBaseSQLProvider;
+import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
 import com.google.common.collect.ImmutableMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,32 @@ public class DatastratoUserMetaSQLProviderFactory {
     return getProvider().batchUpdateScimUserEnabledByUserNames(userNames, enabled);
   }
 
+  public static String selectIdpUserNamesByNames(@Param("userNames") List<String> userNames) {
+    return getProvider().selectIdpUserNamesByNames(userNames);
+  }
+
+  public static String batchUpdateIdpUserEnabledByUserNames(
+      @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled) {
+    return getProvider().batchUpdateIdpUserEnabledByUserNames(userNames, enabled);
+  }
+
+  public static String selectIdpGroupIdsByNames(@Param("groupNames") List<String> groupNames) {
+    return getProvider().selectIdpGroupIdsByNames(groupNames);
+  }
+
+  public static String insertIdpUser(
+      @Param("userId") long userId,
+      @Param("userName") String userName,
+      @Param("passwordHash") String passwordHash,
+      @Param("enabled") boolean enabled) {
+    return getProvider().insertIdpUser(userId, userName, passwordHash, enabled);
+  }
+
+  public static String batchInsertIdpUserGroupRels(
+      @Param("relations") List<IdpUserGroupRelInsertPO> relations) {
+    return getProvider().batchInsertIdpUserGroupRels(relations);
+  }
+
   public static String listUsersWithMetalakeStatus(@Param("metalakeName") String metalakeName) {
     return getProvider().listUsersWithMetalakeStatus(metalakeName);
   }
@@ -74,7 +101,6 @@ public class DatastratoUserMetaSQLProviderFactory {
       @Param("metalakeName") String metalakeName) {
     return getProvider().listUserWithGroupsPOsByMetalakeName(metalakeName);
   }
-
 
   public static String listDirectoryUsers() {
     return getProvider().listDirectoryUsers();

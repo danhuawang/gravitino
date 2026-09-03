@@ -12,6 +12,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.authorization.DirectoryUser;
+import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -210,5 +211,146 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(IdentitySource.LOCAL, sam.origin());
     assertEquals(List.of("governance", "ops"), sam.groups());
     assertEquals(List.of("Contoso"), sam.metalakes());
+  }
+
+  /** Verifies metalake Users list origin (Local/Provisioned/JIT) and identity-store enabled. */
+  @Test
+  public void testListUsersWithGroupsOriginAndEnabled() {
+    List<UserWithGroups> contoso =
+        DatastratoUserMetaService.getInstance().listUsersWithGroups("Contoso");
+    assertEquals(3, contoso.size());
+
+    UserWithGroups dana =
+        contoso.stream().filter(u -> u.user().name().equals("dana.k")).findFirst().orElseThrow();
+    assertEquals(IdentitySource.PROVISIONED, dana.origin());
+    assertTrue(dana.user().enabled());
+
+    UserWithGroups jordan =
+        contoso.stream().filter(u -> u.user().name().equals("jordan.m")).findFirst().orElseThrow();
+    assertEquals(IdentitySource.JIT, jordan.origin());
+    assertTrue(jordan.user().enabled());
+
+    UserWithGroups sam =
+        contoso.stream().filter(u -> u.user().name().equals("sam.o")).findFirst().orElseThrow();
+    assertEquals(IdentitySource.LOCAL, sam.origin());
+    assertTrue(sam.user().enabled());
+
+    List<UserWithGroups> acme = DatastratoUserMetaService.getInstance().listUsersWithGroups("Acme");
+    UserWithGroups lee =
+        acme.stream().filter(u -> u.user().name().equals("lee.p")).findFirst().orElseThrow();
+    assertEquals(IdentitySource.LOCAL, lee.origin());
+    assertFalse(lee.user().enabled());
+  }
+
+  /** Verifies Local Directory Users can be batch-disabled via idp_user_meta. */
+  @Test
+  public void testBatchUpdateDirectoryUserEnabled() throws Exception {
+    List<String> updated =
+        DatastratoUserMetaService.getInstance()
+            .batchUpdateDirectoryUserEnabled(
+                List.of("sam.o", "lee.p"),
+                List.of(IdentitySource.LOCAL, IdentitySource.LOCAL),
+                false);
+
+    assertEquals(List.of("sam.o", "lee.p"), updated);
+
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement();
+        ResultSet resultSet =
+            statement.executeQuery(
+                "SELECT user_name, enabled FROM idp_user_meta"
+                    + " WHERE user_name IN ('sam.o', 'lee.p') ORDER BY user_name")) {
+      assertTrue(resultSet.next());
+      assertEquals("lee.p", resultSet.getString(1));
+      assertFalse(resultSet.getBoolean(2));
+      assertTrue(resultSet.next());
+      assertEquals("sam.o", resultSet.getString(1));
+      assertFalse(resultSet.getBoolean(2));
+    }
+
+    List<DirectoryUser> users = DatastratoUserMetaService.getInstance().listDirectoryUsers();
+    assertFalse(users.get(2).enabled());
+    assertFalse(users.get(3).enabled());
+  }
+
+  @Test
+  public void testBatchUpdateDirectoryUserEnabledRejectsNonLocalOrigin() {
+    IllegalArgumentException ex =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                DatastratoUserMetaService.getInstance()
+                    .batchUpdateDirectoryUserEnabled(
+                        List.of("dana.k"), List.of(IdentitySource.PROVISIONED), false));
+    assertTrue(ex.getMessage().contains("only Local origin is supported"));
+  }
+
+  @Test
+  public void testBatchUpdateDirectoryUserEnabledRejectsMissingIdpUser() {
+    IllegalArgumentException ex =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                DatastratoUserMetaService.getInstance()
+                    .batchUpdateDirectoryUserEnabled(
+                        List.of("missing.user"), List.of(IdentitySource.LOCAL), true));
+    assertTrue(ex.getMessage().contains("idp_user_meta"));
+    assertTrue(ex.getMessage().contains("missing.user"));
+  }
+
+  @Test
+  public void testAddDirectoryUserWithGroups() throws Exception {
+    DirectoryUser created =
+        DatastratoUserMetaService.getInstance()
+            .addDirectoryUser("jordan.m", "ChangeMe-2026!", List.of("governance", "ops"));
+
+    assertEquals("jordan.m", created.name());
+    assertTrue(created.enabled());
+    assertEquals(IdentitySource.LOCAL, created.origin());
+    assertEquals(List.of("governance", "ops"), created.groups());
+    assertTrue(created.metalakes().isEmpty());
+
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      try (ResultSet user =
+          statement.executeQuery(
+              "SELECT enabled, password_hash FROM idp_user_meta WHERE user_name = 'jordan.m'")) {
+        assertTrue(user.next());
+        assertTrue(user.getBoolean(1));
+        assertTrue(user.getString(2).length() > 10);
+      }
+      try (ResultSet groups =
+          statement.executeQuery(
+              "SELECT g.group_name FROM idp_user_group_rel r"
+                  + " JOIN idp_user_meta u ON u.user_id = r.user_id"
+                  + " JOIN idp_group_meta g ON g.group_id = r.group_id"
+                  + " WHERE u.user_name = 'jordan.m' AND r.deleted_at = 0"
+                  + " ORDER BY g.group_name")) {
+        assertTrue(groups.next());
+        assertEquals("governance", groups.getString(1));
+        assertTrue(groups.next());
+        assertEquals("ops", groups.getString(1));
+      }
+    }
+  }
+
+  @Test
+  public void testAddDirectoryUserRejectsMissingGroup() {
+    assertThrows(
+        org.apache.gravitino.exceptions.NotFoundException.class,
+        () ->
+            DatastratoUserMetaService.getInstance()
+                .addDirectoryUser("new.user", "ChangeMe-2026!", List.of("missing-group")));
+  }
+
+  @Test
+  public void testAddDirectoryUserRejectsDuplicate() {
+    DatastratoUserMetaService.getInstance()
+        .addDirectoryUser("dup.user", "ChangeMe-2026!", List.of());
+    assertThrows(
+        org.apache.gravitino.exceptions.AlreadyExistsException.class,
+        () ->
+            DatastratoUserMetaService.getInstance()
+                .addDirectoryUser("dup.user", "ChangeMe-2026!", List.of()));
   }
 }

@@ -359,6 +359,83 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
+   * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
+   *
+   * <p>Requires every origin to be Local and every username to exist in {@code idp_user_meta}.
+   * Validation failure updates no rows.
+   *
+   * @param names Usernames to update.
+   * @param origins Origins aligned with {@code names}; every value must be Local.
+   * @param enabled Target enabled value.
+   * @return Distinct usernames that were updated.
+   */
+  public List<String> batchUpdateDirectoryUserEnabled(
+      List<String> names, List<IdentitySource> origins, boolean enabled) {
+    return DatastratoUserMetaService.getInstance()
+        .batchUpdateDirectoryUserEnabled(names, origins, enabled);
+  }
+
+  /**
+   * Creates a Local Directory User in {@code idp_user_meta} and adds the user to built-in IdP
+   * groups via {@code idp_user_group_rel}.
+   *
+   * <p>Implemented entirely in the enterprise module (no IdP manager calls). Validates groups and
+   * uniqueness first, then inserts the user and memberships in one transaction.
+   *
+   * @param username Username to create.
+   * @param password Plaintext password.
+   * @param groupNames Built-in IdP group names to join; {@code null} or empty means none.
+   * @return The created Directory User (Local origin, empty metalakes).
+   * @throws NotFoundException If any group is missing from {@code idp_group_meta}.
+   * @throws org.apache.gravitino.exceptions.AlreadyExistsException If the username already exists
+   *     in {@code idp_user_meta}.
+   */
+  public DirectoryUser addDirectoryUser(String username, String password, List<String> groupNames) {
+    return DatastratoUserMetaService.getInstance().addDirectoryUser(username, password, groupNames);
+  }
+
+  /**
+   * Soft-deletes Local Directory Users via {@link IdpUserGroupManager#removeUser(String)}.
+   *
+   * <p>Only validates that every request origin is Local (no DB existence check). Each call
+   * soft-deletes {@code idp_user_meta} and {@code idp_user_group_rel}. Metalake {@code user_meta}
+   * is left unchanged.
+   *
+   * @param names Usernames to delete.
+   * @param origins Origins aligned with {@code names}; every value must be Local.
+   * @return Distinct usernames that were soft-deleted.
+   */
+  public List<String> deleteDirectoryUsers(List<String> names, List<IdentitySource> origins) {
+    Preconditions.checkArgument(names != null && !names.isEmpty(), "names cannot be null or empty");
+    Preconditions.checkArgument(origins != null, "origins cannot be null");
+    Preconditions.checkArgument(
+        names.size() == origins.size(), "names and origins must have the same size");
+
+    LinkedHashSet<String> distinctNames = new LinkedHashSet<>();
+    for (int i = 0; i < names.size(); i++) {
+      String name = names.get(i);
+      IdentitySource origin = origins.get(i);
+      Preconditions.checkArgument(StringUtils.isNotBlank(name), "username cannot be blank");
+      Preconditions.checkArgument(origin != null, "origin cannot be null");
+      if (origin != IdentitySource.LOCAL) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Cannot delete Directory Users: only Local origin is supported, got %s for user %s",
+                origin.value(), name));
+      }
+      distinctNames.add(name);
+    }
+
+    List<String> deleted = Lists.newArrayList();
+    for (String name : distinctNames) {
+      if (idpUserGroupManager.removeUser(name)) {
+        deleted.add(name);
+      }
+    }
+    return deleted;
+  }
+
+  /**
    * Lists identity-store groups for Configure → Directory → Groups.
    *
    * <p>Local groups come from {@code idp_group_meta}; Provisioned groups from {@code

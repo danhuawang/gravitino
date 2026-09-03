@@ -37,6 +37,123 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+    post:
+      tags:
+        - users
+      summary: Add Directory User
+      operationId: addDirectoryUser
+      description: |
+        Create a Local Directory User in `idp_user_meta` and add the user to built-in IdP groups.
+
+        Validates that every listed group exists in `idp_group_meta` first, then inserts the user
+        (enabled) and writes `idp_user_group_rel` membership rows. Does not create metalake
+        `user_meta` rows.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectoryUserAddRequest"
+            examples:
+              DirectoryUserAddRequest:
+                $ref: "#/components/examples/DirectoryUserAddRequest"
+
+      responses:
+        "200":
+          description: Returns the created Directory User
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/DirectoryUserResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - One or more groups do not exist in the built-in IdP
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "409":
+          description: Conflict - The username already exists in `idp_user_meta`
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/directory/users/delete:
+    post:
+      tags:
+        - users
+      summary: Delete Directory Users
+      operationId: deleteDirectoryUsers
+      description: |
+        Soft-delete Local Directory Users via the built-in IdP (`idp_user_meta` and
+        `idp_user_group_rel`).
+
+        Validates that every listed `origin` is `Local` (request field only; no existence check).
+        Then soft-deletes each user through the IdP manager. Metalake `user_meta` rows are left
+        unchanged.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectoryUserDeleteRequest"
+            examples:
+              DirectoryUserDeleteRequest:
+                $ref: "#/components/examples/DirectoryUserDeleteRequest"
+
+      responses:
+        "200":
+          description: Returns the soft-deleted usernames
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/NameListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/directory/users/enabled:
+    put:
+      tags:
+        - users
+      summary: Batch update Directory User enabled
+      operationId: batchUpdateDirectoryUserEnabled
+      description: |
+        Batch-update the `enabled` flag for Local Directory Users (Configure → Directory → Users).
+
+        Validates first that every listed `origin` is `Local` and that every `name` exists in
+        `idp_user_meta`. Only then is a single UPDATE executed against `idp_user_meta`. Otherwise
+        the request fails and no user is updated.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DirectoryUserEnabledBatchUpdateRequest"
+            examples:
+              DirectoryUserEnabledBatchUpdateRequest:
+                $ref: "#/components/examples/DirectoryUserEnabledBatchUpdateRequest"
+
+      responses:
+        "200":
+          description: Returns the updated usernames
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/NameListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/metalakes/{metalake}/users:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
@@ -48,10 +165,13 @@ paths:
       description: |
         List users under a metalake for the enterprise security Users page.
 
-        Returns OSS user fields plus `origin` and metalake `groups`. `origin` is `Local` when the
-        username exists in the built-in IdP (`idp_user_meta`) and `Provisioned` otherwise.
-        `enabled` maps to Active / Suspended in the UI. `groups` lists metalake group names for
-        the Users table.
+        Returns OSS user fields plus `origin` and metalake `groups`. `origin` is:
+        - `Local` when the username exists in `idp_user_meta`
+        - `Provisioned` when it exists in `scim_user_meta` (and not IdP)
+        - `JIT` when it exists in neither identity store
+
+        `enabled` (Active / Suspended) comes from `idp_user_meta` or `scim_user_meta`, defaulting
+        to Active when neither has a row. `groups` lists metalake group names for the Users table.
 
       responses:
         "200":
@@ -131,11 +251,16 @@ paths:
       summary: Batch update user enabled
       operationId: batchUpdateUserEnabled
       description: |
-        Batch-update the `enabled` flag for metalake users by username.
+        Batch-update the `enabled` flag on metalake `user_meta` by username.
 
-        The update validates first that every listed user exists under the metalake and has no
-        `externalId`. Only then is a single UPDATE executed. Otherwise the request fails and no user
-        is updated.
+        Validates that every listed user exists under the metalake and has no SCIM
+        `externalId`. Only then is a single UPDATE run against `user_meta`. Otherwise the
+        request fails and no user is updated.
+
+        This does **not** update Directory / identity-store Status (`idp_user_meta` or
+        `scim_user_meta`). For Local Directory Suspend / Activate use
+        `PUT /web/security/directory/users/enabled`. Provisioned Status is managed by SCIM /
+        the IdP, not this API.
 
         Missing metalake returns 404. Missing users or users with `externalId` return 400.
 
@@ -179,8 +304,14 @@ paths:
       description: |
         Get a metalake user for the enterprise security user Overview page.
 
-        Returns OSS user fields plus `origin`. `origin` is `Local` when `externalId` is blank and
-        `Provisioned` when `externalId` is present.
+        Returns OSS user fields plus `origin`. `origin` is:
+        - `Local` when the username exists in `idp_user_meta`
+        - `Provisioned` when it exists in `scim_user_meta` (and not IdP)
+        - `JIT` when it exists in neither identity store
+
+        `enabled` (Active / Suspended) comes from `idp_user_meta` or `scim_user_meta`, defaulting
+        to Active when neither has a row. `auditInfo.createTime` maps to Created on the Overview
+        page. `groups` may be empty here; use `listSecurityUserGroups` for membership.
 
       responses:
         "200":
@@ -215,8 +346,18 @@ paths:
       description: |
         List metalake groups the user belongs to for the security user Groups tab.
 
-        Local users (`externalId` blank) resolve membership from the built-in IdP. Provisioned users
-        resolve membership from SCIM. Each group includes `origin` and the group's metalake roles.
+        Membership comes from the identity store for the user: `idp_user_group_rel` when the
+        username exists in `idp_user_meta` (and not SCIM), otherwise `scim_user_group_rel` when it
+        exists in `scim_user_meta`.
+
+        Each group includes `origin`:
+        - `Local` when the group name exists in `idp_group_meta`
+        - `Provisioned` when it exists in `scim_group_meta` (and not IdP)
+        - `JIT` when it exists in neither identity store
+
+        Response schema includes `userCount` (Members). This endpoint does not compute membership
+        counts; clients may leave Members blank, show `0`, or derive counts elsewhere (for example
+        from `listSecurityGroups`).
 
       responses:
         "200":
@@ -277,9 +418,11 @@ components:
     IdentitySource:
       type: string
       description: |
-        Source of the identity. Serialized as `origin`. `Local` when the name exists in the
-        built-in IdP (`idp_user_meta`) and `Provisioned` otherwise. `JIT` is used by Directory
-        Users.
+        Source of the identity. Serialized as `origin`.
+
+        - `Local`: name exists in the built-in IdP (`idp_user_meta` / `idp_group_meta`)
+        - `Provisioned`: name exists in SCIM (`scim_user_meta` / `scim_group_meta`) and not IdP
+        - `JIT`: name exists in metalake `user_meta` / `group_meta` but not in IdP or SCIM
       enum:
         - Local
         - Provisioned
@@ -354,7 +497,9 @@ components:
               $ref: "#/components/schemas/IdentitySource"
             groups:
               type: array
-              description: Metalake group names for the security Users table
+              description: >
+                Metalake group names for the security Users table. Populated by list users; may be
+                empty on get user and group-membership responses.
               items:
                 type: string
 
@@ -465,6 +610,98 @@ components:
           items:
             $ref: "#/components/schemas/DirectoryUserDTO"
 
+    DirectoryUserEnabledBatchUpdateRequest:
+      type: object
+      required:
+        - users
+        - enabled
+      properties:
+        users:
+          type: array
+          minItems: 1
+          description: Directory users to update; every origin must be Local
+          items:
+            $ref: "#/components/schemas/DirectoryUserEnabledUpdate"
+        enabled:
+          type: boolean
+          description: Target enabled value for all listed users
+
+    DirectoryUserEnabledUpdate:
+      type: object
+      required:
+        - name
+        - origin
+      properties:
+        name:
+          type: string
+          description: Username
+        origin:
+          $ref: "#/components/schemas/IdentitySource"
+
+    DirectoryUserDeleteRequest:
+      type: object
+      required:
+        - users
+      properties:
+        users:
+          type: array
+          minItems: 1
+          description: Directory users to delete; every origin must be Local
+          items:
+            $ref: "#/components/schemas/DirectoryUserDelete"
+
+    DirectoryUserDelete:
+      type: object
+      required:
+        - name
+        - origin
+      properties:
+        name:
+          type: string
+          description: Username
+        origin:
+          $ref: "#/components/schemas/IdentitySource"
+
+    DirectoryUserAddRequest:
+      type: object
+      required:
+        - name
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[^:]*$"
+          description: Username to create in idp_user_meta
+        password:
+          type: string
+          minLength: 12
+          maxLength: 64
+          description: Plaintext password (hashed before storage)
+        groupNames:
+          type: array
+          description: Built-in IdP group names to join
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+
+    DirectoryUserResponse:
+      type: object
+      required:
+        - code
+        - user
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        user:
+          $ref: "#/components/schemas/DirectoryUserDTO"
+
   examples:
     LocalUserAddRequest:
       value:
@@ -472,6 +709,31 @@ components:
         roles:
           - Analyst
         enabled: true
+
+    DirectoryUserAddRequest:
+      value:
+        name: jordan.m
+        password: "ChangeMe-2026!"
+        groupNames:
+          - governance
+          - ops
+
+    DirectoryUserEnabledBatchUpdateRequest:
+      value:
+        users:
+          - name: lee.p
+            origin: Local
+          - name: sam.o
+            origin: Local
+        enabled: false
+
+    DirectoryUserDeleteRequest:
+      value:
+        users:
+          - name: lee.p
+            origin: Local
+          - name: sam.o
+            origin: Local
 
     DirectoryUserListResponse:
       value:

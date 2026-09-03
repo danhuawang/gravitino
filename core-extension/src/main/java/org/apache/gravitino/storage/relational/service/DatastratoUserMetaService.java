@@ -6,26 +6,34 @@ package org.apache.gravitino.storage.relational.service;
 import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATIONAL_STORE_METRIC_NAME;
 
 import com.datastrato.gravitino.authorization.DirectoryUser;
-import com.datastrato.gravitino.authorization.po.DirectoryUserPO;
-
 import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
+import com.datastrato.gravitino.authorization.po.DirectoryUserPO;
+import com.datastrato.gravitino.authorization.po.IdpGroupIdPO;
+import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
 import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
+import org.apache.gravitino.exceptions.AlreadyExistsException;
+import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.idp.basic.password.PasswordHasherFactory;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.metrics.Monitored;
+import org.apache.gravitino.storage.RandomIdGenerator;
 import org.apache.gravitino.storage.relational.po.UserPO;
 import org.apache.gravitino.storage.relational.utils.POConverters;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
@@ -99,7 +107,6 @@ public class DatastratoUserMetaService {
         });
   }
 
-
   /**
    * Lists Directory Users for Configure → Directory → Users.
    *
@@ -122,6 +129,148 @@ public class DatastratoUserMetaService {
         });
   }
 
+  /**
+   * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
+   *
+   * <p>Validates that every entry has {@link IdentitySource#LOCAL} origin and that every username
+   * exists in {@code idp_user_meta}. Only then runs a single UPDATE. Validation failure does not
+   * update any row.
+   *
+   * @param names Usernames to update (order preserved; duplicates collapsed).
+   * @param origins Identity sources aligned with {@code names} before deduplication; every value
+   *     must be Local.
+   * @param enabled Target enabled value.
+   * @return Distinct usernames that were updated.
+   * @throws IllegalArgumentException If any origin is not Local or any username is missing from
+   *     {@code idp_user_meta}.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "batchUpdateDirectoryUserEnabled")
+  public List<String> batchUpdateDirectoryUserEnabled(
+      List<String> names, List<IdentitySource> origins, boolean enabled) {
+    Preconditions.checkArgument(names != null && !names.isEmpty(), "names cannot be null or empty");
+    Preconditions.checkArgument(origins != null, "origins cannot be null");
+    Preconditions.checkArgument(
+        names.size() == origins.size(), "names and origins must have the same size");
+
+    LinkedHashSet<String> distinctNames = new LinkedHashSet<>();
+    for (int i = 0; i < names.size(); i++) {
+      String name = names.get(i);
+      IdentitySource origin = origins.get(i);
+      Preconditions.checkArgument(StringUtils.isNotBlank(name), "username cannot be blank");
+      Preconditions.checkArgument(origin != null, "origin cannot be null");
+      if (origin != IdentitySource.LOCAL) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Cannot batch update enabled for Directory Users: only Local origin is supported,"
+                    + " got %s for user %s",
+                origin.value(), name));
+      }
+      distinctNames.add(name);
+    }
+    List<String> userNames = new ArrayList<>(distinctNames);
+    int expectedCount = userNames.size();
+
+    return SessionUtils.doWithCommitAndFetchResult(
+        DatastratoUserMetaMapper.class,
+        mapper -> {
+          Set<String> foundNames = new HashSet<>(mapper.selectIdpUserNamesByNames(userNames));
+          List<String> missing =
+              userNames.stream()
+                  .filter(name -> !foundNames.contains(name))
+                  .collect(Collectors.toList());
+          if (!missing.isEmpty()) {
+            throw new IllegalArgumentException(
+                String.format(
+                    "Cannot batch update enabled for Directory Users: users do not exist in"
+                        + " idp_user_meta: %s",
+                    missing));
+          }
+
+          int updated = mapper.batchUpdateIdpUserEnabledByUserNames(userNames, enabled);
+          if (updated != expectedCount) {
+            throw new IllegalArgumentException(
+                String.format(
+                    "Cannot batch update enabled for Directory Users: concurrent change detected,"
+                        + " expected to update %d users but updated %d",
+                    expectedCount, updated));
+          }
+          return userNames;
+        });
+  }
+
+  /**
+   * Creates a Local Directory User in {@code idp_user_meta} and adds membership rows in {@code
+   * idp_user_group_rel}.
+   *
+   * <p>Validates that every group exists in {@code idp_group_meta} and that the username is not
+   * already present in {@code idp_user_meta}, then inserts the user and relations in one
+   * transaction. The user is created enabled. Password is hashed with the built-in IdP hasher so
+   * login remains compatible.
+   *
+   * @param username Username to create.
+   * @param password Plaintext password.
+   * @param groupNames Built-in IdP group names to join; {@code null} or empty means none.
+   * @return The created Directory User (Local origin, empty metalakes).
+   * @throws NotFoundException If any group is missing from {@code idp_group_meta}.
+   * @throws AlreadyExistsException If the username already exists in {@code idp_user_meta}.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "addDirectoryUser")
+  public DirectoryUser addDirectoryUser(String username, String password, List<String> groupNames) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(username), "username cannot be blank");
+    Preconditions.checkArgument(StringUtils.isNotBlank(password), "password cannot be blank");
+
+    LinkedHashSet<String> distinctGroups = new LinkedHashSet<>();
+    if (groupNames != null) {
+      for (String groupName : groupNames) {
+        Preconditions.checkArgument(
+            StringUtils.isNotBlank(groupName), "group name cannot be blank");
+        distinctGroups.add(groupName);
+      }
+    }
+    List<String> groups = new ArrayList<>(distinctGroups);
+    String passwordHash = PasswordHasherFactory.create().hash(password);
+    long userId = RandomIdGenerator.INSTANCE.nextId();
+
+    SessionUtils.doWithCommit(
+        DatastratoUserMetaMapper.class,
+        mapper -> {
+          if (!mapper.selectIdpUserNamesByNames(List.of(username)).isEmpty()) {
+            throw new AlreadyExistsException("IdP user already exists: %s", username);
+          }
+
+          Map<String, Long> groupIdsByName = new HashMap<>();
+          if (!groups.isEmpty()) {
+            List<IdpGroupIdPO> foundGroups = mapper.selectIdpGroupIdsByNames(groups);
+            for (IdpGroupIdPO row : foundGroups) {
+              groupIdsByName.put(row.getGroupName(), row.getGroupId());
+            }
+            List<String> missing =
+                groups.stream()
+                    .filter(name -> !groupIdsByName.containsKey(name))
+                    .collect(Collectors.toList());
+            if (!missing.isEmpty()) {
+              throw new NotFoundException("IdP group not found: %s", missing);
+            }
+          }
+
+          mapper.insertIdpUser(userId, username, passwordHash, true);
+          if (!groups.isEmpty()) {
+            List<IdpUserGroupRelInsertPO> relations = new ArrayList<>(groups.size());
+            for (String groupName : groups) {
+              relations.add(
+                  new IdpUserGroupRelInsertPO(
+                      RandomIdGenerator.INSTANCE.nextId(), userId, groupIdsByName.get(groupName)));
+            }
+            mapper.batchInsertIdpUserGroupRels(relations);
+          }
+        });
+
+    return new DirectoryUser(username, true, IdentitySource.LOCAL, groups, List.of());
+  }
 
   /**
    * Batch-updates {@code enabled} for users under a metalake.

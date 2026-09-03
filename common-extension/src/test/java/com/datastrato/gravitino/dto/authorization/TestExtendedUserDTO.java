@@ -69,6 +69,7 @@ public class TestExtendedUserDTO {
   private static ExtendedUserDTO.UserWithGroupNames userWithGroups(
       String name, String externalId, List<String> groups, boolean inBuiltInIdp) {
     User user = user(name, externalId);
+    IdentitySource origin = IdentitySource.fromIdpMembership(inBuiltInIdp);
     return new ExtendedUserDTO.UserWithGroupNames() {
       @Override
       public User user() {
@@ -81,8 +82,8 @@ public class TestExtendedUserDTO {
       }
 
       @Override
-      public boolean inBuiltInIdp() {
-        return inBuiltInIdp;
+      public IdentitySource origin() {
+        return origin;
       }
     };
   }

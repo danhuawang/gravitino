@@ -157,7 +157,11 @@ paths:
   /web/security/directory/users:
     $ref: "./users.yaml#/paths/~1web~1security~1directory~1users"
 
+  /web/security/directory/users/delete:
+    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1delete"
 
+  /web/security/directory/users/enabled:
+    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1enabled"
 
   /web/security/directory/groups:
     $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups"

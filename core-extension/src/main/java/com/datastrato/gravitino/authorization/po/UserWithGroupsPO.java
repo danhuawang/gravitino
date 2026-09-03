@@ -3,7 +3,7 @@
  */
 package com.datastrato.gravitino.authorization.po;
 
-import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Objects;
 import org.apache.gravitino.storage.relational.po.ExtendedUserPO;
 
@@ -15,7 +15,7 @@ import org.apache.gravitino.storage.relational.po.ExtendedUserPO;
 public class UserWithGroupsPO extends ExtendedUserPO {
 
   private String groupNames;
-  private Integer inBuiltInIdp;
+  private Integer originCode;
 
   /**
    * @return JSON array of metalake group names for the user.
@@ -32,24 +32,26 @@ public class UserWithGroupsPO extends ExtendedUserPO {
   }
 
   /**
-   * @return {@code 1} when the name exists in {@code idp_user_meta}, otherwise {@code 0}.
+   * @return Origin code from SQL ({@link IdentitySource#ORIGIN_CODE_LOCAL}, {@link
+   *     IdentitySource#ORIGIN_CODE_PROVISIONED}, or {@link IdentitySource#ORIGIN_CODE_JIT}).
    */
-  public Integer getInBuiltInIdp() {
-    return inBuiltInIdp;
+  public Integer getOriginCode() {
+    return originCode;
   }
 
   /**
-   * @param inBuiltInIdp {@code 1} when the name exists in {@code idp_user_meta}.
+   * @param originCode Origin code from SQL.
    */
-  public void setInBuiltInIdp(Integer inBuiltInIdp) {
-    this.inBuiltInIdp = inBuiltInIdp;
+  public void setOriginCode(Integer originCode) {
+    this.originCode = originCode;
   }
 
   /**
-   * @return {@code true} when the name exists in {@code idp_user_meta}.
+   * @return Identity source for the security Users table.
    */
-  public boolean inBuiltInIdp() {
-    return IdpNameStatusPO.isFlagTrue(inBuiltInIdp);
+  public IdentitySource origin() {
+    return IdentitySource.fromOriginCode(
+        originCode == null ? IdentitySource.ORIGIN_CODE_JIT : originCode);
   }
 
   @Override
@@ -63,11 +65,11 @@ public class UserWithGroupsPO extends ExtendedUserPO {
     UserWithGroupsPO that = (UserWithGroupsPO) o;
     return super.equals(o)
         && Objects.equal(getGroupNames(), that.getGroupNames())
-        && Objects.equal(getInBuiltInIdp(), that.getInBuiltInIdp());
+        && Objects.equal(getOriginCode(), that.getOriginCode());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(super.hashCode(), getGroupNames(), getInBuiltInIdp());
+    return Objects.hashCode(super.hashCode(), getGroupNames(), getOriginCode());
   }
 }
