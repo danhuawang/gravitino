@@ -30,10 +30,30 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_group_meta"));
     assertTrue(sql.contains("COALESCE(su.external_id, ut.external_id) as externalId"));
     assertTrue(sql.contains("COALESCE(su.enabled, ut.enabled) as enabled"));
+    assertTrue(sql.contains("as inBuiltInIdp"));
     assertTrue(sql.contains("UNION ALL"));
     assertTrue(sql.contains("metalake_name = #{metalakeName}"));
     assertFalse(sql.contains("GROUP BY ut.user_id"));
+    assertFalse(sql.contains("as originCode"));
     assertFalse(sql.contains("UPDATE "));
+  }
+
+  @Test
+  public void testListDirectoryUsers() {
+    String sql = provider.listDirectoryUsers();
+
+    assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("user_meta"));
+    assertTrue(sql.contains("idp_user_group_rel"));
+    assertTrue(sql.contains("scim_user_group_rel"));
+    assertTrue(sql.contains("originCode"));
+    assertTrue(sql.contains("metalakeNames"));
+    assertTrue(sql.contains("UNION ALL"));
+    assertTrue(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains("GROUP BY ut.user_name"));
+    assertTrue(sql.contains("ORDER BY identity.userName"));
+    assertFalse(sql.contains("#{metalakeName}"));
   }
 
   @Test
@@ -77,7 +97,6 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("SET enabled = #{enabled}"));
     assertTrue(sql.contains("user_name IN "));
   }
-
   @Test
   public void testSelectScimUserNamesByNames() {
     String sql = provider.selectScimUserNamesByNames(Lists.newArrayList("alice", "bob"));

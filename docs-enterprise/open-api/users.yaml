@@ -4,6 +4,39 @@
 
 paths:
 
+  /web/security/directory/users:
+    get:
+      tags:
+        - users
+      summary: List Directory Users
+      operationId: listDirectoryUsers
+      description: |
+        List Directory Users for Configure → Directory → Users.
+
+        Rows come from:
+        - `idp_user_meta` → `origin=Local`
+        - `scim_user_meta` (not also in IdP) → `origin=Provisioned`
+        - distinct `user_meta` names absent from IdP and SCIM → `origin=JIT`
+
+        `enabled` maps to Active / Suspended in the UI (from identity store, or aggregated from
+        `user_meta` for JIT). `groups` are identity-store group names (empty for JIT). `metalakes`
+        are metalake names where the username exists in `user_meta`.
+
+      responses:
+        "200":
+          description: Returns the list of directory users
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/DirectoryUserListResponse"
+              examples:
+                DirectoryUserListResponse:
+                  $ref: "#/components/examples/DirectoryUserListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/metalakes/{metalake}/users:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
@@ -245,10 +278,12 @@ components:
       type: string
       description: |
         Source of the identity. Serialized as `origin`. `Local` when the name exists in the
-        built-in IdP (`idp_user_meta`) and `Provisioned` otherwise.
+        built-in IdP (`idp_user_meta`) and `Provisioned` otherwise. `JIT` is used by Directory
+        Users.
       enum:
         - Local
         - Provisioned
+        - JIT
 
     IdentityType:
       type: string
@@ -387,6 +422,49 @@ components:
         user:
           $ref: "#/components/schemas/ExtendedUser"
 
+    DirectoryUserDTO:
+      type: object
+      required:
+        - name
+        - enabled
+        - origin
+        - groups
+        - metalakes
+      properties:
+        name:
+          type: string
+          description: Username
+        enabled:
+          type: boolean
+          description: Whether the user is enabled (Active / Suspended in the UI)
+        origin:
+          $ref: "#/components/schemas/IdentitySource"
+        groups:
+          type: array
+          description: Identity-store group names (empty for JIT)
+          items:
+            type: string
+        metalakes:
+          type: array
+          description: Metalake names containing this username
+          items:
+            type: string
+
+    DirectoryUserListResponse:
+      type: object
+      required:
+        - code
+        - users
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/DirectoryUserDTO"
+
   examples:
     LocalUserAddRequest:
       value:
@@ -394,3 +472,38 @@ components:
         roles:
           - Analyst
         enabled: true
+
+    DirectoryUserListResponse:
+      value:
+        code: 0
+        users:
+          - name: dana.k
+            enabled: true
+            origin: Provisioned
+            groups:
+              - finance
+            metalakes:
+              - Acme
+              - Contoso
+          - name: jordan.m
+            enabled: true
+            origin: JIT
+            groups: []
+            metalakes:
+              - Contoso
+              - Northwind
+          - name: lee.p
+            enabled: false
+            origin: Local
+            groups: []
+            metalakes:
+              - Acme
+          - name: sam.o
+            enabled: true
+            origin: Local
+            groups:
+              - governance
+              - ops
+              - security
+            metalakes:
+              - Contoso

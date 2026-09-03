@@ -8,6 +8,7 @@ import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.authorization.IdentityType;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -16,6 +17,7 @@ import com.google.common.collect.Sets;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -344,6 +346,18 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
+   * Lists Directory Users for Configure → Directory → Users.
+   *
+   * <p>Local users come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}; JIT
+   * from metalake {@code user_meta} only.
+   *
+   * @return Directory users ordered by username.
+   */
+  public List<DirectoryUser> listDirectoryUsers() {
+    return DatastratoUserMetaService.getInstance().listDirectoryUsers();
+  }
+
+  /**
    * Looks up group names for a user before adding the user into a metalake.
    *
    * @param username The username.
@@ -526,7 +540,10 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Gets a metalake user with roles and {@code origin} in one JOIN to {@code idp_user_meta}.
+   * Gets a metalake user with roles, {@code origin}, and identity-store {@code enabled} in one SQL.
+   *
+   * <p>{@code origin} / {@code enabled} match {@link #listUsersWithGroups}: Local / Provisioned /
+   * JIT from IdP and SCIM; enabled from IdP then SCIM, default Active.
    *
    * @param metalake The metalake name.
    * @param username The username.
@@ -548,7 +565,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Lists metalake users with roles and {@code origin} in one JOIN to {@code idp_user_meta}.
+   * Lists metalake users with roles and identity-store {@code origin} in one SQL.
    *
    * @param metalake The metalake name.
    * @return Extended user DTOs for the security UI.

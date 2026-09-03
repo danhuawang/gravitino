@@ -16,13 +16,16 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.DirectoryUser;
 import com.datastrato.gravitino.authorization.IdpNameStatus;
 import com.datastrato.gravitino.authorization.UserWithGroups;
+import com.datastrato.gravitino.dto.authorization.DirectoryUserDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
@@ -55,6 +58,7 @@ import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -295,6 +299,50 @@ public class TestExtendedUserOperations extends JerseyTest {
     Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
   }
 
+  @Test
+  public void testListDirectoryUsers() {
+    when(accessControlDispatcher.listDirectoryUsers())
+        .thenReturn(
+            List.of(
+                new DirectoryUser(
+                    "dana.k",
+                    true,
+                    IdentitySource.PROVISIONED,
+                    List.of("finance"),
+                    List.of("Acme", "Contoso")),
+                new DirectoryUser(
+                    "jordan.m", true, IdentitySource.JIT, List.of(), List.of("Contoso")),
+                new DirectoryUser("lee.p", false, IdentitySource.LOCAL, List.of(), List.of("Acme")),
+                new DirectoryUser(
+                    "sam.o",
+                    true,
+                    IdentitySource.LOCAL,
+                    List.of("governance", "ops"),
+                    List.of("Contoso"))));
+
+    Response response = get("/web/security/directory/users");
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectoryUserListResponse body = response.readEntity(DirectoryUserListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    DirectoryUserDTO[] users = body.getUsers();
+    Assertions.assertEquals(4, users.length);
+    Assertions.assertEquals("dana.k", users[0].name());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, users[0].origin());
+    Assertions.assertEquals("jordan.m", users[1].name());
+    Assertions.assertEquals(IdentitySource.JIT, users[1].origin());
+    Assertions.assertEquals(IdentitySource.LOCAL, users[2].origin());
+    Assertions.assertEquals(IdentitySource.LOCAL, users[3].origin());
+  }
+
+  @Test
+  public void testListDirectoryUsersAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "SERVICE_ADMIN",
+        ExtendedUserOperations.class
+            .getMethod("listDirectoryUsers")
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
+  }
   private Response get(String path) {
     return target(path)
         .request(MediaType.APPLICATION_JSON_TYPE)

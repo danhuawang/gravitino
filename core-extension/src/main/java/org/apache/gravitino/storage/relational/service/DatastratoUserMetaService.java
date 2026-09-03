@@ -5,6 +5,9 @@ package org.apache.gravitino.storage.relational.service;
 
 import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATIONAL_STORE_METRIC_NAME;
 
+import com.datastrato.gravitino.authorization.DirectoryUser;
+import com.datastrato.gravitino.authorization.po.DirectoryUserPO;
+
 import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
@@ -95,6 +98,30 @@ public class DatastratoUserMetaService {
               .collect(Collectors.toList());
         });
   }
+
+
+  /**
+   * Lists Directory Users for Configure → Directory → Users.
+   *
+   * <p>Local users come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}; JIT
+   * from distinct {@code user_meta} names absent from both identity stores.
+   *
+   * @return Directory users ordered by username.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listDirectoryUsers")
+  public List<DirectoryUser> listDirectoryUsers() {
+    return SessionUtils.getWithoutCommit(
+        DatastratoUserMetaMapper.class,
+        mapper -> {
+          List<DirectoryUserPO> userPOs = mapper.listDirectoryUsers();
+          return userPOs.stream()
+              .map(DatastratoPOConverters::fromDirectoryUserPO)
+              .collect(Collectors.toList());
+        });
+  }
+
 
   /**
    * Batch-updates {@code enabled} for users under a metalake.

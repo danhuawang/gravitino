@@ -10,15 +10,28 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * Source of a metalake user or group identity for the security UI. Serialized as JSON {@code
  * origin}.
  *
- * <p>{@code Local} when the name exists in the built-in IdP ({@code idp_user_meta} / {@code
- * idp_group_meta}), otherwise {@code Provisioned}.
+ * <p>For Directory and metalake security Users: {@code Local} from {@code idp_user_meta}, {@code
+ * Provisioned} from {@code scim_user_meta}, {@code JIT} when present in neither. Directory Groups
+ * use the same three-way split against group identity stores.
  */
 public enum IdentitySource {
   /** Present in the built-in IdP. */
   LOCAL("Local"),
 
-  /** Not present in the built-in IdP (typically SCIM-provisioned). */
-  PROVISIONED("Provisioned");
+  /** Present in SCIM (or otherwise not in the built-in IdP for metalake pages). */
+  PROVISIONED("Provisioned"),
+
+  /** Present in metalake tables but not in the corresponding IdP or SCIM identity store. */
+  JIT("JIT");
+
+  /** SQL / PO origin code for Local. */
+  public static final int ORIGIN_CODE_LOCAL = 1;
+
+  /** SQL / PO origin code for Provisioned. */
+  public static final int ORIGIN_CODE_PROVISIONED = 0;
+
+  /** SQL / PO origin code for JIT. */
+  public static final int ORIGIN_CODE_JIT = 2;
 
   private final String value;
 
@@ -27,7 +40,7 @@ public enum IdentitySource {
   }
 
   /**
-   * @return JSON / UI value ({@code Local} or {@code Provisioned}).
+   * @return JSON / UI value ({@code Local}, {@code Provisioned}, or {@code JIT}).
    */
   @JsonValue
   public String value() {
@@ -37,7 +50,7 @@ public enum IdentitySource {
   /**
    * Parses the JSON / UI value.
    *
-   * @param value {@code Local} or {@code Provisioned}.
+   * @param value {@code Local}, {@code Provisioned}, or {@code JIT}.
    * @return The matching identity source.
    */
   @JsonCreator
@@ -59,5 +72,25 @@ public enum IdentitySource {
    */
   public static IdentitySource fromIdpMembership(boolean inBuiltInIdp) {
     return inBuiltInIdp ? LOCAL : PROVISIONED;
+  }
+
+  /**
+   * Derives identity source from Directory Groups SQL origin codes.
+   *
+   * @param originCode {@link #ORIGIN_CODE_LOCAL}, {@link #ORIGIN_CODE_PROVISIONED}, or {@link
+   *     #ORIGIN_CODE_JIT}.
+   * @return Matching identity source.
+   */
+  public static IdentitySource fromOriginCode(int originCode) {
+    switch (originCode) {
+      case ORIGIN_CODE_LOCAL:
+        return LOCAL;
+      case ORIGIN_CODE_PROVISIONED:
+        return PROVISIONED;
+      case ORIGIN_CODE_JIT:
+        return JIT;
+      default:
+        throw new IllegalArgumentException("Unknown origin code: " + originCode);
+    }
   }
 }

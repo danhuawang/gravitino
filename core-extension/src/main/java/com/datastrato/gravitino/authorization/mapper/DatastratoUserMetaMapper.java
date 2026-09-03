@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.authorization.mapper;
 
+import com.datastrato.gravitino.authorization.po.DirectoryUserPO;
 import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import java.util.List;
 import org.apache.gravitino.storage.relational.po.UserPO;
@@ -119,4 +120,16 @@ public interface DatastratoUserMetaMapper {
       method = "listUserWithGroupsPOsByMetalakeName")
   List<UserWithGroupsPO> listUserWithGroupsPOsByMetalakeName(
       @Param("metalakeName") String metalakeName);
+
+  /**
+   * Lists identity-store users for the Directory Users page.
+   *
+   * <p>Rows come from {@code idp_user_meta} (Local) and {@code scim_user_meta} (Provisioned). When
+   * a username exists in both, the IdP / Local row wins. Includes identity-store groups and
+   * metalake membership names.
+   *
+   * @return Directory user rows ordered by username.
+   */
+  @SelectProvider(type = DatastratoUserMetaSQLProviderFactory.class, method = "listDirectoryUsers")
+  List<DirectoryUserPO> listDirectoryUsers();
 }

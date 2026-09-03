@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.authorization.IdentityType;
 import java.util.Collections;
 import java.util.List;
@@ -137,7 +138,6 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
     Assertions.assertSame(
         granted, dispatcher.addLocalGroup(METALAKE, "contractors", List.of("Analyst")));
   }
-
   private void stubIdpUser(String name) {
     when(idp.getUser(name)).thenReturn(new IdpUser(name, Collections.emptyList()));
   }

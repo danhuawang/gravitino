@@ -5,15 +5,19 @@ package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.dto.authorization.DirectoryUserDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdpNameStatusDTO;
 import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
 import com.datastrato.gravitino.dto.responses.IdpUserNameListResponse;
 import com.google.common.collect.Lists;
+import java.util.ArrayList;
+import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -34,15 +38,13 @@ import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
 
 /**
- * Enterprise REST APIs for metalake user administration.
+ * Enterprise REST APIs for user administration.
  *
- * <p>Follows the same thin style as {@link ExtendedRoleOperations}: list via dispatcher {@code
- * listExtendedUsers} and {@link ExtendedUserListResponse} (OSS user fields plus {@code origin});
- * add user delegates to {@link DatastratoAccessControlDispatcher#addLocalUser}; batch enabled uses
- * enterprise MetaService SQL behind the dispatcher.
+ * <p>Metalake security Users APIs live under {@code metalakes/{metalake}/users}. Configure →
+ * Directory → Users uses instance-scoped {@code directory/users}.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/metalakes/{metalake}/users")
+@Path("/web/security")
 public class ExtendedUserOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
@@ -59,6 +61,28 @@ public class ExtendedUserOperations {
   }
 
   /**
+   * Lists Directory Users for Configure → Directory → Users (Local / Provisioned / JIT).
+   *
+   * @return Directory users with groups, metalakes, enabled, and origin.
+   */
+  @GET
+  @Path("directory/users")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  public Response listDirectoryUsers() {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () ->
+              Utils.ok(
+                  new DirectoryUserListResponse(
+                      DirectoryUserDTO.from(accessControlDispatcher.listDirectoryUsers()))));
+    } catch (Exception e) {
+      return ExceptionHandlers.handleUserException(OperationType.LIST, "", "", e);
+    }
+  }
+
+  /**
    * Lists users under a metalake for the security UI, including {@code origin} ({@code Local} vs
    * {@code Provisioned}) from a JOIN to {@code idp_user_meta}.
    *
@@ -66,6 +90,7 @@ public class ExtendedUserOperations {
    * @return Users.
    */
   @GET
+  @Path("metalakes/{metalake}/users")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
   public Response listUsers(
@@ -92,7 +117,7 @@ public class ExtendedUserOperations {
    * @return IdP usernames with {@code status}.
    */
   @GET
-  @Path("idp")
+  @Path("metalakes/{metalake}/users/idp")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
   public Response listIdpUsers(
@@ -120,6 +145,7 @@ public class ExtendedUserOperations {
    * @return The metalake user with {@code origin}.
    */
   @POST
+  @Path("metalakes/{metalake}/users")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
   public Response addUser(
@@ -153,7 +179,7 @@ public class ExtendedUserOperations {
    * @return The metalake user with {@code origin}.
    */
   @GET
-  @Path("{user}")
+  @Path("metalakes/{metalake}/users/{user}")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
   public Response getUser(
@@ -184,7 +210,7 @@ public class ExtendedUserOperations {
    * @return Groups with {@code origin}.
    */
   @GET
-  @Path("{user}/groups")
+  @Path("metalakes/{metalake}/users/{user}/groups")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
   public Response listGroupsForUser(
@@ -213,7 +239,7 @@ public class ExtendedUserOperations {
    * @return Updated user names.
    */
   @PUT
-  @Path("enabled")
+  @Path("metalakes/{metalake}/users/enabled")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
   public Response batchUpdateUserEnabled(

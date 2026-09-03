@@ -9,6 +9,7 @@ import static org.apache.gravitino.storage.relational.mapper.UserMetaMapper.USER
 
 import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.GroupMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
@@ -241,6 +242,109 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
+   * Lists Directory Users for Configure → Directory → Users.
+   *
+   * <p>Local rows come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}
+   * excluding IdP names; JIT from distinct {@code user_meta} names absent from both identity
+   * stores. Groups are identity-store group names (empty for JIT). Metalakes are distinct {@code
+   * metalake_meta} names that contain the username in {@code user_meta}.
+   *
+   * @return MyBatis SQL ordered by username.
+   */
+  public String listDirectoryUsers() {
+    return "SELECT identity.userName as userName, identity.enabled as enabled,"
+        + " identity.originCode as originCode,"
+        + " CASE WHEN identity.originCode = "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " THEN idpGroups.groupNames WHEN identity.originCode = "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " THEN scimGroups.groupNames ELSE NULL END as groupNames,"
+        + " metalakes.metalakeNames as metalakeNames"
+        + " FROM ("
+        + directoryIdentityUnion()
+        + ") identity"
+        + " LEFT JOIN ("
+        + idpDirectoryGroupAggregation()
+        + ") idpGroups ON identity.idpUserId = idpGroups.userId"
+        + " LEFT JOIN ("
+        + scimDirectoryGroupAggregation()
+        + ") scimGroups ON identity.scimUserId = scimGroups.userId"
+        + " LEFT JOIN ("
+        + directoryMetalakeAggregation()
+        + ") metalakes ON metalakes.userName = identity.userName"
+        + " ORDER BY identity.userName";
+  }
+
+  private String directoryIdentityUnion() {
+    return "SELECT iu.user_name as userName, iu.enabled as enabled, "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " as originCode,"
+        + " iu.user_id as idpUserId, CAST(NULL AS BIGINT) as scimUserId"
+        + " FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu WHERE iu.deleted_at = 0"
+        + " UNION ALL "
+        + "SELECT su.user_name as userName, su.enabled as enabled, "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " as originCode,"
+        + " CAST(NULL AS BIGINT) as idpUserId, su.user_id as scimUserId"
+        + " FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su WHERE su.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu WHERE iu.user_name = su.user_name AND iu.deleted_at = 0)"
+        + " UNION ALL "
+        + "SELECT ut.user_name as userName,"
+        + " CASE WHEN MAX(CASE WHEN ut.enabled THEN 1 ELSE 0 END) = 1 THEN TRUE ELSE FALSE END"
+        + " as enabled, "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " as originCode,"
+        + " CAST(NULL AS BIGINT) as idpUserId, CAST(NULL AS BIGINT) as scimUserId"
+        + " FROM "
+        + USER_TABLE_NAME
+        + " ut WHERE ut.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu WHERE iu.user_name = ut.user_name AND iu.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su WHERE su.user_name = ut.user_name AND su.deleted_at = 0)"
+        + " GROUP BY ut.user_name";
+  }
+
+  private String idpDirectoryGroupAggregation() {
+    return "SELECT iugr.user_id as userId, "
+        + jsonArrayAgg("ig.group_name")
+        + " as groupNames FROM "
+        + DatastratoUserMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+        + " iugr JOIN "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig ON ig.group_id = iugr.group_id AND ig.deleted_at = 0"
+        + " WHERE iugr.deleted_at = 0 GROUP BY iugr.user_id";
+  }
+
+  private String scimDirectoryGroupAggregation() {
+    return "SELECT sur.user_id as userId, "
+        + jsonArrayAgg("sg.group_name")
+        + " as groupNames FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
+        + " sur JOIN "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg ON sg.group_id = sur.group_id AND sg.deleted_at = 0"
+        + " WHERE sur.deleted_at = 0 GROUP BY sur.user_id";
+  }
+
+  private String directoryMetalakeAggregation() {
+    return "SELECT ut.user_name as userName, "
+        + jsonArrayAgg("mt.metalake_name")
+        + " as metalakeNames FROM "
+        + USER_TABLE_NAME
+        + " ut JOIN "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mt ON mt.metalake_id = ut.metalake_id AND mt.deleted_at = 0"
+        + " WHERE ut.deleted_at = 0 GROUP BY ut.user_name";
+  }
+
+  /**
    * Loads metalake user totals split by {@code enabled}.
    *
    * @param metalakeName The metalake name.
@@ -413,6 +517,12 @@ public class DatastratoUserMetaBaseSQLProvider {
   protected String userNameInClause() {
     return "<foreach collection='userNames' item='userName' open='(' separator=',' close=')'>"
         + "#{userName}"
+        + "</foreach>";
+  }
+
+  protected String groupNameInClause() {
+    return "<foreach collection='groupNames' item='groupName' open='(' separator=',' close=')'>"
+        + "#{groupName}"
         + "</foreach>";
   }
 
