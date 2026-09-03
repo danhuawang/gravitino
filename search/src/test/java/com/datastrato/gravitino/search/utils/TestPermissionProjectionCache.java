@@ -128,7 +128,6 @@ class TestPermissionProjectionCache {
     return UserEntity.builder()
         .withId(20L)
         .withName(name)
-        .withEnabled(true)
         .withAuditInfo(AuditInfo.EMPTY)
         .withNamespace(NamespaceUtil.ofUser("test"))
         .withRoleNames(ImmutableList.of(role))

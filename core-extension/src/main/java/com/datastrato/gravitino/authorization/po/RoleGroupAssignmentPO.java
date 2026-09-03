@@ -12,7 +12,6 @@ public class RoleGroupAssignmentPO {
   private Long groupId;
   private String groupName;
   private Long metalakeId;
-  private String externalId;
   private String auditInfo;
   private Long currentVersion;
   private Long lastVersion;
@@ -63,15 +62,6 @@ public class RoleGroupAssignmentPO {
    */
   public Long getMetalakeId() {
     return metalakeId;
-  }
-
-  /**
-   * Returns the group's external id.
-   *
-   * @return The external id.
-   */
-  public String getExternalId() {
-    return externalId;
   }
 
   /**

@@ -12,8 +12,6 @@ public class RoleUserAssignmentPO {
   private Long userId;
   private String userName;
   private Long metalakeId;
-  private String externalId;
-  private Boolean enabled;
   private String auditInfo;
   private Long currentVersion;
   private Long lastVersion;
@@ -64,24 +62,6 @@ public class RoleUserAssignmentPO {
    */
   public Long getMetalakeId() {
     return metalakeId;
-  }
-
-  /**
-   * Returns the user's external id.
-   *
-   * @return The external id.
-   */
-  public String getExternalId() {
-    return externalId;
-  }
-
-  /**
-   * Returns whether the user is enabled.
-   *
-   * @return Whether the user is enabled.
-   */
-  public Boolean getEnabled() {
-    return enabled;
   }
 
   /**

@@ -185,7 +185,6 @@ class TestEntityConverterUtils {
         UserEntity.builder()
             .withId(2001L)
             .withName("alice_analyst")
-            .withEnabled(true)
             .withRoleNames(ImmutableList.of())
             .withRoleIds(ImmutableList.of())
             .withNamespace(NamespaceUtil.ofUser("test"))
