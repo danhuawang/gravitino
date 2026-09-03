@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.gravitino.Catalog;
@@ -33,9 +34,8 @@ import org.slf4j.LoggerFactory;
 /** Calculates dashboard asset metrics from one immutable metalake snapshot. */
 public class MetricsCalculator {
   private static final Logger LOG = LoggerFactory.getLogger(MetricsCalculator.class);
-  private static final String METRIC_NAME_SEPARATOR = "::";
-  private static final String BY_CATALOG_PREFIX = "by_catalog" + METRIC_NAME_SEPARATOR;
-  private static final String BY_ASSET_TYPE_PREFIX = "by_asset_type" + METRIC_NAME_SEPARATOR;
+  private static final String BY_ASSET_TYPE_PREFIX =
+      "by_asset_type" + DashboardMetricNames.SEPARATOR;
   private static final String PARTIAL_MESSAGE = "Some catalog data is temporarily unavailable.";
   private static final String UNAVAILABLE_MESSAGE = "Metric data is temporarily unavailable.";
   private static final List<MetadataObject.Type> ASSET_TYPES =
@@ -282,7 +282,7 @@ public class MetricsCalculator {
 
     addAggregateMetrics(
         metrics,
-        "",
+        MetricDataService.Metric::getName,
         visibleAssetNodes,
         failedVisibleCatalogNames,
         successfulVisibleCatalogNames,
@@ -295,15 +295,19 @@ public class MetricsCalculator {
         .forEach(
             catalogNode -> {
               String catalogName = catalogNode.getName();
-              String prefix = BY_CATALOG_PREFIX + catalogName + METRIC_NAME_SEPARATOR;
+              String provider = metalakeSnapshot.getCatalogProviders().get(catalogName);
+              Function<MetricDataService.Metric, String> metricNameBuilder =
+                  metric ->
+                      DashboardMetricNames.forCatalog(catalogName, provider, metric.getName());
               if (failedVisibleCatalogNames.contains(catalogName)) {
-                addUnavailableMetrics(metrics, prefix);
+                addUnavailableMetrics(metrics, metricNameBuilder);
                 return;
               }
 
               Set<AssetNode> catalogAssets =
                   assetsByCatalog.getOrDefault(catalogName, Collections.emptySet());
-              addCompleteMetrics(metrics, prefix, catalogAssets, taggedCache, policyCache);
+              addCompleteMetrics(
+                  metrics, metricNameBuilder, catalogAssets, taggedCache, policyCache);
             });
 
     for (MetadataObject.Type assetType : ASSET_TYPES) {
@@ -316,9 +320,10 @@ public class MetricsCalculator {
           successfulVisibleCatalogNames.stream()
               .filter(catalogName -> catalogSupports(catalogName, assetType))
               .collect(Collectors.toSet());
+      String prefix = BY_ASSET_TYPE_PREFIX + assetType.name() + DashboardMetricNames.SEPARATOR;
       addAggregateMetrics(
           metrics,
-          BY_ASSET_TYPE_PREFIX + assetType.name() + METRIC_NAME_SEPARATOR,
+          metric -> prefix + metric.getName(),
           typeAssets,
           failedDependencies,
           successfulDependencies,
@@ -399,40 +404,45 @@ public class MetricsCalculator {
 
   private void addAggregateMetrics(
       List<MetricPO> metrics,
-      String prefix,
+      Function<MetricDataService.Metric, String> metricNameBuilder,
       Set<AssetNode> assets,
       Set<String> failedDependencies,
       Set<String> successfulDependencies,
       Map<AssetNode, Boolean> taggedCache,
       Map<AssetNode, Boolean> policyCache) {
     if (failedDependencies.isEmpty()) {
-      addCompleteMetrics(metrics, prefix, assets, taggedCache, policyCache);
+      addCompleteMetrics(metrics, metricNameBuilder, assets, taggedCache, policyCache);
       return;
     }
     if (successfulDependencies.isEmpty()) {
-      addUnavailableMetrics(metrics, prefix);
+      addUnavailableMetrics(metrics, metricNameBuilder);
       return;
     }
 
     AssetCounts counts = countAssets(assets, taggedCache, policyCache);
-    addMetrics(metrics, prefix, counts, MetricState.PARTIAL, PARTIAL_MESSAGE);
+    addMetrics(metrics, metricNameBuilder, counts, MetricState.PARTIAL, PARTIAL_MESSAGE);
   }
 
   private void addCompleteMetrics(
       List<MetricPO> metrics,
-      String prefix,
+      Function<MetricDataService.Metric, String> metricNameBuilder,
       Set<AssetNode> assets,
       Map<AssetNode, Boolean> taggedCache,
       Map<AssetNode, Boolean> policyCache) {
     addMetrics(
-        metrics, prefix, countAssets(assets, taggedCache, policyCache), MetricState.COMPLETE, null);
+        metrics,
+        metricNameBuilder,
+        countAssets(assets, taggedCache, policyCache),
+        MetricState.COMPLETE,
+        null);
   }
 
-  private void addUnavailableMetrics(List<MetricPO> metrics, String prefix) {
+  private void addUnavailableMetrics(
+      List<MetricPO> metrics, Function<MetricDataService.Metric, String> metricNameBuilder) {
     for (MetricDataService.Metric metric : ASSET_METRICS) {
       metrics.add(
           createMetricPO(
-              prefix + metric.getName(), null, MetricState.UNAVAILABLE, UNAVAILABLE_MESSAGE));
+              metricNameBuilder.apply(metric), null, MetricState.UNAVAILABLE, UNAVAILABLE_MESSAGE));
     }
   }
 
@@ -453,31 +463,31 @@ public class MetricsCalculator {
 
   private void addMetrics(
       List<MetricPO> metrics,
-      String prefix,
+      Function<MetricDataService.Metric, String> metricNameBuilder,
       AssetCounts counts,
       MetricState state,
       @Nullable String message) {
     metrics.add(
         createMetricPO(
-            prefix + MetricDataService.Metric.ASSET_COUNT.getName(),
+            metricNameBuilder.apply(MetricDataService.Metric.ASSET_COUNT),
             (double) counts.assetCount,
             state,
             message));
     metrics.add(
         createMetricPO(
-            prefix + MetricDataService.Metric.TAGGED_ASSET_COUNT.getName(),
+            metricNameBuilder.apply(MetricDataService.Metric.TAGGED_ASSET_COUNT),
             (double) counts.taggedAssetCount,
             state,
             message));
     metrics.add(
         createMetricPO(
-            prefix + MetricDataService.Metric.OWNED_ASSET_COUNT.getName(),
+            metricNameBuilder.apply(MetricDataService.Metric.OWNED_ASSET_COUNT),
             (double) counts.ownedAssetCount,
             state,
             message));
     metrics.add(
         createMetricPO(
-            prefix + MetricDataService.Metric.POLICY_COVERED_ASSET_COUNT.getName(),
+            metricNameBuilder.apply(MetricDataService.Metric.POLICY_COVERED_ASSET_COUNT),
             (double) counts.policyCoveredAssetCount,
             state,
             message));

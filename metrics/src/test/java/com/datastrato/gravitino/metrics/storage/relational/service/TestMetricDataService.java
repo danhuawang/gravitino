@@ -132,7 +132,7 @@ class TestMetricDataService {
     long timestamp = System.currentTimeMillis() + 5_000;
     MetricPO unavailable =
         MetricPO.builder()
-            .withMetricName("by_catalog::failed::asset_count")
+            .withMetricName("by_catalog::failed::vendor-custom::asset_count")
             .withMetricValue(null)
             .withMetricState(MetricState.UNAVAILABLE)
             .withMetricMessage("Metric data is temporarily unavailable.")
@@ -150,7 +150,7 @@ class TestMetricDataService {
         service.getMetricsByNameAndTimestamp(
             metalakeName1,
             "u1",
-            new String[] {"by_catalog::failed::asset_count"},
+            new String[] {"by_catalog::failed::vendor-custom::asset_count"},
             timestamp,
             timestamp);
     assertEquals(1, result.length);

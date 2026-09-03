@@ -91,4 +91,12 @@ public class TestCatalogCreateRequest {
     Assertions.assertEquals(
         "Catalog type cannot be null when provider is \"hadoop\"", exception.getMessage());
   }
+
+  @Test
+  public void testLegacyHadoopProviderUsesManagedShortName() {
+    CatalogCreateRequest request =
+        new CatalogCreateRequest("catalog_test", Catalog.Type.FILESET, "HADOOP", null, null);
+
+    Assertions.assertEquals("fileset", request.getProvider());
+  }
 }

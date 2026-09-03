@@ -16,7 +16,15 @@ paths:
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
         - name: metrics
           in: query
-          description: The metrics to retrieve, comma-separated list of metric names, if not specified, all metrics will be returned
+          description: |
+            The metrics to retrieve as a comma-separated list of metric names. If omitted, all metrics are returned.
+
+            Metric-name forms are:
+            - Global: `<metric>`, where `metric` is `asset_count`, `tagged_asset_count`, `owned_asset_count`, `policy_covered_asset_count`, `policy_count`, or `disabled_policy_count`.
+            - By asset type: `by_asset_type::<assetType>::<assetMetric>`, where `assetType` is `TABLE`, `VIEW`, `FUNCTION`, `TOPIC`, `FILESET`, or `MODEL` and `assetMetric` is one of the four asset metrics.
+            - By catalog: `by_catalog::<catalogName>::<provider>::<assetMetric>`, for example `by_catalog::sales::jdbc-postgresql::asset_count`.
+
+            The four asset metrics are `asset_count`, `tagged_asset_count`, `owned_asset_count`, and `policy_covered_asset_count`. The per-catalog `provider` is the catalog provider short name returned by the Catalog API, including installed custom providers.
           required: false
           schema:
             type: string
@@ -76,7 +84,8 @@ components:
       properties:
         name:
           type: string
-          description: The name of the metric
+          description: |
+            The metric name. Per-catalog names use `by_catalog::<catalogName>::<provider>::<assetMetric>`, where `provider` is the provider short name returned by the Catalog API. Example: `by_catalog::sales::jdbc-postgresql::asset_count`.
         values:
           type: array
           description: The metric values. An unavailable data point is represented by null.

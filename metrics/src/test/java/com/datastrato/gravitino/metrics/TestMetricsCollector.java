@@ -96,6 +96,7 @@ class TestMetricsCollector {
   private final long mockId = 1L;
   private final String metalakeName = "test_metalake";
   private final String relationalCatalogName = "rel_catalog";
+  private final String relationalCatalogProvider = "jdbc-postgresql";
   private final String relationalSchemaName = "rel_schema";
   private final String tableName = "table";
 
@@ -190,6 +191,8 @@ class TestMetricsCollector {
       assertEquals(1, snapshot.getTableNodes().size());
       assertEquals(1, snapshot.getViewNodes().size());
       assertEquals(0, snapshot.getFunctionNodes().size());
+      assertEquals(
+          relationalCatalogProvider, snapshot.getCatalogProviders().get(relationalCatalogName));
       assertEquals(2, snapshot.getSchemaNodes().iterator().next().getChildren().size());
       assertEquals(3, snapshot.getPolicyCount());
       assertEquals(1, snapshot.getDisabledPolicyCount());
@@ -355,7 +358,11 @@ class TestMetricsCollector {
       assertMetric(metrics, "asset_count", 1.0, MetricState.COMPLETE);
       assertMetric(
           metrics,
-          "by_catalog::" + relationalCatalogName + "::asset_count",
+          "by_catalog::"
+              + relationalCatalogName
+              + "::"
+              + relationalCatalogProvider
+              + "::asset_count",
           1.0,
           MetricState.COMPLETE);
       assertMetric(metrics, "by_asset_type::TABLE::asset_count", 1.0, MetricState.COMPLETE);
@@ -525,6 +532,46 @@ class TestMetricsCollector {
   }
 
   @Test
+  void testFailedCustomProviderIsPreservedInUnavailableMetricName() throws Exception {
+    String customCatalogName = "custom_catalog";
+    String customProvider = "vendor-custom";
+    CatalogEntity customCatalog =
+        CatalogEntity.builder()
+            .withId(2L)
+            .withName(customCatalogName)
+            .withNamespace(NamespaceUtil.ofCatalog(metalakeName))
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider(customProvider)
+            .withAuditInfo(
+                AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+            .build();
+    when(store.list(
+            NamespaceUtil.ofCatalog(metalakeName), CatalogEntity.class, Entity.EntityType.CATALOG))
+        .thenReturn(ImmutableList.of(customCatalog));
+    when(catalogManager.loadCatalogAndWrap(
+            eq(NameIdentifierUtil.ofCatalog(metalakeName, customCatalogName))))
+        .thenThrow(new RuntimeException("custom provider unavailable"));
+
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      MetalakeSnapshot snapshot = collector.loadAllDataForMetalake(metalake());
+
+      assertEquals(customProvider, snapshot.getCatalogProviders().get(customCatalogName));
+      assertTrue(snapshot.getFailedCatalogNames().contains(customCatalogName));
+      List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+      assertMetric(
+          metrics,
+          "by_catalog::custom_catalog::vendor-custom::asset_count",
+          null,
+          MetricState.UNAVAILABLE);
+    }
+  }
+
+  @Test
   void testCollectionOutcomeUsesPublishedMetricStates() {
     MetricPO completeMetric = mock(MetricPO.class);
     when(completeMetric.getMetricState()).thenReturn(MetricState.COMPLETE);
@@ -666,7 +713,7 @@ class TestMetricsCollector {
             .withName(relationalCatalogName)
             .withNamespace(NamespaceUtil.ofCatalog(metalakeName))
             .withType(Catalog.Type.RELATIONAL)
-            .withProvider("hive")
+            .withProvider(relationalCatalogProvider)
             .withAuditInfo(
                 AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
             .build();

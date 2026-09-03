@@ -556,6 +556,7 @@ public class MetricsCollector implements Closeable {
     Set<AssetNode> modelNodes = new HashSet<>();
     Set<String> failedCatalogNames = new HashSet<>();
     Map<String, Catalog.Type> catalogTypes = new HashMap<>();
+    Map<String, String> catalogProviders = new HashMap<>();
     Map<String, Boolean> viewListingSupportByCatalog = new HashMap<>();
     Map<Long, AssetNode> assetNodeById = new HashMap<>();
 
@@ -584,6 +585,7 @@ public class MetricsCollector implements Closeable {
       assetNodeById.put(catalogNode.getId(), catalogNode);
       catalogNodes.add(catalogNode);
       catalogTypes.put(catalog.name(), catalog.getType());
+      catalogProviders.put(catalog.name(), catalog.getProvider());
 
       Map<Long, AssetNode> catalogAssetNodeById = new HashMap<>();
       Set<AssetNode> catalogSchemaNodes = new HashSet<>();
@@ -731,6 +733,7 @@ public class MetricsCollector implements Closeable {
         .disabledPolicyCount(disabledPolicyCount)
         .failedCatalogNames(failedCatalogNames)
         .catalogTypes(catalogTypes)
+        .catalogProviders(catalogProviders)
         .viewListingSupportByCatalog(viewListingSupportByCatalog)
         .build();
   }

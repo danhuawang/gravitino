@@ -48,6 +48,7 @@ public class MetalakeSnapshot {
   private final long disabledPolicyCount;
   private final Set<String> failedCatalogNames;
   private final Map<String, Catalog.Type> catalogTypes;
+  private final Map<String, String> catalogProviders;
   private final Map<String, Boolean> viewListingSupportByCatalog;
 
   /**
@@ -72,6 +73,7 @@ public class MetalakeSnapshot {
    * @param disabledPolicyCount number of current policies whose current version is disabled
    * @param failedCatalogNames enabled catalogs whose connector collection failed
    * @param catalogTypes enabled catalog types indexed by catalog name
+   * @param catalogProviders enabled catalog provider short names indexed by catalog name
    * @param viewListingSupportByCatalog known view-listing support indexed by catalog name; a
    *     missing entry means support could not be determined
    */
@@ -96,6 +98,7 @@ public class MetalakeSnapshot {
       long disabledPolicyCount,
       Set<String> failedCatalogNames,
       Map<String, Catalog.Type> catalogTypes,
+      Map<String, String> catalogProviders,
       Map<String, Boolean> viewListingSupportByCatalog) {
     this.assetTreeRoot = assetTreeRoot;
     this.assetNodeById = assetNodeById;
@@ -116,6 +119,7 @@ public class MetalakeSnapshot {
     this.disabledPolicyCount = disabledPolicyCount;
     this.failedCatalogNames = failedCatalogNames;
     this.catalogTypes = catalogTypes;
+    this.catalogProviders = catalogProviders;
     this.viewListingSupportByCatalog = viewListingSupportByCatalog;
     this.assetNodeByIdent = new HashMap<>();
     this.assetNodeByIdent.put(assetTreeRoot.getNameIdent(), assetTreeRoot);

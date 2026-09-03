@@ -42,19 +42,21 @@ class TestMetricsCalculator {
   @Test
   void testCompleteMetricsUseOnlyAssetsAndNewMetricNames() {
     SnapshotBuilder builder = new SnapshotBuilder();
-    AssetNode relational = builder.catalog(101L, "relational", Catalog.Type.RELATIONAL, false);
+    AssetNode relational =
+        builder.catalog(101L, "relational", Catalog.Type.RELATIONAL, "jdbc-postgresql", false);
     AssetNode relationalSchema = builder.schema(102L, "schema", relational);
     builder.asset(103L, "table", MetadataObject.Type.TABLE, relationalSchema);
     builder.asset(
         104L, "view", MetadataObject.Type.VIEW, relationalSchema, ImmutableSet.of(owner()));
     builder.asset(105L, "function", MetadataObject.Type.FUNCTION, relationalSchema);
-    AssetNode messaging = builder.catalog(201L, "messaging", Catalog.Type.MESSAGING, false);
+    AssetNode messaging =
+        builder.catalog(201L, "messaging", Catalog.Type.MESSAGING, "kafka", false);
     AssetNode messagingSchema = builder.schema(202L, "schema", messaging);
     AssetNode topic = builder.asset(203L, "topic", MetadataObject.Type.TOPIC, messagingSchema);
-    AssetNode fileset = builder.catalog(301L, "fileset", Catalog.Type.FILESET, false);
+    AssetNode fileset = builder.catalog(301L, "fileset", Catalog.Type.FILESET, "fileset", false);
     AssetNode filesetSchema = builder.schema(302L, "schema", fileset);
     builder.asset(303L, "fileset", MetadataObject.Type.FILESET, filesetSchema);
-    AssetNode model = builder.catalog(401L, "model", Catalog.Type.MODEL, false);
+    AssetNode model = builder.catalog(401L, "model", Catalog.Type.MODEL, "acme-model", false);
     AssetNode modelSchema = builder.schema(402L, "schema", model);
     AssetNode modelAsset = builder.asset(403L, "model", MetadataObject.Type.MODEL, modelSchema);
 
@@ -72,7 +74,18 @@ class TestMetricsCalculator {
     assertMetric(metrics, "policy_covered_asset_count", 4.0, MetricState.COMPLETE, null);
     assertMetric(metrics, "policy_count", 3.0, MetricState.COMPLETE, null);
     assertMetric(metrics, "disabled_policy_count", 1.0, MetricState.COMPLETE, null);
-    assertMetric(metrics, "by_catalog::relational::asset_count", 3.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics,
+        "by_catalog::relational::jdbc-postgresql::asset_count",
+        3.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics, "by_catalog::messaging::kafka::asset_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics, "by_catalog::fileset::fileset::asset_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics, "by_catalog::model::acme-model::asset_count", 1.0, MetricState.COMPLETE, null);
     assertMetric(
         metrics, "by_asset_type::VIEW::owned_asset_count", 1.0, MetricState.COMPLETE, null);
     assertMetric(
@@ -95,7 +108,8 @@ class TestMetricsCalculator {
         1.0,
         MetricState.COMPLETE,
         null);
-    assertFalse(metrics.containsKey("by_catalog::relational::policy_count"));
+    assertFalse(metrics.containsKey("by_catalog::relational::asset_count"));
+    assertFalse(metrics.containsKey("by_catalog::relational::jdbc-postgresql::policy_count"));
     assertFalse(metrics.containsKey("by_asset_type::TABLE::disabled_policy_count"));
     assertMetric(
         metrics,
@@ -115,17 +129,23 @@ class TestMetricsCalculator {
   @Test
   void testOneCatalogFailureMakesCatalogUnavailableAndDependenciesPartial() {
     SnapshotBuilder builder = new SnapshotBuilder();
-    AssetNode healthy = builder.catalog(101L, "healthy", Catalog.Type.RELATIONAL, false);
+    AssetNode healthy =
+        builder.catalog(101L, "healthy", Catalog.Type.RELATIONAL, "jdbc-postgresql", false);
     AssetNode schema = builder.schema(102L, "schema", healthy);
     builder.asset(103L, "table", MetadataObject.Type.TABLE, schema);
-    builder.catalog(201L, "failed", Catalog.Type.RELATIONAL, true);
+    builder.catalog(201L, "failed", Catalog.Type.RELATIONAL, "vendor-custom", true);
 
     Map<String, MetricPO> metrics = calculate(builder.build());
 
-    assertMetric(metrics, "by_catalog::healthy::asset_count", 1.0, MetricState.COMPLETE, null);
     assertMetric(
         metrics,
-        "by_catalog::failed::asset_count",
+        "by_catalog::healthy::jdbc-postgresql::asset_count",
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics,
+        "by_catalog::failed::vendor-custom::asset_count",
         null,
         MetricState.UNAVAILABLE,
         UNAVAILABLE_MESSAGE);
@@ -165,7 +185,8 @@ class TestMetricsCalculator {
   @Test
   void testDirectChildCountsUseHierarchicalParentsAndIncludeZero() {
     SnapshotBuilder builder = new SnapshotBuilder();
-    AssetNode catalog = builder.catalog(101L, "catalog", Catalog.Type.RELATIONAL, false);
+    AssetNode catalog =
+        builder.catalog(101L, "catalog", Catalog.Type.RELATIONAL, "jdbc-postgresql", false);
     AssetNode top = builder.schema(102L, "top", catalog);
     AssetNode child = builder.schema(103L, "top:child", top);
     builder.schema(104L, "empty", catalog);
@@ -202,7 +223,7 @@ class TestMetricsCalculator {
   @Test
   void testFailedCatalogWithoutViewListingDoesNotAffectViewMetrics() {
     SnapshotBuilder builder = new SnapshotBuilder();
-    builder.catalog(101L, "failed", Catalog.Type.RELATIONAL, true);
+    builder.catalog(101L, "failed", Catalog.Type.RELATIONAL, "hive", true);
     builder.viewListingSupport("failed", false);
 
     Map<String, MetricPO> metrics = calculate(builder.build());
@@ -219,7 +240,7 @@ class TestMetricsCalculator {
   @Test
   void testAllRelevantCatalogsFailedMakesMetricUnavailable() {
     SnapshotBuilder builder = new SnapshotBuilder();
-    builder.catalog(101L, "failed", Catalog.Type.RELATIONAL, true);
+    builder.catalog(101L, "failed", Catalog.Type.RELATIONAL, "hive", true);
     builder.policyCounts(2, 1);
 
     Map<String, MetricPO> metrics = calculate(builder.build());
@@ -320,6 +341,7 @@ class TestMetricsCalculator {
             .enabledPolicyObjectIds(Collections.emptySet())
             .failedCatalogNames(Collections.emptySet())
             .catalogTypes(ImmutableMap.of("catalog", Catalog.Type.RELATIONAL))
+            .catalogProviders(ImmutableMap.of("catalog", "hive"))
             .viewListingSupportByCatalog(ImmutableMap.of("catalog", true))
             .build();
 
@@ -398,6 +420,7 @@ class TestMetricsCalculator {
     private final Set<Long> policyObjectIds = new HashSet<>();
     private final Set<String> failedCatalogs = new HashSet<>();
     private final Map<String, Catalog.Type> catalogTypes = new HashMap<>();
+    private final Map<String, String> catalogProviders = new HashMap<>();
     private final Map<String, Boolean> viewListingSupportByCatalog = new HashMap<>();
     private long policyCount;
     private long disabledPolicyCount;
@@ -406,13 +429,15 @@ class TestMetricsCalculator {
       nodesById.put(root.getId(), root);
     }
 
-    private AssetNode catalog(long id, String name, Catalog.Type type, boolean collectionFailed) {
+    private AssetNode catalog(
+        long id, String name, Catalog.Type type, String provider, boolean collectionFailed) {
       AssetNode catalog =
           new AssetNode(id, name, MetadataObject.Type.CATALOG, root, Collections.emptySet());
       root.addChild(catalog);
       nodesById.put(id, catalog);
       catalogs.add(catalog);
       catalogTypes.put(name, type);
+      catalogProviders.put(name, provider);
       if (collectionFailed) {
         failedCatalogs.add(name);
       }
@@ -510,6 +535,7 @@ class TestMetricsCalculator {
           .disabledPolicyCount(disabledPolicyCount)
           .failedCatalogNames(failedCatalogs)
           .catalogTypes(catalogTypes)
+          .catalogProviders(catalogProviders)
           .viewListingSupportByCatalog(viewListingSupportByCatalog)
           .build();
     }
