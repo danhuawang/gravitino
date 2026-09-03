@@ -153,6 +153,14 @@ public class UserOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       UserAddRequest request) {
+    String userName = request == null ? "" : request.getName();
+    if (request == null) {
+      return ExceptionHandlers.handleUserException(
+          OperationType.ADD,
+          userName,
+          metalake,
+          new IllegalArgumentException("Request body cannot be null"));
+    }
     try {
       return Utils.doAs(
           httpRequest,
@@ -163,8 +171,7 @@ public class UserOperations {
             return Utils.ok(new UserResponse(DTOConverters.toDTO(addedUser)));
           });
     } catch (Exception e) {
-      return ExceptionHandlers.handleUserException(
-          OperationType.ADD, request.getName(), metalake, e);
+      return ExceptionHandlers.handleUserException(OperationType.ADD, userName, metalake, e);
     }
   }
 
