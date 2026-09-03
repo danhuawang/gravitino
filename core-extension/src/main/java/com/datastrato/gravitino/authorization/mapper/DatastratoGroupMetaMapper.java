@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.authorization.mapper;
 
+import com.datastrato.gravitino.authorization.po.DirectoryGroupPO;
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
@@ -79,4 +80,18 @@ public interface DatastratoGroupMetaMapper {
       method = "countGroupsWithEmptyByMetalake")
   IdpNameStatusPO.GroupMembershipCountsRow countGroupsWithEmptyByMetalake(
       @Param("metalakeName") String metalakeName);
+
+  /**
+   * Lists identity-store groups for the Directory Groups page.
+   *
+   * <p>Rows come from {@code idp_group_meta} (Local) and {@code scim_group_meta} (Provisioned).
+   * When a group name exists in both, the IdP / Local row wins. Includes identity-store member
+   * counts and metalake membership names.
+   *
+   * @return Directory group rows ordered by group name.
+   */
+  @SelectProvider(
+      type = DatastratoGroupMetaSQLProviderFactory.class,
+      method = "listDirectoryGroups")
+  List<DirectoryGroupPO> listDirectoryGroups();
 }

@@ -3,8 +3,10 @@
  */
 package com.datastrato.gravitino.authorization.utils;
 
+import com.datastrato.gravitino.authorization.DirectoryGroup;
 import com.datastrato.gravitino.authorization.DirectoryUser;
 import com.datastrato.gravitino.authorization.UserWithGroups;
+import com.datastrato.gravitino.authorization.po.DirectoryGroupPO;
 import com.datastrato.gravitino.authorization.po.DirectoryUserPO;
 import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import com.google.common.base.Preconditions;
@@ -77,4 +79,18 @@ public final class DatastratoPOConverters {
         parseNameArray(userPO.getMetalakeNames()));
   }
 
+  /**
+   * Converts a {@link DirectoryGroupPO} row to {@link DirectoryGroup}.
+   *
+   * @param groupPO Directory group row.
+   * @return Directory group.
+   */
+  public static DirectoryGroup fromDirectoryGroupPO(DirectoryGroupPO groupPO) {
+    Preconditions.checkNotNull(groupPO, "groupPO cannot be null");
+    return new DirectoryGroup(
+        groupPO.getGroupName(),
+        groupPO.memberCountOrZero(),
+        groupPO.origin(),
+        parseNameArray(groupPO.getMetalakeNames()));
+  }
 }

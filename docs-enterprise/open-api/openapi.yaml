@@ -159,6 +159,8 @@ paths:
 
 
 
+  /web/security/directory/groups:
+    $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups"
 
 
   /web/security/metalakes/{metalake}/users/enabled:

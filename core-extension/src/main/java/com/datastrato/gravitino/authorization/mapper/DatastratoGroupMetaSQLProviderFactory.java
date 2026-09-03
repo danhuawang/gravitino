@@ -44,6 +44,10 @@ public class DatastratoGroupMetaSQLProviderFactory {
     return getProvider().countGroupsWithEmptyByMetalake(metalakeName);
   }
 
+  public static String listDirectoryGroups() {
+    return getProvider().listDirectoryGroups();
+  }
+
   private static DatastratoGroupMetaBaseSQLProvider getProvider() {
     String databaseId =
         SqlSessionFactoryHelper.getInstance()

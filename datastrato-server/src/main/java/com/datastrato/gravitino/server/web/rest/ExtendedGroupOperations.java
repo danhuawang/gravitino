@@ -5,13 +5,16 @@ package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.IdpNameStatusDTO;
 import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.IdpGroupNameListResponse;
+import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -30,14 +33,13 @@ import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
 
 /**
- * Enterprise REST APIs for metalake group administration.
+ * Enterprise REST APIs for group administration.
  *
- * <p>Follows the same thin style as {@link ExtendedRoleOperations}: call {@link
- * DatastratoAccessControlDispatcher#listExtendedGroups(String)}; add local group delegates to
- * {@link DatastratoAccessControlDispatcher#addLocalGroup}.
+ * <p>Metalake security Groups APIs live under {@code metalakes/{metalake}/groups}. Configure →
+ * Directory → Groups uses instance-scoped {@code directory/groups}.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/metalakes/{metalake}/groups")
+@Path("/web/security")
 public class ExtendedGroupOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
@@ -54,6 +56,28 @@ public class ExtendedGroupOperations {
   }
 
   /**
+   * Lists Directory Groups for Configure → Directory → Groups (Local / Provisioned / JIT).
+   *
+   * @return Directory groups with memberCount, metalakes, and origin.
+   */
+  @GET
+  @Path("directory/groups")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  public Response listDirectoryGroups() {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () ->
+              Utils.ok(
+                  new DirectoryGroupListResponse(
+                      DirectoryGroupDTO.from(accessControlDispatcher.listDirectoryGroups()))));
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(OperationType.LIST, "", "", e);
+    }
+  }
+
+  /**
    * Lists groups under a metalake for the security UI, including {@code origin} ({@code Local} vs
    * {@code Provisioned}) from a JOIN to {@code idp_group_meta}, and {@code userCount} for the
    * Groups table.
@@ -62,6 +86,7 @@ public class ExtendedGroupOperations {
    * @return Groups.
    */
   @GET
+  @Path("metalakes/{metalake}/groups")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
   public Response listGroups(
@@ -88,7 +113,7 @@ public class ExtendedGroupOperations {
    * @return IdP group names with {@code status}.
    */
   @GET
-  @Path("idp")
+  @Path("metalakes/{metalake}/groups/idp")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
   public Response listIdpGroups(
@@ -116,6 +141,7 @@ public class ExtendedGroupOperations {
    * @return The metalake group with {@code origin}.
    */
   @POST
+  @Path("metalakes/{metalake}/groups")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
   public Response addGroup(
@@ -153,7 +179,7 @@ public class ExtendedGroupOperations {
    * @return Users with {@code origin}.
    */
   @GET
-  @Path("{group}/users")
+  @Path("metalakes/{metalake}/groups/{group}/users")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
   public Response listUsersForGroup(

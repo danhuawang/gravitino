@@ -60,6 +60,7 @@ import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
+import org.apache.gravitino.storage.relational.service.DatastratoGroupMetaService;
 import org.apache.gravitino.storage.relational.service.DatastratoRoleMetaService;
 import org.apache.gravitino.storage.relational.service.DatastratoUserMetaService;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
@@ -355,6 +356,18 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    */
   public List<DirectoryUser> listDirectoryUsers() {
     return DatastratoUserMetaService.getInstance().listDirectoryUsers();
+  }
+
+  /**
+   * Lists identity-store groups for Configure → Directory → Groups.
+   *
+   * <p>Local groups come from {@code idp_group_meta}; Provisioned groups from {@code
+   * scim_group_meta}; JIT groups from metalake {@code group_meta} only.
+   *
+   * @return Directory groups ordered by group name.
+   */
+  public List<DirectoryGroup> listDirectoryGroups() {
+    return DatastratoGroupMetaService.getInstance().listDirectoryGroups();
   }
 
   /**

@@ -15,11 +15,14 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.DirectoryGroup;
 import com.datastrato.gravitino.authorization.IdpNameStatus;
+import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
@@ -46,6 +49,7 @@ import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -203,6 +207,38 @@ public class TestExtendedGroupOperations extends JerseyTest {
     Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
   }
 
+  @Test
+  public void testListDirectoryGroups() {
+    when(accessControlDispatcher.listDirectoryGroups())
+        .thenReturn(
+            List.of(
+                new DirectoryGroup("analysts", 0, IdentitySource.JIT, List.of("Contoso")),
+                new DirectoryGroup("contractors", 0, IdentitySource.LOCAL, List.of("Acme")),
+                new DirectoryGroup(
+                    "governance", 2, IdentitySource.LOCAL, List.of("Acme", "Contoso")),
+                new DirectoryGroup("platform", 1, IdentitySource.PROVISIONED, List.of("Contoso"))));
+
+    Response response = get("/web/security/directory/groups");
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectoryGroupListResponse body = response.readEntity(DirectoryGroupListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    DirectoryGroupDTO[] groups = body.getGroups();
+    Assertions.assertEquals(4, groups.length);
+    Assertions.assertEquals(IdentitySource.JIT, groups[0].origin());
+    Assertions.assertEquals(IdentitySource.LOCAL, groups[1].origin());
+    Assertions.assertEquals(2, groups[2].memberCount());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, groups[3].origin());
+  }
+
+  @Test
+  public void testListDirectoryGroupsAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "SERVICE_ADMIN",
+        ExtendedGroupOperations.class
+            .getMethod("listDirectoryGroups")
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
+  }
   private Response get(String path) {
     return target(path)
         .request(MediaType.APPLICATION_JSON_TYPE)

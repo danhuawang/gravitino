@@ -4,6 +4,38 @@
 
 paths:
 
+  /web/security/directory/groups:
+    get:
+      tags:
+        - groups
+      summary: List Directory Groups
+      operationId: listDirectoryGroups
+      description: |
+        List Directory Groups for Configure → Directory → Groups.
+
+        Rows come from:
+        - `idp_group_meta` → `origin=Local`
+        - `scim_group_meta` (not also in IdP) → `origin=Provisioned`
+        - distinct `group_meta` names absent from IdP and SCIM → `origin=JIT`
+
+        `memberCount` is the identity-store membership count (0 for JIT). `metalakes` are metalake
+        names where the group name exists in `group_meta`.
+
+      responses:
+        "200":
+          description: Returns the list of directory groups
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/DirectoryGroupListResponse"
+              examples:
+                DirectoryGroupListResponse:
+                  $ref: "#/components/examples/DirectoryGroupListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/metalakes/{metalake}/groups:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
@@ -262,9 +294,74 @@ components:
         group:
           $ref: "#/components/schemas/ExtendedGroup"
 
+    DirectoryGroupDTO:
+      type: object
+      required:
+        - name
+        - memberCount
+        - origin
+        - metalakes
+      properties:
+        name:
+          type: string
+          description: Group name
+        memberCount:
+          type: integer
+          format: int32
+          description: Identity-store member count
+        origin:
+          $ref: "./users.yaml#/components/schemas/IdentitySource"
+        metalakes:
+          type: array
+          description: Metalake names containing this group
+          items:
+            type: string
+
+    DirectoryGroupListResponse:
+      type: object
+      required:
+        - code
+        - groups
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/DirectoryGroupDTO"
+
   examples:
     LocalGroupAddRequest:
       value:
         name: contractors
         roles:
           - Analyst
+
+    DirectoryGroupListResponse:
+      value:
+        code: 0
+        groups:
+          - name: analysts
+            memberCount: 0
+            origin: JIT
+            metalakes:
+              - Contoso
+              - Northwind
+          - name: contractors
+            memberCount: 0
+            origin: Local
+            metalakes:
+              - Acme
+          - name: governance
+            memberCount: 2
+            origin: Local
+            metalakes:
+              - Acme
+              - Contoso
+          - name: platform
+            memberCount: 1
+            origin: Provisioned
+            metalakes:
+              - Contoso

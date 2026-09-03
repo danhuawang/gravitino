@@ -9,6 +9,7 @@ import static org.apache.gravitino.storage.relational.mapper.RoleMetaMapper.ROLE
 
 import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import java.util.List;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.UserMetaMapper;
@@ -96,6 +97,96 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + MetalakeMetaMapper.TABLE_NAME
         + " mt ON gt.metalake_id = mt.metalake_id AND mt.deleted_at = 0"
         + " WHERE mt.metalake_name = #{metalakeName} AND gt.deleted_at = 0";
+  }
+
+  /**
+   * Lists Directory Groups for Configure → Directory → Groups.
+   *
+   * <p>Local rows come from {@code idp_group_meta}; Provisioned from {@code scim_group_meta}
+   * excluding IdP names; JIT from distinct {@code group_meta} names absent from both identity
+   * stores. {@code memberCount} is the identity-store membership count (0 for JIT). Metalakes are
+   * distinct {@code metalake_meta} names that contain the group name in {@code group_meta}.
+   *
+   * @return MyBatis SQL ordered by group name.
+   */
+  public String listDirectoryGroups() {
+    return "SELECT identity.groupName as groupName, identity.originCode as originCode,"
+        + " COALESCE(CASE WHEN identity.originCode = "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " THEN idpMembers.memberCount WHEN identity.originCode = "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " THEN scimMembers.memberCount ELSE 0 END, 0) as memberCount,"
+        + " metalakes.metalakeNames as metalakeNames"
+        + " FROM ("
+        + directoryGroupIdentityUnion()
+        + ") identity"
+        + " LEFT JOIN ("
+        + idpDirectoryMemberAggregation()
+        + ") idpMembers ON identity.idpGroupId = idpMembers.groupId"
+        + " LEFT JOIN ("
+        + scimDirectoryMemberAggregation()
+        + ") scimMembers ON identity.scimGroupId = scimMembers.groupId"
+        + " LEFT JOIN ("
+        + directoryGroupMetalakeAggregation()
+        + ") metalakes ON metalakes.groupName = identity.groupName"
+        + " ORDER BY identity.groupName";
+  }
+
+  private String directoryGroupIdentityUnion() {
+    return "SELECT ig.group_name as groupName, "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " as originCode,"
+        + " ig.group_id as idpGroupId, CAST(NULL AS BIGINT) as scimGroupId"
+        + " FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig WHERE ig.deleted_at = 0"
+        + " UNION ALL "
+        + "SELECT sg.group_name as groupName, "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " as originCode,"
+        + " CAST(NULL AS BIGINT) as idpGroupId, sg.group_id as scimGroupId"
+        + " FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg WHERE sg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0)"
+        + " UNION ALL "
+        + "SELECT gt.group_name as groupName, "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " as originCode,"
+        + " CAST(NULL AS BIGINT) as idpGroupId, CAST(NULL AS BIGINT) as scimGroupId"
+        + " FROM "
+        + GROUP_TABLE_NAME
+        + " gt WHERE gt.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0)"
+        + " GROUP BY gt.group_name";
+  }
+
+  private String idpDirectoryMemberAggregation() {
+    return "SELECT iugr.group_id as groupId, COUNT(DISTINCT iugr.user_id) as memberCount FROM "
+        + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+        + " iugr WHERE iugr.deleted_at = 0 GROUP BY iugr.group_id";
+  }
+
+  private String scimDirectoryMemberAggregation() {
+    return "SELECT sur.group_id as groupId, COUNT(DISTINCT sur.user_id) as memberCount FROM "
+        + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
+        + " sur WHERE sur.deleted_at = 0 GROUP BY sur.group_id";
+  }
+
+  private String directoryGroupMetalakeAggregation() {
+    return "SELECT gt.group_name as groupName, "
+        + jsonArrayAgg("mt.metalake_name")
+        + " as metalakeNames FROM "
+        + GROUP_TABLE_NAME
+        + " gt JOIN "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mt ON mt.metalake_id = gt.metalake_id AND mt.deleted_at = 0"
+        + " WHERE gt.deleted_at = 0 GROUP BY gt.group_name";
   }
 
   private String localGroupHasMemberExists() {
