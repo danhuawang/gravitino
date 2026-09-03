@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS user_meta (
     deleted_at BIGINT NOT NULL DEFAULT 0,
     updated_at BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (user_id),
-    UNIQUE (metalake_id, user_name, deleted_at),
+    UNIQUE (metalake_id, user_name, deleted_at)
 );
 COMMENT ON TABLE user_meta IS 'user metadata';
 
@@ -393,7 +393,7 @@ CREATE TABLE IF NOT EXISTS group_meta (
     deleted_at BIGINT NOT NULL DEFAULT 0,
     updated_at BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (group_id),
-    UNIQUE (metalake_id, group_name, deleted_at),
+    UNIQUE (metalake_id, group_name, deleted_at)
 );
 COMMENT ON TABLE group_meta IS 'group metadata';
 
