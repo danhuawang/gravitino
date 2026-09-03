@@ -170,7 +170,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
 
     return EntityCombinedTable.of(entityCombinedTable.tableFromCatalog(), updatedEntity)
         .withHiddenProperties(
-            getHiddenPropertyNames(
+            getMaskAndOmitKeys(
                 getCatalogIdentifier(ident),
                 HasPropertyMetadata::tablePropertiesMetadata,
                 entityCombinedTable.tableFromCatalog().properties()))
@@ -277,7 +277,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
           if (isManagedTable) {
             return EntityCombinedTable.of(alteredTable)
                 .withHiddenProperties(
-                    getHiddenPropertyNames(
+                    getMaskAndOmitKeys(
                         getCatalogIdentifier(ident),
                         HasPropertyMetadata::tablePropertiesMetadata,
                         alteredTable.properties()));
@@ -291,7 +291,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
             if (te == null) {
               return EntityCombinedTable.of(alteredTable)
                   .withHiddenProperties(
-                      getHiddenPropertyNames(
+                      getMaskAndOmitKeys(
                           getCatalogIdentifier(ident),
                           HasPropertyMetadata::tablePropertiesMetadata,
                           alteredTable.properties()));
@@ -340,7 +340,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
 
           return EntityCombinedTable.of(alteredTable, updatedTableEntity)
               .withHiddenProperties(
-                  getHiddenPropertyNames(
+                  getMaskAndOmitKeys(
                       getCatalogIdentifier(ident),
                       HasPropertyMetadata::tablePropertiesMetadata,
                       alteredTable.properties()));
@@ -528,7 +528,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
 
     return EntityCombinedTable.of(table.tableFromCatalog(), tableEntity)
         .withHiddenProperties(
-            getHiddenPropertyNames(
+            getMaskAndOmitKeys(
                 getCatalogIdentifier(identifier),
                 HasPropertyMetadata::tablePropertiesMetadata,
                 table.tableFromCatalog().properties()));
@@ -555,7 +555,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
     if (isManagedTable) {
       return EntityCombinedTable.of(table)
           .withHiddenProperties(
-              getHiddenPropertyNames(
+              getMaskAndOmitKeys(
                   catalogIdentifier,
                   HasPropertyMetadata::tablePropertiesMetadata,
                   table.properties()))
@@ -571,7 +571,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
       if (tableEntity == null) {
         return EntityCombinedTable.of(table)
             .withHiddenProperties(
-                getHiddenPropertyNames(
+                getMaskAndOmitKeys(
                     catalogIdentifier,
                     HasPropertyMetadata::tablePropertiesMetadata,
                     table.properties()))
@@ -583,7 +583,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
 
       return EntityCombinedTable.of(table, tableEntity)
           .withHiddenProperties(
-              getHiddenPropertyNames(
+              getMaskAndOmitKeys(
                   catalogIdentifier,
                   HasPropertyMetadata::tablePropertiesMetadata,
                   table.properties()))
@@ -602,7 +602,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
 
     return EntityCombinedTable.of(table, tableEntity)
         .withHiddenProperties(
-            getHiddenPropertyNames(
+            getMaskAndOmitKeys(
                 catalogIdentifier,
                 HasPropertyMetadata::tablePropertiesMetadata,
                 table.properties()))
@@ -662,7 +662,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
     if (isManagedTable) {
       return EntityCombinedTable.of(table)
           .withHiddenProperties(
-              getHiddenPropertyNames(
+              getMaskAndOmitKeys(
                   catalogIdent, HasPropertyMetadata::tablePropertiesMetadata, table.properties()));
     }
 
@@ -691,14 +691,14 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
       LOG.error(FormattedErrorMessages.STORE_OP_FAILURE, "put", ident, e);
       return EntityCombinedTable.of(table)
           .withHiddenProperties(
-              getHiddenPropertyNames(
+              getMaskAndOmitKeys(
                   catalogIdent, HasPropertyMetadata::tablePropertiesMetadata, table.properties()));
     }
 
     // Merge both the metadata from catalog operation and the metadata from entity store.
     return EntityCombinedTable.of(table, tableEntity)
         .withHiddenProperties(
-            getHiddenPropertyNames(
+            getMaskAndOmitKeys(
                 catalogIdent, HasPropertyMetadata::tablePropertiesMetadata, table.properties()));
   }
 

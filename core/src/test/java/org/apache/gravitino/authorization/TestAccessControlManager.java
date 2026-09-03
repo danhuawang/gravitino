@@ -65,7 +65,6 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.StringIdentifier;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.connector.BaseCatalog;
-import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.connector.authorization.AuthorizationPlugin;
 import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
@@ -716,9 +715,7 @@ public class TestAccessControlManager {
           Assertions.assertEquals(v, testProps.get(k));
         });
 
-    Assertions.assertTrue(
-        !testProps.containsKey(StringIdentifier.ID_KEY)
-            || HiddenPropertyMaskUtils.MASKED_VALUE.equals(testProps.get(StringIdentifier.ID_KEY)));
+    Assertions.assertFalse(testProps.containsKey(StringIdentifier.ID_KEY));
   }
 
   @Test
