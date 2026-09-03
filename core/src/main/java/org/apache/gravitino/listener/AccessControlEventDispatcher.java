@@ -21,12 +21,10 @@ package org.apache.gravitino.listener;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.Group;
-import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.Role;
@@ -162,7 +160,6 @@ public class AccessControlEventDispatcher implements AccessControlDispatcher {
 
   /** {@inheritDoc} */
 
-
   /** {@inheritDoc} */
   @Override
   public boolean removeUser(String metalake, String user) throws NoSuchMetalakeException {
@@ -181,7 +178,6 @@ public class AccessControlEventDispatcher implements AccessControlDispatcher {
   }
 
   /** {@inheritDoc} */
-
 
   /** {@inheritDoc} */
   @Override
@@ -294,7 +290,6 @@ public class AccessControlEventDispatcher implements AccessControlDispatcher {
 
   /** {@inheritDoc} */
 
-
   /** {@inheritDoc} */
   @Override
   public boolean removeGroup(String metalake, String group) throws NoSuchMetalakeException {
@@ -313,7 +308,6 @@ public class AccessControlEventDispatcher implements AccessControlDispatcher {
   }
 
   /** {@inheritDoc} */
-
 
   /** {@inheritDoc} */
   @Override
@@ -657,12 +651,4 @@ public class AccessControlEventDispatcher implements AccessControlDispatcher {
       throw e;
     }
   }
-
-
-
-
-
-
-
-
 }

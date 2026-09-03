@@ -145,6 +145,38 @@ public class AuthorizationUtils {
         metalake, Entity.SYSTEM_CATALOG_RESERVED_NAME, Entity.USER_SCHEMA_NAME, user);
   }
 
+  /**
+   * Creates a synthetic {@link NameIdentifier} used only as a tree-lock path for user operations
+   * keyed by Gravitino-assigned id.
+   *
+   * @param metalake the metalake name
+   * @param userId the Gravitino-assigned user id
+   * @return a synthetic name identifier for tree locking only
+   */
+  public static NameIdentifier ofUserId(String metalake, long userId) {
+    return NameIdentifier.of(
+        metalake,
+        Entity.SYSTEM_CATALOG_RESERVED_NAME,
+        Entity.USER_ID_SCHEMA_NAME,
+        String.valueOf(userId));
+  }
+
+  /**
+   * Creates a synthetic {@link NameIdentifier} used only as a tree-lock path for group operations
+   * keyed by Gravitino-assigned id.
+   *
+   * @param metalake the metalake name
+   * @param groupId the Gravitino-assigned group id
+   * @return a synthetic name identifier for tree locking only
+   */
+  public static NameIdentifier ofGroupId(String metalake, long groupId) {
+    return NameIdentifier.of(
+        metalake,
+        Entity.SYSTEM_CATALOG_RESERVED_NAME,
+        Entity.GROUP_ID_SCHEMA_NAME,
+        String.valueOf(groupId));
+  }
+
   public static Namespace ofRoleNamespace(String metalake) {
     return Namespace.of(metalake, Entity.SYSTEM_CATALOG_RESERVED_NAME, Entity.ROLE_SCHEMA_NAME);
   }

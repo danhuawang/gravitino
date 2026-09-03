@@ -18,7 +18,6 @@
  */
 package org.apache.gravitino.authorization;
 
-import com.google.common.collect.Lists;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,8 +68,6 @@ public class AccessControlManager implements AccessControlDispatcher {
         () -> userGroupManager.addUser(metalake, user));
   }
 
-
-
   @Override
   public boolean removeUser(String metalake, String user) throws NoSuchMetalakeException {
     return TreeLockUtils.doWithTreeLock(
@@ -78,8 +75,6 @@ public class AccessControlManager implements AccessControlDispatcher {
         LockType.WRITE,
         () -> userGroupManager.removeUser(metalake, user));
   }
-
-
 
   @Override
   public User getUser(String metalake, String user)
@@ -132,8 +127,6 @@ public class AccessControlManager implements AccessControlDispatcher {
         () -> userGroupManager.addGroup(metalake, group));
   }
 
-
-
   @Override
   public boolean removeGroup(String metalake, String group) throws NoSuchMetalakeException {
     return TreeLockUtils.doWithTreeLock(
@@ -141,8 +134,6 @@ public class AccessControlManager implements AccessControlDispatcher {
         LockType.WRITE,
         () -> userGroupManager.removeGroup(metalake, group));
   }
-
-
 
   @Override
   public Group getGroup(String metalake, String group)

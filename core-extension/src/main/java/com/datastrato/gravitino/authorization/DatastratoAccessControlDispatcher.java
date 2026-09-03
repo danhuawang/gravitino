@@ -31,14 +31,12 @@ import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.Group;
-import org.apache.gravitino.authorization.GroupChange;
 import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.RoleChange;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.User;
-import org.apache.gravitino.authorization.UserChange;
 import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.exceptions.IllegalRoleException;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
@@ -113,49 +111,14 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   @Override
-  public User addUser(String metalake, String user, String externalId, boolean enabled)
-      throws UserAlreadyExistsException, NoSuchMetalakeException {
-    return accessControlDispatcher.addUser(metalake, user, externalId, enabled);
-  }
-
-  @Override
   public boolean removeUser(String metalake, String user) throws NoSuchMetalakeException {
     return accessControlDispatcher.removeUser(metalake, user);
-  }
-
-  @Override
-  public boolean removeUserByExternalId(String metalake, String externalId)
-      throws NoSuchMetalakeException {
-    return accessControlDispatcher.removeUserByExternalId(metalake, externalId);
   }
 
   @Override
   public User getUser(String metalake, String user)
       throws NoSuchUserException, NoSuchMetalakeException {
     return accessControlDispatcher.getUser(metalake, user);
-  }
-
-  @Override
-  public User getUserByExternalId(String metalake, String externalId)
-      throws NoSuchUserException, NoSuchMetalakeException {
-    return accessControlDispatcher.getUserByExternalId(metalake, externalId);
-  }
-
-  @Override
-  public User getUserById(String metalake, long userId)
-      throws NoSuchUserException, NoSuchMetalakeException {
-    return accessControlDispatcher.getUserById(metalake, userId);
-  }
-
-  @Override
-  public boolean removeUserById(String metalake, long userId) throws NoSuchMetalakeException {
-    return accessControlDispatcher.removeUserById(metalake, userId);
-  }
-
-  @Override
-  public User alterUserById(String metalake, long userId, UserChange... changes)
-      throws NoSuchUserException, NoSuchMetalakeException {
-    return accessControlDispatcher.alterUserById(metalake, userId, changes);
   }
 
   @Override
@@ -186,49 +149,14 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   @Override
-  public Group addGroup(String metalake, String group, String externalId)
-      throws GroupAlreadyExistsException, NoSuchMetalakeException {
-    return accessControlDispatcher.addGroup(metalake, group, externalId);
-  }
-
-  @Override
   public boolean removeGroup(String metalake, String group) throws NoSuchMetalakeException {
     return accessControlDispatcher.removeGroup(metalake, group);
-  }
-
-  @Override
-  public boolean removeGroupByExternalId(String metalake, String externalId)
-      throws NoSuchMetalakeException {
-    return accessControlDispatcher.removeGroupByExternalId(metalake, externalId);
   }
 
   @Override
   public Group getGroup(String metalake, String group)
       throws NoSuchGroupException, NoSuchMetalakeException {
     return accessControlDispatcher.getGroup(metalake, group);
-  }
-
-  @Override
-  public Group getGroupByExternalId(String metalake, String externalId)
-      throws NoSuchGroupException, NoSuchMetalakeException {
-    return accessControlDispatcher.getGroupByExternalId(metalake, externalId);
-  }
-
-  @Override
-  public Group getGroupById(String metalake, long groupId)
-      throws NoSuchGroupException, NoSuchMetalakeException {
-    return accessControlDispatcher.getGroupById(metalake, groupId);
-  }
-
-  @Override
-  public boolean removeGroupById(String metalake, long groupId) throws NoSuchMetalakeException {
-    return accessControlDispatcher.removeGroupById(metalake, groupId);
-  }
-
-  @Override
-  public Group alterGroupById(String metalake, long groupId, GroupChange... changes)
-      throws NoSuchGroupException, NoSuchMetalakeException {
-    return accessControlDispatcher.alterGroupById(metalake, groupId, changes);
   }
 
   @Override
@@ -317,15 +245,15 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   /**
    * Batch-updates the {@code enabled} flag for the given users under a metalake.
    *
-   * <p>Validates first that every distinct username exists and has no {@code externalId}. Only then
-   * runs the UPDATE. Otherwise no rows are updated and an {@link IllegalArgumentException} is
-   * thrown.
+   * <p>Validates first that every distinct username exists. Local users update {@code
+   * idp_user_meta.enabled}; provisioned users update {@code scim_user_meta.enabled}. Otherwise no
+   * rows are updated and an {@link IllegalArgumentException} is thrown.
    *
    * @param metalake The metalake name.
    * @param usernames User names to update.
    * @param enabled Target enabled value.
    * @return Distinct user names that were updated.
-   * @throws IllegalArgumentException If any user is missing or has an external id.
+   * @throws IllegalArgumentException If any user is missing.
    */
   public List<String> batchUpdateUserEnabled(
       String metalake, List<String> usernames, boolean enabled) {
@@ -397,7 +325,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @param metalake The metalake name.
    * @param username The username.
    * @param roles Optional metalake roles to grant; {@code null} or empty means none.
-   * @param enabled Whether the metalake user is enabled; {@code null} means enabled.
+   * @param enabled Whether the built-in IdP user should be enabled; {@code null} leaves IdP state
+   *     unchanged.
    * @return The metalake user.
    * @throws NotFoundException If the built-in IdP user does not exist.
    * @throws UserAlreadyExistsException If the metalake user already exists.
@@ -407,9 +336,12 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
     Preconditions.checkArgument(StringUtils.isNotBlank(username), "username cannot be blank");
 
     idpUserGroupManager.getUser(username);
+    if (enabled != null) {
+      idpUserGroupManager.updateEnabled(username, enabled);
+    }
 
-    boolean isEnabled = enabled == null || enabled;
-    User user = accessControlDispatcher.addUser(metalake, username, null, isEnabled);
+    // Metalake user_meta does not store enabled; IdP/SCIM tables own that flag.
+    User user = accessControlDispatcher.addUser(metalake, username);
     if (roles != null && !roles.isEmpty()) {
       user = accessControlDispatcher.grantRolesToUser(metalake, roles, username);
     }
@@ -478,7 +410,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Loads metalake user totals split by {@code enabled} in one query against {@code user_meta}.
+   * Loads metalake user totals split by identity-source {@code enabled}.
    *
    * @param metalake The metalake name.
    * @return User enabled counts.
@@ -1096,8 +1028,6 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
         .withNamespace(user.namespace())
         .withId(user.id())
         .withName(user.name())
-        .withExternalId(user.externalId())
-        .withEnabled(user.enabled())
         .withRoleNames(roleNames)
         .withRoleIds(roleIds)
         .withAuditInfo(updatedAudit(user.auditInfo(), modifier, assignmentTime))
@@ -1121,7 +1051,6 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
         .withNamespace(group.namespace())
         .withId(group.id())
         .withName(group.name())
-        .withExternalId(group.externalId())
         .withRoleNames(roleNames)
         .withRoleIds(roleIds)
         .withAuditInfo(updatedAudit(group.auditInfo(), modifier, assignmentTime))

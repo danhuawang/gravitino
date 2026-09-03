@@ -20,7 +20,6 @@ package org.apache.gravitino.authorization;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
@@ -33,13 +32,112 @@ import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.RoleAlreadyExistsException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 
+/**
+ * This interface is related to the access control. This interface is mainly used for
+ * LifecycleHooks. The lifecycleHooks used the InvocationHandler. The InvocationHandler can only
+ * hook the interfaces.
+ */
+public interface AccessControlDispatcher {
+  /**
+   * Adds a new User.
+   *
+   * @param metalake The Metalake of the User.
+   * @param user The name of the User.
+   * @return The added User instance.
+   * @throws UserAlreadyExistsException If a User with the same name already exists.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   * @throws RuntimeException If adding the User encounters storage issues.
+   */
+  User addUser(String metalake, String user)
+      throws UserAlreadyExistsException, NoSuchMetalakeException;
 
+  /**
+   * Removes a User.
+   *
+   * @param metalake The Metalake of the User.
+   * @param user The name of the User.
+   * @return True if the User was successfully removed, false only when there's no such user,
+   *     otherwise it will throw an exception.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   * @throws RuntimeException If removing the User encounters storage issues.
+   */
+  boolean removeUser(String metalake, String user) throws NoSuchMetalakeException;
 
-  
+  /**
+   * Gets a User.
+   *
+   * @param metalake The Metalake of the User.
+   * @param user The name of the User.
+   * @return The getting User instance.
+   * @throws NoSuchUserException If the User with the given name does not exist.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   * @throws RuntimeException If getting the User encounters storage issues.
+   */
+  User getUser(String metalake, String user) throws NoSuchUserException, NoSuchMetalakeException;
 
-  
+  /**
+   * Lists the users.
+   *
+   * @param metalake The Metalake of the User.
+   * @return The User list.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   */
+  User[] listUsers(String metalake) throws NoSuchMetalakeException;
 
-  
+  /**
+   * Lists users with pagination.
+   *
+   * @param metalake The Metalake of the User.
+   * @param offset The number of users to skip.
+   * @param limit The maximum number of users to return.
+   * @return The paginated User result.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   */
+  PagedResult<User> listUsers(String metalake, int offset, int limit)
+      throws NoSuchMetalakeException;
+
+  /**
+   * Counts users in a metalake.
+   *
+   * @param metalake The Metalake of the User.
+   * @return The total number of users.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   */
+  long countUsers(String metalake) throws NoSuchMetalakeException;
+
+  /**
+   * Lists the usernames.
+   *
+   * @param metalake The Metalake of the User.
+   * @return The username list.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   */
+  String[] listUserNames(String metalake) throws NoSuchMetalakeException;
+
+  /**
+   * Adds a new Group.
+   *
+   * @param metalake The Metalake of the Group.
+   * @param group The name of the Group.
+   * @return The Added Group instance.
+   * @throws GroupAlreadyExistsException If a Group with the same name already exists.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   * @throws RuntimeException If adding the Group encounters storage issues.
+   */
+  Group addGroup(String metalake, String group)
+      throws GroupAlreadyExistsException, NoSuchMetalakeException;
+
+  /**
+   * Removes a Group.
+   *
+   * @param metalake The Metalake of the Group.
+   * @param group THe name of the Group.
+   * @return True if the Group was successfully removed, false only when there's no such group,
+   *     otherwise it will throw an exception.
+   * @throws NoSuchMetalakeException If the Metalake with the given name does not exist.
+   * @throws RuntimeException If removing the Group encounters storage issues.
+   */
+  boolean removeGroup(String metalake, String group) throws NoSuchMetalakeException;
 
   /**
    * Gets a Group.

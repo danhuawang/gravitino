@@ -105,14 +105,12 @@ public class UserMetaBaseSQLProvider {
         + " deleted_at = #{userMeta.deletedAt}";
   }
 
-  public String softDeleteUserMetaByUserId(
-      @Param("userId") Long userId, @Param("currentVersion") Long currentVersion) {
+  public String softDeleteUserMetaByUserId(@Param("userId") Long userId) {
     return "UPDATE "
         + USER_TABLE_NAME
         + " SET deleted_at = "
         + DatabaseTimeSQL.MYSQL
-        + " WHERE user_id = #{userId}"
-        + " AND current_version = #{currentVersion} AND deleted_at = 0";
+        + " WHERE user_id = #{userId} AND deleted_at = 0";
   }
 
   public String softDeleteUserMetasByMetalakeId(@Param("metalakeId") Long metalakeId) {

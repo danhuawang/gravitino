@@ -138,7 +138,6 @@ public class RoleGroupAssignmentPO {
         .withGroupId(groupId)
         .withGroupName(groupName)
         .withMetalakeId(metalakeId)
-        .withExternalId(externalId)
         .withAuditInfo(auditInfo)
         .withCurrentVersion(currentVersion)
         .withLastVersion(lastVersion)

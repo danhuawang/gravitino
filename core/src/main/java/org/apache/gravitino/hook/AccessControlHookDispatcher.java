@@ -20,7 +20,6 @@ package org.apache.gravitino.hook;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
@@ -71,14 +70,10 @@ public class AccessControlHookDispatcher implements AccessControlDispatcher {
     return dispatcher.addUser(metalake, user);
   }
 
-
-
   @Override
   public boolean removeUser(String metalake, String user) throws NoSuchMetalakeException {
     return dispatcher.removeUser(metalake, user);
   }
-
-
 
   @Override
   public User getUser(String metalake, String user)
@@ -113,14 +108,10 @@ public class AccessControlHookDispatcher implements AccessControlDispatcher {
     return dispatcher.addGroup(metalake, group);
   }
 
-
-
   @Override
   public boolean removeGroup(String metalake, String group) throws NoSuchMetalakeException {
     return dispatcher.removeGroup(metalake, group);
   }
-
-
 
   @Override
   public Group getGroup(String metalake, String group)

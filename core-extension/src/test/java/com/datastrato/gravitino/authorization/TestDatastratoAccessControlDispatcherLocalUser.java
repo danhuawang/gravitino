@@ -4,7 +4,6 @@
 package com.datastrato.gravitino.authorization;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -82,9 +81,10 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
   public void testAddUser() {
     stubIdpUser("alice");
     User created = mock(User.class);
-    when(inner.addUser(METALAKE, "alice", null, true)).thenReturn(created);
+    when(inner.addUser(METALAKE, "alice")).thenReturn(created);
 
     Assertions.assertSame(created, dispatcher.addLocalUser(METALAKE, "alice", null, true));
+    verify(idp).updateEnabled("alice", true);
     verify(inner, never()).grantRolesToUser(any(), any(), any());
   }
 
@@ -94,13 +94,13 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
 
     Assertions.assertThrows(
         NotFoundException.class, () -> dispatcher.addLocalUser(METALAKE, "missing", null, true));
-    verify(inner, never()).addUser(any(), any(), any(), anyBoolean());
+    verify(inner, never()).addUser(any(), any());
   }
 
   @Test
   public void testAddUserRoles() {
     stubIdpUser("alice");
-    when(inner.addUser(METALAKE, "alice", null, true)).thenReturn(mock(User.class));
+    when(inner.addUser(METALAKE, "alice")).thenReturn(mock(User.class));
     User granted = mock(User.class);
     when(inner.grantRolesToUser(METALAKE, List.of("Analyst"), "alice")).thenReturn(granted);
 

@@ -230,14 +230,12 @@ public class GroupMetaBaseSQLProvider {
         + " deleted_at = #{groupMeta.deletedAt}";
   }
 
-  public String softDeleteGroupMetaByGroupId(
-      @Param("groupId") Long groupId, @Param("currentVersion") Long currentVersion) {
+  public String softDeleteGroupMetaByGroupId(@Param("groupId") Long groupId) {
     return "UPDATE "
         + GROUP_TABLE_NAME
         + " SET deleted_at = "
         + DatabaseTimeSQL.MYSQL
-        + " WHERE group_id = #{groupId}"
-        + " AND current_version = #{currentVersion} AND deleted_at = 0";
+        + " WHERE group_id = #{groupId} AND deleted_at = 0";
   }
 
   public String softDeleteGroupMetasByMetalakeId(@Param("metalakeId") Long metalakeId) {

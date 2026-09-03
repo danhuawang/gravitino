@@ -31,12 +31,11 @@ public class ExtendedGroupDTO extends GroupDTO {
   private ExtendedGroupDTO(
       Long id,
       String name,
-      String externalId,
       List<String> roles,
       AuditDTO audit,
       IdentitySource origin,
       int userCount) {
-    super(id, name, externalId, roles, audit);
+    super(id, name, roles, audit);
     this.origin = origin;
     this.userCount = userCount;
   }
@@ -72,12 +71,6 @@ public class ExtendedGroupDTO extends GroupDTO {
     Preconditions.checkArgument(StringUtils.isNotBlank(group.name()), "group name cannot be blank");
     List<String> roles = group.roles() == null ? Collections.emptyList() : group.roles();
     return new ExtendedGroupDTO(
-        group.id(),
-        group.name(),
-        group.externalId(),
-        roles,
-        DTOConverters.toDTO(group.auditInfo()),
-        origin,
-        userCount);
+        group.id(), group.name(), roles, DTOConverters.toDTO(group.auditInfo()), origin, userCount);
   }
 }

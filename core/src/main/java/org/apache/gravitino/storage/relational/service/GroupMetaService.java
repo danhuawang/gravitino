@@ -43,12 +43,10 @@ import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.relational.mapper.GroupMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.GroupRoleRelMapper;
-import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper;
 import org.apache.gravitino.storage.relational.po.ExtendedGroupPO;
 import org.apache.gravitino.storage.relational.po.GroupPO;
 import org.apache.gravitino.storage.relational.po.GroupRoleRelPO;
-import org.apache.gravitino.storage.relational.po.MetalakePO;
 import org.apache.gravitino.storage.relational.po.RolePO;
 import org.apache.gravitino.storage.relational.utils.ExceptionUtils;
 import org.apache.gravitino.storage.relational.utils.POConverters;
@@ -174,34 +172,24 @@ public class GroupMetaService {
 
       NameIdentifier metalakeIdent =
           NameIdentifier.of(NameIdentifierUtil.getMetalake(groupEntity.nameIdentifier()));
-      MetalakePO metalakePO =
-          SessionUtils.getWithoutCommit(
-              MetalakeMetaMapper.class,
-              mapper -> mapper.selectMetalakeMetaByName(metalakeIdent.name()));
-      if (metalakePO == null) {
-        throw new NoSuchEntityException(
-            NoSuchEntityException.NO_SUCH_ENTITY_MESSAGE,
-            Entity.EntityType.METALAKE.name().toLowerCase(),
-            metalakeIdent.name());
-      }
+      Long metalakeId = EntityIdService.getEntityId(metalakeIdent, Entity.EntityType.METALAKE);
 
-      GroupPO.Builder builder = GroupPO.builder().withMetalakeId(metalakePO.getMetalakeId());
-      GroupPO groupPO = POConverters.initializeGroupPOWithVersion(groupEntity, builder);
+      GroupPO.Builder builder = GroupPO.builder().withMetalakeId(metalakeId);
+      GroupPO GroupPO = POConverters.initializeGroupPOWithVersion(groupEntity, builder);
 
       List<Long> roleIds = Optional.ofNullable(groupEntity.roleIds()).orElse(Lists.newArrayList());
       List<GroupRoleRelPO> groupRoleRelPOS =
           POConverters.initializeGroupRoleRelsPOWithVersion(groupEntity, roleIds);
 
       SessionUtils.doMultipleWithCommit(
-          () -> lockMetalakeForGroupCreate(metalakePO),
           () ->
               SessionUtils.doWithoutCommit(
                   GroupMetaMapper.class,
                   mapper -> {
                     if (overwritten) {
-                      mapper.insertGroupMetaOnDuplicateKeyUpdate(groupPO);
+                      mapper.insertGroupMetaOnDuplicateKeyUpdate(GroupPO);
                     } else {
-                      mapper.insertGroupMeta(groupPO);
+                      mapper.insertGroupMeta(GroupPO);
                     }
                   }),
           () -> {
@@ -227,33 +215,12 @@ public class GroupMetaService {
   public boolean deleteGroup(NameIdentifier identifier) {
     AuthorizationUtils.checkGroup(identifier);
 
-    Long metalakeId =
-        MetalakeMetaService.getInstance().getMetalakeIdByName(identifier.namespace().level(0));
-    GroupPO groupPO = getGroupPOByMetalakeIdAndName(metalakeId, identifier.name());
-    deleteGroupWithVersion(identifier, groupPO);
-    return true;
-  }
+    Long groupId = EntityIdService.getEntityId(identifier, Entity.EntityType.GROUP);
 
-  /**
-   * Deletes the group whose version matches {@code observedGroupPO}, together with its role and
-   * owner relations. Package-private so tests can hand in a deliberately stale PO; callers outside
-   * this class go through {@link #deleteGroup(NameIdentifier)}, which reads the row first.
-   *
-   * @param identifier the group being deleted, used only to build the error
-   * @param observedGroupPO the group row the caller observed, carrying the version to match
-   */
-  void deleteGroupWithVersion(NameIdentifier identifier, GroupPO observedGroupPO) {
-    Long groupId = observedGroupPO.getGroupId();
     SessionUtils.doMultipleWithCommit(
         () ->
-            OccWriteSupport.deleteWithVersion(
-                () ->
-                    SessionUtils.getWithoutCommit(
-                        GroupMetaMapper.class,
-                        mapper ->
-                            mapper.softDeleteGroupMetaByGroupId(
-                                groupId, observedGroupPO.getCurrentVersion())),
-                () -> groupWriteFailure(identifier, observedGroupPO, GroupLookup.NAME)),
+            SessionUtils.doWithoutCommit(
+                GroupMetaMapper.class, mapper -> mapper.softDeleteGroupMetaByGroupId(groupId)),
         () ->
             SessionUtils.doWithoutCommit(
                 GroupRoleRelMapper.class,
@@ -264,6 +231,7 @@ public class GroupMetaService {
                 mapper ->
                     mapper.softDeleteOwnerRelByOwnerIdAndType(
                         groupId, Entity.EntityType.GROUP.name())));
+    return true;
   }
 
   @Monitored(metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME, baseMetricName = "updateGroup")
@@ -297,24 +265,18 @@ public class GroupMetaService {
     Set<Long> insertRoleIds = Sets.difference(newRoleIds, oldRoleIds);
     Set<Long> deleteRoleIds = Sets.difference(oldRoleIds, newRoleIds);
 
-    // Every update runs the compare-and-set, including one that leaves the roles untouched. The
-    // short-circuit that used to return early here would skip the version check, so a caller whose
-    // snapshot was already stale would be told the update succeeded. It also has to run because a
-    // metadata-only change, such as the audit info, still has to be written.
+    if (insertRoleIds.isEmpty() && deleteRoleIds.isEmpty()) {
+      return newEntity;
+    }
     try {
       SessionUtils.doMultipleWithCommit(
-          () -> {
-            int updated =
-                SessionUtils.getWithoutCommit(
-                    GroupMetaMapper.class,
-                    mapper ->
-                        mapper.updateGroupMeta(
-                            POConverters.updateGroupPOWithVersion(oldGroupPO, newEntity),
-                            oldGroupPO));
-            if (updated == 0) {
-              throw groupWriteFailure(identifier, oldGroupPO, GroupLookup.NAME);
-            }
-          },
+          () ->
+              SessionUtils.doWithoutCommit(
+                  GroupMetaMapper.class,
+                  mapper ->
+                      mapper.updateGroupMeta(
+                          POConverters.updateGroupPOWithVersion(oldGroupPO, newEntity),
+                          oldGroupPO)),
           () -> {
             if (insertRoleIds.isEmpty()) {
               return;
@@ -441,70 +403,5 @@ public class GroupMetaService {
                         po, AuthorizationUtils.ofGroupNamespace(metalakeName)))
             .collect(Collectors.toList());
     return new PagedResult<>(totalCount, groups);
-  }
-
-  /**
-   * Holds the parent metalake row for the rest of the transaction, so the group cannot be created
-   * under a metalake that is going away.
-   *
-   * <p>The lock is shared, not exclusive: many groups can be created under the same metalake at the
-   * same time. Dropping a metalake takes an exclusive lock on this row, so a drop and a create
-   * cannot overlap. Whoever gets the row first wins, and the loser either sees the metalake gone or
-   * inserts under a metalake that is still there.
-   *
-   * <p>The name is compared again because the ID alone cannot tell a rename apart: the caller
-   * looked the metalake up by name, so a renamed row means the name in the request no longer
-   * exists.
-   *
-   * <p>The metalake's version is deliberately not compared, matching {@code CatalogMetaService}.
-   * Holding the row is what makes the create safe. An unrelated metalake edit that commits in
-   * between bumps the version without making this create wrong, so comparing it would reject the
-   * create for no reason.
-   */
-  private void lockMetalakeForGroupCreate(MetalakePO observedMetalakePO) {
-    OccWriteSupport.lockParentForChildWrite(
-        observedMetalakePO.getMetalakeName(),
-        Entity.EntityType.METALAKE,
-        () ->
-            SessionUtils.getWithoutCommit(
-                MetalakeMetaMapper.class,
-                mapper ->
-                    mapper.selectMetalakeMetaByIdForShare(observedMetalakePO.getMetalakeId())),
-        null,
-        current -> Objects.equals(current.getMetalakeName(), observedMetalakePO.getMetalakeName()));
-  }
-
-  private RuntimeException groupWriteFailure(
-      NameIdentifier identifier, GroupPO observedGroupPO, GroupLookup lookup) {
-    // Sessions run at READ_COMMITTED, so a plain read would already see the latest committed row.
-    // The locking read additionally waits for a writer that is still in flight, so a rename or
-    // delete that has not committed yet is classified as not-found instead of as a stale-version
-    // conflict. The lock is taken on the error path of a transaction that is about to roll back.
-    return OccWriteSupport.writeFailure(
-        identifier,
-        Entity.EntityType.GROUP,
-        () -> getGroupPOByIdForUpdate(observedGroupPO.getGroupId()),
-        null,
-        current ->
-            Objects.equals(current.getMetalakeId(), observedGroupPO.getMetalakeId())
-                && (lookup != GroupLookup.NAME
-                    || Objects.equals(current.getGroupName(), observedGroupPO.getGroupName())));
-  }
-
-  private GroupPO getGroupPOByIdForUpdate(long groupId) {
-    return SessionUtils.getWithoutCommit(
-        GroupMetaMapper.class, mapper -> mapper.selectGroupMetaByIdForUpdate(groupId));
-  }
-
-  /**
-   * How the caller addressed the group, which decides what counts as "the same group" when a failed
-   * compare-and-set is classified. A caller that used the name is looking for that name, so a
-   * rename means the group it asked for is gone. A caller that used the ID addressed the row
-   * itself, so a rename leaves it addressing the same group and only the metalake has to still
-   * match.
-   */
-  private enum GroupLookup {
-    NAME,
-    ID
   }
 }

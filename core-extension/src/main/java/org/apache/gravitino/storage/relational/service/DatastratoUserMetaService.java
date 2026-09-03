@@ -99,9 +99,10 @@ public class DatastratoUserMetaService {
   /**
    * Batch-updates {@code enabled} for users under a metalake.
    *
-   * <p>Validates first (every distinct name must exist). Local users update {@code user_meta};
-   * provisioned users (present in {@code scim_user_meta}) update {@code scim_user_meta.enabled}.
-   * Validation failure does not run any UPDATE.
+   * <p>Validates first (every distinct name must exist). Local users update {@code
+   * idp_user_meta.enabled}; provisioned users (present in {@code scim_user_meta}) update {@code
+   * scim_user_meta.enabled}. {@code user_meta} is never updated. Validation failure does not run
+   * any UPDATE.
    *
    * @param metalake The metalake name.
    * @param usernames User names to update.

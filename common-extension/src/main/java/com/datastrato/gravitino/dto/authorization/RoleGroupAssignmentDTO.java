@@ -36,7 +36,6 @@ public class RoleGroupAssignmentDTO extends GroupDTO {
     super(
         requireGroup(group).id(),
         group.name(),
-        group.externalId(),
         rolesOrEmpty(group),
         DTOConverters.toDTO(group.auditInfo()));
     Preconditions.checkArgument(userCount >= 0, "user count cannot be negative");

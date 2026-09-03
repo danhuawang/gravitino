@@ -148,8 +148,6 @@ public class RoleUserAssignmentPO {
         .withUserId(userId)
         .withUserName(userName)
         .withMetalakeId(metalakeId)
-        .withExternalId(externalId)
-        .withEnabled(enabled)
         .withAuditInfo(auditInfo)
         .withCurrentVersion(currentVersion)
         .withLastVersion(lastVersion)

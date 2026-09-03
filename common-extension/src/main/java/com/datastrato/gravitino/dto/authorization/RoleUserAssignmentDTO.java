@@ -36,10 +36,8 @@ public class RoleUserAssignmentDTO extends UserDTO {
     super(
         requireUser(user).id(),
         user.name(),
-        user.externalId(),
         rolesOrEmpty(user),
-        DTOConverters.toDTO(user.auditInfo()),
-        user.enabled());
+        DTOConverters.toDTO(user.auditInfo()));
     this.origin = IdentitySource.fromIdpMembership(inBuiltInIdp);
     this.assignmentAudit =
         DTOConverters.toDTO(

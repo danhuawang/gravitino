@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import javax.annotation.Nullable;
-import org.apache.gravitino.secret.SecretPropertyUtils;
 
 /**
  * Read/write helpers for sensitive and system-managed entity properties.
@@ -102,7 +101,7 @@ public final class HiddenPropertyMaskUtils {
       boolean reserved = metadata.isReservedProperty(key);
       if (hidden && reserved) {
         keysToOmit.add(key);
-      } else if (hidden || SecretPropertyUtils.isSecretProperty(key, value)) {
+      } else if (hidden) {
         keysToMask.add(key);
       }
     }
