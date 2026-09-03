@@ -83,10 +83,44 @@ components:
               nullable: true
               description: The visible direct Catalog count, or null when the count is unavailable
 
+    DirectChildCount:
+      type: object
+      additionalProperties: false
+      required:
+        - value
+        - state
+        - updatedAt
+        - refreshPending
+      properties:
+        value:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: The complete visible direct-child count; null for partial or unavailable data
+        state:
+          type: string
+          enum:
+            - COMPLETE
+            - PARTIAL
+            - UNAVAILABLE
+          description: Completeness of the metric used for this count
+        updatedAt:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: Metric collection time in epoch milliseconds; null when no metric row exists
+        refreshPending:
+          type: boolean
+          description: Whether this Metalake has a pending dashboard metric refresh
+
     ExtendedCatalog:
       allOf:
         - $ref: "../../docs/open-api/catalogs.yaml#/components/schemas/Catalog"
         - type: object
+          required:
+            - directChildCount
           properties:
             tags:
               type: array
@@ -98,17 +132,15 @@ components:
               description: Associated policies
               items:
                 $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
-            directChildCounts:
-              type: integer
-              format: int64
-              minimum: 0
-              nullable: true
-              description: The visible direct schema count, or null when the count is unavailable
+            directChildCount:
+              $ref: "#/components/schemas/DirectChildCount"
 
     ExtendedSchema:
       allOf:
         - $ref: "../../docs/open-api/schemas.yaml#/components/schemas/Schema"
         - type: object
+          required:
+            - directChildCount
           properties:
             tags:
               type: array
@@ -120,12 +152,8 @@ components:
               description: Associated policies
               items:
                 $ref: "../../docs/open-api/policies.yaml#/components/schemas/Policy"
-            directChildCounts:
-              type: integer
-              format: int64
-              minimum: 0
-              nullable: true
-              description: The visible direct entity count, or null when the count is unavailable
+            directChildCount:
+              $ref: "#/components/schemas/DirectChildCount"
 
     ExtendedTable:
       allOf:

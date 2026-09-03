@@ -30,6 +30,8 @@ class TestMetricDataSQLProviders {
     String history = provider.getMetricPOsByUserIdMetricNamesAndTimestamp(1L, 2L, null, null, null);
     String current =
         provider.getCurrentMetricPOsByUserIdMetricNamesAndTimestamp(1L, 2L, null, null, null);
+    String currentOnly =
+        provider.getCurrentMetricPOsByUserIdAndMetricNames(1L, 2L, new String[] {"metric"});
 
     assertTrue(history.contains("ORDER BY dm.metric_name, dm.created_time"));
     assertTrue(history.contains("metric_state as metricState"));
@@ -38,6 +40,9 @@ class TestMetricDataSQLProviders {
     assertTrue(current.contains("metric_state as metricState"));
     assertTrue(current.contains("metric_message as metricMessage"));
     assertTrue(current.contains("ORDER BY dmc.metric_name, dmc.updated_time"));
+    assertTrue(currentOnly.contains("FROM dashboard_metric_current"));
+    assertTrue(currentOnly.contains("dmc.metric_name IN"));
+    assertTrue(currentOnly.contains("ORDER BY dmc.metric_name"));
   }
 
   @Test

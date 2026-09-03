@@ -16,7 +16,7 @@ import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.policy.PolicyDTO;
 import org.apache.gravitino.dto.tag.TagDTO;
 
-/** Represents a Catalog DTO extended with tags, policies, and direct child counts. */
+/** Represents a Catalog DTO extended with tags, policies, and direct child count status. */
 @Getter
 @ToString
 @EqualsAndHashCode
@@ -32,9 +32,9 @@ public class ExtendedCatalogDTO {
   @Nullable
   private final PolicyDTO[] policies;
 
-  @JsonProperty("directChildCounts")
+  @JsonProperty("directChildCount")
   @Nullable
-  private final Long directChildCounts;
+  private final DirectChildCountDTO directChildCount;
 
   /**
    * Constructs an ExtendedCatalogDTO.
@@ -42,17 +42,17 @@ public class ExtendedCatalogDTO {
    * @param catalogDTO The base CatalogDTO.
    * @param tags Associated tags.
    * @param policies Associated policies.
-   * @param directChildCounts Count of direct child entities, or {@code null} when unavailable.
+   * @param directChildCount Direct child count and collection status.
    */
   public ExtendedCatalogDTO(
       CatalogDTO catalogDTO,
       TagDTO[] tags,
       PolicyDTO[] policies,
-      @Nullable Long directChildCounts) {
+      DirectChildCountDTO directChildCount) {
     this.catalogDTO = catalogDTO;
     this.tags = tags != null ? tags : new TagDTO[0];
     this.policies = policies != null ? policies : new PolicyDTO[0];
-    this.directChildCounts = directChildCounts;
+    this.directChildCount = directChildCount;
   }
 
   /** Default constructor for Jackson deserialization. */
@@ -60,7 +60,7 @@ public class ExtendedCatalogDTO {
     this.catalogDTO = null;
     this.tags = null;
     this.policies = null;
-    this.directChildCounts = null;
+    this.directChildCount = null;
   }
 
   /**
@@ -87,8 +87,7 @@ public class ExtendedCatalogDTO {
     Preconditions.checkArgument(policies != null, "\"policies\" cannot be null");
     Arrays.stream(policies)
         .forEach(policy -> Preconditions.checkArgument(policy != null, "policy cannot be null"));
-    if (directChildCounts != null) {
-      Preconditions.checkArgument(directChildCounts >= 0, "directChildCounts cannot be negative");
-    }
+    Preconditions.checkArgument(directChildCount != null, "\"directChildCount\" cannot be null");
+    directChildCount.validate();
   }
 }

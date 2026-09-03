@@ -13,6 +13,7 @@ import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.annotation.Nullable;
 import org.apache.gravitino.storage.relational.JDBCBackend.JDBCBackendType;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.ibatis.annotations.Param;
@@ -67,6 +68,21 @@ public class MetricDataSQLProviderFactory {
     return getProvider()
         .getCurrentMetricPOsByUserIdMetricNamesAndTimestamp(
             metalakeId, userId, metricNames, startTimestamp, endTimestamp);
+  }
+
+  /**
+   * Returns the backend-specific current-only metric query.
+   *
+   * @param metalakeId metalake ID
+   * @param userId persisted user ID
+   * @param metricNames optional metric-name filter
+   * @return current-only metric query
+   */
+  public static String getCurrentMetricPOsByUserIdAndMetricNames(
+      @Param("metalakeId") long metalakeId,
+      @Param("userId") long userId,
+      @Param("metricNames") @Nullable String[] metricNames) {
+    return getProvider().getCurrentMetricPOsByUserIdAndMetricNames(metalakeId, userId, metricNames);
   }
 
   public static String getTagCountByMetalakeId(@Param("metalakeId") long metalakeId) {

@@ -3,7 +3,9 @@
  */
 package com.datastrato.gravitino.metrics;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -141,10 +143,67 @@ class TestMemoizedJcasbinAuthorizer {
     verify(denyEnforcer).addRoleForUser(String.valueOf(userId), String.valueOf(healthyRoleId));
   }
 
+  @Test
+  void testHierarchicalSchemaUsesAncestorPrivilege() {
+    String metalake = "metalake";
+    String catalog = "catalog";
+    long userId = 1L;
+    long ancestorId = 101L;
+    MetadataObject ancestorSchema = MetadataObjects.of(catalog, "top", MetadataObject.Type.SCHEMA);
+    MetadataObject childSchema =
+        MetadataObjects.of(catalog, "top:child", MetadataObject.Type.SCHEMA);
+    AssetNode ancestorNode = assetNode(ancestorId, MetadataObject.Type.SCHEMA);
+    AssetNode childNode = assetNode(-1L, MetadataObject.Type.SCHEMA);
+
+    MetalakeSnapshot snapshot = mock(MetalakeSnapshot.class);
+    when(snapshot.getAssetNodeByIdent())
+        .thenReturn(
+            ImmutableMap.of(
+                MetadataObjectUtil.toEntityIdent(metalake, ancestorSchema),
+                ancestorNode,
+                MetadataObjectUtil.toEntityIdent(metalake, childSchema),
+                childNode));
+    when(snapshot.getAssetNodeById()).thenReturn(ImmutableMap.of(ancestorId, ancestorNode));
+    when(snapshot.getUserNameToUserId()).thenReturn(ImmutableMap.of("user", userId));
+    when(snapshot.getUserIdToRoleIds()).thenReturn(Collections.emptyMap());
+    when(snapshot.getRoleIdToSecurableObjects()).thenReturn(Collections.emptyMap());
+
+    Enforcer allowEnforcer = mock(Enforcer.class);
+    when(allowEnforcer.enforce(
+            String.valueOf(userId),
+            MetadataObject.Type.SCHEMA.name(),
+            String.valueOf(ancestorId),
+            Privilege.Name.USE_SCHEMA.name()))
+        .thenReturn(true);
+    Enforcer denyEnforcer = mock(Enforcer.class);
+    MemoizedJcasbinAuthorizer authorizer = new MemoizedJcasbinAuthorizer();
+    authorizer.initialize(allowEnforcer, denyEnforcer, ImmutableMap.of(metalake, snapshot));
+
+    boolean authorized =
+        authorizer.authorize(
+            new UserPrincipal("user"),
+            metalake,
+            childSchema,
+            Privilege.Name.USE_SCHEMA,
+            new AuthorizationRequestContext());
+
+    assertTrue(authorized);
+    verify(allowEnforcer, never())
+        .enforce(
+            String.valueOf(userId),
+            MetadataObject.Type.SCHEMA.name(),
+            "-1",
+            Privilege.Name.USE_SCHEMA.name());
+  }
+
   private static AssetNode assetNode(long id) {
+    return assetNode(id, MetadataObject.Type.CATALOG);
+  }
+
+  private static AssetNode assetNode(long id, MetadataObject.Type type) {
     AssetNode node = mock(AssetNode.class);
     when(node.getId()).thenReturn(id);
-    when(node.getType()).thenReturn(MetadataObject.Type.CATALOG);
+    when(node.getType()).thenReturn(type);
     when(node.getOwners()).thenReturn(Collections.emptySet());
     return node;
   }

@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -20,6 +21,7 @@ import java.util.Set;
 import org.apache.commons.io.IOUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.authorization.AuthorizationRequestContext;
@@ -29,6 +31,7 @@ import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.server.authorization.jcasbin.GravitinoAdapter;
 import org.apache.gravitino.server.authorization.jcasbin.JcasbinAuthorizer;
+import org.apache.gravitino.utils.HierarchicalSchemaUtil;
 import org.apache.gravitino.utils.MetadataObjectUtil;
 import org.casbin.jcasbin.main.Enforcer;
 import org.casbin.jcasbin.main.SyncedEnforcer;
@@ -214,6 +217,23 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
     private boolean authorizeInternal(
         Principal principal, String metalake, MetadataObject metadataObject, String privilege) {
       String username = principal.getName();
+      if (metadataObject.type() == MetadataObject.Type.SCHEMA) {
+        for (MetadataObject scope : buildSchemaInheritanceChain(metadataObject)) {
+          AssetNode scopeNode = findAssetNode(metalake, scope);
+          if (scopeNode != null
+              && loadPrivilegeAndAuthorize(username, metalake, scopeNode, privilege)) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      AssetNode assetNode = findAssetNode(metalake, metadataObject);
+      return assetNode != null
+          && loadPrivilegeAndAuthorize(username, metalake, assetNode, privilege);
+    }
+
+    private AssetNode findAssetNode(String metalake, MetadataObject metadataObject) {
       NameIdentifier entityIdent = MetadataObjectUtil.toEntityIdent(metalake, metadataObject);
       AssetNode assetNode = metalakeSnapshots.get(metalake).getAssetNodeByIdent().get(entityIdent);
       if (assetNode == null) {
@@ -221,9 +241,8 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
             "Can not find the asset node for metadata object {}, metalake {}",
             metadataObject.fullName(),
             metalake);
-        return false;
       }
-      return loadPrivilegeAndAuthorize(username, metalake, assetNode, privilege);
+      return assetNode;
     }
 
     private boolean loadPrivilegeAndAuthorize(
@@ -248,6 +267,18 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
           String.valueOf(metadataId),
           privilege);
     }
+  }
+
+  private static List<MetadataObject> buildSchemaInheritanceChain(MetadataObject schemaObject) {
+    List<String> scopes =
+        HierarchicalSchemaUtil.allScopes(
+            schemaObject.name(), HierarchicalSchemaUtil.schemaSeparator());
+    List<MetadataObject> chain = new ArrayList<>(scopes.size());
+    for (int i = scopes.size() - 1; i >= 0; i--) {
+      chain.add(
+          MetadataObjects.of(schemaObject.parent(), scopes.get(i), MetadataObject.Type.SCHEMA));
+    }
+    return chain;
   }
 
   private void loadPrivilege(String metalake, Long userId, Long metadataObjectId) {

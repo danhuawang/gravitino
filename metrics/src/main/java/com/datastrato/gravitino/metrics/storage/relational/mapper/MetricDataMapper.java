@@ -58,6 +58,22 @@ public interface MetricDataMapper {
       @Param("startTimestamp") Timestamp startTimestamp,
       @Param("endTimestamp") Timestamp endTimestamp);
 
+  /**
+   * Returns current metrics matching the user and exact metric names without reading history.
+   *
+   * @param metalakeId metalake ID
+   * @param userId persisted user ID
+   * @param metricNames optional metric-name filter
+   * @return matching current metric rows
+   */
+  @SelectProvider(
+      type = MetricDataSQLProviderFactory.class,
+      method = "getCurrentMetricPOsByUserIdAndMetricNames")
+  List<MetricPO> getCurrentMetricPOsByUserIdAndMetricNames(
+      @Param("metalakeId") long metalakeId,
+      @Param("userId") long userId,
+      @Param("metricNames") @Nullable String[] metricNames);
+
   @SelectProvider(type = MetricDataSQLProviderFactory.class, method = "listUserRoleRelsByUserIds")
   List<UserRoleRelPO> listUserRoleRelsByUserIds(@Param("userIds") Set<Long> userIds);
 

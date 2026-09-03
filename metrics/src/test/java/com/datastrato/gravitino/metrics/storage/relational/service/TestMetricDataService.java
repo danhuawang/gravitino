@@ -340,6 +340,44 @@ class TestMetricDataService {
   }
 
   @Test
+  void testCurrentOnlyQueryReturnsExactRowsAndDirtyState() {
+    long timestamp = System.currentTimeMillis() + 15_000;
+    MetricPO requested =
+        MetricPO.builder().withMetricName("requested").withMetricValue(7.0).build();
+    MetricPO ignored = MetricPO.builder().withMetricName("ignored").withMetricValue(8.0).build();
+    service.replaceCurrentMetrics(
+        1L,
+        Collections.singletonMap(
+            MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ,
+            Lists.newArrayList(requested, ignored)),
+        timestamp);
+    service.insertMetrics(
+        1L,
+        MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ,
+        Lists.newArrayList(
+            MetricPO.builder()
+                .withMetricName("requested")
+                .withMetricValue(99.0)
+                .withCreatedTime(new Timestamp(timestamp - 1))
+                .build()));
+    service.markMetalakeDirty(1L, timestamp);
+
+    CurrentMetricsSnapshot result =
+        service.getCurrentMetrics(metalakeName1, "u1", new String[] {"requested"});
+
+    assertEquals(1L, result.getMetalakeId());
+    assertEquals(1, result.getMetrics().size());
+    assertEquals("requested", result.getMetrics().get(0).getMetricName());
+    assertEquals(7.0, result.getMetrics().get(0).getMetricValue());
+    assertEquals(timestamp, result.getMetrics().get(0).getCreatedTime().getTime());
+    assertEquals(1L, result.getDirty().getRevision());
+
+    assertAllCurrentMetrics(service.getCurrentMetrics(metalakeName1, "u1", null), timestamp);
+    assertAllCurrentMetrics(
+        service.getCurrentMetrics(metalakeName1, "u1", new String[0]), timestamp);
+  }
+
+  @Test
   void testReplaceCurrentAndAppendHistoryUsesOneTimestamp() throws SQLException {
     long runTimestamp = System.currentTimeMillis() + 20_000;
     MetricPO metric = MetricPO.builder().withMetricName("table_count").withMetricValue(4.0).build();
@@ -524,6 +562,18 @@ class TestMetricDataService {
     Assertions.assertNotNull(cleanedResult);
     Assertions.assertEquals(0, cleanedResult.length, "Metrics should be cleaned up");
     assertNull(service.getDirtyMetalake(3L));
+  }
+
+  private static void assertAllCurrentMetrics(
+      CurrentMetricsSnapshot snapshot, long expectedTimestamp) {
+    assertEquals(2, snapshot.getMetrics().size());
+    assertEquals("ignored", snapshot.getMetrics().get(0).getMetricName());
+    assertEquals(8.0, snapshot.getMetrics().get(0).getMetricValue());
+    assertEquals(expectedTimestamp, snapshot.getMetrics().get(0).getCreatedTime().getTime());
+    assertEquals("requested", snapshot.getMetrics().get(1).getMetricName());
+    assertEquals(7.0, snapshot.getMetrics().get(1).getMetricValue());
+    assertEquals(expectedTimestamp, snapshot.getMetrics().get(1).getCreatedTime().getTime());
+    assertEquals(1L, snapshot.getDirty().getRevision());
   }
 
   private static void initTables() throws Exception {

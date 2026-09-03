@@ -116,6 +116,8 @@ public class MetricsCalculator {
     Set<AssetNode> visibleFilesetNodes;
     Set<AssetNode> visibleTopicNodes;
     Set<AssetNode> visibleModelNodes;
+    Set<AssetNode> directCountVisibleSchemaNodes;
+    Set<AssetNode> directCountVisibleAssetNodes;
     if (authorizer != null) {
       Principal principal = new UserPrincipal(username);
       visibleCatalogNodes =
@@ -174,6 +176,63 @@ public class MetricsCalculator {
               AuthorizationExpressionConstants.LOAD_MODEL_AUTHORIZATION_EXPRESSION,
               Entity.EntityType.MODEL,
               metalakeSnapshot.getModelNodes());
+      directCountVisibleSchemaNodes =
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.SCHEMA,
+              metalakeSnapshot.getSchemaNodes());
+      directCountVisibleAssetNodes = new HashSet<>();
+      directCountVisibleAssetNodes.addAll(
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.FILTER_TABLE_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.TABLE,
+              metalakeSnapshot.getTableNodes()));
+      directCountVisibleAssetNodes.addAll(
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.FILTER_VIEW_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.VIEW,
+              metalakeSnapshot.getViewNodes()));
+      directCountVisibleAssetNodes.addAll(
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.FILTER_FUNCTION_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.FUNCTION,
+              metalakeSnapshot.getFunctionNodes()));
+      directCountVisibleAssetNodes.addAll(
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.FILTER_FILESET_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.FILESET,
+              metalakeSnapshot.getFilesetNodes()));
+      directCountVisibleAssetNodes.addAll(
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.FILTER_TOPICS_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.TOPIC,
+              metalakeSnapshot.getTopicNodes()));
+      directCountVisibleAssetNodes.addAll(
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              AuthorizationExpressionConstants.FILTER_MODEL_AUTHORIZATION_EXPRESSION,
+              Entity.EntityType.MODEL,
+              metalakeSnapshot.getModelNodes()));
     } else {
       visibleCatalogNodes = new HashSet<>(metalakeSnapshot.getCatalogNodes());
       visibleTableNodes = new HashSet<>(metalakeSnapshot.getTableNodes());
@@ -182,6 +241,8 @@ public class MetricsCalculator {
       visibleFilesetNodes = new HashSet<>(metalakeSnapshot.getFilesetNodes());
       visibleTopicNodes = new HashSet<>(metalakeSnapshot.getTopicNodes());
       visibleModelNodes = new HashSet<>(metalakeSnapshot.getModelNodes());
+      directCountVisibleSchemaNodes = new HashSet<>(metalakeSnapshot.getSchemaNodes());
+      directCountVisibleAssetNodes = new HashSet<>(visibleAssetNodes(metalakeSnapshot));
     }
 
     Set<AssetNode> visibleAssetNodes = new HashSet<>(visibleTableNodes);
@@ -193,6 +254,14 @@ public class MetricsCalculator {
 
     Set<String> visibleCatalogNames =
         visibleCatalogNodes.stream().map(AssetNode::getName).collect(Collectors.toSet());
+    directCountVisibleSchemaNodes.removeIf(
+        schemaNode -> !visibleCatalogNames.contains(catalogName(schemaNode)));
+    Set<NameIdentifier> directCountVisibleSchemaIdents =
+        directCountVisibleSchemaNodes.stream()
+            .map(AssetNode::getNameIdent)
+            .collect(Collectors.toSet());
+    directCountVisibleAssetNodes.removeIf(
+        assetNode -> !directCountVisibleSchemaIdents.contains(assetNode.getParentIdent()));
     Set<String> failedVisibleCatalogNames =
         visibleCatalogNames.stream()
             .filter(metalakeSnapshot.getFailedCatalogNames()::contains)
@@ -257,7 +326,75 @@ public class MetricsCalculator {
           policyCache);
     }
 
+    addDirectChildCountMetrics(
+        metrics,
+        visibleCatalogNodes,
+        directCountVisibleSchemaNodes,
+        directCountVisibleAssetNodes,
+        failedVisibleCatalogNames);
+
     return Collections.unmodifiableList(metrics);
+  }
+
+  private static Set<AssetNode> visibleAssetNodes(MetalakeSnapshot snapshot) {
+    Set<AssetNode> assets = new HashSet<>(snapshot.getTableNodes());
+    assets.addAll(snapshot.getViewNodes());
+    assets.addAll(snapshot.getFunctionNodes());
+    assets.addAll(snapshot.getFilesetNodes());
+    assets.addAll(snapshot.getTopicNodes());
+    assets.addAll(snapshot.getModelNodes());
+    return assets;
+  }
+
+  private void addDirectChildCountMetrics(
+      List<MetricPO> metrics,
+      Set<AssetNode> visibleCatalogNodes,
+      Set<AssetNode> visibleSchemaNodes,
+      Set<AssetNode> visibleAssetNodes,
+      Set<String> failedVisibleCatalogNames) {
+    Map<NameIdentifier, Long> countByParent = new HashMap<>();
+    visibleSchemaNodes.forEach(
+        schemaNode -> countDirectChild(countByParent, schemaNode.getParentIdent()));
+    visibleAssetNodes.forEach(
+        assetNode -> countDirectChild(countByParent, assetNode.getParentIdent()));
+
+    visibleCatalogNodes.stream()
+        .sorted(Comparator.comparing(AssetNode::getName))
+        .forEach(
+            catalogNode -> {
+              String metricName = DirectChildCountMetricNames.forCatalog(catalogNode.getName());
+              if (failedVisibleCatalogNames.contains(catalogNode.getName())) {
+                metrics.add(
+                    createMetricPO(metricName, null, MetricState.UNAVAILABLE, UNAVAILABLE_MESSAGE));
+              } else {
+                metrics.add(
+                    createMetricPO(
+                        metricName,
+                        countByParent.getOrDefault(catalogNode.getNameIdent(), 0L).doubleValue(),
+                        MetricState.COMPLETE,
+                        null));
+              }
+            });
+
+    visibleSchemaNodes.stream()
+        .filter(schemaNode -> !failedVisibleCatalogNames.contains(catalogName(schemaNode)))
+        .sorted(Comparator.comparing(node -> node.getNameIdent().toString()))
+        .forEach(
+            schemaNode ->
+                metrics.add(
+                    createMetricPO(
+                        DirectChildCountMetricNames.forSchema(
+                            catalogName(schemaNode), schemaNode.getName()),
+                        countByParent.getOrDefault(schemaNode.getNameIdent(), 0L).doubleValue(),
+                        MetricState.COMPLETE,
+                        null)));
+  }
+
+  private static void countDirectChild(
+      Map<NameIdentifier, Long> countByParent, @Nullable NameIdentifier parentIdent) {
+    if (parentIdent != null) {
+      countByParent.merge(parentIdent, 1L, Long::sum);
+    }
   }
 
   private void addAggregateMetrics(

@@ -14,6 +14,7 @@ import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Set;
+import javax.annotation.Nullable;
 import org.apache.gravitino.storage.relational.mapper.GroupMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper;
@@ -88,6 +89,36 @@ public class MetricDataBaseSQLProvider {
         + "</foreach>"
         + "</if>"
         + " ORDER BY dmc.metric_name, dmc.updated_time"
+        + "</script>";
+  }
+
+  /**
+   * Builds a current-only metric query without a timestamp window.
+   *
+   * @param metalakeId metalake ID
+   * @param userId persisted user ID
+   * @param metricNames optional metric-name filter
+   * @return current-only metric query
+   */
+  public String getCurrentMetricPOsByUserIdAndMetricNames(
+      @Param("metalakeId") long metalakeId,
+      @Param("userId") long userId,
+      @Param("metricNames") @Nullable String[] metricNames) {
+    return "<script>"
+        + "SELECT metric_name as metricName, updated_time as createdTime,"
+        + " metric_value as metricValue, metric_state as metricState,"
+        + " metric_message as metricMessage"
+        + " FROM "
+        + CURRENT_METRICS_TABLE_NAME
+        + " dmc WHERE dmc.metalake_id = #{metalakeId}"
+        + " AND dmc.user_id = #{userId}"
+        + " <if test='metricNames != null and metricNames.length > 0'>"
+        + " AND dmc.metric_name IN "
+        + "<foreach item='name' collection='metricNames' open='(' separator=',' close=')'>"
+        + "#{name}"
+        + "</foreach>"
+        + "</if>"
+        + " ORDER BY dmc.metric_name"
         + "</script>";
   }
 

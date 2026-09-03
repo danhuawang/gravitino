@@ -7,6 +7,8 @@ import static org.apache.gravitino.file.Fileset.Type.EXTERNAL;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
 import com.datastrato.gravitino.dto.ConnectionDTO;
+import com.datastrato.gravitino.dto.DirectChildCountDTO;
+import com.datastrato.gravitino.dto.DirectChildCountState;
 import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
 import com.datastrato.gravitino.dto.ExtendedMetalakeDTO;
 import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
@@ -131,9 +133,17 @@ public class TestResponses {
             .withAudit(AuditDTO.builder().build())
             .build();
     ExtendedCatalogDTO extendedCatalog =
-        new ExtendedCatalogDTO(catalog, new TagDTO[0], new PolicyDTO[0], 2L);
+        new ExtendedCatalogDTO(
+            catalog,
+            new TagDTO[0],
+            new PolicyDTO[0],
+            new DirectChildCountDTO(2L, DirectChildCountState.COMPLETE, 100L, false));
     ExtendedCatalogDTO extendedCatalogWithUnavailableCount =
-        new ExtendedCatalogDTO(catalog, new TagDTO[0], new PolicyDTO[0], null);
+        new ExtendedCatalogDTO(
+            catalog,
+            new TagDTO[0],
+            new PolicyDTO[0],
+            new DirectChildCountDTO(null, DirectChildCountState.UNAVAILABLE, null, true));
     ExtendedCatalogDTO[] catalogs =
         new ExtendedCatalogDTO[] {extendedCatalog, extendedCatalogWithUnavailableCount};
     CatalogListResponse response = new CatalogListResponse(catalogs);
@@ -144,7 +154,15 @@ public class TestResponses {
         JsonUtils.objectMapper().readValue(serJson, CatalogListResponse.class);
     Assertions.assertEquals(response, deserialized);
     Assertions.assertArrayEquals(catalogs, deserialized.getCatalogs());
-    Assertions.assertNull(deserialized.getCatalogs()[1].getDirectChildCounts());
+    Assertions.assertNull(deserialized.getCatalogs()[1].getDirectChildCount().getValue());
+    Assertions.assertEquals(
+        DirectChildCountState.UNAVAILABLE,
+        deserialized.getCatalogs()[1].getDirectChildCount().getState());
+    Assertions.assertTrue(deserialized.getCatalogs()[1].getDirectChildCount().isRefreshPending());
+    Assertions.assertTrue(serJson.contains("\"directChildCount\""));
+    Assertions.assertTrue(serJson.contains("\"value\":null"));
+    Assertions.assertTrue(serJson.contains("\"updatedAt\":null"));
+    Assertions.assertFalse(serJson.contains("\"directChildCounts\""));
 
     CatalogListResponse illegalResp = new CatalogListResponse();
     Exception exception =
@@ -163,9 +181,17 @@ public class TestResponses {
     SchemaDTO schema2 =
         SchemaDTO.builder().withName("schema2").withAudit(AuditDTO.builder().build()).build();
     ExtendedSchemaDTO extendedSchema1 =
-        new ExtendedSchemaDTO(schema1, new TagDTO[0], new PolicyDTO[0], 3L);
+        new ExtendedSchemaDTO(
+            schema1,
+            new TagDTO[0],
+            new PolicyDTO[0],
+            new DirectChildCountDTO(3L, DirectChildCountState.COMPLETE, 200L, false));
     ExtendedSchemaDTO extendedSchema2 =
-        new ExtendedSchemaDTO(schema2, new TagDTO[0], new PolicyDTO[0], null);
+        new ExtendedSchemaDTO(
+            schema2,
+            new TagDTO[0],
+            new PolicyDTO[0],
+            new DirectChildCountDTO(null, DirectChildCountState.PARTIAL, 201L, true));
     ExtendedSchemaDTO[] schemas = new ExtendedSchemaDTO[] {extendedSchema1, extendedSchema2};
     SchemaListResponse response = new SchemaListResponse(schemas);
     Assertions.assertDoesNotThrow(response::validate);
@@ -175,12 +201,38 @@ public class TestResponses {
         JsonUtils.objectMapper().readValue(serJson, SchemaListResponse.class);
     Assertions.assertEquals(response, deserialized);
     Assertions.assertArrayEquals(schemas, deserialized.getSchemas());
-    Assertions.assertNull(deserialized.getSchemas()[1].getDirectChildCounts());
+    Assertions.assertNull(deserialized.getSchemas()[1].getDirectChildCount().getValue());
+    Assertions.assertEquals(
+        DirectChildCountState.PARTIAL,
+        deserialized.getSchemas()[1].getDirectChildCount().getState());
+    Assertions.assertEquals(
+        201L, deserialized.getSchemas()[1].getDirectChildCount().getUpdatedAt());
+    Assertions.assertTrue(serJson.contains("\"directChildCount\""));
+    Assertions.assertFalse(serJson.contains("\"directChildCounts\""));
 
     SchemaListResponse illegalResp = new SchemaListResponse();
     Exception exception =
         Assertions.assertThrows(IllegalArgumentException.class, illegalResp::validate);
     Assertions.assertEquals("\"schemas\" cannot be null", exception.getMessage());
+  }
+
+  @Test
+  public void testDirectChildCountValidation() {
+    Assertions.assertDoesNotThrow(
+        () -> new DirectChildCountDTO(0L, DirectChildCountState.COMPLETE, 0L, false).validate());
+    Assertions.assertDoesNotThrow(
+        () ->
+            new DirectChildCountDTO(null, DirectChildCountState.UNAVAILABLE, null, true)
+                .validate());
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> new DirectChildCountDTO(null, DirectChildCountState.COMPLETE, 1L, false).validate());
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> new DirectChildCountDTO(-1L, DirectChildCountState.COMPLETE, 1L, false).validate());
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> new DirectChildCountDTO(1L, DirectChildCountState.PARTIAL, 1L, true).validate());
   }
 
   @Test

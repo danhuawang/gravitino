@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.gravitino.MetadataObject;
@@ -31,18 +32,30 @@ public class AssetNode {
 
   public AssetNode(
       long id, String name, MetadataObject.Type type, AssetNode parentNode, Set<Owner> owners) {
+    this(id, name, null, type, parentNode, owners);
+  }
+
+  AssetNode(
+      long id,
+      String name,
+      @Nullable NameIdentifier explicitNameIdent,
+      MetadataObject.Type type,
+      AssetNode parentNode,
+      Set<Owner> owners) {
     this.id = id;
     this.name = name;
     this.type = type;
     this.parentId = parentNode == null ? 0 : parentNode.id;
     this.parentIdent = parentNode == null ? null : parentNode.nameIdent;
     this.nameIdent =
-        parentNode == null
-            ? NameIdentifierUtil.ofMetalake(name)
-            : NameIdentifier.of(
-                Namespace.of(
-                    ArrayUtils.addAll(parentIdent.namespace().levels(), parentIdent.name())),
-                name);
+        explicitNameIdent != null
+            ? explicitNameIdent
+            : parentNode == null
+                ? NameIdentifierUtil.ofMetalake(name)
+                : NameIdentifier.of(
+                    Namespace.of(
+                        ArrayUtils.addAll(parentIdent.namespace().levels(), parentIdent.name())),
+                    name);
     this.owners = owners == null ? new HashSet<>() : owners;
   }
 

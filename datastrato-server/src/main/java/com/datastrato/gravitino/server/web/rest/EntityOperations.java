@@ -12,6 +12,8 @@ import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
+import com.datastrato.gravitino.dto.DirectChildCountDTO;
+import com.datastrato.gravitino.dto.DirectChildCountState;
 import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
 import com.datastrato.gravitino.dto.ExtendedMetalakeDTO;
 import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
@@ -28,6 +30,11 @@ import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
 import com.datastrato.gravitino.dto.responses.TopicListResponse;
+import com.datastrato.gravitino.metrics.DirectChildCountMetricNames;
+import com.datastrato.gravitino.metrics.dto.MetricState;
+import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
+import com.datastrato.gravitino.metrics.storage.relational.service.CurrentMetricsSnapshot;
+import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -121,6 +128,7 @@ public class EntityOperations {
   private final DatastratoModelDispatcher modelDispatcher;
   private final FunctionDispatcher functionDispatcher;
   private final DatastratoViewDispatcher viewDispatcher;
+  private final MetricDataService metricDataService;
 
   @Inject
   public EntityOperations(
@@ -132,7 +140,8 @@ public class EntityOperations {
       TopicDispatcher topicDispatcher,
       ModelDispatcher modelDispatcher,
       FunctionDispatcher functionDispatcher,
-      ViewDispatcher viewDispatcher) {
+      ViewDispatcher viewDispatcher,
+      MetricDataService metricDataService) {
     this.metalakeDispatcher = metalakeDispatcher;
     this.catalogDispatcher = catalogDispatcher;
     this.schemaDispatcher = (DatastratoSchemaDispatcher) schemaDispatcher;
@@ -142,6 +151,7 @@ public class EntityOperations {
     this.modelDispatcher = (DatastratoModelDispatcher) modelDispatcher;
     this.functionDispatcher = functionDispatcher;
     this.viewDispatcher = (DatastratoViewDispatcher) viewDispatcher;
+    this.metricDataService = metricDataService;
   }
 
   @GET
@@ -211,9 +221,7 @@ public class EntityOperations {
         // list sub-schemas only under the given parentSchema
         try {
           return listSchemas(
-              Namespace.of(namespace.level(0), namespace.level(1), parentSchema),
-              catalogType,
-              resultLimit);
+              Namespace.of(namespace.level(0), namespace.level(1), parentSchema), resultLimit);
         } catch (Exception e) {
           return ExceptionHandlers.handleSchemaException(
               OperationType.LIST, "", namespace.toString(), e);
@@ -245,7 +253,7 @@ public class EntityOperations {
       case 2:
         // list schemas
         try {
-          return listSchemas(namespace, catalogType, resultLimit);
+          return listSchemas(namespace, resultLimit);
         } catch (Exception e) {
           return ExceptionHandlers.handleSchemaException(
               OperationType.LIST, "", namespace.toString(), e);
@@ -355,7 +363,8 @@ public class EntityOperations {
     Map<MetadataObject, TagDTO[]> tagsMap = tagPolicies.tags();
     Map<MetadataObject, PolicyDTO[]> policiesMap = tagPolicies.policies();
 
-    Map<String, Long> directChildCounts = listCatalogDirectChildCounts(metalake, selectedCatalogs);
+    Map<String, DirectChildCountDTO> directChildCounts =
+        listCatalogDirectChildCounts(metalake, selectedCatalogs);
 
     ExtendedCatalogDTO[] extendedCatalogs = new ExtendedCatalogDTO[selectedCatalogs.length];
     for (int i = 0; i < selectedCatalogs.length; i++) {
@@ -363,8 +372,7 @@ public class EntityOperations {
       MetadataObject obj = catalogObjects.get(i);
       TagDTO[] tags = tagsMap.getOrDefault(obj, new TagDTO[0]);
       PolicyDTO[] policies = policiesMap.getOrDefault(obj, new PolicyDTO[0]);
-      // A missing entry means this count failed; preserve null instead of reporting a false zero.
-      Long count = directChildCounts.get(c.name());
+      DirectChildCountDTO count = directChildCounts.get(c.name());
       extendedCatalogs[i] = new ExtendedCatalogDTO(DTOConverters.toDTO(c), tags, policies, count);
     }
 
@@ -373,14 +381,14 @@ public class EntityOperations {
     return response;
   }
 
-  private Response listSchemas(Namespace namespace, Catalog.Type catalogType, int resultLimit) {
+  private Response listSchemas(Namespace namespace, int resultLimit) {
     String metalake = namespace.level(0);
 
     Map<MetadataObject, Optional<Long>> knownEntityIds = new LinkedHashMap<>();
     List<MetadataObject> schemaObjects = new ArrayList<>();
     SchemaDTO[] schemaDTOs = listSchemaDTOs(namespace, resultLimit, knownEntityIds, schemaObjects);
-    Map<String, Long> directChildCounts =
-        listSchemaDirectChildCounts(namespace, catalogType, schemaDTOs);
+    Map<String, DirectChildCountDTO> directChildCounts =
+        listSchemaDirectChildCounts(namespace, schemaDTOs);
 
     TagPolicyEnrichmentHelper.Result tagPolicies =
         getVisibleTagPoliciesWithInheritance(metalake, schemaObjects, knownEntityIds);
@@ -391,8 +399,7 @@ public class EntityOperations {
     for (int i = 0; i < schemaDTOs.length; i++) {
       SchemaDTO s = schemaDTOs[i];
       MetadataObject obj = schemaObjects.get(i);
-      // A missing entry means this count failed; preserve null instead of reporting a false zero.
-      Long count = directChildCounts.get(s.name());
+      DirectChildCountDTO count = directChildCounts.get(s.name());
       extendedSchemas[i] =
           new ExtendedSchemaDTO(
               s,
@@ -556,14 +563,13 @@ public class EntityOperations {
 
     // Only relational catalogs expose tables, and Iceberg is currently the only catalog that
     // supports hierarchical schemas.
-    Map<String, Long> childSchemaCounts =
-        listSchemaDirectChildCounts(namespace, Catalog.Type.RELATIONAL, schemaDTOs);
+    Map<String, DirectChildCountDTO> childSchemaCounts =
+        listSchemaDirectChildCounts(namespace, schemaDTOs);
     ExtendedSchemaDTO[] extendedSchemas = new ExtendedSchemaDTO[schemaDTOs.length];
     for (int i = 0; i < schemaDTOs.length; i++) {
       SchemaDTO s = schemaDTOs[i];
       MetadataObject obj = schemaObjects.get(i);
-      // A missing entry means this count failed; preserve null instead of reporting a false zero.
-      Long count = childSchemaCounts.get(s.name());
+      DirectChildCountDTO count = childSchemaCounts.get(s.name());
       extendedSchemas[i] =
           new ExtendedSchemaDTO(
               s,
@@ -920,18 +926,15 @@ public class EntityOperations {
     };
   }
 
-  private Map<String, Long> listCatalogDirectChildCounts(String metalake, Catalog[] catalogs) {
-    Map<String, Long> directChildCounts = new LinkedHashMap<>();
-    for (Catalog catalog : catalogs) {
-      Namespace catalogNamespace = Namespace.of(metalake, catalog.name());
-      try {
-        long count = listVisibleSchemaIdentifiers(catalogNamespace).length;
-        directChildCounts.put(catalog.name(), count);
-      } catch (Exception e) {
-        LOG.warn("Failed to count direct child schemas under catalog: {}", catalog.name(), e);
-      }
-    }
-    return directChildCounts;
+  private Map<String, DirectChildCountDTO> listCatalogDirectChildCounts(
+      String metalake, Catalog[] catalogs) {
+    Map<String, String> metricNameByCatalog = new LinkedHashMap<>();
+    Arrays.stream(catalogs)
+        .forEach(
+            catalog ->
+                metricNameByCatalog.put(
+                    catalog.name(), DirectChildCountMetricNames.forCatalog(catalog.name())));
+    return getDirectChildCounts(metalake, metricNameByCatalog);
   }
 
   private Map<String, Long> listMetalakeDirectChildCounts(Metalake[] metalakes) {
@@ -947,88 +950,105 @@ public class EntityOperations {
     return directChildCounts;
   }
 
-  private Map<String, Long> listSchemaDirectChildCounts(
-      Namespace namespace, Catalog.Type catalogType, SchemaDTO[] schemas) {
-    Map<String, Long> directChildCounts = new LinkedHashMap<>();
-    if (schemas.length == 0) {
-      return directChildCounts;
+  private Map<String, DirectChildCountDTO> listSchemaDirectChildCounts(
+      Namespace namespace, SchemaDTO[] schemas) {
+    Map<String, String> metricNameBySchema = new LinkedHashMap<>();
+    Arrays.stream(schemas)
+        .forEach(
+            schema ->
+                metricNameBySchema.put(
+                    schema.name(),
+                    DirectChildCountMetricNames.forSchema(namespace.level(1), schema.name())));
+    return getDirectChildCounts(namespace.level(0), metricNameBySchema);
+  }
+
+  private Map<String, DirectChildCountDTO> getDirectChildCounts(
+      String metalake, Map<String, String> metricNameByEntity) {
+    if (metricNameByEntity.isEmpty()) {
+      return new LinkedHashMap<>();
     }
 
-    Namespace catalogNamespace = Namespace.of(namespace.level(0), namespace.level(1));
-    boolean supportsHierarchicalSchema;
+    CurrentMetricsSnapshot currentMetrics;
     try {
-      supportsHierarchicalSchema = schemaDispatcher.supportsHierarchicalSchema(catalogNamespace);
+      currentMetrics =
+          metricDataService.getCurrentMetrics(
+              metalake,
+              PrincipalUtils.getCurrentUserName(),
+              metricNameByEntity.values().toArray(new String[0]));
     } catch (Exception e) {
-      LOG.warn(
-          "Failed to determine hierarchical schema support under catalog: {}", catalogNamespace, e);
-      return directChildCounts;
+      LOG.warn("Failed to query current direct-child-count metrics for metalake {}", metalake, e);
+      return unavailableDirectChildCounts(metricNameByEntity, false);
     }
 
-    for (SchemaDTO schema : schemas) {
-      Namespace schemaNamespace =
-          Namespace.of(namespace.level(0), namespace.level(1), schema.name());
+    Map<String, MetricPO> metricByName = new LinkedHashMap<>();
+    currentMetrics.getMetrics().forEach(metric -> metricByName.put(metric.getMetricName(), metric));
+    Map<String, DirectChildCountReading> readings = new LinkedHashMap<>();
+    boolean needsRefresh = false;
+    for (Map.Entry<String, String> expected : metricNameByEntity.entrySet()) {
+      DirectChildCountReading reading =
+          toDirectChildCountReading(metricByName.get(expected.getValue()));
+      readings.put(expected.getKey(), reading);
+      needsRefresh |= reading.needsRefresh;
+    }
+
+    boolean refreshPending = currentMetrics.getDirty() != null;
+    if (needsRefresh && !refreshPending) {
       try {
-        directChildCounts.put(
-            schema.name(),
-            countVisibleSchemaDirectChildren(
-                schemaNamespace, catalogType, supportsHierarchicalSchema));
+        metricDataService.markMetalakeDirty(
+            currentMetrics.getMetalakeId(), System.currentTimeMillis());
+        refreshPending = true;
       } catch (Exception e) {
-        LOG.warn("Failed to count direct child entities under schema: {}", schema.name(), e);
+        LOG.warn(
+            "Failed to mark metalake {} dirty after finding incomplete direct-child-count metrics",
+            metalake,
+            e);
       }
     }
-    return directChildCounts;
+
+    Map<String, DirectChildCountDTO> result = new LinkedHashMap<>();
+    boolean finalRefreshPending = refreshPending;
+    readings.forEach((entity, reading) -> result.put(entity, reading.toDTO(finalRefreshPending)));
+    return result;
   }
 
-  private long countVisibleSchemaDirectChildren(
-      Namespace namespace, Catalog.Type catalogType, boolean supportsHierarchicalSchema) {
-    long count = countVisibleDirectSubSchemas(namespace, supportsHierarchicalSchema);
-    switch (catalogType) {
-      case RELATIONAL:
-        return count
-            + listVisibleTableIdentifiers(namespace).length
-            + countVisibleFunctions(namespace)
-            + countVisibleViews(namespace);
-      case MESSAGING:
-        return count
-            + listVisibleTopicIdentifiers(namespace).length
-            + countVisibleFunctions(namespace);
-      case FILESET:
-        return count
-            + listVisibleFilesetEntities(namespace).size()
-            + countVisibleFunctions(namespace);
-      case MODEL:
-        return count
-            + listVisibleModelEntities(namespace).size()
-            + countVisibleFunctions(namespace);
-      default:
-        throw new IllegalArgumentException("Unsupported catalog type: " + catalogType);
+  private static DirectChildCountReading toDirectChildCountReading(MetricPO metric) {
+    if (metric == null) {
+      return DirectChildCountReading.missing();
     }
+
+    Long updatedAt = metric.getCreatedTime() == null ? null : metric.getCreatedTime().getTime();
+    MetricState metricState = metric.getMetricState();
+    if (metricState == MetricState.COMPLETE
+        && updatedAt != null
+        && isValidDirectChildCount(metric.getMetricValue())) {
+      return new DirectChildCountReading(
+          metric.getMetricValue().longValue(), DirectChildCountState.COMPLETE, updatedAt, false);
+    }
+    DirectChildCountState state =
+        metricState == MetricState.PARTIAL
+            ? DirectChildCountState.PARTIAL
+            : DirectChildCountState.UNAVAILABLE;
+    return new DirectChildCountReading(null, state, updatedAt, true);
   }
 
-  private long countVisibleDirectSubSchemas(
-      Namespace namespace, boolean supportsHierarchicalSchema) {
-    if (!supportsHierarchicalSchema) {
-      return 0;
-    }
-    return listVisibleSchemaIdentifiers(namespace).length;
+  private static boolean isValidDirectChildCount(Double value) {
+    return value != null
+        && Double.isFinite(value)
+        && value >= 0
+        && value <= Long.MAX_VALUE
+        && value == Math.rint(value);
   }
 
-  private long countVisibleFunctions(Namespace namespace) {
-    try {
-      return listVisibleFunctions(namespace).length;
-    } catch (UnsupportedOperationException e) {
-      LOG.warn("Failed to count functions under namespace: {}", namespace, e);
-      return 0;
-    }
-  }
-
-  private long countVisibleViews(Namespace namespace) {
-    try {
-      return listVisibleViewIdentifiers(namespace).length;
-    } catch (UnsupportedOperationException e) {
-      LOG.warn("Failed to count views under namespace: {}", namespace, e);
-      return 0;
-    }
+  private static Map<String, DirectChildCountDTO> unavailableDirectChildCounts(
+      Map<String, String> metricNameByEntity, boolean refreshPending) {
+    Map<String, DirectChildCountDTO> result = new LinkedHashMap<>();
+    metricNameByEntity.forEach(
+        (entity, ignored) ->
+            result.put(
+                entity,
+                new DirectChildCountDTO(
+                    null, DirectChildCountState.UNAVAILABLE, null, refreshPending)));
+    return result;
   }
 
   private NameIdentifier[] listVisibleCatalogIdentifiers(String metalake) {
@@ -1140,5 +1160,28 @@ public class EntityOperations {
       Entity.EntityType entityType,
       NameIdentifier[] identifiers) {
     return filterByExpression(metalake, expression, entityType, identifiers, id -> id);
+  }
+
+  private static class DirectChildCountReading {
+    private final Long value;
+    private final DirectChildCountState state;
+    private final Long updatedAt;
+    private final boolean needsRefresh;
+
+    private DirectChildCountReading(
+        Long value, DirectChildCountState state, Long updatedAt, boolean needsRefresh) {
+      this.value = value;
+      this.state = state;
+      this.updatedAt = updatedAt;
+      this.needsRefresh = needsRefresh;
+    }
+
+    private static DirectChildCountReading missing() {
+      return new DirectChildCountReading(null, DirectChildCountState.UNAVAILABLE, null, true);
+    }
+
+    private DirectChildCountDTO toDTO(boolean refreshPending) {
+      return new DirectChildCountDTO(value, state, updatedAt, refreshPending);
+    }
   }
 }

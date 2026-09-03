@@ -9,10 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.metrics.config.MetricsConfig;
 import com.datastrato.gravitino.metrics.dto.MetricState;
+import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.google.common.collect.ImmutableList;
@@ -35,6 +38,7 @@ import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.catalog.CatalogDispatcher;
@@ -46,6 +50,7 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.connector.capability.Capability;
+import org.apache.gravitino.connector.capability.CapabilityResult;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
@@ -64,6 +69,7 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.apache.gravitino.utils.NamespaceUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -224,6 +230,72 @@ class TestMetricsCollector {
   }
 
   @Test
+  void testHierarchicalSchemasUseTheirActualParents() throws Exception {
+    Capability capability = mock(Capability.class);
+    when(capability.managedStorage(any()))
+        .thenReturn(CapabilityResult.unsupported("test external catalog"));
+    when(capability.supportsHierarchicalSchema()).thenReturn(CapabilityResult.SUPPORTED);
+    when(catalogWrapper.capabilities()).thenReturn(capability);
+
+    Namespace catalogNamespace = NamespaceUtil.ofSchema(metalakeName, relationalCatalogName);
+    Namespace topNamespace = Namespace.of(metalakeName, relationalCatalogName, "top");
+    Namespace childNamespace = Namespace.of(metalakeName, relationalCatalogName, "top:child");
+    when(schemaDispatcher.listSchemas(catalogNamespace))
+        .thenReturn(
+            new NameIdentifier[] {
+              NameIdentifierUtil.ofSchema(metalakeName, relationalCatalogName, "top")
+            });
+    when(schemaDispatcher.listSchemas(topNamespace))
+        .thenReturn(
+            new NameIdentifier[] {
+              NameIdentifierUtil.ofSchema(metalakeName, relationalCatalogName, "top:child")
+            });
+    when(schemaDispatcher.listSchemas(childNamespace)).thenReturn(new NameIdentifier[0]);
+    when(tableDispatcher.listTables(topNamespace)).thenReturn(new NameIdentifier[0]);
+    when(tableDispatcher.listTables(childNamespace)).thenReturn(new NameIdentifier[0]);
+    when(viewDispatcher.listViews(topNamespace)).thenReturn(new NameIdentifier[0]);
+    when(viewDispatcher.listViews(childNamespace)).thenReturn(new NameIdentifier[0]);
+
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      MetalakeSnapshot snapshot = collector.loadAllDataForMetalake(metalake());
+
+      AssetNode catalog = snapshot.getCatalogNodes().iterator().next();
+      assertEquals(1, catalog.getChildren().size());
+      AssetNode top = catalog.getChildren().iterator().next();
+      assertEquals("top", top.getName());
+      assertEquals(1, top.getChildren().size());
+      AssetNode child = top.getChildren().iterator().next();
+      assertEquals("top:child", child.getName());
+      assertEquals(top.getNameIdent(), child.getParentIdent());
+      assertEquals(
+          NameIdentifierUtil.ofSchema(metalakeName, relationalCatalogName, "top:child"),
+          child.getNameIdent());
+
+      List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+      assertMetric(
+          metrics,
+          DirectChildCountMetricNames.forCatalog(relationalCatalogName),
+          1.0,
+          MetricState.COMPLETE);
+      assertMetric(
+          metrics,
+          DirectChildCountMetricNames.forSchema(relationalCatalogName, "top"),
+          1.0,
+          MetricState.COMPLETE);
+      assertMetric(
+          metrics,
+          DirectChildCountMetricNames.forSchema(relationalCatalogName, "top:child"),
+          0.0,
+          MetricState.COMPLETE);
+    }
+  }
+
+  @Test
   void testLoadAllDataForMetalakeWithSchemaNotInStore() throws Exception {
     try (MockedStatic<MetricDataService> mockedMetricDataService =
         Mockito.mockStatic(MetricDataService.class)) {
@@ -339,6 +411,59 @@ class TestMetricsCollector {
       collector.collectAndPublish(
           metalake, MetricsCollector.PublishMode.CURRENT_AND_HISTORY, 2_000L);
       verify(metricDataService).replaceCurrentAndAppendHistory(eq(mockId), anyMap(), eq(2_000L));
+    }
+  }
+
+  @Test
+  void testStartupCreatesPendingMarkerBeforePublishingAndClearsItOnSuccess() throws Exception {
+    when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenReturn(ImmutableList.of(metalake()));
+    MetricDirtyPO dirty = mock(MetricDirtyPO.class);
+    when(dirty.getRevision()).thenReturn(7L);
+    when(metricDataService.getDirtyMetalake(mockId)).thenReturn(null, dirty);
+
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      collector.collectStartupMetrics(1_250L);
+
+      InOrder order = inOrder(metricDataService);
+      order.verify(metricDataService).markMetalakeDirty(mockId, 1_250L);
+      order.verify(metricDataService).replaceCurrentMetrics(eq(mockId), anyMap(), eq(1_250L));
+      order.verify(metricDataService).deleteDirtyIfRevision(mockId, 7L);
+      verify(metricDataService, never())
+          .replaceCurrentMetricsAndMarkDirty(eq(mockId), anyMap(), eq(1_250L), eq(1_250L));
+    }
+  }
+
+  @Test
+  void testIncompleteStartupKeepsPendingMarkerForRetry() throws Exception {
+    when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenReturn(ImmutableList.of(metalake()));
+    MetricDirtyPO dirty = mock(MetricDirtyPO.class);
+    when(dirty.getRevision()).thenReturn(8L);
+    when(metricDataService.getDirtyMetalake(mockId)).thenReturn(null, dirty);
+    when(tableDispatcher.listTables(
+            eq(NamespaceUtil.ofTable(metalakeName, relationalCatalogName, relationalSchemaName))))
+        .thenThrow(new RuntimeException("catalog unavailable"));
+
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      collector.collectStartupMetrics(1_300L);
+
+      InOrder order = inOrder(metricDataService);
+      order.verify(metricDataService).markMetalakeDirty(mockId, 1_300L);
+      order.verify(metricDataService).replaceCurrentMetrics(eq(mockId), anyMap(), eq(1_300L));
+      verify(metricDataService, never()).deleteDirtyIfRevision(anyLong(), anyLong());
+      verify(metricDataService, never())
+          .replaceCurrentMetricsAndMarkDirty(eq(mockId), anyMap(), eq(1_300L), eq(1_300L));
     }
   }
 

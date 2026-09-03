@@ -28,6 +28,8 @@ import com.datastrato.gravitino.catalog.DatastratoSchemaOperationDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoTopicDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoViewDispatcher;
+import com.datastrato.gravitino.dto.DirectChildCountDTO;
+import com.datastrato.gravitino.dto.DirectChildCountState;
 import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
 import com.datastrato.gravitino.dto.ExtendedMetalakeDTO;
 import com.datastrato.gravitino.dto.ExtendedSchemaDTO;
@@ -44,12 +46,19 @@ import com.datastrato.gravitino.dto.responses.ModelListResponse;
 import com.datastrato.gravitino.dto.responses.SchemaListResponse;
 import com.datastrato.gravitino.dto.responses.TableListResponse;
 import com.datastrato.gravitino.dto.responses.TopicListResponse;
+import com.datastrato.gravitino.metrics.DirectChildCountMetricNames;
+import com.datastrato.gravitino.metrics.dto.MetricState;
+import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
+import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
+import com.datastrato.gravitino.metrics.storage.relational.service.CurrentMetricsSnapshot;
+import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.datastrato.gravitino.tag.mapper.DatastratoTagPolicyMetadataObjectMapper;
 import com.datastrato.gravitino.tag.po.DatastratoPolicyRelPO;
 import com.datastrato.gravitino.tag.po.DatastratoTagRelPO;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
@@ -137,7 +146,9 @@ import org.glassfish.jersey.test.TestProperties;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -188,6 +199,8 @@ public class TestEntityOperations extends JerseyTest {
   private final DatastratoViewDispatcher viewDispatcher = mock(DatastratoViewDispatcher.class);
   private final TagDispatcher tagDispatcher = mock(TagDispatcher.class);
   private final PolicyDispatcher policyDispatcher = mock(PolicyDispatcher.class);
+  private final MetricDataService metricDataService = mock(MetricDataService.class);
+  private final MetricDirtyPO defaultDirty = mock(MetricDirtyPO.class);
 
   @BeforeAll
   public static void setup() throws IllegalAccessException {
@@ -251,12 +264,20 @@ public class TestEntityOperations extends JerseyTest {
             bind(viewDispatcher).to(ViewDispatcher.class).ranked(2);
             bind(tagDispatcher).to(TagDispatcher.class).ranked(2);
             bind(policyDispatcher).to(PolicyDispatcher.class).ranked(2);
+            bind(metricDataService).to(MetricDataService.class).ranked(2);
             bindFactory(TestEntityOperations.MockServletRequestFactory.class)
                 .to(HttpServletRequest.class);
           }
         });
 
     return resourceConfig;
+  }
+
+  @BeforeEach
+  public void configureDefaultMetricDataSnapshot() {
+    lenient()
+        .when(metricDataService.getCurrentMetrics(any(), any(), any(String[].class)))
+        .thenReturn(new CurrentMetricsSnapshot(1L, Collections.emptyList(), defaultDirty));
   }
 
   @Test
@@ -488,8 +509,8 @@ public class TestEntityOperations extends JerseyTest {
     ExtendedCatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
     Assertions.assertEquals(2, catalogDTOs.length);
     assertCatalogs(catalogDTOs);
-    Assertions.assertEquals(0L, catalogDTOs[0].getDirectChildCounts());
-    Assertions.assertEquals(0L, catalogDTOs[1].getDirectChildCounts());
+    assertUnavailableDirectChildCount(catalogDTOs[0].getDirectChildCount(), true);
+    assertUnavailableDirectChildCount(catalogDTOs[1].getDirectChildCount(), true);
 
     // test list all catalogs
     when(catalogDispatcher.listCatalogsInfo(Namespace.of("testMetalake")))
@@ -568,6 +589,16 @@ public class TestEntityOperations extends JerseyTest {
     when(schemaDispatcher.listSchemas(parentSchemaNs)).thenReturn(childSchemaIdents);
     when(schemaDispatcher.listEntities(catalogNs))
         .thenReturn(buildSchemaEntity(new NameIdentifier[] {schemaIdent, childSchemaIdent}));
+    when(metricDataService.getCurrentMetrics(eq("testMetalake"), any(), any(String[].class)))
+        .thenReturn(
+            new CurrentMetricsSnapshot(
+                1L,
+                List.of(
+                    completeMetric(
+                        DirectChildCountMetricNames.forSchema("relCatalog", "level1:level2:child"),
+                        3,
+                        3_000L)),
+                null));
 
     resp =
         target("/web/entities")
@@ -586,6 +617,8 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals("level1:level2:child", schemaResp.getSchemas()[0].name());
     Assertions.assertEquals(
         "creator", schemaResp.getSchemas()[0].getSchemaDTO().auditInfo().creator());
+    assertCompleteDirectChildCount(
+        schemaResp.getSchemas()[0].getDirectChildCount(), 3L, 3_000L, false);
 
     // test list tables with parentSchema: returns tables + sub-schemas
     Namespace tableNs = Namespace.of("testMetalake", "relCatalog", "level1:level2");
@@ -618,6 +651,8 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals("level1:level2:child", tableResp.getSchemas()[0].name());
     Assertions.assertEquals(
         "creator", tableResp.getSchemas()[0].getSchemaDTO().auditInfo().creator());
+    assertCompleteDirectChildCount(
+        tableResp.getSchemas()[0].getDirectChildCount(), 3L, 3_000L, false);
     Mockito.verify(schemaDispatcher, Mockito.never()).listEntities(parentSchemaNs);
 
     // test list tables with schema not found in store
@@ -1055,8 +1090,8 @@ public class TestEntityOperations extends JerseyTest {
   }
 
   @Test
-  public void testListDirectChildCounts() {
-    String metalake = "testMetalake";
+  public void testListDirectChildCountsFromCurrentMetricsAfterResultLimit() {
+    String metalake = "countMetalake";
     String catalog = "relCatalog";
     Namespace metalakeNs = Namespace.of(metalake);
     Namespace catalogNs = Namespace.of(metalake, catalog);
@@ -1068,27 +1103,20 @@ public class TestEntityOperations extends JerseyTest {
 
     NameIdentifier schema1 = NameIdentifier.of(catalogNs, "schema1");
     NameIdentifier schema2 = NameIdentifier.of(catalogNs, "schema2");
-    NameIdentifier[] schemas = new NameIdentifier[] {schema1, schema2};
+    NameIdentifier[] schemas = new NameIdentifier[] {schema2, schema1};
     when(schemaDispatcher.listSchemas(catalogNs)).thenReturn(schemas);
     when(schemaDispatcher.listEntities(catalogNs)).thenReturn(buildSchemaEntity(schemas));
-    when(schemaDispatcher.supportsHierarchicalSchema(catalogNs)).thenReturn(true);
-
-    NameIdentifier childSchema = NameIdentifier.of(catalogNs, "schema1:child");
-    when(schemaDispatcher.listSchemas(schema1Ns)).thenReturn(new NameIdentifier[] {childSchema});
-    when(schemaDispatcher.listSchemas(schema2Ns)).thenReturn(new NameIdentifier[0]);
-
-    NameIdentifier table1 = NameIdentifier.of(schema1Ns, "table1");
-    NameIdentifier table2 = NameIdentifier.of(schema1Ns, "table2");
-    when(tableDispatcher.listTables(schema1Ns)).thenReturn(new NameIdentifier[] {table1, table2});
-    when(tableDispatcher.listTables(schema2Ns)).thenReturn(new NameIdentifier[0]);
-    when(functionDispatcher.listFunctionInfos(schema1Ns)).thenReturn(buildFunctionInfos(schema1Ns));
-    when(functionDispatcher.listFunctionInfos(schema2Ns))
-        .thenThrow(new UnsupportedOperationException("Functions are not supported"));
-
-    NameIdentifier view = NameIdentifier.of(schema1Ns, "view1");
-    when(viewDispatcher.listViews(schema1Ns)).thenReturn(new NameIdentifier[] {view});
-    when(viewDispatcher.listViews(schema2Ns))
-        .thenThrow(new UnsupportedOperationException("Views are not supported"));
+    when(metricDataService.getCurrentMetrics(eq(metalake), any(), any(String[].class)))
+        .thenReturn(
+            new CurrentMetricsSnapshot(
+                11L,
+                List.of(
+                    completeMetric(DirectChildCountMetricNames.forCatalog(catalog), 2, 1_000L),
+                    completeMetric(
+                        DirectChildCountMetricNames.forSchema(catalog, "schema1"), 5, 1_001L),
+                    completeMetric(
+                        DirectChildCountMetricNames.forSchema(catalog, "schema2"), 0, 1_002L)),
+                null));
 
     Response catalogResponse =
         target("/web/entities")
@@ -1099,7 +1127,8 @@ public class TestEntityOperations extends JerseyTest {
             .get();
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), catalogResponse.getStatus());
     CatalogListResponse catalogListResponse = catalogResponse.readEntity(CatalogListResponse.class);
-    Assertions.assertEquals(2L, catalogListResponse.getCatalogs()[0].getDirectChildCounts());
+    assertCompleteDirectChildCount(
+        catalogListResponse.getCatalogs()[0].getDirectChildCount(), 2L, 1_000L, false);
 
     Response schemaResponse =
         target("/web/entities")
@@ -1110,8 +1139,15 @@ public class TestEntityOperations extends JerseyTest {
             .get();
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), schemaResponse.getStatus());
     SchemaListResponse schemaListResponse = schemaResponse.readEntity(SchemaListResponse.class);
-    Assertions.assertEquals(5L, schemaListResponse.getSchemas()[0].getDirectChildCounts());
-    Assertions.assertEquals(0L, schemaListResponse.getSchemas()[1].getDirectChildCounts());
+    Assertions.assertEquals("schema1", schemaListResponse.getSchemas()[0].name());
+    assertCompleteDirectChildCount(
+        schemaListResponse.getSchemas()[0].getDirectChildCount(), 5L, 1_001L, false);
+    Assertions.assertEquals("schema2", schemaListResponse.getSchemas()[1].name());
+    assertCompleteDirectChildCount(
+        schemaListResponse.getSchemas()[1].getDirectChildCount(), 0L, 1_002L, false);
+
+    Mockito.clearInvocations(
+        metricDataService, schemaDispatcher, tableDispatcher, functionDispatcher, viewDispatcher);
 
     Response limitedSchemaResponse =
         target("/web/entities")
@@ -1125,20 +1161,91 @@ public class TestEntityOperations extends JerseyTest {
     SchemaListResponse limitedSchemaListResponse =
         limitedSchemaResponse.readEntity(SchemaListResponse.class);
     Assertions.assertEquals(1, limitedSchemaListResponse.getSchemas().length);
-    Assertions.assertEquals(5L, limitedSchemaListResponse.getSchemas()[0].getDirectChildCounts());
+    assertCompleteDirectChildCount(
+        limitedSchemaListResponse.getSchemas()[0].getDirectChildCount(), 5L, 1_001L, false);
+
+    ArgumentCaptor<String[]> metricNames = ArgumentCaptor.forClass(String[].class);
+    Mockito.verify(metricDataService).getCurrentMetrics(eq(metalake), any(), metricNames.capture());
+    Assertions.assertArrayEquals(
+        new String[] {DirectChildCountMetricNames.forSchema(catalog, "schema1")},
+        metricNames.getValue());
+    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(schema1Ns);
+    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(schema2Ns);
+    Mockito.verify(tableDispatcher, Mockito.never()).listTables(any());
+    Mockito.verify(functionDispatcher, Mockito.never()).listFunctionInfos(any());
+    Mockito.verify(viewDispatcher, Mockito.never()).listViews(any());
   }
 
   @Test
-  public void testListCatalogDirectChildCountUnavailable() {
-    String metalake = "testMetalake";
+  public void testListDirectChildCountStatesAndMissingMetricMarkDirtyOnce() {
+    String metalake = "stateMetalake";
     String catalog = "relCatalog";
-    Namespace metalakeNamespace = Namespace.of(metalake);
     Namespace catalogNamespace = Namespace.of(metalake, catalog);
-    when(catalogDispatcher.listCatalogsInfo(metalakeNamespace))
-        .thenReturn(new Catalog[] {buildCatalog(metalake, catalog)});
-    when(schemaDispatcher.listSchemas(catalogNamespace))
-        .thenThrow(new IllegalStateException("Schema count is unavailable"));
+    NameIdentifier[] schemas =
+        new NameIdentifier[] {
+          NameIdentifier.of(catalogNamespace, "unavailable"),
+          NameIdentifier.of(catalogNamespace, "partial"),
+          NameIdentifier.of(catalogNamespace, "missing"),
+          NameIdentifier.of(catalogNamespace, "complete")
+        };
+    when(schemaDispatcher.listSchemas(catalogNamespace)).thenReturn(schemas);
+    when(schemaDispatcher.listEntities(catalogNamespace)).thenReturn(buildSchemaEntity(schemas));
+    when(metricDataService.getCurrentMetrics(eq(metalake), any(), any(String[].class)))
+        .thenReturn(
+            new CurrentMetricsSnapshot(
+                12L,
+                List.of(
+                    completeMetric(
+                        DirectChildCountMetricNames.forSchema(catalog, "complete"), 0, 2_000L),
+                    incompleteMetric(
+                        DirectChildCountMetricNames.forSchema(catalog, "partial"),
+                        7D,
+                        MetricState.PARTIAL,
+                        2_001L),
+                    incompleteMetric(
+                        DirectChildCountMetricNames.forSchema(catalog, "unavailable"),
+                        null,
+                        MetricState.UNAVAILABLE,
+                        2_002L)),
+                null));
 
+    Mockito.clearInvocations(metricDataService);
+
+    Response response =
+        target("/web/entities")
+            .queryParam("namespace", metalake + "." + catalog)
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    ExtendedSchemaDTO[] schemaDTOs = response.readEntity(SchemaListResponse.class).getSchemas();
+    Assertions.assertEquals(4, schemaDTOs.length);
+    Assertions.assertEquals("complete", schemaDTOs[0].name());
+    assertCompleteDirectChildCount(schemaDTOs[0].getDirectChildCount(), 0L, 2_000L, true);
+    Assertions.assertEquals("missing", schemaDTOs[1].name());
+    assertUnavailableDirectChildCount(schemaDTOs[1].getDirectChildCount(), true);
+    Assertions.assertNull(schemaDTOs[1].getDirectChildCount().getUpdatedAt());
+    Assertions.assertEquals("partial", schemaDTOs[2].name());
+    assertIncompleteDirectChildCount(
+        schemaDTOs[2].getDirectChildCount(), DirectChildCountState.PARTIAL, 2_001L, true);
+    Assertions.assertEquals("unavailable", schemaDTOs[3].name());
+    assertIncompleteDirectChildCount(
+        schemaDTOs[3].getDirectChildCount(), DirectChildCountState.UNAVAILABLE, 2_002L, true);
+    Mockito.verify(metricDataService).markMetalakeDirty(eq(12L), Mockito.anyLong());
+  }
+
+  @Test
+  public void testExistingDirtyMarkerDoesNotGetMarkedAgain() {
+    String metalake = "pendingMetalake";
+    Namespace metalakeNamespace = Namespace.of(metalake);
+    when(catalogDispatcher.listCatalogsInfo(metalakeNamespace))
+        .thenReturn(new Catalog[] {buildCatalog(metalake, "relCatalog")});
+    when(metricDataService.getCurrentMetrics(eq(metalake), any(), any(String[].class)))
+        .thenReturn(new CurrentMetricsSnapshot(13L, Collections.emptyList(), defaultDirty));
+
+    Mockito.clearInvocations(metricDataService);
     Response response =
         target("/web/entities")
             .queryParam("namespace", metalake)
@@ -1148,104 +1255,69 @@ public class TestEntityOperations extends JerseyTest {
             .get();
 
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-    CatalogListResponse catalogResponse = response.readEntity(CatalogListResponse.class);
-    Assertions.assertNull(catalogResponse.getCatalogs()[0].getDirectChildCounts());
+    DirectChildCountDTO count =
+        response.readEntity(CatalogListResponse.class).getCatalogs()[0].getDirectChildCount();
+    assertUnavailableDirectChildCount(count, true);
+    Mockito.verify(metricDataService, Mockito.never())
+        .markMetalakeDirty(Mockito.anyLong(), Mockito.anyLong());
   }
 
   @Test
-  public void testListSchemaDirectChildCountsByCatalogType() {
-    String metalake = "testMetalake";
+  public void testMetricQueryFailureDoesNotMarkDirtyOrUseRemoteCount() {
+    String metalake = "failedQueryMetalake";
+    String catalog = "relCatalog";
+    Namespace metalakeNamespace = Namespace.of(metalake);
+    Namespace catalogNamespace = Namespace.of(metalake, catalog);
+    when(catalogDispatcher.listCatalogsInfo(metalakeNamespace))
+        .thenReturn(new Catalog[] {buildCatalog(metalake, catalog)});
+    when(metricDataService.getCurrentMetrics(eq(metalake), any(), any(String[].class)))
+        .thenThrow(new IllegalStateException("Metric storage is unavailable"));
 
-    Namespace messagingCatalogNs = Namespace.of(metalake, "messagingCatalog");
-    Namespace messagingSchemaNs = mockSchemaListing(messagingCatalogNs, "messagingSchema");
-    when(topicDispatcher.listTopics(messagingSchemaNs))
-        .thenReturn(
-            new NameIdentifier[] {
-              NameIdentifier.of(messagingSchemaNs, "topic1"),
-              NameIdentifier.of(messagingSchemaNs, "topic2")
-            });
-    when(functionDispatcher.listFunctionInfos(messagingSchemaNs))
-        .thenReturn(buildFunctionInfos(messagingSchemaNs));
-    Assertions.assertEquals(
-        3L, listSchemas(messagingCatalogNs, "messaging").getSchemas()[0].getDirectChildCounts());
+    Mockito.clearInvocations(metricDataService, schemaDispatcher);
+    Response response =
+        target("/web/entities")
+            .queryParam("namespace", metalake)
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
 
-    Namespace filesetCatalogNs = Namespace.of(metalake, "filesetCatalog");
-    Namespace filesetSchemaNs = mockSchemaListing(filesetCatalogNs, "filesetSchema");
-    when(filesetDispatcher.listEntities(filesetSchemaNs))
-        .thenReturn(
-            buildFilesetEntity(
-                new NameIdentifier[] {
-                  NameIdentifier.of(filesetSchemaNs, "fileset1"),
-                  NameIdentifier.of(filesetSchemaNs, "fileset2")
-                }));
-    when(functionDispatcher.listFunctionInfos(filesetSchemaNs))
-        .thenReturn(buildFunctionInfos(filesetSchemaNs));
-    Assertions.assertEquals(
-        3L, listSchemas(filesetCatalogNs, "fileset").getSchemas()[0].getDirectChildCounts());
-
-    Namespace modelCatalogNs = Namespace.of(metalake, "modelCatalog");
-    Namespace modelSchemaNs = mockSchemaListing(modelCatalogNs, "modelSchema");
-    when(modelDispatcher.listEntities(modelSchemaNs))
-        .thenReturn(
-            buildModelEntity(
-                new NameIdentifier[] {
-                  NameIdentifier.of(modelSchemaNs, "model1"),
-                  NameIdentifier.of(modelSchemaNs, "model2")
-                }));
-    when(functionDispatcher.listFunctionInfos(modelSchemaNs))
-        .thenReturn(buildFunctionInfos(modelSchemaNs));
-    Assertions.assertEquals(
-        3L, listSchemas(modelCatalogNs, "model").getSchemas()[0].getDirectChildCounts());
-
-    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(messagingSchemaNs);
-    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(filesetSchemaNs);
-    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(modelSchemaNs);
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectChildCountDTO count =
+        response.readEntity(CatalogListResponse.class).getCatalogs()[0].getDirectChildCount();
+    assertUnavailableDirectChildCount(count, false);
+    Mockito.verify(metricDataService, Mockito.never())
+        .markMetalakeDirty(Mockito.anyLong(), Mockito.anyLong());
+    Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(catalogNamespace);
   }
 
   @Test
-  public void testListSchemaDirectChildCountUnavailable() {
-    Namespace catalogNamespace = Namespace.of("testMetalake", "relCatalog");
-    Namespace schemaNamespace = mockSchemaListing(catalogNamespace, "relSchema");
-    when(schemaDispatcher.supportsHierarchicalSchema(catalogNamespace))
-        .thenThrow(new IllegalStateException("Capability is unavailable"));
+  public void testDirtyMarkFailureDoesNotFailEntityListing() {
+    String metalake = "failedMarkMetalake";
+    String catalog = "relCatalog";
+    Namespace metalakeNamespace = Namespace.of(metalake);
+    when(catalogDispatcher.listCatalogsInfo(metalakeNamespace))
+        .thenReturn(new Catalog[] {buildCatalog(metalake, catalog)});
+    when(metricDataService.getCurrentMetrics(eq(metalake), any(), any(String[].class)))
+        .thenReturn(new CurrentMetricsSnapshot(14L, Collections.emptyList(), null));
+    doThrow(new IllegalStateException("Dirty storage is unavailable"))
+        .when(metricDataService)
+        .markMetalakeDirty(eq(14L), Mockito.anyLong());
 
-    SchemaListResponse response = listSchemas(catalogNamespace, "relational");
+    Mockito.clearInvocations(metricDataService);
+    Response response =
+        target("/web/entities")
+            .queryParam("namespace", metalake)
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
 
-    Assertions.assertNull(response.getSchemas()[0].getDirectChildCounts());
-    Mockito.verify(tableDispatcher, Mockito.never()).listTables(schemaNamespace);
-  }
-
-  @Test
-  public void testListSchemaDirectChildCountOmitsFailedFunctionAndViewCounts() {
-    Namespace catalogNamespace = Namespace.of("testMetalake", "relCatalog");
-    NameIdentifier functionFailureSchema =
-        NameIdentifier.of(catalogNamespace, "functionFailureSchema");
-    NameIdentifier viewFailureSchema = NameIdentifier.of(catalogNamespace, "viewFailureSchema");
-    NameIdentifier[] schemas = {functionFailureSchema, viewFailureSchema};
-    when(schemaDispatcher.listSchemas(catalogNamespace)).thenReturn(schemas);
-    when(schemaDispatcher.listEntities(catalogNamespace)).thenReturn(buildSchemaEntity(schemas));
-    when(schemaDispatcher.supportsHierarchicalSchema(catalogNamespace)).thenReturn(false);
-
-    Namespace functionFailureNamespace =
-        Namespace.of(
-            catalogNamespace.level(0), catalogNamespace.level(1), functionFailureSchema.name());
-    Namespace viewFailureNamespace =
-        Namespace.of(
-            catalogNamespace.level(0), catalogNamespace.level(1), viewFailureSchema.name());
-    when(tableDispatcher.listTables(functionFailureNamespace)).thenReturn(new NameIdentifier[0]);
-    when(tableDispatcher.listTables(viewFailureNamespace)).thenReturn(new NameIdentifier[0]);
-    when(functionDispatcher.listFunctionInfos(functionFailureNamespace))
-        .thenThrow(new IllegalStateException("Function count is unavailable"));
-    when(viewDispatcher.listViews(functionFailureNamespace)).thenReturn(new NameIdentifier[0]);
-    when(functionDispatcher.listFunctionInfos(viewFailureNamespace)).thenReturn(new Function[0]);
-    when(viewDispatcher.listViews(viewFailureNamespace))
-        .thenThrow(new IllegalStateException("View count is unavailable"));
-
-    SchemaListResponse response = listSchemas(catalogNamespace, "relational");
-
-    Assertions.assertEquals(2, response.getSchemas().length);
-    Assertions.assertNull(response.getSchemas()[0].getDirectChildCounts());
-    Assertions.assertNull(response.getSchemas()[1].getDirectChildCounts());
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectChildCountDTO count =
+        response.readEntity(CatalogListResponse.class).getCatalogs()[0].getDirectChildCount();
+    assertUnavailableDirectChildCount(count, false);
+    Mockito.verify(metricDataService).markMetalakeDirty(eq(14L), Mockito.anyLong());
   }
 
   @Test
@@ -1305,6 +1377,14 @@ public class TestEntityOperations extends JerseyTest {
               NameIdentifier.of(visibleCatalogNs, "schema1"),
               NameIdentifier.of(visibleCatalogNs, "schema2")
             });
+    when(metricDataService.getCurrentMetrics(eq("testMetalake"), any(), any(String[].class)))
+        .thenReturn(
+            new CurrentMetricsSnapshot(
+                1L,
+                List.of(
+                    completeMetric(
+                        DirectChildCountMetricNames.forCatalog("relCatalog1"), 1, 3_000L)),
+                null));
 
     GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
     GravitinoAuthorizer oldProviderAuthorizer = null;
@@ -1354,7 +1434,14 @@ public class TestEntityOperations extends JerseyTest {
         ExtendedCatalogDTO[] catalogDTOs = catalogResponse.getCatalogs();
         Assertions.assertEquals(1, catalogDTOs.length);
         Assertions.assertEquals("relCatalog1", catalogDTOs[0].name());
-        Assertions.assertEquals(1L, catalogDTOs[0].getDirectChildCounts());
+        assertCompleteDirectChildCount(catalogDTOs[0].getDirectChildCount(), 1L, 3_000L, false);
+
+        ArgumentCaptor<String[]> metricNames = ArgumentCaptor.forClass(String[].class);
+        Mockito.verify(metricDataService)
+            .getCurrentMetrics(eq("testMetalake"), any(), metricNames.capture());
+        Assertions.assertArrayEquals(
+            new String[] {DirectChildCountMetricNames.forCatalog("relCatalog1")},
+            metricNames.getValue());
       }
     } catch (Throwable failure) {
       failureTracker.record(failure);
@@ -1414,6 +1501,16 @@ public class TestEntityOperations extends JerseyTest {
         .thenReturn(new NameIdentifier[] {NameIdentifier.of(visibleSchemaNs, "visibleTable")});
     when(functionDispatcher.listFunctionInfos(visibleSchemaNs)).thenReturn(new Function[0]);
     when(viewDispatcher.listViews(visibleSchemaNs)).thenReturn(new NameIdentifier[0]);
+    when(metricDataService.getCurrentMetrics(eq("testMetalake"), any(), any(String[].class)))
+        .thenReturn(
+            new CurrentMetricsSnapshot(
+                1L,
+                List.of(
+                    completeMetric(
+                        DirectChildCountMetricNames.forSchema("relCatalog", "relSchema1"),
+                        1,
+                        3_001L)),
+                null));
 
     GravitinoAuthorizer oldGravitinoAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
     GravitinoAuthorizer oldProviderAuthorizer = null;
@@ -1448,7 +1545,8 @@ public class TestEntityOperations extends JerseyTest {
         Assertions.assertEquals(0, schemaResp.getCode());
         Assertions.assertEquals(1, schemaResp.getSchemas().length);
         Assertions.assertEquals("relSchema1", schemaResp.getSchemas()[0].name());
-        Assertions.assertEquals(1L, schemaResp.getSchemas()[0].getDirectChildCounts());
+        assertCompleteDirectChildCount(
+            schemaResp.getSchemas()[0].getDirectChildCount(), 1L, 3_001L, false);
         Mockito.verify(schemaDispatcher, Mockito.never()).listSchemas(visibleSchemaNs);
         Mockito.verify(tableDispatcher, Mockito.never())
             .listTables(Namespace.of("testMetalake", "relCatalog", "relSchema2"));
@@ -2017,25 +2115,53 @@ public class TestEntityOperations extends JerseyTest {
     FieldUtils.writeStaticField(MetadataAuthzHelper.class, "executor", executor, true);
   }
 
-  private Namespace mockSchemaListing(Namespace catalogNamespace, String schemaName) {
-    NameIdentifier schemaIdentifier = NameIdentifier.of(catalogNamespace, schemaName);
-    when(schemaDispatcher.listSchemas(catalogNamespace))
-        .thenReturn(new NameIdentifier[] {schemaIdentifier});
-    when(schemaDispatcher.listEntities(catalogNamespace))
-        .thenReturn(buildSchemaEntity(new NameIdentifier[] {schemaIdentifier}));
-    return Namespace.of(catalogNamespace.level(0), catalogNamespace.level(1), schemaName);
+  private static MetricPO completeMetric(String metricName, long value, long updatedAt) {
+    return MetricPO.builder()
+        .withMetricName(metricName)
+        .withMetricValue((double) value)
+        .withMetricState(MetricState.COMPLETE)
+        .withCreatedTime(new Timestamp(updatedAt))
+        .build();
   }
 
-  private SchemaListResponse listSchemas(Namespace catalogNamespace, String catalogType) {
-    Response response =
-        target("/web/entities")
-            .queryParam("namespace", catalogNamespace.level(0) + "." + catalogNamespace.level(1))
-            .queryParam("catalogType", catalogType)
-            .request(MediaType.APPLICATION_JSON_TYPE)
-            .accept("application/vnd.gravitino.v1+json")
-            .get();
-    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-    return response.readEntity(SchemaListResponse.class);
+  private static MetricPO incompleteMetric(
+      String metricName, Double value, MetricState state, long updatedAt) {
+    return MetricPO.builder()
+        .withMetricName(metricName)
+        .withMetricValue(value)
+        .withMetricState(state)
+        .withMetricMessage("incomplete")
+        .withCreatedTime(new Timestamp(updatedAt))
+        .build();
+  }
+
+  private static void assertCompleteDirectChildCount(
+      DirectChildCountDTO count, long value, long updatedAt, boolean refreshPending) {
+    Assertions.assertNotNull(count);
+    Assertions.assertEquals(Long.valueOf(value), count.getValue());
+    Assertions.assertEquals(DirectChildCountState.COMPLETE, count.getState());
+    Assertions.assertEquals(Long.valueOf(updatedAt), count.getUpdatedAt());
+    Assertions.assertEquals(refreshPending, count.isRefreshPending());
+  }
+
+  private static void assertIncompleteDirectChildCount(
+      DirectChildCountDTO count,
+      DirectChildCountState state,
+      long updatedAt,
+      boolean refreshPending) {
+    Assertions.assertNotNull(count);
+    Assertions.assertNull(count.getValue());
+    Assertions.assertEquals(state, count.getState());
+    Assertions.assertEquals(Long.valueOf(updatedAt), count.getUpdatedAt());
+    Assertions.assertEquals(refreshPending, count.isRefreshPending());
+  }
+
+  private static void assertUnavailableDirectChildCount(
+      DirectChildCountDTO count, boolean refreshPending) {
+    Assertions.assertNotNull(count);
+    Assertions.assertNull(count.getValue());
+    Assertions.assertEquals(DirectChildCountState.UNAVAILABLE, count.getState());
+    Assertions.assertEquals(refreshPending, count.isRefreshPending());
   }
 
   private void assertTables(ExtendedTableDTO[] tableDTOs) {

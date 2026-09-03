@@ -31,6 +31,7 @@ import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 
@@ -96,7 +97,19 @@ class TestMetricsCalculator {
         null);
     assertFalse(metrics.containsKey("by_catalog::relational::policy_count"));
     assertFalse(metrics.containsKey("by_asset_type::TABLE::disabled_policy_count"));
-    assertEquals(46, metrics.size());
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forCatalog("relational"),
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forSchema("relational", "schema"),
+        3.0,
+        MetricState.COMPLETE,
+        null);
+    assertEquals(54, metrics.size());
   }
 
   @Test
@@ -135,6 +148,55 @@ class TestMetricsCalculator {
         MetricState.PARTIAL,
         "Some catalog data is temporarily unavailable.");
     assertMetric(metrics, "by_asset_type::TOPIC::asset_count", 0.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forCatalog("healthy"),
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forCatalog("failed"),
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+  }
+
+  @Test
+  void testDirectChildCountsUseHierarchicalParentsAndIncludeZero() {
+    SnapshotBuilder builder = new SnapshotBuilder();
+    AssetNode catalog = builder.catalog(101L, "catalog", Catalog.Type.RELATIONAL, false);
+    AssetNode top = builder.schema(102L, "top", catalog);
+    AssetNode child = builder.schema(103L, "top:child", top);
+    builder.schema(104L, "empty", catalog);
+    builder.asset(105L, "table", MetadataObject.Type.TABLE, child);
+
+    Map<String, MetricPO> metrics = calculate(builder.build());
+
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forCatalog("catalog"),
+        2.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forSchema("catalog", "top"),
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forSchema("catalog", "top:child"),
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forSchema("catalog", "empty"),
+        0.0,
+        MetricState.COMPLETE,
+        null);
   }
 
   @Test
@@ -281,6 +343,18 @@ class TestMetricsCalculator {
           metrics, "by_asset_type::FUNCTION::asset_count", 1.0, MetricState.COMPLETE, null);
       assertMetric(
           metrics, "by_asset_type::VIEW::owned_asset_count", 0.0, MetricState.COMPLETE, null);
+      assertMetric(
+          metrics,
+          DirectChildCountMetricNames.forCatalog("catalog"),
+          1.0,
+          MetricState.COMPLETE,
+          null);
+      assertMetric(
+          metrics,
+          DirectChildCountMetricNames.forSchema("catalog", "schema"),
+          2.0,
+          MetricState.COMPLETE,
+          null);
     } finally {
       MetricsCollector.getInstance().getMetalakeSnapshots().remove(METALAKE);
     }
@@ -349,10 +423,20 @@ class TestMetricsCalculator {
       viewListingSupportByCatalog.put(catalogName, supported);
     }
 
-    private AssetNode schema(long id, String name, AssetNode catalog) {
+    private AssetNode schema(long id, String name, AssetNode parent) {
+      String catalogName =
+          parent.getType() == MetadataObject.Type.CATALOG
+              ? parent.getName()
+              : parent.getNameIdent().namespace().level(1);
       AssetNode schema =
-          new AssetNode(id, name, MetadataObject.Type.SCHEMA, catalog, Collections.emptySet());
-      catalog.addChild(schema);
+          new AssetNode(
+              id,
+              name,
+              NameIdentifierUtil.ofSchema(METALAKE, catalogName, name),
+              MetadataObject.Type.SCHEMA,
+              parent,
+              Collections.emptySet());
+      parent.addChild(schema);
       nodesById.put(id, schema);
       schemas.add(schema);
       return schema;
