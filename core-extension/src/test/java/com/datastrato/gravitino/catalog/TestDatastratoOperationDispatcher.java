@@ -105,10 +105,9 @@ public class TestDatastratoOperationDispatcher {
         (k, v) -> {
           Assertions.assertEquals(v, testProps.get(k));
         });
-    Assertions.assertEquals(
-        HiddenPropertyMaskUtils.MASKED_VALUE,
-        testProps.get(StringIdentifier.ID_KEY),
-        "`gravitino.identifier` should be returned as a masked placeholder");
+    Assertions.assertFalse(
+        testProps.containsKey(StringIdentifier.ID_KEY),
+        "`gravitino.identifier` should be omitted from API responses");
     Assertions.assertTrue(
         !testProps.containsKey(TEST_FILESET_HIDDEN_KEY)
             || HiddenPropertyMaskUtils.MASKED_VALUE.equals(testProps.get(TEST_FILESET_HIDDEN_KEY)));
