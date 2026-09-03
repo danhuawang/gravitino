@@ -420,10 +420,8 @@ public abstract class FlinkJdbcSqlServerCatalogIT extends FlinkCommonIT {
         sqlServerJdbcUrl, properties.get(JdbcPropertiesConstants.GRAVITINO_JDBC_URL));
     Assertions.assertEquals(
         sqlServerDatabase, properties.get(JdbcPropertiesConstants.GRAVITINO_JDBC_DATABASE));
-    // jdbc-user and jdbc-password are hidden and returned as masked placeholders.
-    Assertions.assertEquals(
-        org.apache.gravitino.connector.HiddenPropertyMaskUtils.MASKED_VALUE,
-        properties.get(JdbcPropertiesConstants.GRAVITINO_JDBC_USER));
+    // jdbc-user is visible; jdbc-password is hidden and returned as a masked placeholder.
+    Assertions.assertEquals(USERNAME, properties.get(JdbcPropertiesConstants.GRAVITINO_JDBC_USER));
     Assertions.assertEquals(
         org.apache.gravitino.connector.HiddenPropertyMaskUtils.MASKED_VALUE,
         properties.get(JdbcPropertiesConstants.GRAVITINO_JDBC_PASSWORD));
