@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Inc.
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
@@ -353,9 +353,6 @@ public class DatastratoGroupMetaBaseSQLProvider {
   private String groupsForMetalakeUserSelectAndFrom() {
     return "SELECT gt.group_id as groupId, gt.group_name as groupName,"
         + " gt.metalake_id as metalakeId,"
-        + " "
-        + coalescedExternalId("gt")
-        + " as externalId,"
         + " gt.audit_info as auditInfo,"
         + " gt.current_version as currentVersion, gt.last_version as lastVersion,"
         + " gt.deleted_at as deletedAt,"
@@ -381,7 +378,6 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " ut ON ut.metalake_id = mt.metalake_id AND ut.deleted_at = 0"
         + " AND ut.user_name = #{userName}"
         + membershipGroupsJoinForUser()
-        + scimGroupJoin("gt")
         + " LEFT JOIN "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
         + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 LEFT OUTER JOIN ("
@@ -433,9 +429,6 @@ public class DatastratoGroupMetaBaseSQLProvider {
                 + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0";
     return "SELECT gt.group_id as groupId, gt.group_name as groupName,"
         + " gt.metalake_id as metalakeId,"
-        + " "
-        + coalescedExternalId("gt")
-        + " as externalId,"
         + " gt.audit_info as auditInfo,"
         + " gt.current_version as currentVersion, gt.last_version as lastVersion,"
         + " gt.deleted_at as deletedAt,"
@@ -458,7 +451,6 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + groupJoin
-        + scimGroupJoin("gt")
         + " LEFT JOIN "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
         + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 LEFT OUTER JOIN ("
@@ -472,24 +464,6 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " AS rot ON rot.role_id = rt.role_id"
         + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
         + (extraFilter == null ? "" : extraFilter);
-  }
-
-  protected String scimGroupJoin(String groupTableAlias) {
-    return " LEFT JOIN "
-        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
-        + " "
-        + SCIM_GROUP_ALIAS
-        + " ON "
-        + SCIM_GROUP_ALIAS
-        + ".group_name = "
-        + groupTableAlias
-        + ".group_name AND "
-        + SCIM_GROUP_ALIAS
-        + ".deleted_at = 0";
-  }
-
-  protected String coalescedExternalId(String groupTableAlias) {
-    return "COALESCE(" + SCIM_GROUP_ALIAS + ".external_id, " + groupTableAlias + ".external_id)";
   }
 
   protected String jsonArrayAgg(String expr) {

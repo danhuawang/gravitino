@@ -1,8 +1,9 @@
 /*
- * Copyright 2026 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Inc.
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,7 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_user_group_rel"));
     assertTrue(sql.contains("scim_group_meta"));
     assertTrue(sql.contains("scim_user_meta"));
-    assertTrue(sql.contains("COALESCE(sg.external_id, gt.external_id) as externalId"));
+    assertFalse(sql.contains("gt.external_id"));
     assertTrue(sql.contains("COUNT(DISTINCT ut.user_id)"));
     assertTrue(!sql.contains("as inBuiltInIdp"));
   }

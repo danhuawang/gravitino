@@ -544,7 +544,6 @@ public class MockedGravitinoService {
         UserEntity.builder()
             .withId(entityIdAllocator++)
             .withName(userName)
-            .withEnabled(true)
             .withAuditInfo(AuditInfo.EMPTY)
             .withRoleNames(roleNames)
             .withRoleIds(Lists.newArrayList())

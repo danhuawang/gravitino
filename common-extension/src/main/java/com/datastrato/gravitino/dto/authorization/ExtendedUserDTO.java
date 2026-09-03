@@ -52,13 +52,11 @@ public class ExtendedUserDTO extends UserDTO {
   private ExtendedUserDTO(
       Long id,
       String name,
-      String externalId,
       List<String> roles,
       List<String> groups,
       AuditDTO audit,
-      boolean enabled,
       IdentitySource origin) {
-    super(id, name, externalId, roles, audit, enabled);
+    super(id, name, roles, audit);
     this.origin = origin;
     this.groups = groups == null ? Collections.emptyList() : groups;
   }
@@ -118,14 +116,7 @@ public class ExtendedUserDTO extends UserDTO {
     List<String> roles = user.roles() == null ? Collections.emptyList() : user.roles();
     List<String> groupNames = groups == null ? Collections.emptyList() : groups;
     return new ExtendedUserDTO(
-        user.id(),
-        user.name(),
-        user.externalId(),
-        roles,
-        groupNames,
-        DTOConverters.toDTO(user.auditInfo()),
-        user.enabled(),
-        origin);
+        user.id(), user.name(), roles, groupNames, DTOConverters.toDTO(user.auditInfo()), origin);
   }
 
   /**

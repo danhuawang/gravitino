@@ -79,8 +79,7 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
     return "SELECT mt.metalake_id as requestedMetalakeId, rt.role_id as roleId,"
         + " principal.user_id as userId, principal.user_name as userName,"
         + " principal.metalake_id as metalakeId,"
-        + " COALESCE(su.external_id, principal.external_id) as externalId,"
-        + " COALESCE(su.enabled, principal.enabled) as enabled, principal.audit_info as auditInfo,"
+        + " principal.audit_info as auditInfo,"
         + " principal.current_version as currentVersion,"
         + " principal.last_version as lastVersion, principal.deleted_at as deletedAt,"
         + " rel.audit_info as assignmentAuditInfo,"
@@ -92,9 +91,6 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
         + " LEFT JOIN "
         + USER_TABLE_NAME
         + " principal ON principal.user_id = rel.user_id AND principal.deleted_at = 0"
-        + " LEFT JOIN "
-        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
-        + " su ON su.user_name = principal.user_name AND su.deleted_at = 0"
         + " WHERE mt.metalake_name = #{metalake} AND mt.deleted_at = 0"
         + " ORDER BY principal.user_name";
   }
@@ -111,7 +107,6 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
     return "SELECT mt.metalake_id as requestedMetalakeId, rt.role_id as roleId,"
         + " principal.group_id as groupId, principal.group_name as groupName,"
         + " principal.metalake_id as metalakeId,"
-        + " COALESCE(sg.external_id, principal.external_id) as externalId,"
         + " principal.audit_info as auditInfo, principal.current_version as currentVersion,"
         + " principal.last_version as lastVersion, principal.deleted_at as deletedAt,"
         + " rel.audit_info as assignmentAuditInfo,"
@@ -120,9 +115,6 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
         + " LEFT JOIN "
         + GROUP_TABLE_NAME
         + " principal ON principal.group_id = rel.group_id AND principal.deleted_at = 0"
-        + " LEFT JOIN "
-        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
-        + " sg ON sg.group_name = principal.group_name AND sg.deleted_at = 0"
         + " WHERE mt.metalake_name = #{metalake} AND mt.deleted_at = 0"
         + " ORDER BY principal.group_name";
   }

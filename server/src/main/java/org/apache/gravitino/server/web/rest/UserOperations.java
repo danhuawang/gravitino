@@ -20,7 +20,6 @@ package org.apache.gravitino.server.web.rest;
 
 import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
-import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
@@ -32,7 +31,6 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
@@ -155,25 +153,25 @@ public class UserOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       UserAddRequest request) {
+    String userName = request == null ? "" : request.getName();
+    if (request == null) {
+      return ExceptionHandlers.handleUserException(
+          OperationType.ADD,
+          userName,
+          metalake,
+          new IllegalArgumentException("Request body cannot be null"));
+    }
     try {
       return Utils.doAs(
           httpRequest,
           () -> {
             request.validate();
             MetalakeManager.checkMetalakeInUse(metalake);
-            User addedUser =
-                StringUtils.isNotBlank(request.getExternalId())
-                    ? accessControlManager.addUser(
-                        metalake,
-                        request.getName(),
-                        request.getExternalId(),
-                        Optional.ofNullable(request.getEnabled()).orElse(true))
-                    : accessControlManager.addUser(metalake, request.getName());
+            User addedUser = accessControlManager.addUser(metalake, request.getName());
             return Utils.ok(new UserResponse(DTOConverters.toDTO(addedUser)));
           });
     } catch (Exception e) {
-      return ExceptionHandlers.handleUserException(
-          OperationType.ADD, request.getName(), metalake, e);
+      return ExceptionHandlers.handleUserException(OperationType.ADD, userName, metalake, e);
     }
   }
 

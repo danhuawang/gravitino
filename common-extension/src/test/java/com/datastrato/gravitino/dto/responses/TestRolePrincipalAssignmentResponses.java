@@ -28,7 +28,6 @@ class TestRolePrincipalAssignmentResponses {
             .withName("alice")
             .withRoles(Collections.emptyList())
             .withAudit(buildEntityAudit())
-            .withEnabled(true)
             .build();
     RoleUserAssignmentListResponse response =
         new RoleUserAssignmentListResponse(

@@ -153,8 +153,8 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
               buildRole("role2", Lists.newArrayList(table1Deny)),
               buildRole("role3", Collections.emptyList())
             });
-    User user1 = mockUser("user1", Lists.newArrayList("role1", "role2"), true);
-    User user2 = mockUser("user2", Lists.newArrayList("role1"), false);
+    User user1 = mockUser("user1", Lists.newArrayList("role1", "role2"));
+    User user2 = mockUser("user2", Lists.newArrayList("role1"));
     ExtendedGroupDTO group1 = mockExtendedGroup("group1", Lists.newArrayList("role2"), 2);
     ExtendedGroupDTO emptyGroup = mockExtendedGroup("empty", Collections.emptyList(), 0);
     when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[] {user1, user2});
@@ -317,11 +317,10 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         .build();
   }
 
-  private User mockUser(String name, List<String> roles, boolean enabled) {
+  private User mockUser(String name, List<String> roles) {
     User user = mock(User.class);
     when(user.name()).thenReturn(name);
     when(user.roles()).thenReturn(roles);
-    when(user.enabled()).thenReturn(enabled);
     return user;
   }
 
@@ -329,7 +328,6 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     Group group = mock(Group.class);
     when(group.name()).thenReturn(name);
     when(group.roles()).thenReturn(roles);
-    when(group.externalId()).thenReturn(null);
     when(group.auditInfo())
         .thenReturn(
             AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build());

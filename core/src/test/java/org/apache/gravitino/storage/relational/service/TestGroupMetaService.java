@@ -39,7 +39,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityAlreadyExistsException;
-import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.PagedResult;
@@ -60,7 +59,6 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.apache.ibatis.session.SqlSession;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.TestTemplate;
-import org.junit.jupiter.api.function.Executable;
 
 class TestGroupMetaService extends TestJDBCBackend {
 
@@ -1068,41 +1066,6 @@ class TestGroupMetaService extends TestJDBCBackend {
   }
 
   @TestTemplate
-  void testGroupExtId() throws IOException {
-    GroupMetaService svc = groupMetaService();
-    svc.insertGroup(groupWithExtId("g1", "ext-1"), false);
-    GroupEntity found = svc.getGroupByExternalId(groupExtIdent("ext-1"));
-    Assertions.assertEquals("g1", found.name());
-    Assertions.assertEquals("ext-1", found.externalId());
-    assertThrowsExt(
-        NoSuchEntityException.class,
-        () -> svc.getGroupByExternalId(groupExtIdent("missing-ext-id")));
-    assertThrowsExt(
-        IllegalArgumentException.class, () -> svc.getGroupByExternalId(groupExtIdent("")));
-  }
-
-  @TestTemplate
-  void testExtDup() throws IOException {
-    GroupMetaService svc = groupMetaService();
-    svc.insertGroup(groupWithExtId("g1", "ext-1"), false);
-    assertThrowsExt(
-        EntityAlreadyExistsException.class,
-        () -> svc.insertGroup(groupWithExtId("g2", "ext-1"), false));
-  }
-
-  @TestTemplate
-  void testGroupExtDel() throws IOException {
-    GroupMetaService svc = groupMetaService();
-    svc.insertGroup(groupWithExtId("g1", "ext-del-by"), false);
-    GroupEntity group = svc.getGroupByExternalId(groupExtIdent("ext-del-by"));
-    Assertions.assertEquals("g1", group.name());
-    Assertions.assertTrue(svc.deleteGroup(group.nameIdentifier()));
-    assertThrowsExt(
-        NoSuchEntityException.class, () -> svc.getGroupByExternalId(groupExtIdent("ext-del-by")));
-    assertThrowsExt(NoSuchEntityException.class, () -> svc.deleteGroup(group.nameIdentifier()));
-  }
-
-  @TestTemplate
   void testGroupPagination() throws IOException {
     AuditInfo auditInfo =
         AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build();
@@ -1229,29 +1192,6 @@ class TestGroupMetaService extends TestJDBCBackend {
     Assertions.assertEquals(
         Sets.newHashSet(quotedRole, backslashRole),
         Sets.newHashSet(page.items().get(0).roleNames()));
-  }
-
-  private NameIdentifier groupExtIdent(String externalId) {
-    return AuthorizationUtils.ofGroupExternalId(metalakeName, externalId);
-  }
-
-  private GroupMetaService groupMetaService() throws IOException {
-    createAndInsertMakeLake(metalakeName);
-    return GroupMetaService.getInstance();
-  }
-
-  private void assertThrowsExt(Class<? extends Exception> type, Executable executable) {
-    Assertions.assertThrows(type, executable);
-  }
-
-  private GroupEntity groupWithExtId(String name, String externalId) {
-    return GroupEntity.builder()
-        .withId(RandomIdGenerator.INSTANCE.nextId())
-        .withName(name)
-        .withNamespace(AuthorizationUtils.ofGroupNamespace(metalakeName))
-        .withExternalId(externalId)
-        .withAuditInfo(AUDIT_INFO)
-        .build();
   }
 
   private GroupEntity createGroupEntity(

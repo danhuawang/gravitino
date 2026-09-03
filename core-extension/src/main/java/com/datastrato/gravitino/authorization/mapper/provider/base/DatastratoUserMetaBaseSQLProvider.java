@@ -25,6 +25,8 @@ public class DatastratoUserMetaBaseSQLProvider {
 
   private static final String SCIM_USER_ALIAS = "su";
 
+  private static final String IDP_USER_ALIAS = "iu";
+
   /**
    * Lists active users under a metalake by name.
    *
@@ -37,18 +39,11 @@ public class DatastratoUserMetaBaseSQLProvider {
     return "<script>"
         + "SELECT ut.user_id as userId, ut.user_name as userName,"
         + " ut.metalake_id as metalakeId,"
-        + " "
-        + coalescedExternalId("ut")
-        + " as externalId,"
-        + " "
-        + coalescedEnabled("ut")
-        + " as enabled,"
         + " ut.audit_info as auditInfo, ut.current_version as currentVersion,"
         + " ut.last_version as lastVersion, ut.deleted_at as deletedAt"
         + " FROM "
         + USER_TABLE_NAME
         + " ut"
-        + scimUserJoin("ut")
         + " WHERE ut.deleted_at = 0"
         + " AND ut.metalake_id = "
         + metalakeIdByNameSubquery()
@@ -58,7 +53,11 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Builds a batch UPDATE for local users that already passed validation.
+   * Builds a batch UPDATE of {@code idp_user_meta.enabled} for local metalake users.
+   *
+   * <p>{@code user_meta} no longer stores {@code enabled}; local login state lives on the built-in
+   * IdP. Rows present in {@code scim_user_meta} are excluded (those use {@link
+   * #batchUpdateScimUserEnabledByUserNames}).
    *
    * @param metalakeName The metalake name.
    * @param userNames Distinct user names.
@@ -71,13 +70,26 @@ public class DatastratoUserMetaBaseSQLProvider {
       @Param("enabled") boolean enabled) {
     return "<script>"
         + "UPDATE "
-        + USER_TABLE_NAME
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " "
+        + IDP_USER_ALIAS
         + " SET enabled = #{enabled},"
         + " last_version = current_version,"
         + " current_version = current_version + 1"
-        + " WHERE deleted_at = 0"
-        + " AND metalake_id = "
+        + " WHERE "
+        + IDP_USER_ALIAS
+        + ".deleted_at = 0"
+        + " AND "
+        + IDP_USER_ALIAS
+        + ".user_name IN "
+        + userNameInClause()
+        + " AND EXISTS (SELECT 1 FROM "
+        + USER_TABLE_NAME
+        + " ut WHERE ut.user_name = "
+        + IDP_USER_ALIAS
+        + ".user_name AND ut.deleted_at = 0 AND ut.metalake_id = "
         + metalakeIdByNameSubquery()
+        + ")"
         + " AND NOT EXISTS (SELECT 1 FROM "
         + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
         + " "
@@ -85,12 +97,10 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " WHERE "
         + SCIM_USER_ALIAS
         + ".user_name = "
-        + USER_TABLE_NAME
+        + IDP_USER_ALIAS
         + ".user_name AND "
         + SCIM_USER_ALIAS
         + ".deleted_at = 0)"
-        + " AND user_name IN "
-        + userNameInClause()
         + "</script>";
   }
 
@@ -242,7 +252,7 @@ public class DatastratoUserMetaBaseSQLProvider {
   /**
    * Loads a metalake user with roles and identity-store origin in one JOIN.
    *
-   * <p>Same origin / {@code enabled} rules as {@link #listUserWithGroupsPOsByMetalakeName}.
+   * <p>Same origin rules as {@link #listUserWithGroupsPOsByMetalakeName}.
    *
    * @param metalakeName The metalake name.
    * @param userName The username.
@@ -295,8 +305,7 @@ public class DatastratoUserMetaBaseSQLProvider {
    * Lists metalake users with roles, group names, and identity-store origin in one query.
    *
    * <p>{@code origin} is Local when the name exists in {@code idp_user_meta}, Provisioned when it
-   * exists in {@code scim_user_meta} (and not IdP), otherwise JIT. {@code enabled} comes from IdP
-   * then SCIM, defaulting to {@code true} when neither has a row.
+   * exists in {@code scim_user_meta} (and not IdP), otherwise JIT.
    *
    * @param metalakeName The metalake name.
    * @return MyBatis SQL.
@@ -304,12 +313,6 @@ public class DatastratoUserMetaBaseSQLProvider {
   public String listUserWithGroupsPOsByMetalakeName(@Param("metalakeName") String metalakeName) {
     return "SELECT ut.user_id as userId, ut.user_name as userName,"
         + " ut.metalake_id as metalakeId,"
-        + " "
-        + coalescedExternalId("ut")
-        + " as externalId,"
-        + " COALESCE(iu.enabled, "
-        + SCIM_USER_ALIAS
-        + ".enabled, TRUE) as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
         + " ut.deleted_at as deletedAt,"
@@ -399,8 +402,7 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " iu WHERE iu.user_name = su.user_name AND iu.deleted_at = 0)"
         + " UNION ALL "
         + "SELECT ut.user_name as userName,"
-        + " CASE WHEN MAX(CASE WHEN ut.enabled THEN 1 ELSE 0 END) = 1 THEN TRUE ELSE FALSE END"
-        + " as enabled, "
+        + " TRUE as enabled, "
         + IdentitySource.ORIGIN_CODE_JIT
         + " as originCode,"
         + " CAST(NULL AS BIGINT) as idpUserId, CAST(NULL AS BIGINT) as scimUserId"
@@ -449,7 +451,10 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Loads metalake user totals split by {@code enabled}.
+   * Loads metalake user totals split by identity-store {@code enabled}.
+   *
+   * <p>Uses {@code scim_user_meta.enabled} for provisioned users and {@code idp_user_meta.enabled}
+   * for local users; never reads {@code user_meta}.
    *
    * @param metalakeName The metalake name.
    * @return Aggregate SQL returning one row.
@@ -457,16 +462,25 @@ public class DatastratoUserMetaBaseSQLProvider {
   public String countUsersByEnabledByMetalake(@Param("metalakeName") String metalakeName) {
     return "SELECT COUNT(*) AS total,"
         + " COALESCE(SUM(CASE WHEN "
-        + coalescedEnabledWithDefault("ut")
+        + coalescedEnabledWithDefault()
         + " THEN 1 ELSE 0 END), 0) AS active,"
         + " COALESCE(SUM(CASE WHEN NOT "
-        + coalescedEnabledWithDefault("ut")
+        + coalescedEnabledWithDefault()
         + " THEN 1 ELSE 0 END), 0)"
         + " AS suspended"
         + " FROM "
         + USER_TABLE_NAME
         + " ut"
         + scimUserJoin("ut")
+        + " LEFT JOIN "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " "
+        + IDP_USER_ALIAS
+        + " ON "
+        + IDP_USER_ALIAS
+        + ".user_name = ut.user_name AND "
+        + IDP_USER_ALIAS
+        + ".deleted_at = 0"
         + " INNER JOIN "
         + MetalakeMetaMapper.TABLE_NAME
         + " mt ON ut.metalake_id = mt.metalake_id AND mt.deleted_at = 0"
@@ -476,12 +490,6 @@ public class DatastratoUserMetaBaseSQLProvider {
   private String usersForMetalakeGroupSelectAndFrom() {
     return "SELECT ut.user_id as userId, ut.user_name as userName,"
         + " ut.metalake_id as metalakeId,"
-        + " "
-        + coalescedExternalId("ut")
-        + " as externalId,"
-        + " "
-        + identityStoreEnabled()
-        + " as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
         + " ut.deleted_at as deletedAt,"
@@ -552,12 +560,6 @@ public class DatastratoUserMetaBaseSQLProvider {
                 + " ut ON ut.metalake_id = mt.metalake_id AND ut.deleted_at = 0";
     return "SELECT ut.user_id as userId, ut.user_name as userName,"
         + " ut.metalake_id as metalakeId,"
-        + " "
-        + coalescedExternalId("ut")
-        + " as externalId,"
-        + " "
-        + identityStoreEnabled()
-        + " as enabled,"
         + " ut.audit_info as auditInfo,"
         + " ut.current_version as currentVersion, ut.last_version as lastVersion,"
         + " ut.deleted_at as deletedAt,"
@@ -601,11 +603,6 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " END as originCode";
   }
 
-  /** IdP then SCIM enabled, default Active when neither identity store has a row. */
-  private String identityStoreEnabled() {
-    return "COALESCE(iu.enabled, " + SCIM_USER_ALIAS + ".enabled, TRUE)";
-  }
-
   protected String scimUserJoin(String userTableAlias) {
     return " LEFT JOIN "
         + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
@@ -620,16 +617,16 @@ public class DatastratoUserMetaBaseSQLProvider {
         + ".deleted_at = 0";
   }
 
-  protected String coalescedExternalId(String userTableAlias) {
-    return "COALESCE(" + SCIM_USER_ALIAS + ".external_id, " + userTableAlias + ".external_id)";
+  /**
+   * Effective enabled flag from identity tables only ({@code scim_user_meta}, then {@code
+   * idp_user_meta}).
+   */
+  protected String coalescedEnabled() {
+    return "COALESCE(" + SCIM_USER_ALIAS + ".enabled, " + IDP_USER_ALIAS + ".enabled)";
   }
 
-  protected String coalescedEnabled(String userTableAlias) {
-    return "COALESCE(" + SCIM_USER_ALIAS + ".enabled, " + userTableAlias + ".enabled)";
-  }
-
-  protected String coalescedEnabledWithDefault(String userTableAlias) {
-    return "COALESCE(" + coalescedEnabled(userTableAlias) + ", true)";
+  protected String coalescedEnabledWithDefault() {
+    return "COALESCE(" + coalescedEnabled() + ", true)";
   }
 
   protected String metalakeIdByNameSubquery() {

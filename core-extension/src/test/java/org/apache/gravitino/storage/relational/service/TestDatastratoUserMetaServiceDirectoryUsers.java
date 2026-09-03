@@ -213,9 +213,9 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(List.of("Contoso"), sam.metalakes());
   }
 
-  /** Verifies metalake Users list origin (Local/Provisioned/JIT) and identity-store enabled. */
+  /** Verifies metalake Users list origin (Local/Provisioned/JIT). */
   @Test
-  public void testListUsersWithGroupsOriginAndEnabled() {
+  public void testListUsersWithGroupsOrigin() {
     List<UserWithGroups> contoso =
         DatastratoUserMetaService.getInstance().listUsersWithGroups("Contoso");
     assertEquals(3, contoso.size());
@@ -223,23 +223,19 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     UserWithGroups dana =
         contoso.stream().filter(u -> u.user().name().equals("dana.k")).findFirst().orElseThrow();
     assertEquals(IdentitySource.PROVISIONED, dana.origin());
-    assertTrue(dana.user().enabled());
 
     UserWithGroups jordan =
         contoso.stream().filter(u -> u.user().name().equals("jordan.m")).findFirst().orElseThrow();
     assertEquals(IdentitySource.JIT, jordan.origin());
-    assertTrue(jordan.user().enabled());
 
     UserWithGroups sam =
         contoso.stream().filter(u -> u.user().name().equals("sam.o")).findFirst().orElseThrow();
     assertEquals(IdentitySource.LOCAL, sam.origin());
-    assertTrue(sam.user().enabled());
 
     List<UserWithGroups> acme = DatastratoUserMetaService.getInstance().listUsersWithGroups("Acme");
     UserWithGroups lee =
         acme.stream().filter(u -> u.user().name().equals("lee.p")).findFirst().orElseThrow();
     assertEquals(IdentitySource.LOCAL, lee.origin());
-    assertFalse(lee.user().enabled());
   }
 
   /** Verifies Local Directory Users can be batch-disabled via idp_user_meta. */

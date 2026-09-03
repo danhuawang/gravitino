@@ -35,7 +35,6 @@ import org.apache.gravitino.Schema;
 import org.apache.gravitino.SupportsSchemas;
 import org.apache.gravitino.catalog.jdbc.config.JdbcConfig;
 import org.apache.gravitino.client.GravitinoMetalake;
-import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.integration.test.container.ContainerSuite;
 import org.apache.gravitino.integration.test.container.OracleContainer;
@@ -315,7 +314,8 @@ public class CatalogOracleIT extends BaseIT {
     Table loaded = tableCatalog.loadTable(tableIdent);
     assertEquals(name.toUpperCase(Locale.ROOT), loaded.name());
     assertEquals("table_comment", loaded.comment());
-    assertEquals(HiddenPropertyMaskUtils.MASKED_VALUE, loaded.properties().get(COMMENT_KEY));
+    // COMMENT_KEY is reserved+hidden, so #12750 omits it from API responses.
+    assertFalse(loaded.properties().containsKey(COMMENT_KEY));
     assertEquals(columns.length, loaded.columns().length);
     for (int i = 0; i < columns.length; i++) {
       // Unquoted column name input folds to the bare uppercase logical name.

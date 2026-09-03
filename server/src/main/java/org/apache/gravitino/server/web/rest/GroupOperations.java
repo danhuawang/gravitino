@@ -31,7 +31,6 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
@@ -113,22 +112,25 @@ public class GroupOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       GroupAddRequest request) {
+    String groupName = request == null ? "" : request.getName();
+    if (request == null) {
+      return ExceptionHandlers.handleGroupException(
+          OperationType.ADD,
+          groupName,
+          metalake,
+          new IllegalArgumentException("Request body cannot be null"));
+    }
     try {
       return Utils.doAs(
           httpRequest,
           () -> {
             request.validate();
             MetalakeManager.checkMetalakeInUse(metalake);
-            Group addedGroup =
-                StringUtils.isNotBlank(request.getExternalId())
-                    ? accessControlManager.addGroup(
-                        metalake, request.getName(), request.getExternalId())
-                    : accessControlManager.addGroup(metalake, request.getName());
+            Group addedGroup = accessControlManager.addGroup(metalake, request.getName());
             return Utils.ok(new GroupResponse(DTOConverters.toDTO(addedGroup)));
           });
     } catch (Exception e) {
-      return ExceptionHandlers.handleGroupException(
-          OperationType.ADD, request.getName(), metalake, e);
+      return ExceptionHandlers.handleGroupException(OperationType.ADD, groupName, metalake, e);
     }
   }
 

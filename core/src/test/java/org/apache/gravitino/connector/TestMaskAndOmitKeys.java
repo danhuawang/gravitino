@@ -16,20 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.gravitino.authorization;
+package org.apache.gravitino.connector;
 
+import java.util.Set;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-public class TestGroupChange {
+public class TestMaskAndOmitKeys {
 
   @Test
-  void testUpdateExternalId() {
-    GroupChange.UpdateExternalId change =
-        (GroupChange.UpdateExternalId) GroupChange.updateExternalId("ext-1");
-    Assertions.assertEquals("ext-1", change.getNewExternalId());
-    Assertions.assertEquals(GroupChange.updateExternalId("ext-1"), change);
-    Assertions.assertEquals(GroupChange.updateExternalId(null), GroupChange.updateExternalId(null));
-    Assertions.assertNotEquals(GroupChange.updateExternalId("ext-2"), change);
+  void testOfAndEmpty() {
+    Assertions.assertSame(MaskAndOmitKeys.empty(), MaskAndOmitKeys.of(null, null));
+    Assertions.assertSame(MaskAndOmitKeys.empty(), MaskAndOmitKeys.of(Set.of(), Set.of()));
+
+    MaskAndOmitKeys keys = MaskAndOmitKeys.of(Set.of("password"), Set.of("gravitino.identifier"));
+    Assertions.assertEquals(Set.of("password"), keys.keysToMask());
+    Assertions.assertEquals(Set.of("gravitino.identifier"), keys.keysToOmit());
   }
 }

@@ -23,8 +23,6 @@ import static org.apache.gravitino.utils.NameIdentifierUtil.getCatalogIdentifier
 
 import com.google.common.collect.Maps;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.HasIdentifier;
@@ -32,6 +30,8 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.SchemaChange;
 import org.apache.gravitino.StringIdentifier;
 import org.apache.gravitino.connector.HasPropertyMetadata;
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
+import org.apache.gravitino.connector.MaskAndOmitKeys;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
@@ -132,7 +132,7 @@ public abstract class OperationDispatcher {
     }
   }
 
-  protected Set<String> getHiddenPropertyNames(
+  protected MaskAndOmitKeys getMaskAndOmitKeys(
       NameIdentifier catalogIdent,
       ThrowableFunction<HasPropertyMetadata, PropertiesMetadata> provider,
       Map<String, String> properties) {
@@ -140,12 +140,9 @@ public abstract class OperationDispatcher {
         catalogIdent,
         c ->
             c.doWithPropertiesMeta(
-                p -> {
-                  PropertiesMetadata propertiesMetadata = provider.apply(p);
-                  return properties.keySet().stream()
-                      .filter(propertiesMetadata::isHiddenProperty)
-                      .collect(Collectors.toSet());
-                }),
+                p ->
+                    HiddenPropertyMaskUtils.classifyHiddenProperties(
+                        properties, provider.apply(p))),
         IllegalArgumentException.class);
   }
 

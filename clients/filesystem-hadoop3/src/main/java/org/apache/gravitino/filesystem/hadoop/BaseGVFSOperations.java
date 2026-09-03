@@ -81,6 +81,7 @@ import org.apache.gravitino.exceptions.NoSuchLocationNameException;
 import org.apache.gravitino.file.Fileset;
 import org.apache.gravitino.file.FilesetCatalog;
 import org.apache.gravitino.storage.AzureProperties;
+import org.apache.gravitino.storage.CloudStorageCredentialPropertyKeys;
 import org.apache.gravitino.storage.OSSProperties;
 import org.apache.gravitino.storage.S3Properties;
 import org.apache.gravitino.utils.FilesetUtil;
@@ -953,13 +954,19 @@ public abstract class BaseGVFSOperations implements Closeable {
             getFilesetCatalog(
                 NameIdentifier.of(
                     filesetIdent.namespace().level(0), filesetIdent.namespace().level(1)));
-    allProperties.putAll(catalog.properties());
-
     Schema schema = getSchema(NameIdentifier.parse(filesetIdent.namespace().toString()));
-    allProperties.putAll(schema.properties());
-    allProperties.putAll(filesetProperties);
+    putOmittedStaticCredentialProperties(allProperties, catalog.properties());
+    putOmittedStaticCredentialProperties(allProperties, schema.properties());
+    putOmittedStaticCredentialProperties(allProperties, filesetProperties);
     allProperties.putAll(extractNonDefaultConfig(conf));
     return allProperties;
+  }
+
+  private static void putOmittedStaticCredentialProperties(
+      Map<String, String> target, Map<String, String> props) {
+    if (props != null) {
+      target.putAll(CloudStorageCredentialPropertyKeys.omitStaticCredentialProperties(props));
+    }
   }
 
   private Map<String, String> getNecessaryProperties(Map<String, String> properties) {

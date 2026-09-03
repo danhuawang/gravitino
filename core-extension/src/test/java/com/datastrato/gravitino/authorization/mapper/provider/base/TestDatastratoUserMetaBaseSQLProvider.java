@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Inc.
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
@@ -28,8 +28,8 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_user_group_rel"));
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("scim_group_meta"));
-    assertTrue(sql.contains("COALESCE(su.external_id, ut.external_id) as externalId"));
-    assertTrue(sql.contains("COALESCE(iu.enabled, su.enabled, TRUE) as enabled"));
+    assertFalse(sql.contains("ut.external_id"));
+    assertFalse(sql.contains("ut.enabled"));
     assertTrue(sql.contains("as originCode"));
     assertTrue(sql.contains("idp_user_meta"));
     assertTrue(sql.contains("UNION ALL"));
@@ -64,26 +64,27 @@ public class TestDatastratoUserMetaBaseSQLProvider {
             "metalake", Lists.newArrayList("alice", "bob"));
 
     assertTrue(sql.contains("SELECT ut.user_id as userId"));
-    assertTrue(sql.contains("scim_user_meta"));
-    assertTrue(sql.contains("COALESCE(su.external_id, ut.external_id) as externalId"));
-    assertTrue(sql.contains("COALESCE(su.enabled, ut.enabled) as enabled"));
+    assertFalse(sql.contains("external_id"));
+    assertFalse(sql.contains("as enabled"));
     assertTrue(sql.contains("metalake_name = #{metalakeName}"));
     assertTrue(sql.contains("user_name IN "));
     assertFalse(sql.contains("UPDATE "));
   }
 
   @Test
-  public void testBatchUpdateEnabledExcludesScimUsers() {
+  public void testBatchUpdateEnabledUpdatesIdpUsers() {
     String sql =
         provider.batchUpdateEnabledByMetalakeNameAndNames(
             "metalake", Lists.newArrayList("alice", "bob"), false);
 
     assertTrue(sql.contains("UPDATE "));
+    assertTrue(sql.contains("idp_user_meta"));
     assertTrue(sql.contains("SET enabled = #{enabled}"));
     assertTrue(sql.contains("metalake_name = #{metalakeName}"));
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains("user_name IN "));
+    assertFalse(sql.contains("UPDATE user_meta"));
     assertFalse(sql.contains("external_id IS NULL"));
     assertFalse(sql.contains("HAVING"));
     assertFalse(sql.contains("INNER JOIN"));
@@ -150,11 +151,13 @@ public class TestDatastratoUserMetaBaseSQLProvider {
   }
 
   @Test
-  public void testCountUsersByEnabledByMetalakeUsesScimCoalesce() {
+  public void testCountUsersByEnabledByMetalakeUsesIdentityTables() {
     String sql = provider.countUsersByEnabledByMetalake("metalake");
 
     assertTrue(sql.contains("scim_user_meta"));
-    assertTrue(sql.contains("COALESCE(COALESCE(su.enabled, ut.enabled), true)"));
+    assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("COALESCE(COALESCE(su.enabled, iu.enabled), true)"));
+    assertFalse(sql.contains("ut.enabled"));
   }
 
   @Test
@@ -163,8 +166,8 @@ public class TestDatastratoUserMetaBaseSQLProvider {
 
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("idp_user_meta"));
-    assertTrue(sql.contains("COALESCE(su.external_id, ut.external_id) as externalId"));
-    assertTrue(sql.contains("COALESCE(iu.enabled, su.enabled, TRUE) as enabled"));
+    assertFalse(sql.contains("external_id"));
+    assertFalse(sql.contains("as enabled"));
     assertTrue(sql.contains("as originCode"));
     assertTrue(sql.contains("ut.user_name = #{userName}"));
     assertTrue(sql.contains("GROUP BY ut.user_id"));
@@ -176,8 +179,9 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     String sql = provider.listUsersByMetalakeWithOrigin("metalake");
 
     assertTrue(sql.contains("scim_user_meta"));
-    assertTrue(sql.contains("COALESCE(su.external_id, ut.external_id) as externalId"));
-    assertTrue(sql.contains("COALESCE(iu.enabled, su.enabled, TRUE) as enabled"));
+    assertTrue(sql.contains("idp_user_meta"));
+    assertFalse(sql.contains("external_id"));
+    assertFalse(sql.contains("as enabled"));
     assertTrue(sql.contains("as originCode"));
     assertFalse(sql.contains("as inBuiltInIdp"));
   }

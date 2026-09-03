@@ -4,7 +4,6 @@
 package com.datastrato.gravitino.dto.authorization;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,14 +37,12 @@ public class TestExtendedUserDTO {
 
   @Test
   public void testFromDerivesIdentitySource() throws Exception {
-    ExtendedUserDTO local = ExtendedUserDTO.from(user("lee.p", null), true);
+    ExtendedUserDTO local = ExtendedUserDTO.from(user("lee.p"), true);
     assertEquals("lee.p", local.name());
-    assertNull(local.externalId());
     assertEquals(IdentitySource.LOCAL, local.origin());
     assertTrue(JsonUtils.objectMapper().writeValueAsString(local).contains("\"origin\":\"Local\""));
 
-    ExtendedUserDTO provisioned = ExtendedUserDTO.from(user("dana.k", "azure-oid"), false);
-    assertEquals("azure-oid", provisioned.externalId());
+    ExtendedUserDTO provisioned = ExtendedUserDTO.from(user("dana.k"), false);
     assertEquals(IdentitySource.PROVISIONED, provisioned.origin());
   }
 
@@ -54,8 +51,8 @@ public class TestExtendedUserDTO {
     ExtendedUserDTO[] users =
         ExtendedUserDTO.from(
             List.of(
-                userWithGroups("lee.p", null, List.of("contractors"), true),
-                userWithGroups("dana.k", "azure-oid", Collections.emptyList(), false)));
+                userWithGroups("lee.p", List.of("contractors"), true),
+                userWithGroups("dana.k", Collections.emptyList(), false)));
 
     assertEquals(2, users.length);
     assertEquals("lee.p", users[0].name());
@@ -67,8 +64,8 @@ public class TestExtendedUserDTO {
   }
 
   private static ExtendedUserDTO.UserWithGroupNames userWithGroups(
-      String name, String externalId, List<String> groups, boolean inBuiltInIdp) {
-    User user = user(name, externalId);
+      String name, List<String> groups, boolean inBuiltInIdp) {
+    User user = user(name);
     IdentitySource origin = IdentitySource.fromIdpMembership(inBuiltInIdp);
     return new ExtendedUserDTO.UserWithGroupNames() {
       @Override
@@ -88,12 +85,10 @@ public class TestExtendedUserDTO {
     };
   }
 
-  private static User user(String name, String externalId) {
+  private static User user(String name) {
     return UserDTO.builder()
         .withId(1L)
         .withName(name)
-        .withExternalId(externalId)
-        .withEnabled(true)
         .withRoles(Collections.emptyList())
         .withAudit(AuditDTO.builder().withCreator("test").withCreateTime(Instant.now()).build())
         .build();

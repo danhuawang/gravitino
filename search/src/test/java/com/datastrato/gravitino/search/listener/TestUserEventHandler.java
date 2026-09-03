@@ -9,10 +9,7 @@ import org.apache.gravitino.Entity.EntityType;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.listener.api.event.AddUserEvent;
-import org.apache.gravitino.listener.api.event.AlterUserEvent;
 import org.apache.gravitino.listener.api.event.GrantUserRolesEvent;
-import org.apache.gravitino.listener.api.event.RemoveUserByExternalIdEvent;
-import org.apache.gravitino.listener.api.event.RemoveUserByIdEvent;
 import org.apache.gravitino.listener.api.event.RemoveUserEvent;
 import org.apache.gravitino.listener.api.event.RevokeUserRolesEvent;
 import org.apache.gravitino.listener.api.info.UserInfo;
@@ -41,11 +38,10 @@ class TestUserEventHandler {
   }
 
   @Test
-  void testAddAndAlterUserAreSynchronizedByName() {
+  void testAddUserIsSynchronizedByName() {
     handler.handleEvent(new AddUserEvent("tester", METALAKE, userInfo));
-    handler.handleEvent(new AlterUserEvent("tester", METALAKE, null, userInfo));
 
-    Mockito.verify(searchService, Mockito.times(2))
+    Mockito.verify(searchService)
         .synchronizeMetadata(
             NameIdentifierUtil.ofUser(METALAKE, USER_NAME), EntityType.USER, false);
   }
@@ -60,27 +56,8 @@ class TestUserEventHandler {
   }
 
   @Test
-  void testRemoveUserByIdDeletesDocumentDirectly() {
-    handler.handleEvent(new RemoveUserByIdEvent("tester", METALAKE, 100L, true));
-
-    Mockito.verify(searchService).delete(METALAKE, ImmutableList.of(100L), EntityType.USER);
-    Mockito.verify(searchService)
-        .synchronizeMetadata(NameIdentifier.of(METALAKE), EntityType.METALAKE, true);
-  }
-
-  @Test
-  void testRemoveUserByExternalIdReconcilesMetalake() {
-    handler.handleEvent(new RemoveUserByExternalIdEvent("tester", METALAKE, "external", true));
-
-    Mockito.verify(searchService)
-        .synchronizeMetadata(NameIdentifier.of(METALAKE), EntityType.METALAKE, true);
-  }
-
-  @Test
   void testNoOpRemoveEventsAreIgnored() {
     handler.handleEvent(new RemoveUserEvent("tester", METALAKE, USER_NAME, false));
-    handler.handleEvent(new RemoveUserByIdEvent("tester", METALAKE, 100L, false));
-    handler.handleEvent(new RemoveUserByExternalIdEvent("tester", METALAKE, "external", false));
 
     Mockito.verifyNoInteractions(searchService);
   }

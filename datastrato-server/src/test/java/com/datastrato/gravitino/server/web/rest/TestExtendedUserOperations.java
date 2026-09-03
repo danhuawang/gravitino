@@ -136,12 +136,9 @@ public class TestExtendedUserOperations extends JerseyTest {
     when(accessControlDispatcher.listUsersWithGroups(metalake))
         .thenReturn(
             List.of(
-                new UserWithGroups(
-                    buildUser("lee.p", "has-ext", true), List.of(), IdentitySource.LOCAL),
-                new UserWithGroups(
-                    buildUser("dana.k", null, false), List.of(), IdentitySource.PROVISIONED),
-                new UserWithGroups(
-                    buildUser("jordan.m", null, true), List.of(), IdentitySource.JIT)));
+                new UserWithGroups(buildUser("lee.p"), List.of(), IdentitySource.LOCAL),
+                new UserWithGroups(buildUser("dana.k"), List.of(), IdentitySource.PROVISIONED),
+                new UserWithGroups(buildUser("jordan.m"), List.of(), IdentitySource.JIT)));
 
     Response response =
         target("/web/security/metalakes/" + metalake + "/users")
@@ -154,12 +151,9 @@ public class TestExtendedUserOperations extends JerseyTest {
     Assertions.assertEquals(0, body.getCode());
     Assertions.assertEquals(3, body.getUsers().length);
     Assertions.assertEquals("lee.p", body.getUsers()[0].name());
-    Assertions.assertEquals("has-ext", body.getUsers()[0].externalId());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getUsers()[0].origin());
     Assertions.assertEquals("dana.k", body.getUsers()[1].name());
-    Assertions.assertNull(body.getUsers()[1].externalId());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getUsers()[1].origin());
-    Assertions.assertFalse(body.getUsers()[1].enabled());
     Assertions.assertEquals(IdentitySource.JIT, body.getUsers()[2].origin());
   }
 
@@ -232,20 +226,18 @@ public class TestExtendedUserOperations extends JerseyTest {
   @Test
   public void testGetUser() {
     ExtendedUserDTO user =
-        ExtendedUserDTO.from(buildUser("dana.k", "ext-1", true), IdentitySource.PROVISIONED, null);
+        ExtendedUserDTO.from(buildUser("dana.k"), IdentitySource.PROVISIONED, null);
     when(accessControlDispatcher.getExtendedUser("metalake", "dana.k")).thenReturn(user);
     Response response = get("/web/security/metalakes/metalake/users/dana.k");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     ExtendedUserResponse body = response.readEntity(ExtendedUserResponse.class);
     Assertions.assertEquals("dana.k", body.getUser().name());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getUser().origin());
-    Assertions.assertTrue(body.getUser().enabled());
-    Assertions.assertEquals("ext-1", body.getUser().externalId());
   }
 
   @Test
   public void testListUserGroups() {
-    ExtendedGroupDTO group = ExtendedGroupDTO.from(buildGroup("contractors", null), true, 0);
+    ExtendedGroupDTO group = ExtendedGroupDTO.from(buildGroup("contractors"), true, 0);
     when(accessControlDispatcher.listExtendedGroupsForUser("metalake", "alice"))
         .thenReturn(new ExtendedGroupDTO[] {group});
     ExtendedGroupListResponse body =
@@ -259,7 +251,7 @@ public class TestExtendedUserOperations extends JerseyTest {
   @Test
   public void testAddLocalUser() {
     String metalake = "metalake";
-    User added = buildUser("jordan.reyes", null, true);
+    User added = buildUser("jordan.reyes");
     when(accessControlDispatcher.addLocalUser(
             eq(metalake), eq("jordan.reyes"), eq(List.of("Analyst")), eq(true)))
         .thenReturn(added);
@@ -278,7 +270,6 @@ public class TestExtendedUserOperations extends JerseyTest {
     Assertions.assertEquals(0, body.getCode());
     Assertions.assertEquals("jordan.reyes", body.getUser().name());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getUser().origin());
-    Assertions.assertTrue(body.getUser().enabled());
   }
 
   @Test
@@ -512,25 +503,22 @@ public class TestExtendedUserOperations extends JerseyTest {
     when(entityStore.get(any(), any(), any())).thenReturn(metalake);
   }
 
-  private static User buildUser(String name, String externalId, boolean enabled) {
+  private static User buildUser(String name) {
     return UserEntity.builder()
         .withId(1L)
         .withName(name)
         .withNamespace(Namespace.of("metalake", "system", "user"))
-        .withExternalId(externalId)
-        .withEnabled(enabled)
         .withRoleNames(Collections.emptyList())
         .withAuditInfo(
             AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
         .build();
   }
 
-  private static Group buildGroup(String name, String externalId) {
+  private static Group buildGroup(String name) {
     return GroupEntity.builder()
         .withId(1L)
         .withName(name)
         .withNamespace(Namespace.of("metalake", "system", "group"))
-        .withExternalId(externalId)
         .withRoleNames(Collections.emptyList())
         .withAuditInfo(
             AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
