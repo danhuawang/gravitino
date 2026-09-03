@@ -66,13 +66,16 @@ public class ScimTokenManager implements Closeable {
     Preconditions.checkNotNull(config, "config must not be null");
     Preconditions.checkNotNull(idGenerator, "idGenerator must not be null");
     Preconditions.checkState(this.idGenerator == null, "ScimTokenManager is already initialized");
-    this.idGenerator = idGenerator;
+    // Initialize dependents before marking this manager ready. Setting idGenerator first left a
+    // half-initialized singleton when ScimRelationalStorage failed (for example default jdbc:h2),
+    // so later callers treated TokenManager as ready while User/Group managers stayed null.
     this.relationalStorage = new ScimRelationalStorage(config);
     this.garbageCollector = new ScimGarbageCollector(config);
     this.garbageCollector.start();
     ScimErrorHistoryManager.getInstance().initialize(idGenerator);
     ScimUserManager.getInstance().initialize(config, idGenerator);
     ScimGroupManager.getInstance().initialize(config, idGenerator);
+    this.idGenerator = idGenerator;
   }
 
   ScimTokenManager(Config config, IdGenerator idGenerator) {

@@ -5,7 +5,6 @@
 package com.datastrato.gravitino.scim.service;
 
 import com.datastrato.gravitino.scim.ScimErrorHistoryManager;
-import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.service.classloader.ScimAuxClassLoaders;
 import com.datastrato.gravitino.scim.service.rest.GravitinoScimApplication;
 import com.datastrato.gravitino.scim.service.web.ScimHealthAliasServlet;
@@ -41,20 +40,13 @@ public final class ScimRESTServiceImpl {
    * @param auxMode whether running under aux-service mode
    */
   public void serviceInit(Map<String, String> properties, boolean auxMode) {
-    GravitinoEnv gravitinoEnv = GravitinoEnv.getInstance();
-    // Ensure token / user / group managers are bound to the live entity-store session before
-    // accepting SCIM HTTP traffic (ITs also mint tokens later; production has no separate mint).
-    try {
-      ScimTokenManager.getInstance().initialize(gravitinoEnv.config(), gravitinoEnv.idGenerator());
-    } catch (IllegalStateException alreadyInitialized) {
-      // Singleton already initialized in this JVM (for example by an earlier IT harness call).
-    }
-
-    ScimConfig scimConfig = new ScimConfig(properties, gravitinoEnv.config());
+    // Token / user / group managers are initialized by ScimTokenRESTFeature on the main
+    // server (8090), same as pre-cutover. This aux listener only consumes the singleton.
+    ScimConfig scimConfig = new ScimConfig(properties, GravitinoEnv.getInstance().config());
     JettyServerConfig serverConfig = JettyServerConfig.fromConfig(scimConfig);
 
     ResourceConfig resourceConfig =
-        GravitinoScimApplication.create(gravitinoEnv.config(), scimConfig);
+        GravitinoScimApplication.create(GravitinoEnv.getInstance().config(), scimConfig);
 
     jettyServer = new ScimJettyServer();
     jettyServer.initialize(serverConfig);

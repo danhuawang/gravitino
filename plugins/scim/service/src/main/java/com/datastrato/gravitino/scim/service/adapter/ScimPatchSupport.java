@@ -25,7 +25,54 @@ public final class ScimPatchSupport {
   private static final Set<String> IGNORED_PATHLESS_GROUP_KEYS =
       Set.of("id", "schemas", "meta", "urn:ietf:params:scim:schemas:core:2.0:Group");
 
+  private static final Set<String> IGNORED_PATHLESS_USER_KEYS =
+      Set.of("id", "schemas", "meta", "urn:ietf:params:scim:schemas:core:2.0:User");
+
   private ScimPatchSupport() {}
+
+  /** Kind of a User PATCH operation after path/value classification. */
+  public enum UserPatchKind {
+    /** Replace {@code active}. */
+    ACTIVE,
+    /** Replace {@code externalId}. */
+    EXTERNAL_ID
+  }
+
+  /** Parsed User PATCH operation. */
+  public static final class UserPatchOperation {
+    private final UserPatchKind kind;
+    private final Boolean active;
+    private final String externalId;
+
+    private UserPatchOperation(UserPatchKind kind, Boolean active, String externalId) {
+      this.kind = kind;
+      this.active = active;
+      this.externalId = externalId;
+    }
+
+    /** Returns the classified patch kind. */
+    public UserPatchKind kind() {
+      return kind;
+    }
+
+    /** Returns the replacement active flag for {@link UserPatchKind#ACTIVE}. */
+    public Boolean active() {
+      return active;
+    }
+
+    /** Returns the replacement external id for {@link UserPatchKind#EXTERNAL_ID}. */
+    public String externalId() {
+      return externalId;
+    }
+
+    static UserPatchOperation active(boolean active) {
+      return new UserPatchOperation(UserPatchKind.ACTIVE, active, null);
+    }
+
+    static UserPatchOperation externalId(String externalId) {
+      return new UserPatchOperation(UserPatchKind.EXTERNAL_ID, null, externalId);
+    }
+  }
 
   /** Kind of a Group PATCH operation after path/value classification. */
   public enum GroupPatchKind {
@@ -129,19 +176,54 @@ public final class ScimPatchSupport {
   }
 
   /**
-   * Parses User PATCH operations and returns the {@code active} value.
+   * Parses User PATCH operations into concrete {@code active} / {@code externalId} updates.
+   *
+   * <p>Supports path {@code active} / {@code externalId}, path-less boolean/{@code active} maps,
+   * and path-less {@code externalId} (alone or combined with {@code active}). {@code userName}
+   * remains immutable.
+   *
+   * @param operation SCIM patch operation
+   * @return one or more classified updates
+   */
+  public static List<UserPatchOperation> parseUserPatches(PatchOperation operation)
+      throws ResourceException {
+    String pathAttribute = pathAttributeName(operation);
+    if (pathAttribute != null) {
+      if ("active".equalsIgnoreCase(pathAttribute)) {
+        Boolean active =
+            parseActiveValue(operation.getValue())
+                .orElseThrow(
+                    () -> new ResourceException(400, "PATCH active value must be a boolean"));
+        return List.of(UserPatchOperation.active(active));
+      }
+      if ("externalId".equalsIgnoreCase(pathAttribute)) {
+        return List.of(
+            UserPatchOperation.externalId(requireStringValue(operation.getValue(), "externalId")));
+      }
+      if ("userName".equalsIgnoreCase(pathAttribute)) {
+        throw new ResourceException(400, "User userName is immutable");
+      }
+      throw new ResourceException(400, "PATCH on Users supports active and externalId only");
+    }
+    return parsePathlessUserPatch(operation.getValue());
+  }
+
+  /**
+   * Parses User PATCH operations and returns the last {@code active} value when present.
    *
    * @param patchOperations SCIM patch operations
    * @return parsed active flag when present in patch operations
+   * @deprecated prefer {@link #parseUserPatches(PatchOperation)} for multi-attribute patches
    */
+  @Deprecated
   public static Optional<Boolean> parseUserActive(List<PatchOperation> patchOperations)
       throws ResourceException {
     Optional<Boolean> active = Optional.empty();
     for (PatchOperation operation : patchOperations) {
-      validateUserActivePath(operation);
-      Optional<Boolean> operationValue = parseActiveValue(operation.getValue());
-      if (operationValue.isPresent()) {
-        active = operationValue;
+      for (UserPatchOperation parsed : parseUserPatches(operation)) {
+        if (parsed.kind() == UserPatchKind.ACTIVE) {
+          active = Optional.of(parsed.active());
+        }
       }
     }
     return active;
@@ -296,19 +378,57 @@ public final class ScimPatchSupport {
     return ops;
   }
 
-  private static void validateUserActivePath(PatchOperation operation) throws ResourceException {
-    if (operation.getPath() == null) {
-      return;
+  private static List<UserPatchOperation> parsePathlessUserPatch(Object value)
+      throws ResourceException {
+    if (value instanceof Boolean || value instanceof String) {
+      Boolean active =
+          parseActiveValue(value)
+              .orElseThrow(
+                  () -> new ResourceException(400, "PATCH active value must be a boolean"));
+      return List.of(UserPatchOperation.active(active));
     }
-    if (operation.getPath().getValuePathExpression() == null
-        || operation.getPath().getValuePathExpression().getAttributePath() == null) {
-      return;
+    if (value instanceof Map<?, ?> map) {
+      return parsePathlessUserMap(map);
     }
-    if (!"active"
-        .equalsIgnoreCase(
-            operation.getPath().getValuePathExpression().getAttributePath().getAttributeName())) {
-      throw new ResourceException(400, "PATCH on Users supports active only");
+    throw new ResourceException(400, "Unsupported User PATCH value");
+  }
+
+  private static List<UserPatchOperation> parsePathlessUserMap(Map<?, ?> map)
+      throws ResourceException {
+    List<UserPatchOperation> ops = new ArrayList<>();
+    if (map.containsKey("externalId")) {
+      ops.add(
+          UserPatchOperation.externalId(requireStringValue(map.get("externalId"), "externalId")));
     }
+    if (map.containsKey("active")) {
+      Boolean active =
+          parseActiveValue(map.get("active"))
+              .orElseThrow(
+                  () -> new ResourceException(400, "PATCH active value must be a boolean"));
+      ops.add(UserPatchOperation.active(active));
+    }
+    if (ops.isEmpty()) {
+      if (map.containsKey("userName")) {
+        throw new ResourceException(400, "User userName is immutable");
+      }
+      throw new ResourceException(400, "Unsupported User PATCH value");
+    }
+    for (Object rawKey : map.keySet()) {
+      if (!(rawKey instanceof String key)) {
+        throw new ResourceException(400, "Unsupported User PATCH value key type");
+      }
+      if (!IGNORED_PATHLESS_USER_KEYS.contains(key)
+          && !"externalId".equals(key)
+          && !"active".equals(key)
+          && !"displayName".equals(key)
+          && !"userName".equals(key)) {
+        throw new ResourceException(400, "Unsupported User PATCH value attribute: " + key);
+      }
+      if ("userName".equals(key) || "displayName".equals(key)) {
+        throw new ResourceException(400, "User userName is immutable");
+      }
+    }
+    return ops;
   }
 
   private static String pathAttributeName(PatchOperation operation) {
@@ -377,9 +497,6 @@ public final class ScimPatchSupport {
         return Optional.of(false);
       }
       throw new ResourceException(400, "PATCH active value must be a boolean");
-    }
-    if (value instanceof Map<?, ?> mapValue && mapValue.containsKey("active")) {
-      return parseActiveValue(mapValue.get("active"));
     }
     throw new ResourceException(400, "PATCH active value must be a boolean");
   }

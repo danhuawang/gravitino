@@ -7,6 +7,7 @@ package com.datastrato.gravitino.scim.service.adapter;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
@@ -139,7 +140,9 @@ class TestScimUserRepositoryAdapter {
 
   @Test
   void testPatchActive() throws Exception {
+    ScimUserMeta enabled = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, true);
     ScimUserMeta disabled = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, false);
+    when(userManager.getUser(USER_ID)).thenReturn(enabled);
     when(userManager.updateEnabled(USER_ID, false)).thenReturn(disabled);
 
     PatchOperation operation = new PatchOperation();
@@ -153,6 +156,7 @@ class TestScimUserRepositoryAdapter {
   @Test
   void testPatchActivePath() throws Exception {
     ScimUserMeta enabled = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, true);
+    when(userManager.getUser(USER_ID)).thenReturn(enabled);
     when(userManager.updateEnabled(USER_ID, true)).thenReturn(enabled);
 
     PatchOperation operation = new PatchOperation();
@@ -161,12 +165,14 @@ class TestScimUserRepositoryAdapter {
     operation.setValue(Boolean.TRUE);
     ScimUser patched = adapter.patch(USER_SCIM_ID, null, List.of(operation), null, null);
     assertEquals(Boolean.TRUE, patched.getActive());
-    verify(userManager).updateEnabled(USER_ID, true);
+    verify(userManager, never()).updateEnabled(anyLong(), anyBoolean());
   }
 
   @Test
   void testPatchActivePathStr() throws Exception {
+    ScimUserMeta enabled = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, true);
     ScimUserMeta disabled = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, false);
+    when(userManager.getUser(USER_ID)).thenReturn(enabled);
     when(userManager.updateEnabled(USER_ID, false)).thenReturn(disabled);
 
     PatchOperation operation = new PatchOperation();
@@ -176,6 +182,70 @@ class TestScimUserRepositoryAdapter {
     ScimUser patched = adapter.patch(USER_SCIM_ID, null, List.of(operation), null, null);
     assertEquals(Boolean.FALSE, patched.getActive());
     verify(userManager).updateEnabled(USER_ID, false);
+  }
+
+  @Test
+  void testPatchReplaceExternalId() throws Exception {
+    ScimUserMeta user = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, true);
+    ScimUserMeta updated = ScimServiceTestEntities.user(USER_ID, "alice", "ext-2", true);
+    when(userManager.getUser(USER_ID)).thenReturn(user);
+    when(userManager.updateExternalId(USER_ID, "ext-2")).thenReturn(updated);
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("externalId", "ext-2"));
+
+    ScimUser patched = adapter.patch(USER_SCIM_ID, null, List.of(operation), null, null);
+    assertEquals("ext-2", patched.getExternalId());
+    verify(userManager).updateExternalId(USER_ID, "ext-2");
+  }
+
+  @Test
+  void testPatchReplaceExternalIdByPath() throws Exception {
+    ScimUserMeta user = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, true);
+    ScimUserMeta updated = ScimServiceTestEntities.user(USER_ID, "alice", "ext-2", true);
+    when(userManager.getUser(USER_ID)).thenReturn(user);
+    when(userManager.updateExternalId(USER_ID, "ext-2")).thenReturn(updated);
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setPath(PatchOperationPath.fromString("externalId"));
+    operation.setValue("ext-2");
+
+    ScimUser patched = adapter.patch(USER_SCIM_ID, null, List.of(operation), null, null);
+    assertEquals("ext-2", patched.getExternalId());
+    verify(userManager).updateExternalId(USER_ID, "ext-2");
+  }
+
+  @Test
+  void testPatchUnchangedExternalIdSkipsAlter() throws Exception {
+    ScimUserMeta user = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, true);
+    when(userManager.getUser(USER_ID)).thenReturn(user);
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("externalId", USER_EXT_ID));
+
+    ScimUser patched = adapter.patch(USER_SCIM_ID, null, List.of(operation), null, null);
+    assertEquals(USER_EXT_ID, patched.getExternalId());
+    verify(userManager, never()).updateExternalId(anyLong(), any());
+  }
+
+  @Test
+  void testPatchUserNameImmutable() throws Exception {
+    ScimUserMeta user = ScimServiceTestEntities.user(USER_ID, "alice", USER_EXT_ID, true);
+    when(userManager.getUser(USER_ID)).thenReturn(user);
+
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("userName", "bob"));
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () -> adapter.patch(USER_SCIM_ID, null, List.of(operation), null, null));
+    assertEquals(400, exception.getStatus());
+    assertEquals("User userName is immutable", exception.getMessage());
   }
 
   @Test

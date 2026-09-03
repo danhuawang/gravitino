@@ -265,52 +265,51 @@ class TestScimGroupRepositoryAdapter {
   @Test
   void testPatchReplaceExternalId() throws Exception {
     ScimGroupMeta group = ScimServiceTestEntities.group(GROUP_ID, "engineering", GROUP_EXT_ID);
+    ScimGroupMeta updated = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-2");
     when(groupManager.getGroup(GROUP_ID)).thenReturn(group);
+    when(groupManager.updateExternalId(GROUP_ID, "group-2")).thenReturn(updated);
+    when(membershipManager.listMembersForGroup(GROUP_ID)).thenReturn(List.of());
 
     PatchOperation operation = new PatchOperation();
     operation.setOperation(PatchOperation.Type.REPLACE);
     operation.setValue(Map.of("externalId", "group-2"));
 
-    ResourceException exception =
-        assertThrows(
-            ResourceException.class,
-            () -> adapter.patch(GROUP_SCIM_ID, null, List.of(operation), null, null));
-    assertEquals(400, exception.getStatus());
-    assertEquals("Group PATCH supports members only", exception.getMessage());
+    ScimGroup patched = adapter.patch(GROUP_SCIM_ID, null, List.of(operation), null, null);
+    assertEquals("group-2", patched.getExternalId());
+    verify(groupManager).updateExternalId(GROUP_ID, "group-2");
   }
 
   @Test
   void testPatchReplaceExternalIdByPath() throws Exception {
     ScimGroupMeta group = ScimServiceTestEntities.group(GROUP_ID, "engineering", GROUP_EXT_ID);
+    ScimGroupMeta updated = ScimServiceTestEntities.group(GROUP_ID, "engineering", "group-2");
     when(groupManager.getGroup(GROUP_ID)).thenReturn(group);
+    when(groupManager.updateExternalId(GROUP_ID, "group-2")).thenReturn(updated);
+    when(membershipManager.listMembersForGroup(GROUP_ID)).thenReturn(List.of());
 
     PatchOperation operation = new PatchOperation();
     operation.setOperation(PatchOperation.Type.REPLACE);
     operation.setPath(PatchOperationPath.fromString("externalId"));
     operation.setValue("group-2");
 
-    ResourceException exception =
-        assertThrows(
-            ResourceException.class,
-            () -> adapter.patch(GROUP_SCIM_ID, null, List.of(operation), null, null));
-    assertEquals(400, exception.getStatus());
-    assertEquals("Group PATCH supports members only", exception.getMessage());
+    ScimGroup patched = adapter.patch(GROUP_SCIM_ID, null, List.of(operation), null, null);
+    assertEquals("group-2", patched.getExternalId());
+    verify(groupManager).updateExternalId(GROUP_ID, "group-2");
   }
 
   @Test
   void testPatchUnchangedExternalIdSkipsAlter() throws Exception {
     ScimGroupMeta group = ScimServiceTestEntities.group(GROUP_ID, "engineering", GROUP_EXT_ID);
     when(groupManager.getGroup(GROUP_ID)).thenReturn(group);
+    when(membershipManager.listMembersForGroup(GROUP_ID)).thenReturn(List.of());
 
     PatchOperation operation = new PatchOperation();
     operation.setOperation(PatchOperation.Type.REPLACE);
     operation.setValue(Map.of("externalId", GROUP_EXT_ID));
 
-    ResourceException exception =
-        assertThrows(
-            ResourceException.class,
-            () -> adapter.patch(GROUP_SCIM_ID, null, List.of(operation), null, null));
-    assertEquals(400, exception.getStatus());
+    ScimGroup patched = adapter.patch(GROUP_SCIM_ID, null, List.of(operation), null, null);
+    assertEquals(GROUP_EXT_ID, patched.getExternalId());
+    verify(groupManager, never()).updateExternalId(anyLong(), any());
   }
 
   @Test

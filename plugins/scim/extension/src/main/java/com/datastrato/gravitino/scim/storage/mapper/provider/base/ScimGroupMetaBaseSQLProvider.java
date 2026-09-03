@@ -76,14 +76,11 @@ public class ScimGroupMetaBaseSQLProvider {
   }
 
   public String updateExternalId(
-      @Param("groupId") long groupId,
-      @Param("externalId") String externalId,
-      @Param("currentVersion") Long currentVersion,
-      @Param("lastVersion") Long lastVersion) {
+      @Param("groupId") long groupId, @Param("externalId") String externalId) {
     return "UPDATE "
         + ScimGroupMetaMapper.TABLE_NAME
-        + " SET external_id = #{externalId}, current_version = #{currentVersion},"
-        + " last_version = #{lastVersion}"
+        + " SET external_id = #{externalId}, last_version = current_version,"
+        + " current_version = current_version + 1"
         + " WHERE group_id = #{groupId} AND deleted_at = 0";
   }
 

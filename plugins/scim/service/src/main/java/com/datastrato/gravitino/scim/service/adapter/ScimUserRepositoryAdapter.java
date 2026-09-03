@@ -95,18 +95,28 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       Set<AttributeReference> includedAttributes,
       Set<AttributeReference> excludedAttributes)
       throws ResourceException {
-    Optional<Boolean> active = ScimPatchSupport.parseUserActive(patchOperations);
-    if (active.isEmpty()) {
-      throw new ResourceException(400, "PATCH on Users supports active only");
+    ScimUserMeta user = requireUser(id);
+    boolean applied = false;
+    for (PatchOperation operation : patchOperations) {
+      for (ScimPatchSupport.UserPatchOperation parsed :
+          ScimPatchSupport.parseUserPatches(operation)) {
+        applied = true;
+        switch (parsed.kind()) {
+          case ACTIVE:
+            user = applyActivePatch(user, operation.getOperation(), parsed.active());
+            break;
+          case EXTERNAL_ID:
+            user = applyExternalIdPatch(user, operation.getOperation(), parsed.externalId());
+            break;
+          default:
+            throw new ResourceException(400, "Unsupported User PATCH kind: " + parsed.kind());
+        }
+      }
     }
-    try {
-      ScimUserMeta user = userManager.updateEnabled(parseResourceId(id), active.get());
-      return ScimResourceConverter.toScimUser(user);
-    } catch (NotFoundException e) {
-      throw new ResourceException(404, "User not found: " + id);
-    } catch (IllegalArgumentException e) {
-      throw new ResourceException(404, "User not found: " + id);
+    if (!applied) {
+      throw new ResourceException(400, "PATCH on Users supports active and externalId only");
     }
+    return ScimResourceConverter.toScimUser(user);
   }
 
   @Override
@@ -242,6 +252,35 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
     String resolvedName = ScimNameMappers.mapUserName(scimConfig.userMapper(), rawUserName);
     if (!resolvedName.equalsIgnoreCase(user.getUserName())) {
       throw new ResourceException(400, "User userName is immutable");
+    }
+  }
+
+  private ScimUserMeta applyActivePatch(ScimUserMeta user, PatchOperation.Type type, Boolean active)
+      throws ResourceException {
+    if (type != PatchOperation.Type.REPLACE && type != PatchOperation.Type.ADD) {
+      throw new ResourceException(400, "User active PATCH supports add/replace only");
+    }
+    if (active == null) {
+      throw new ResourceException(400, "PATCH active value must be a boolean");
+    }
+    return applyActiveIfPresent(user, active);
+  }
+
+  private ScimUserMeta applyExternalIdPatch(
+      ScimUserMeta user, PatchOperation.Type type, String externalId) throws ResourceException {
+    if (type != PatchOperation.Type.REPLACE && type != PatchOperation.Type.ADD) {
+      throw new ResourceException(400, "User externalId PATCH supports add/replace only");
+    }
+    String normalized = ScimUtils.blankToNull(externalId);
+    if (Objects.equals(normalized, user.getExternalId())) {
+      return user;
+    }
+    try {
+      return userManager.updateExternalId(user.getUserId(), normalized);
+    } catch (AlreadyExistsException e) {
+      throw new ResourceException(409, "User already exists: externalId=" + normalized, e);
+    } catch (NotFoundException e) {
+      throw new ResourceException(404, "User not found: " + user.getUserId(), e);
     }
   }
 

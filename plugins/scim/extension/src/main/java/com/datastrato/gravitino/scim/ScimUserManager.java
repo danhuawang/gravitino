@@ -15,6 +15,7 @@ import com.google.common.base.Preconditions;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
@@ -171,6 +172,32 @@ public class ScimUserManager implements Closeable {
    */
   public ScimUserMeta updateEnabled(long userId, boolean enabled) {
     if (!USER_META_SERVICE.updateScimUserEnabled(userId, enabled)) {
+      throw new NotFoundException("SCIM user not found: %s", userId);
+    }
+    return USER_META_SERVICE.requireScimUserByUserId(userId);
+  }
+
+  /**
+   * Updates the SCIM externalId for a user.
+   *
+   * @param userId Gravitino {@code user_id} (SCIM resource id)
+   * @param externalId new client externalId; blank or {@code null} clears it
+   * @return updated user metadata
+   */
+  public ScimUserMeta updateExternalId(long userId, @Nullable String externalId) {
+    String resolvedExternalId = ScimUtils.blankToNull(externalId);
+    ScimUserMeta existing = USER_META_SERVICE.requireScimUserByUserId(userId);
+    if (Objects.equals(resolvedExternalId, existing.getExternalId())) {
+      return existing;
+    }
+    if (resolvedExternalId != null) {
+      ScimUserMeta conflict = USER_META_SERVICE.getScimUserByExternalId(resolvedExternalId);
+      if (conflict != null && conflict.getUserId() != userId) {
+        throw new AlreadyExistsException(
+            "SCIM user externalId %s already exists", resolvedExternalId);
+      }
+    }
+    if (!USER_META_SERVICE.updateScimUserExternalId(userId, resolvedExternalId)) {
       throw new NotFoundException("SCIM user not found: %s", userId);
     }
     return USER_META_SERVICE.requireScimUserByUserId(userId);

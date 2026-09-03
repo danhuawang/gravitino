@@ -118,16 +118,22 @@ public class ScimUserGroupRelBaseSQLProvider {
       @Param("newUserId") long newUserId,
       @Param("currentVersion") Long currentVersion,
       @Param("lastVersion") Long lastVersion) {
+    // Portable UPDATE (H2/MySQL/PostgreSQL):
+    // - Avoid MySQL-only "UPDATE t JOIN ... SET" (H2 rejects with "expected SET").
+    // - Do not qualify SET columns (PostgreSQL rejects "SET r.col = ..." as column "r").
+    // - Wrap same-table NOT EXISTS in a derived table so MySQL allows the self-check
+    //   ("You can't specify target table 'r' for update in FROM clause").
     return "UPDATE "
         + ScimUserGroupRelMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " r INNER JOIN "
+        + " r SET user_id = #{newUserId}, current_version = #{currentVersion},"
+        + " last_version = #{lastVersion} WHERE r.deleted_at = 0 AND r.group_id = #{groupId}"
+        + " AND r.user_id = #{oldUserId} AND EXISTS (SELECT 1 FROM "
         + ScimUserMetaMapper.TABLE_NAME
-        + " u_new ON u_new.user_id = #{newUserId} AND u_new.deleted_at = 0"
-        + " SET r.user_id = #{newUserId}, r.current_version = #{currentVersion},"
-        + " r.last_version = #{lastVersion} WHERE r.deleted_at = 0 AND r.group_id = #{groupId}"
-        + " AND r.user_id = #{oldUserId} AND NOT EXISTS (SELECT 1 FROM "
+        + " u_new WHERE u_new.user_id = #{newUserId} AND u_new.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM "
         + ScimUserGroupRelMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " r2 WHERE r2.group_id = r.group_id AND r2.user_id = #{newUserId} AND r2.deleted_at = 0)";
+        + " r2 WHERE r2.group_id = #{groupId} AND r2.user_id = #{newUserId}"
+        + " AND r2.deleted_at = 0) conflict_check)";
   }
 
   public String deleteByLegacyTimeline(

@@ -167,6 +167,16 @@ public class ScimUserMetaService {
 
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "updateScimUserExternalId")
+  public boolean updateScimUserExternalId(long userId, String externalId) {
+    Integer updated =
+        SessionUtils.doWithCommitAndFetchResult(
+            ScimUserMetaMapper.class, mapper -> mapper.updateExternalId(userId, externalId));
+    return updated != null && updated > 0;
+  }
+
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "softDeleteScimUser")
   public boolean softDeleteScimUser(long userId) {
     Integer deleted =

@@ -12,7 +12,8 @@ import org.apache.gravitino.Configs;
 
 /** Factory for SCIM JDBC SQL exception converters. */
 public final class ScimSQLExceptionConverterFactory {
-  private static final Pattern TYPE_PATTERN = Pattern.compile("jdbc:(\\w+):");
+  // Match "jdbc:h2" (Gravitino default) as well as "jdbc:h2:file:..." / "jdbc:mysql://...".
+  private static final Pattern TYPE_PATTERN = Pattern.compile("jdbc:(\\w+)");
   private static volatile ScimSQLExceptionConverter converter;
 
   private ScimSQLExceptionConverterFactory() {}

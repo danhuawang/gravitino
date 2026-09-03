@@ -110,6 +110,15 @@ public class ScimUserMetaBaseSQLProvider {
         + " WHERE user_id = #{userId} AND deleted_at = 0";
   }
 
+  public String updateExternalId(
+      @Param("userId") long userId, @Param("externalId") String externalId) {
+    return "UPDATE "
+        + ScimUserMetaMapper.TABLE_NAME
+        + " SET external_id = #{externalId}, last_version = current_version,"
+        + " current_version = current_version + 1"
+        + " WHERE user_id = #{userId} AND deleted_at = 0";
+  }
+
   public String softDeleteByUserId(@Param("userId") long userId) {
     return "UPDATE "
         + ScimUserMetaMapper.TABLE_NAME

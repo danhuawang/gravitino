@@ -155,4 +155,54 @@ class TestScimPatchSupport {
     assertEquals(ScimPatchSupport.GroupPatchKind.MEMBERS, parsed.get(2).kind());
     assertEquals("9", parsed.get(2).members().get(0).getValue());
   }
+
+  @Test
+  void testParseUserPathlessExternalId() throws Exception {
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("externalId", "ext-2"));
+
+    List<ScimPatchSupport.UserPatchOperation> parsed = ScimPatchSupport.parseUserPatches(operation);
+    assertEquals(1, parsed.size());
+    assertEquals(ScimPatchSupport.UserPatchKind.EXTERNAL_ID, parsed.get(0).kind());
+    assertEquals("ext-2", parsed.get(0).externalId());
+  }
+
+  @Test
+  void testParseUserPathExternalId() throws Exception {
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setPath(PatchOperationPath.fromString("externalId"));
+    operation.setValue("ext-2");
+
+    List<ScimPatchSupport.UserPatchOperation> parsed = ScimPatchSupport.parseUserPatches(operation);
+    assertEquals(1, parsed.size());
+    assertEquals(ScimPatchSupport.UserPatchKind.EXTERNAL_ID, parsed.get(0).kind());
+    assertEquals("ext-2", parsed.get(0).externalId());
+  }
+
+  @Test
+  void testParseUserPathlessActiveAndExternalId() throws Exception {
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("externalId", "ext-2", "active", true));
+
+    List<ScimPatchSupport.UserPatchOperation> parsed = ScimPatchSupport.parseUserPatches(operation);
+    assertEquals(2, parsed.size());
+    assertEquals(ScimPatchSupport.UserPatchKind.EXTERNAL_ID, parsed.get(0).kind());
+    assertEquals(ScimPatchSupport.UserPatchKind.ACTIVE, parsed.get(1).kind());
+    assertTrue(parsed.get(1).active());
+  }
+
+  @Test
+  void testParseUserUserNameImmutable() {
+    PatchOperation operation = new PatchOperation();
+    operation.setOperation(PatchOperation.Type.REPLACE);
+    operation.setValue(Map.of("userName", "bob"));
+
+    ResourceException exception =
+        assertThrows(ResourceException.class, () -> ScimPatchSupport.parseUserPatches(operation));
+    assertEquals(400, exception.getStatus());
+    assertEquals("User userName is immutable", exception.getMessage());
+  }
 }

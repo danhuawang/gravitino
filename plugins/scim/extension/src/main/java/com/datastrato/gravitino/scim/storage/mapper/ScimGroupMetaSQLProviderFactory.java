@@ -63,11 +63,8 @@ public class ScimGroupMetaSQLProviderFactory {
   }
 
   public static String updateExternalId(
-      @Param("groupId") long groupId,
-      @Param("externalId") String externalId,
-      @Param("currentVersion") Long currentVersion,
-      @Param("lastVersion") Long lastVersion) {
-    return currentProvider().updateExternalId(groupId, externalId, currentVersion, lastVersion);
+      @Param("groupId") long groupId, @Param("externalId") String externalId) {
+    return currentProvider().updateExternalId(groupId, externalId);
   }
 
   public static String softDeleteByGroupId(@Param("groupId") long groupId) {

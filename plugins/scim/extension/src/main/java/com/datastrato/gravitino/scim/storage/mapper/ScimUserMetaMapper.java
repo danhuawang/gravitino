@@ -60,6 +60,9 @@ public interface ScimUserMetaMapper {
   @UpdateProvider(type = ScimUserMetaSQLProviderFactory.class, method = "updateEnabledByUserId")
   Integer updateEnabledByUserId(@Param("userId") long userId, @Param("enabled") boolean enabled);
 
+  @UpdateProvider(type = ScimUserMetaSQLProviderFactory.class, method = "updateExternalId")
+  Integer updateExternalId(@Param("userId") long userId, @Param("externalId") String externalId);
+
   @UpdateProvider(type = ScimUserMetaSQLProviderFactory.class, method = "softDeleteByUserId")
   Integer softDeleteByUserId(@Param("userId") long userId);
 

@@ -9,8 +9,8 @@ import com.datastrato.gravitino.scim.service.adapter.ScimPatchSupport;
 import com.google.common.collect.ImmutableMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.directory.scim.core.repository.InvalidRepositoryException;
 import org.apache.directory.scim.core.repository.Repository;
 import org.apache.directory.scim.spec.exception.ResourceException;
@@ -252,14 +252,29 @@ public class ScimUserEventDispatcher implements Repository<ScimUser> {
     if (patchOperations == null || patchOperations.isEmpty()) {
       return ImmutableMap.of("changes", "patch");
     }
-    try {
-      Optional<Boolean> active = ScimPatchSupport.parseUserActive(patchOperations);
-      if (active.isPresent()) {
-        return ImmutableMap.of("changes", "active=" + active.get());
+    List<String> parts = new java.util.ArrayList<>();
+    for (PatchOperation operation : patchOperations) {
+      try {
+        for (ScimPatchSupport.UserPatchOperation parsed :
+            ScimPatchSupport.parseUserPatches(operation)) {
+          switch (parsed.kind()) {
+            case ACTIVE:
+              parts.add("active=" + parsed.active());
+              break;
+            case EXTERNAL_ID:
+              parts.add("externalId");
+              break;
+            default:
+              break;
+          }
+        }
+      } catch (ResourceException ignored) {
+        parts.add("patch");
       }
-    } catch (ResourceException ignored) {
-      // Non-active or unsupported patch body: fall through.
     }
-    return ImmutableMap.of("changes", "patch");
+    if (parts.isEmpty()) {
+      return ImmutableMap.of("changes", "patch");
+    }
+    return ImmutableMap.of("changes", parts.stream().distinct().collect(Collectors.joining(";")));
   }
 }

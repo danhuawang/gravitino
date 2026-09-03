@@ -125,7 +125,8 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
                 parsed.replacementMembers());
             break;
           case EXTERNAL_ID:
-            throw new ResourceException(400, "Group PATCH supports members only");
+            group = applyExternalIdPatch(group, operation.getOperation(), parsed.externalId());
+            break;
           case DISPLAY_NAME:
             applyDisplayNamePatch(group, operation.getOperation(), parsed.displayName());
             break;
@@ -236,6 +237,24 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       throw e;
     } catch (Exception e) {
       throw new ResourceException(500, "Failed to replace group member", e);
+    }
+  }
+
+  private ScimGroupMeta applyExternalIdPatch(
+      ScimGroupMeta group, PatchOperation.Type type, String externalId) throws ResourceException {
+    if (type != PatchOperation.Type.REPLACE && type != PatchOperation.Type.ADD) {
+      throw new ResourceException(400, "Group externalId PATCH supports add/replace only");
+    }
+    String normalized = ScimUtils.blankToNull(externalId);
+    if (Objects.equals(normalized, group.getExternalId())) {
+      return group;
+    }
+    try {
+      return groupManager.updateExternalId(group.getGroupId(), normalized);
+    } catch (AlreadyExistsException e) {
+      throw new ResourceException(409, "Group already exists: externalId=" + normalized, e);
+    } catch (NotFoundException e) {
+      throw new ResourceException(404, "Group not found: " + group.getGroupId(), e);
     }
   }
 

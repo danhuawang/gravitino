@@ -182,9 +182,15 @@ class TestScimUserGroupRelBaseSQLProvider {
         new ScimUserGroupRelBaseSQLProvider().updateMemberUserId(GROUP_ID, 100L, 101L, 1L, 0L);
 
     Assertions.assertTrue(sql.contains(ScimUserMetaMapper.TABLE_NAME));
+    Assertions.assertTrue(sql.contains("EXISTS (SELECT 1 FROM"));
     Assertions.assertTrue(sql.contains("u_new.user_id = #{newUserId}"));
     Assertions.assertTrue(sql.contains("r.user_id = #{oldUserId}"));
-    Assertions.assertTrue(sql.contains("NOT EXISTS"));
+    Assertions.assertTrue(sql.contains("SET user_id = #{newUserId}"));
+    Assertions.assertFalse(sql.contains("SET r.user_id"));
+    Assertions.assertTrue(sql.contains("NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM"));
+    Assertions.assertTrue(sql.contains("conflict_check)"));
+    Assertions.assertTrue(sql.contains("r2.group_id = #{groupId}"));
+    Assertions.assertFalse(sql.contains("INNER JOIN"));
   }
 
   @Test

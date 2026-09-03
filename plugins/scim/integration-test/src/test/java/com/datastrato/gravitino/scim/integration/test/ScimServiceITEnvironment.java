@@ -115,7 +115,9 @@ final class ScimServiceITEnvironment implements AutoCloseable {
     GravitinoEnv env = GravitinoEnv.getInstance();
     ScimTokenManager tokenManager = ScimTokenManager.getInstance();
     try {
-      tokenManager.initialize(serverConfig, env.idGenerator());
+      // Use GravitinoEnv.config(): MiniGravitino.serverConfig is a separate copy and still has the
+      // template jdbc:h2 URL. H2Database expands the URL on the live env config only.
+      tokenManager.initialize(env.config(), env.idGenerator());
     } catch (IllegalStateException alreadyInitialized) {
       // Singleton may already be initialized in this JVM.
     }

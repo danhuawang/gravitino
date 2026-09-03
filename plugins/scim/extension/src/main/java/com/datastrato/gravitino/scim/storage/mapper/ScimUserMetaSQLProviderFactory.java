@@ -83,6 +83,11 @@ public class ScimUserMetaSQLProviderFactory {
     return currentProvider().updateEnabledByUserId(userId, enabled);
   }
 
+  public static String updateExternalId(
+      @Param("userId") long userId, @Param("externalId") String externalId) {
+    return currentProvider().updateExternalId(userId, externalId);
+  }
+
   public static String softDeleteByUserId(@Param("userId") long userId) {
     return currentProvider().softDeleteByUserId(userId);
   }

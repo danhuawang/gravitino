@@ -46,11 +46,7 @@ public interface ScimGroupMetaMapper {
   Long countGroups();
 
   @UpdateProvider(type = ScimGroupMetaSQLProviderFactory.class, method = "updateExternalId")
-  Integer updateExternalId(
-      @Param("groupId") long groupId,
-      @Param("externalId") String externalId,
-      @Param("currentVersion") Long currentVersion,
-      @Param("lastVersion") Long lastVersion);
+  Integer updateExternalId(@Param("groupId") long groupId, @Param("externalId") String externalId);
 
   @UpdateProvider(type = ScimGroupMetaSQLProviderFactory.class, method = "softDeleteByGroupId")
   Integer softDeleteByGroupId(@Param("groupId") long groupId);

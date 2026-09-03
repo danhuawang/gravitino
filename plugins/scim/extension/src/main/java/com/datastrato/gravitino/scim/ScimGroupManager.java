@@ -15,11 +15,13 @@ import com.google.common.base.Preconditions;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.AlreadyExistsException;
+import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.storage.IdGenerator;
 import org.apache.gravitino.storage.relational.utils.POConverters;
 
@@ -148,6 +150,32 @@ public class ScimGroupManager implements Closeable {
   public PagedResult<ScimGroupMeta> listGroups(int offset, int limit) {
     List<ScimGroupMeta> groups = GROUP_META_SERVICE.listScimGroups(offset, limit);
     return new PagedResult<>(GROUP_META_SERVICE.countScimGroups(), groups);
+  }
+
+  /**
+   * Updates the SCIM externalId for a group.
+   *
+   * @param groupId Gravitino {@code group_id} (SCIM resource id)
+   * @param externalId new client externalId; blank or {@code null} clears it
+   * @return updated group metadata
+   */
+  public ScimGroupMeta updateExternalId(long groupId, @Nullable String externalId) {
+    String resolvedExternalId = ScimUtils.blankToNull(externalId);
+    ScimGroupMeta existing = GROUP_META_SERVICE.requireScimGroupByGroupId(groupId);
+    if (Objects.equals(resolvedExternalId, existing.getExternalId())) {
+      return existing;
+    }
+    if (resolvedExternalId != null) {
+      ScimGroupMeta conflict = GROUP_META_SERVICE.getScimGroupByExternalId(resolvedExternalId);
+      if (conflict != null && conflict.getGroupId() != groupId) {
+        throw new AlreadyExistsException(
+            "SCIM group externalId %s already exists", resolvedExternalId);
+      }
+    }
+    if (!GROUP_META_SERVICE.updateScimGroupExternalId(groupId, resolvedExternalId)) {
+      throw new NotFoundException("SCIM group not found: %s", groupId);
+    }
+    return GROUP_META_SERVICE.requireScimGroupByGroupId(groupId);
   }
 
   /**

@@ -134,6 +134,16 @@ public class ScimGroupMetaService {
 
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "updateScimGroupExternalId")
+  public boolean updateScimGroupExternalId(long groupId, String externalId) {
+    Integer updated =
+        SessionUtils.doWithCommitAndFetchResult(
+            ScimGroupMetaMapper.class, mapper -> mapper.updateExternalId(groupId, externalId));
+    return updated != null && updated > 0;
+  }
+
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "softDeleteScimGroup")
   public boolean softDeleteScimGroup(long groupId) {
     Integer deleted =
