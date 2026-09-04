@@ -20,7 +20,7 @@ class FunctionSearchEntitySource extends LeafSearchEntitySource {
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     Function function =
         GravitinoEnv.getInstance()
-            .functionDispatcher()
+            .internalFunctionDispatcher()
             .getFunction(searchEntityIdentifier.entityIdent());
     Tag[] metadataTags =
         SearchEntitySource.getMetadataObjectTags(

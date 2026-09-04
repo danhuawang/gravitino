@@ -20,7 +20,7 @@ class PolicySearchEntitySource extends LeafSearchEntitySource {
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     PolicyEntity policy =
         GravitinoEnv.getInstance()
-            .policyDispatcher()
+            .internalPolicyDispatcher()
             .getPolicy(
                 searchEntityIdentifier.metalake(), searchEntityIdentifier.entityIdent().name());
     return EntityConverterUtils.toPolicySearchEntityPO(

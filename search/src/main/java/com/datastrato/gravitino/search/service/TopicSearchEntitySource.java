@@ -21,7 +21,7 @@ class TopicSearchEntitySource extends LeafSearchEntitySource {
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     Auditable topicAuditable =
         GravitinoEnv.getInstance()
-            .topicDispatcher()
+            .internalTopicDispatcher()
             .loadTopic(searchEntityIdentifier.entityIdent());
 
     EntityCombinedTopic topic = (EntityCombinedTopic) topicAuditable;
@@ -29,7 +29,7 @@ class TopicSearchEntitySource extends LeafSearchEntitySource {
     if (topic.topicEntity() == null) {
       topicAuditable =
           GravitinoEnv.getInstance()
-              .topicDispatcher()
+              .internalTopicDispatcher()
               .loadTopic(searchEntityIdentifier.entityIdent());
     }
     Tag[] metadataTags =

@@ -21,7 +21,7 @@ class TableSearchEntitySource extends LeafSearchEntitySource {
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     Auditable tableAuditable =
         GravitinoEnv.getInstance()
-            .tableDispatcher()
+            .internalTableDispatcher()
             .loadTable(searchEntityIdentifier.entityIdent());
 
     EntityCombinedTable table = (EntityCombinedTable) tableAuditable;
@@ -29,7 +29,7 @@ class TableSearchEntitySource extends LeafSearchEntitySource {
     if (table.tableFromGravitino() == null) {
       tableAuditable =
           GravitinoEnv.getInstance()
-              .tableDispatcher()
+              .internalTableDispatcher()
               .loadTable(searchEntityIdentifier.entityIdent());
     }
     Tag[] metadataTags =

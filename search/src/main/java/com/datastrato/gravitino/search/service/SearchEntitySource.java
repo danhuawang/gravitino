@@ -138,7 +138,7 @@ interface SearchEntitySource {
 
     switch (catalogType) {
       case RELATIONAL:
-        nameIdentifiers = GravitinoEnv.getInstance().tableDispatcher().listTables(ns);
+        nameIdentifiers = GravitinoEnv.getInstance().internalTableDispatcher().listTables(ns);
         ImmutableList.Builder<SearchEntitySource> relationalSources = ImmutableList.builder();
         relationalSources.add(
             new TableSearchEntitySource(
@@ -158,19 +158,19 @@ interface SearchEntitySource {
         return relationalSources.build();
 
       case MESSAGING:
-        nameIdentifiers = GravitinoEnv.getInstance().topicDispatcher().listTopics(ns);
+        nameIdentifiers = GravitinoEnv.getInstance().internalTopicDispatcher().listTopics(ns);
         return ImmutableList.of(
             new TopicSearchEntitySource(
                 toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.TOPIC)));
 
       case FILESET:
-        nameIdentifiers = GravitinoEnv.getInstance().filesetDispatcher().listFilesets(ns);
+        nameIdentifiers = GravitinoEnv.getInstance().internalFilesetDispatcher().listFilesets(ns);
         return ImmutableList.of(
             new FilesetSearchEntitySource(
                 toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.FILESET)));
 
       case MODEL:
-        nameIdentifiers = GravitinoEnv.getInstance().modelDispatcher().listModels(ns);
+        nameIdentifiers = GravitinoEnv.getInstance().internalModelDispatcher().listModels(ns);
         return ImmutableList.of(
             new ModelSearchEntitySource(
                 toSearchEntityIdentifiers(nameIdentifiers, Entity.EntityType.MODEL)));
@@ -189,7 +189,7 @@ interface SearchEntitySource {
    * @return the view identifiers, or empty if the catalog does not support views
    */
   static Optional<NameIdentifier[]> listViews(Namespace namespace) {
-    ViewDispatcher viewDispatcher = GravitinoEnv.getInstance().viewDispatcher();
+    ViewDispatcher viewDispatcher = GravitinoEnv.getInstance().internalViewDispatcher();
     if (viewDispatcher == null) {
       return Optional.empty();
     }
@@ -210,7 +210,7 @@ interface SearchEntitySource {
    * @return the function identifiers, or empty if the catalog does not support functions
    */
   static Optional<NameIdentifier[]> listFunctions(Namespace namespace) {
-    FunctionDispatcher functionDispatcher = GravitinoEnv.getInstance().functionDispatcher();
+    FunctionDispatcher functionDispatcher = GravitinoEnv.getInstance().internalFunctionDispatcher();
     if (functionDispatcher == null) {
       return Optional.empty();
     }
@@ -261,7 +261,7 @@ interface SearchEntitySource {
     List<TagDTO> tags = Lists.newArrayList();
     Tag[] nonInheritedTags =
         GravitinoEnv.getInstance()
-            .tagDispatcher()
+            .internalTagDispatcher()
             .listTagsInfoForMetadataObject(metalakeName, object);
     if (ArrayUtils.isNotEmpty(nonInheritedTags)) {
       Collections.addAll(
@@ -275,7 +275,7 @@ interface SearchEntitySource {
     while (parentObject != null) {
       Tag[] inheritedTags =
           GravitinoEnv.getInstance()
-              .tagDispatcher()
+              .internalTagDispatcher()
               .listTagsInfoForMetadataObject(metalakeName, parentObject);
       if (ArrayUtils.isNotEmpty(inheritedTags)) {
         Collections.addAll(

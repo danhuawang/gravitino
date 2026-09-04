@@ -48,22 +48,22 @@ class TestModelSearchEntitySource {
   @BeforeEach
   void setUp() throws IllegalAccessException {
     GravitinoEnv env = GravitinoEnv.getInstance();
-    originalModelDispatcher = FieldUtils.readField(env, "modelDispatcher", true);
-    originalTagDispatcher = FieldUtils.readField(env, "tagDispatcher", true);
+    originalModelDispatcher = FieldUtils.readField(env, "internalModelDispatcher", true);
+    originalTagDispatcher = FieldUtils.readField(env, "internalTagDispatcher", true);
 
     TagDispatcher tagDispatcher = Mockito.mock(TagDispatcher.class);
     Mockito.when(
             tagDispatcher.listTagsInfoForMetadataObject(
                 ArgumentMatchers.anyString(), ArgumentMatchers.any()))
         .thenReturn(new Tag[0]);
-    FieldUtils.writeField(env, "tagDispatcher", tagDispatcher, true);
+    FieldUtils.writeField(env, "internalTagDispatcher", tagDispatcher, true);
   }
 
   @AfterEach
   void tearDown() throws IllegalAccessException {
     GravitinoEnv env = GravitinoEnv.getInstance();
-    FieldUtils.writeField(env, "modelDispatcher", originalModelDispatcher, true);
-    FieldUtils.writeField(env, "tagDispatcher", originalTagDispatcher, true);
+    FieldUtils.writeField(env, "internalModelDispatcher", originalModelDispatcher, true);
+    FieldUtils.writeField(env, "internalTagDispatcher", originalTagDispatcher, true);
   }
 
   @Test
@@ -74,7 +74,7 @@ class TestModelSearchEntitySource {
     Mockito.when(dispatcher.getModel(MODEL_IDENT)).thenReturn(model);
     Mockito.when(dispatcher.listModelVersionInfos(MODEL_IDENT))
         .thenReturn(new ModelVersion[] {modelVersion});
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "modelDispatcher", dispatcher, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "internalModelDispatcher", dispatcher, true);
 
     ModelSearchEntitySource source =
         new ModelSearchEntitySource(
@@ -107,7 +107,7 @@ class TestModelSearchEntitySource {
     Mockito.when(dispatcher.getModel(MODEL_IDENT)).thenReturn(model);
     Mockito.when(dispatcher.listModelVersionInfos(MODEL_IDENT))
         .thenReturn(new ModelVersion[] {modelVersion});
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "modelDispatcher", dispatcher, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "internalModelDispatcher", dispatcher, true);
 
     ModelSearchEntitySource source =
         new ModelSearchEntitySource(

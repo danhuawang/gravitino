@@ -20,7 +20,9 @@ class ViewSearchEntitySource extends LeafSearchEntitySource {
   @Override
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     View view =
-        GravitinoEnv.getInstance().viewDispatcher().loadView(searchEntityIdentifier.entityIdent());
+        GravitinoEnv.getInstance()
+            .internalViewDispatcher()
+            .loadView(searchEntityIdentifier.entityIdent());
     Tag[] metadataTags =
         SearchEntitySource.getMetadataObjectTags(
             searchEntityIdentifier.entityIdent(), searchEntityIdentifier.entityType());

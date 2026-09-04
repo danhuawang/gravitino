@@ -37,7 +37,7 @@ class CatalogSearchEntitySource extends ParentEntitySource {
   }
 
   private static Catalog getCatalog(NameIdentifier nameIdentifier) {
-    return GravitinoEnv.getInstance().catalogDispatcher().loadCatalog(nameIdentifier);
+    return GravitinoEnv.getInstance().internalCatalogDispatcher().loadCatalog(nameIdentifier);
   }
 
   static Catalog.Type getCatalogType(NameIdentifier nameIdentifier) {
@@ -49,7 +49,7 @@ class CatalogSearchEntitySource extends ParentEntitySource {
   protected List<SearchEntitySource> createChildEntitySources() {
     NameIdentifier[] nameIdentifiers =
         GravitinoEnv.getInstance()
-            .schemaDispatcher()
+            .internalSchemaDispatcher()
             .listSchemas(Namespace.fromString(searchEntityIdentifier.entityIdent().toString()));
     List<SearchEntitySource> sources = new ArrayList<>();
     for (NameIdentifier nameIdentifier : nameIdentifiers) {

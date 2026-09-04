@@ -27,7 +27,7 @@ class TagSearchEntitySource extends LeafSearchEntitySource {
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     Tag tag =
         GravitinoEnv.getInstance()
-            .tagDispatcher()
+            .internalTagDispatcher()
             .getTag(searchEntityIdentifier.metalake(), searchEntityIdentifier.entityIdent().name());
     return EntityConverterUtils.toTagSearchEntityPO(tag, searchEntityIdentifier.entityIdent());
   }

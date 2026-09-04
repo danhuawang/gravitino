@@ -40,26 +40,32 @@ class TestViewSearchEntitySource {
 
   private Object originalViewDispatcher;
   private Object originalTagDispatcher;
+  private Object originalPublicViewDispatcher;
+  private Object originalPublicTagDispatcher;
 
   @BeforeEach
   void setUp() throws IllegalAccessException {
     GravitinoEnv env = GravitinoEnv.getInstance();
-    originalViewDispatcher = FieldUtils.readField(env, "viewDispatcher", true);
-    originalTagDispatcher = FieldUtils.readField(env, "tagDispatcher", true);
+    originalViewDispatcher = FieldUtils.readField(env, "internalViewDispatcher", true);
+    originalTagDispatcher = FieldUtils.readField(env, "internalTagDispatcher", true);
+    originalPublicViewDispatcher = FieldUtils.readField(env, "viewDispatcher", true);
+    originalPublicTagDispatcher = FieldUtils.readField(env, "tagDispatcher", true);
 
     TagDispatcher tagDispatcher = Mockito.mock(TagDispatcher.class);
     Mockito.when(
             tagDispatcher.listTagsInfoForMetadataObject(
                 ArgumentMatchers.anyString(), ArgumentMatchers.any()))
         .thenReturn(new Tag[0]);
-    FieldUtils.writeField(env, "tagDispatcher", tagDispatcher, true);
+    FieldUtils.writeField(env, "internalTagDispatcher", tagDispatcher, true);
   }
 
   @AfterEach
   void tearDown() throws IllegalAccessException {
     GravitinoEnv env = GravitinoEnv.getInstance();
-    FieldUtils.writeField(env, "viewDispatcher", originalViewDispatcher, true);
-    FieldUtils.writeField(env, "tagDispatcher", originalTagDispatcher, true);
+    FieldUtils.writeField(env, "internalViewDispatcher", originalViewDispatcher, true);
+    FieldUtils.writeField(env, "internalTagDispatcher", originalTagDispatcher, true);
+    FieldUtils.writeField(env, "viewDispatcher", originalPublicViewDispatcher, true);
+    FieldUtils.writeField(env, "tagDispatcher", originalPublicTagDispatcher, true);
   }
 
   @Test
@@ -68,7 +74,11 @@ class TestViewSearchEntitySource {
     ViewDispatcher dispatcher = Mockito.mock(ViewDispatcher.class);
     Mockito.when(dispatcher.loadView(VIEW_IDENT))
         .thenReturn(EntityCombinedView.of(viewEntity, viewEntity));
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "viewDispatcher", dispatcher, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "internalViewDispatcher", dispatcher, true);
+    ViewDispatcher publicViewDispatcher = Mockito.mock(ViewDispatcher.class);
+    TagDispatcher publicTagDispatcher = Mockito.mock(TagDispatcher.class);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "viewDispatcher", publicViewDispatcher, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "tagDispatcher", publicTagDispatcher, true);
 
     ViewSearchEntitySource source =
         new ViewSearchEntitySource(
@@ -80,6 +90,7 @@ class TestViewSearchEntitySource {
     assertEquals("v1", batch.get(0).getEntityName());
     assertEquals(Entity.EntityType.VIEW, batch.get(0).getEntityType());
     assertTrue(source.getProcessFailedEntities().isEmpty());
+    Mockito.verifyNoInteractions(publicViewDispatcher, publicTagDispatcher);
   }
 
   @Test
@@ -91,7 +102,7 @@ class TestViewSearchEntitySource {
         .thenThrow(new NoSuchViewException("View does not exist"));
     Mockito.when(dispatcher.loadView(VIEW_IDENT))
         .thenReturn(EntityCombinedView.of(viewEntity, viewEntity));
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "viewDispatcher", dispatcher, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "internalViewDispatcher", dispatcher, true);
 
     ViewSearchEntitySource source =
         new ViewSearchEntitySource(

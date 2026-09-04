@@ -31,7 +31,7 @@ class MetalakeSearchEntitySource extends ParentEntitySource {
   protected List<SearchEntitySource> createChildEntitySources() {
     NameIdentifier[] nameIdentifiers =
         GravitinoEnv.getInstance()
-            .catalogDispatcher()
+            .internalCatalogDispatcher()
             .listCatalogs(Namespace.fromString(searchEntityIdentifier.entityIdent().toString()));
     List<SearchEntitySource> sources = new ArrayList<>();
     for (NameIdentifier nameIdentifier : nameIdentifiers) {
@@ -43,7 +43,7 @@ class MetalakeSearchEntitySource extends ParentEntitySource {
     NameIdentifier[] tagIdentifiers =
         Arrays.stream(
                 GravitinoEnv.getInstance()
-                    .tagDispatcher()
+                    .internalTagDispatcher()
                     .listTags(searchEntityIdentifier.metalake()))
             .map(tagName -> NameIdentifierUtil.ofTag(searchEntityIdentifier.metalake(), tagName))
             .toArray(NameIdentifier[]::new);
@@ -83,7 +83,7 @@ class MetalakeSearchEntitySource extends ParentEntitySource {
     NameIdentifier[] policyIdentifiers =
         Arrays.stream(
                 GravitinoEnv.getInstance()
-                    .policyDispatcher()
+                    .internalPolicyDispatcher()
                     .listPolicies(searchEntityIdentifier.metalake()))
             .map(
                 policyName ->

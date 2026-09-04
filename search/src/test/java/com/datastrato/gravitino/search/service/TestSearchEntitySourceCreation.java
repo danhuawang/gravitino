@@ -35,24 +35,24 @@ class TestSearchEntitySourceCreation {
   @BeforeEach
   void setUp() throws IllegalAccessException {
     GravitinoEnv env = GravitinoEnv.getInstance();
-    originalTableDispatcher = FieldUtils.readField(env, "tableDispatcher", true);
-    originalViewDispatcher = FieldUtils.readField(env, "viewDispatcher", true);
-    originalFunctionDispatcher = FieldUtils.readField(env, "functionDispatcher", true);
+    originalTableDispatcher = FieldUtils.readField(env, "internalTableDispatcher", true);
+    originalViewDispatcher = FieldUtils.readField(env, "internalViewDispatcher", true);
+    originalFunctionDispatcher = FieldUtils.readField(env, "internalFunctionDispatcher", true);
 
     TableDispatcher tableDispatcher = Mockito.mock(TableDispatcher.class);
     Mockito.when(tableDispatcher.listTables(SCHEMA_NAMESPACE))
         .thenReturn(new NameIdentifier[] {NameIdentifier.of(SCHEMA_NAMESPACE, "t1")});
-    FieldUtils.writeField(env, "tableDispatcher", tableDispatcher, true);
-    FieldUtils.writeField(env, "viewDispatcher", null, true);
-    FieldUtils.writeField(env, "functionDispatcher", null, true);
+    FieldUtils.writeField(env, "internalTableDispatcher", tableDispatcher, true);
+    FieldUtils.writeField(env, "internalViewDispatcher", null, true);
+    FieldUtils.writeField(env, "internalFunctionDispatcher", null, true);
   }
 
   @AfterEach
   void tearDown() throws IllegalAccessException {
     GravitinoEnv env = GravitinoEnv.getInstance();
-    FieldUtils.writeField(env, "tableDispatcher", originalTableDispatcher, true);
-    FieldUtils.writeField(env, "viewDispatcher", originalViewDispatcher, true);
-    FieldUtils.writeField(env, "functionDispatcher", originalFunctionDispatcher, true);
+    FieldUtils.writeField(env, "internalTableDispatcher", originalTableDispatcher, true);
+    FieldUtils.writeField(env, "internalViewDispatcher", originalViewDispatcher, true);
+    FieldUtils.writeField(env, "internalFunctionDispatcher", originalFunctionDispatcher, true);
   }
 
   @Test
@@ -76,7 +76,8 @@ class TestSearchEntitySourceCreation {
     ViewDispatcher viewDispatcher = Mockito.mock(ViewDispatcher.class);
     Mockito.when(viewDispatcher.listViews(SCHEMA_NAMESPACE))
         .thenThrow(new UnsupportedOperationException("listViews is not supported"));
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "viewDispatcher", viewDispatcher, true);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalViewDispatcher", viewDispatcher, true);
 
     List<SearchEntitySource> sources =
         SearchEntitySource.createSearchEntitySourceBySchema(SCHEMA_IDENT, Catalog.Type.RELATIONAL);
@@ -88,7 +89,7 @@ class TestSearchEntitySourceCreation {
   @Test
   void testViewsAreSkippedWhenDispatcherIsAbsent() throws IllegalAccessException {
     // A server that never initialized the view dispatcher must still sync tables.
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "viewDispatcher", null, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "internalViewDispatcher", null, true);
 
     List<SearchEntitySource> sources =
         SearchEntitySource.createSearchEntitySourceBySchema(SCHEMA_IDENT, Catalog.Type.RELATIONAL);
@@ -104,7 +105,8 @@ class TestSearchEntitySourceCreation {
     ViewDispatcher viewDispatcher = Mockito.mock(ViewDispatcher.class);
     Mockito.when(viewDispatcher.listViews(SCHEMA_NAMESPACE))
         .thenThrow(new RuntimeException("OpenSearch is down"));
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "viewDispatcher", viewDispatcher, true);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalViewDispatcher", viewDispatcher, true);
 
     assertThrows(
         RuntimeException.class,
@@ -119,7 +121,7 @@ class TestSearchEntitySourceCreation {
     Mockito.when(functionDispatcher.listFunctions(SCHEMA_NAMESPACE))
         .thenThrow(new UnsupportedOperationException("listFunctions is not supported"));
     FieldUtils.writeField(
-        GravitinoEnv.getInstance(), "functionDispatcher", functionDispatcher, true);
+        GravitinoEnv.getInstance(), "internalFunctionDispatcher", functionDispatcher, true);
 
     List<SearchEntitySource> sources =
         SearchEntitySource.createSearchEntitySourceBySchema(SCHEMA_IDENT, Catalog.Type.RELATIONAL);
@@ -134,7 +136,7 @@ class TestSearchEntitySourceCreation {
     Mockito.when(functionDispatcher.listFunctions(SCHEMA_NAMESPACE))
         .thenThrow(new RuntimeException("Function catalog is unavailable"));
     FieldUtils.writeField(
-        GravitinoEnv.getInstance(), "functionDispatcher", functionDispatcher, true);
+        GravitinoEnv.getInstance(), "internalFunctionDispatcher", functionDispatcher, true);
 
     assertThrows(
         RuntimeException.class,
@@ -180,13 +182,14 @@ class TestSearchEntitySourceCreation {
   private void mockViewDispatcher(NameIdentifier[] views) throws IllegalAccessException {
     ViewDispatcher viewDispatcher = Mockito.mock(ViewDispatcher.class);
     Mockito.when(viewDispatcher.listViews(SCHEMA_NAMESPACE)).thenReturn(views);
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "viewDispatcher", viewDispatcher, true);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalViewDispatcher", viewDispatcher, true);
   }
 
   private void mockFunctionDispatcher(NameIdentifier[] functions) throws IllegalAccessException {
     FunctionDispatcher functionDispatcher = Mockito.mock(FunctionDispatcher.class);
     Mockito.when(functionDispatcher.listFunctions(SCHEMA_NAMESPACE)).thenReturn(functions);
     FieldUtils.writeField(
-        GravitinoEnv.getInstance(), "functionDispatcher", functionDispatcher, true);
+        GravitinoEnv.getInstance(), "internalFunctionDispatcher", functionDispatcher, true);
   }
 }

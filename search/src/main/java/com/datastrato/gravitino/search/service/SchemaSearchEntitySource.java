@@ -26,7 +26,7 @@ class SchemaSearchEntitySource extends ParentEntitySource {
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     Auditable auditable =
         GravitinoEnv.getInstance()
-            .schemaDispatcher()
+            .internalSchemaDispatcher()
             .loadSchema(searchEntityIdentifier.entityIdent());
 
     EntityCombinedSchema schema = (EntityCombinedSchema) auditable;
@@ -35,7 +35,7 @@ class SchemaSearchEntitySource extends ParentEntitySource {
     if (schema.schemaEntity() == null) {
       auditable =
           GravitinoEnv.getInstance()
-              .schemaDispatcher()
+              .internalSchemaDispatcher()
               .loadSchema(searchEntityIdentifier.entityIdent());
     }
     Tag[] metadataTags =

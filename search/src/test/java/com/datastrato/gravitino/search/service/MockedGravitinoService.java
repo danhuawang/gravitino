@@ -100,12 +100,13 @@ public class MockedGravitinoService {
       throws IllegalAccessException {
     GravitinoEnv gravitinoEnv = GravitinoEnv.getInstance();
     FieldUtils.writeField(gravitinoEnv, "metalakeDispatcher", mockMetalakeDispatcher(), true);
-    FieldUtils.writeField(gravitinoEnv, "catalogDispatcher", mockCatalogDispatcher(), true);
-    FieldUtils.writeField(gravitinoEnv, "schemaDispatcher", mockSchemaDispatcher(), true);
-    FieldUtils.writeField(gravitinoEnv, "tableDispatcher", mockTableDispatcher(), true);
-    FieldUtils.writeField(gravitinoEnv, "viewDispatcher", mockViewDispatcher(), true);
-    FieldUtils.writeField(gravitinoEnv, "functionDispatcher", mockFunctionDispatcher(), true);
-    FieldUtils.writeField(gravitinoEnv, "tagDispatcher", mockTagDispatcher(), true);
+    FieldUtils.writeField(gravitinoEnv, "internalCatalogDispatcher", mockCatalogDispatcher(), true);
+    FieldUtils.writeField(gravitinoEnv, "internalSchemaDispatcher", mockSchemaDispatcher(), true);
+    FieldUtils.writeField(gravitinoEnv, "internalTableDispatcher", mockTableDispatcher(), true);
+    FieldUtils.writeField(gravitinoEnv, "internalViewDispatcher", mockViewDispatcher(), true);
+    FieldUtils.writeField(
+        gravitinoEnv, "internalFunctionDispatcher", mockFunctionDispatcher(), true);
+    FieldUtils.writeField(gravitinoEnv, "internalTagDispatcher", mockTagDispatcher(), true);
     DatastratoAccessControlDispatcher accessControlDispatcher = mockAccessControlDispatcher();
     FieldUtils.writeField(gravitinoEnv, "accessControlDispatcher", accessControlDispatcher, true);
     FieldUtils.writeField(
@@ -120,7 +121,7 @@ public class MockedGravitinoService {
         "internalDatastratoAccessControlDispatcher",
         accessControlDispatcher,
         true);
-    FieldUtils.writeField(gravitinoEnv, "policyDispatcher", mockPolicyDispatcher(), true);
+    FieldUtils.writeField(gravitinoEnv, "internalPolicyDispatcher", mockPolicyDispatcher(), true);
 
     return Mockito.spy(service);
   }

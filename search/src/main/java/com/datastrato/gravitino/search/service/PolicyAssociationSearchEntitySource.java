@@ -119,7 +119,7 @@ class PolicyAssociationSearchEntitySource extends ParentEntitySource {
       String metalake, String policyName) {
     MetadataObject[] objects =
         GravitinoEnv.getInstance()
-            .policyDispatcher()
+            .internalPolicyDispatcher()
             .listMetadataObjectsForPolicy(metalake, policyName);
     List<SearchEntityIdentifier> identifiers = new ArrayList<>();
     for (MetadataObject object : objects) {

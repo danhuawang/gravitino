@@ -23,7 +23,9 @@ class ModelSearchEntitySource extends LeafSearchEntitySource {
   @Override
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     Auditable modelAuditable =
-        GravitinoEnv.getInstance().modelDispatcher().getModel(searchEntityIdentifier.entityIdent());
+        GravitinoEnv.getInstance()
+            .internalModelDispatcher()
+            .getModel(searchEntityIdentifier.entityIdent());
     Tag[] metadataTags =
         SearchEntitySource.getMetadataObjectTags(
             searchEntityIdentifier.entityIdent(), searchEntityIdentifier.entityType());
@@ -40,7 +42,7 @@ class ModelSearchEntitySource extends LeafSearchEntitySource {
       SearchEntityIdentifier searchEntityIdentifier) {
     ModelVersion[] modelVersions =
         GravitinoEnv.getInstance()
-            .modelDispatcher()
+            .internalModelDispatcher()
             .listModelVersionInfos(searchEntityIdentifier.entityIdent());
     if (modelVersions == null || modelVersions.length == 0) {
       return ImmutableList.of();

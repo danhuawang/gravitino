@@ -133,7 +133,9 @@ class TagAssociationSearchEntitySource extends ParentEntitySource {
   private static List<SearchEntityIdentifier> listAssociatedEntities(
       String metalake, String tagName) {
     MetadataObject[] objects =
-        GravitinoEnv.getInstance().tagDispatcher().listMetadataObjectsForTag(metalake, tagName);
+        GravitinoEnv.getInstance()
+            .internalTagDispatcher()
+            .listMetadataObjectsForTag(metalake, tagName);
     List<SearchEntityIdentifier> identifiers = new ArrayList<>();
     for (MetadataObject object : objects) {
       identifiers.add(new SearchEntityIdentifier(object, metalake));

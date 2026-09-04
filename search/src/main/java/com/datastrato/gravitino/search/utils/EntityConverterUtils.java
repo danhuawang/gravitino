@@ -146,7 +146,7 @@ public class EntityConverterUtils {
 
   private static List<String> getMetadataObjectPolicyNames(
       NameIdentifier nameIdentifier, EntityType entityType) {
-    PolicyDispatcher policyDispatcher = GravitinoEnv.getInstance().policyDispatcher();
+    PolicyDispatcher policyDispatcher = GravitinoEnv.getInstance().internalPolicyDispatcher();
     if (policyDispatcher == null) {
       return ImmutableList.of();
     }
@@ -176,7 +176,7 @@ public class EntityConverterUtils {
 
   @Nullable
   private static String getMetadataObjectOwner(MetadataObject metadataObject, String metalake) {
-    OwnerDispatcher ownerDispatcher = GravitinoEnv.getInstance().ownerDispatcher();
+    OwnerDispatcher ownerDispatcher = GravitinoEnv.getInstance().internalOwnerDispatcher();
     if (ownerDispatcher == null) {
       return null;
     }

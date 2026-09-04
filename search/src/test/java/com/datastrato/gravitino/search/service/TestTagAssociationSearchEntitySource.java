@@ -38,13 +38,13 @@ class TestTagAssociationSearchEntitySource {
   @BeforeEach
   void setUp() throws IllegalAccessException {
     originalCatalogDispatcher =
-        FieldUtils.readField(GravitinoEnv.getInstance(), "catalogDispatcher", true);
+        FieldUtils.readField(GravitinoEnv.getInstance(), "internalCatalogDispatcher", true);
   }
 
   @AfterEach
   void tearDown() throws IllegalAccessException {
     FieldUtils.writeField(
-        GravitinoEnv.getInstance(), "catalogDispatcher", originalCatalogDispatcher, true);
+        GravitinoEnv.getInstance(), "internalCatalogDispatcher", originalCatalogDispatcher, true);
   }
 
   @Test
@@ -78,7 +78,8 @@ class TestTagAssociationSearchEntitySource {
     CatalogDispatcher catalogDispatcher = Mockito.mock(CatalogDispatcher.class);
     Mockito.when(catalogDispatcher.loadCatalog(ArgumentMatchers.any()))
         .thenThrow(new IllegalStateException("Catalog loading failed"));
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalCatalogDispatcher", catalogDispatcher, true);
 
     TagAssociationSearchEntitySource source =
         indexedSource(
@@ -99,7 +100,8 @@ class TestTagAssociationSearchEntitySource {
     CatalogDispatcher catalogDispatcher = Mockito.mock(CatalogDispatcher.class);
     Mockito.when(catalogDispatcher.loadCatalog(ArgumentMatchers.any()))
         .thenThrow(new IllegalStateException("Catalog loading failed"));
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalCatalogDispatcher", catalogDispatcher, true);
 
     TagAssociationSearchEntitySource source =
         indexedSource(
@@ -114,7 +116,8 @@ class TestTagAssociationSearchEntitySource {
       throws IllegalAccessException {
     CatalogDispatcher catalogDispatcher = Mockito.mock(CatalogDispatcher.class);
     Mockito.when(catalogDispatcher.loadCatalog(ArgumentMatchers.any())).thenThrow(exception);
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalCatalogDispatcher", catalogDispatcher, true);
 
     TagAssociationSearchEntitySource source =
         indexedSource(

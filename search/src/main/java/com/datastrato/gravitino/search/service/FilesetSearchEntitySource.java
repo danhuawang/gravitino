@@ -21,7 +21,7 @@ class FilesetSearchEntitySource extends LeafSearchEntitySource {
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
     Auditable filesetAuditable =
         GravitinoEnv.getInstance()
-            .filesetDispatcher()
+            .internalFilesetDispatcher()
             .loadFileset(searchEntityIdentifier.entityIdent());
     Tag[] metadataTags =
         SearchEntitySource.getMetadataObjectTags(
