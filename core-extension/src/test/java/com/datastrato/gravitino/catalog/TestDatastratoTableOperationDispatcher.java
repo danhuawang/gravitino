@@ -68,7 +68,7 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
             catalogManager,
             entityStore,
             idGenerator,
-            trinoJdbcDataPreviewOperator,
+            Optional.of(trinoJdbcDataPreviewOperator),
             () -> schemaOperationDispatcher);
 
     Config config = mock(Config.class);
@@ -382,5 +382,23 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
     Assertions.assertThrows(
         RuntimeException.class,
         () -> tableOperationDispatcher.preview(tableIdent, TABLE, 100, new Column[0]));
+  }
+
+  @Test
+  public void testPreviewTableDataWhenDisabled() {
+    DatastratoTableOperationDispatcher disabledPreviewDispatcher =
+        new DatastratoTableOperationDispatcher(
+            catalogManager,
+            entityStore,
+            idGenerator,
+            Optional.empty(),
+            () -> schemaOperationDispatcher);
+    NameIdentifier tableIdent = NameIdentifier.of(metalake, catalog, "schema99", "table84");
+
+    IllegalStateException exception =
+        Assertions.assertThrows(
+            IllegalStateException.class,
+            () -> disabledPreviewDispatcher.preview(tableIdent, TABLE, 100, new Column[0]));
+    Assertions.assertEquals("Data preview is disabled", exception.getMessage());
   }
 }

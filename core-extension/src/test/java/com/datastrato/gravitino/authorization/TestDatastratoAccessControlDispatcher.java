@@ -426,8 +426,7 @@ public class TestDatastratoAccessControlDispatcher {
 
     Mockito.clearInvocations(delegate, idpUserGroupManager, roleMetaService, eventBus);
     RuntimeException groupProvisioningFailure = new RuntimeException("Failed to provision admins");
-    Mockito.when(delegate.addGroup(METALAKE, "admins"))
-        .thenThrow(groupProvisioningFailure);
+    Mockito.when(delegate.addGroup(METALAKE, "admins")).thenThrow(groupProvisioningFailure);
     RuntimeException groupThrown =
         Assertions.assertThrows(
             RuntimeException.class,

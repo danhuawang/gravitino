@@ -36,9 +36,11 @@ import com.datastrato.gravitino.listener.DatastratoSchemaEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTableEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoTopicEventDispatcher;
 import com.datastrato.gravitino.listener.DatastratoViewEventDispatcher;
+import com.datastrato.gravitino.preview.DataPreviewConfig;
 import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.google.common.annotations.VisibleForTesting;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
@@ -132,7 +134,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             catalogManager(),
             entityStore(),
             idGenerator(),
-            new TrinoJdbcDataPreviewOperator(config, tagDispatcher()),
+            createDataPreviewOperator(config, tagDispatcher()),
             // Capture 'this' so the supplier always resolves through the actual initialized
             // env instance (DatastratoGravitinoEnv or its subclass), not a static singleton.
             () -> datastratoSchemaDispatcher);
@@ -154,7 +156,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             catalogManager(),
             entityStore(),
             idGenerator(),
-            new TrinoJdbcDataPreviewOperator(config, tagDispatcher()),
+            createDataPreviewOperator(config, tagDispatcher()),
             () -> internalDatastratoSchemaDispatcher);
     this.internalDatastratoTableDispatcher =
         new DatastratoTableNormalizeDispatcher(internalTableOperationDispatcher, catalogManager());
@@ -228,6 +230,17 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             idpUserGroupManager());
 
     LOG.info("Datastrato Gravitino Environment initialized.");
+  }
+
+  @VisibleForTesting
+  static Optional<TrinoJdbcDataPreviewOperator> createDataPreviewOperator(
+      Config config, TagDispatcher tagDispatcher) {
+    if (!config.get(DataPreviewConfig.ENABLED_CONFIG)) {
+      LOG.info("Data preview is disabled");
+      return Optional.empty();
+    }
+
+    return Optional.of(new TrinoJdbcDataPreviewOperator(config, tagDispatcher));
   }
 
   @VisibleForTesting

@@ -10,6 +10,7 @@ import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
@@ -28,7 +29,7 @@ import org.apache.gravitino.storage.IdGenerator;
 
 public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
     implements DatastratoTableDispatcher {
-  private final TrinoJdbcDataPreviewOperator trinoJdbcDataPreviewOperator;
+  private final Optional<TrinoJdbcDataPreviewOperator> trinoJdbcDataPreviewOperator;
 
   /**
    * Creates a new DatastratoTableOperationDispatcher instance with an explicit schema dispatcher
@@ -38,14 +39,14 @@ public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
    * @param catalogManager The CatalogManager instance to be used for table operations.
    * @param store The EntityStore instance to be used for table operations.
    * @param idGenerator The IdGenerator instance to be used for table operations.
-   * @param trinoJdbcDataPreviewOperator The trino jdbc preview operator for preview operations.
+   * @param trinoJdbcDataPreviewOperator The optional trino jdbc preview operator.
    * @param schemaDispatcherSupplier Supplier for the schema dispatcher used during schema imports.
    */
   public DatastratoTableOperationDispatcher(
       CatalogManager catalogManager,
       EntityStore store,
       IdGenerator idGenerator,
-      TrinoJdbcDataPreviewOperator trinoJdbcDataPreviewOperator,
+      Optional<TrinoJdbcDataPreviewOperator> trinoJdbcDataPreviewOperator,
       Supplier<SchemaDispatcher> schemaDispatcherSupplier) {
     super(catalogManager, store, idGenerator, schemaDispatcherSupplier);
     this.trinoJdbcDataPreviewOperator = trinoJdbcDataPreviewOperator;
@@ -59,13 +60,13 @@ public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
    * @param catalogManager The CatalogManager instance to be used for table operations.
    * @param store The EntityStore instance to be used for table operations.
    * @param idGenerator The IdGenerator instance to be used for table operations.
-   * @param trinoJdbcDataPreviewOperator The trino jdbc preview operator for preview operations.
+   * @param trinoJdbcDataPreviewOperator The optional trino jdbc preview operator.
    */
   public DatastratoTableOperationDispatcher(
       CatalogManager catalogManager,
       EntityStore store,
       IdGenerator idGenerator,
-      TrinoJdbcDataPreviewOperator trinoJdbcDataPreviewOperator) {
+      Optional<TrinoJdbcDataPreviewOperator> trinoJdbcDataPreviewOperator) {
     super(catalogManager, store, idGenerator);
     this.trinoJdbcDataPreviewOperator = trinoJdbcDataPreviewOperator;
   }
@@ -92,6 +93,8 @@ public class DatastratoTableOperationDispatcher extends TableOperationDispatcher
       throws DataPreviewSensitiveTableException {
     // If we use the table read lock, the trino connector will load table, it will cause
     // the dead lock.
-    return trinoJdbcDataPreviewOperator.preview(identifier, type, resultLimit, columns);
+    return trinoJdbcDataPreviewOperator
+        .orElseThrow(() -> new IllegalStateException("Data preview is disabled"))
+        .preview(identifier, type, resultLimit, columns);
   }
 }

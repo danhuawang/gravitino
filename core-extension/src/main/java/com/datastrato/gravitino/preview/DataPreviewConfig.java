@@ -11,6 +11,14 @@ import org.apache.gravitino.config.ConfigConstants;
 import org.apache.gravitino.config.ConfigEntry;
 
 public class DataPreviewConfig {
+  /** Whether data preview is enabled. */
+  public static final ConfigEntry<Boolean> ENABLED_CONFIG =
+      new ConfigBuilder("gravitino.datastrato.preview.enabled")
+          .doc("Whether to enable data preview")
+          .version(ConfigConstants.VERSION_0_9_0)
+          .booleanConf()
+          .createWithDefault(true);
+
   public static String JDBC_URL = "gravitino.datastrato.preview.jdbcUrl";
   public static String JDBC_DRIVER = "gravitino.datastrato.preview.jdbcDriver";
   public static String JDBC_USERNAME = "gravitino.datastrato.preview.jdbcUsername";
