@@ -380,6 +380,16 @@ public class SearchService implements Closeable {
 
   public List<SearchEntitiesDTO> query(
       String metalake, String query, int pageNumber, int pageSize) {
+    Preconditions.checkArgument(
+        pageNumber >= 0, "pageNumber must be greater than or equal to 0: %s", pageNumber);
+    Preconditions.checkArgument(pageSize > 0, "pageSize must be greater than 0: %s", pageSize);
+
+    boolean metalakeExists =
+        GravitinoEnv.getInstance().metalakeDispatcher().metalakeExists(NameIdentifier.of(metalake));
+    if (!metalakeExists) {
+      throw new NoSuchMetalakeException("The metalake '%s' does not exist.", metalake);
+    }
+
     String keyword = null;
     Condition condition = null;
     if (StringUtils.isNotBlank(query)) {

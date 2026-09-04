@@ -216,6 +216,13 @@ public class TestSearchService {
     SyncTask task = searchService.synchronizeMetadata(metalake, testObj, true);
     task.waitToFinished();
 
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> searchService.query(metalake, null, -1, 10));
+    Assertions.assertThrows(
+        IllegalArgumentException.class, () -> searchService.query(metalake, null, 0, 0));
+    Assertions.assertThrows(
+        NoSuchMetalakeException.class, () -> searchService.query("missing_metalake", null, 0, 10));
+
     // test query catalog
     nameIdentifier = NameIdentifier.of(metalake, "test_catalog1");
     List<SearchEntitiesDTO> dto =

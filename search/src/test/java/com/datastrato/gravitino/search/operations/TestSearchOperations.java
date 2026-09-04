@@ -14,16 +14,19 @@ import static org.mockito.Mockito.when;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.rest.SearchOperations;
+import com.datastrato.gravitino.search.rest.SearchQueryResponse;
 import com.datastrato.gravitino.search.rest.SynMetadataRequest;
 import com.datastrato.gravitino.search.rest.TaskStatusResponse;
 import com.datastrato.gravitino.search.service.SearchService;
 import com.datastrato.gravitino.search.service.SyncTask;
 import com.datastrato.gravitino.search.service.SyncTaskOptions;
 import com.datastrato.gravitino.search.service.TaskStatus;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.client.Entity;
+import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -34,6 +37,7 @@ import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
+import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.rest.RESTUtils;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
@@ -100,9 +104,8 @@ public class TestSearchOperations extends JerseyTest {
     FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
 
     SearchService service = new SearchService(config);
-    searchService = service;
-
     SearchService spyService = Mockito.spy(service);
+    searchService = spyService;
     doAnswer(
             invocation ->
                 new SyncTask(
@@ -227,6 +230,71 @@ public class TestSearchOperations extends JerseyTest {
   }
 
   @Test
+  void testQuery() {
+    Mockito.doReturn(ImmutableList.of()).when(searchService).query("metalake1", "no-match", 0, 10);
+
+    Response resp = query("metalake1", "no-match", null, null);
+
+    Assertions.assertEquals(Status.OK.getStatusCode(), resp.getStatus());
+    SearchQueryResponse queryResponse = resp.readEntity(SearchQueryResponse.class);
+    Assertions.assertTrue(queryResponse.getEntities().isEmpty());
+  }
+
+  @Test
+  void testQueryRejectsInvalidPagination() {
+    Response resp = query("metalake1", null, "-1", null);
+    assertErrorResponse(
+        resp,
+        Status.BAD_REQUEST,
+        ErrorConstants.ILLEGAL_ARGUMENTS_CODE,
+        "pageNumber must be greater than or equal to 0: -1");
+
+    resp = query("metalake1", null, null, "0");
+    assertErrorResponse(
+        resp,
+        Status.BAD_REQUEST,
+        ErrorConstants.ILLEGAL_ARGUMENTS_CODE,
+        "pageSize must be greater than 0: 0");
+
+    resp = query("metalake1", null, null, "-1");
+    assertErrorResponse(
+        resp,
+        Status.BAD_REQUEST,
+        ErrorConstants.ILLEGAL_ARGUMENTS_CODE,
+        "pageSize must be greater than 0: -1");
+  }
+
+  @Test
+  void testQueryReportsFailures() {
+    Mockito.doThrow(new NoSuchMetalakeException("The metalake 'missing' does not exist."))
+        .when(searchService)
+        .query("missing", null, 0, 10);
+    Response resp = query("missing", null, null, null);
+    assertErrorResponse(
+        resp,
+        Status.NOT_FOUND,
+        ErrorConstants.NOT_FOUND_CODE,
+        "The metalake 'missing' does not exist.");
+
+    Mockito.doThrow(new IllegalArgumentException("Invalid search query"))
+        .when(searchService)
+        .query("metalake1", "invalid-query", 0, 10);
+    resp = query("metalake1", "invalid-query", null, null);
+    assertErrorResponse(
+        resp, Status.BAD_REQUEST, ErrorConstants.ILLEGAL_ARGUMENTS_CODE, "Invalid search query");
+
+    Mockito.doThrow(new RuntimeException("Search backend unavailable"))
+        .when(searchService)
+        .query("metalake1", "backend-failure", 0, 10);
+    resp = query("metalake1", "backend-failure", null, null);
+    assertErrorResponse(
+        resp,
+        Status.INTERNAL_SERVER_ERROR,
+        ErrorConstants.INTERNAL_ERROR_CODE,
+        "Search backend unavailable");
+  }
+
+  @Test
   void testGetTaskStatus() {
     long taskCreateTime = System.currentTimeMillis();
     String taskId = "test-task-id";
@@ -297,5 +365,30 @@ public class TestSearchOperations extends JerseyTest {
         && taskStatus.isCascade() == taskStatusDTO.isCascade()
         && taskStatus.getTaskCreateTime().equals(taskStatusDTO.getTaskCreateTime())
         && taskStatus.getTaskUpdateTime().equals(taskStatusDTO.getTaskUpdateTime());
+  }
+
+  private Response query(String metalake, String keyword, String pageNumber, String pageSize) {
+    WebTarget target = target("/search/query").queryParam("metalake", metalake);
+    if (keyword != null) {
+      target = target.queryParam("keyword", keyword);
+    }
+    if (pageNumber != null) {
+      target = target.queryParam("pageNumber", pageNumber);
+    }
+    if (pageSize != null) {
+      target = target.queryParam("pageSize", pageSize);
+    }
+    return target
+        .request(MediaType.APPLICATION_JSON_TYPE)
+        .accept("application/vnd.gravitino.v1+json")
+        .get();
+  }
+
+  private void assertErrorResponse(
+      Response response, Status status, int errorCode, String errorMessage) {
+    Assertions.assertEquals(status.getStatusCode(), response.getStatus());
+    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(errorCode, errorResponse.getCode());
+    Assertions.assertEquals(errorMessage, errorResponse.getMessage());
   }
 }

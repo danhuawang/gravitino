@@ -9,7 +9,6 @@ import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.service.SyncTask;
-import com.google.common.collect.ImmutableList;
 import java.util.List;
 import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
@@ -27,6 +26,7 @@ import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
+import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.server.web.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -130,9 +130,15 @@ public class SearchOperations {
             return Utils.ok(new SearchQueryResponse(result));
           });
 
+    } catch (IllegalArgumentException e) {
+      LOG.warn("Invalid search query for metalake: {}", metalake, e);
+      return Utils.illegalArguments(e.getMessage(), e);
+    } catch (NotFoundException e) {
+      LOG.warn("Failed to find metadata for search query in metalake: {}", metalake, e);
+      return Utils.notFound(e.getMessage(), e);
     } catch (Exception e) {
-      LOG.warn("Failed to query the data", e);
-      return Utils.ok(new SearchQueryResponse(ImmutableList.of()));
+      LOG.error("Failed to query data in metalake: {}", metalake, e);
+      return Utils.internalError(e.getMessage());
     }
   }
 
