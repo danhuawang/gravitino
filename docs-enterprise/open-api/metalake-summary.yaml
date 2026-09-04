@@ -11,10 +11,12 @@ paths:
       summary: Get metalake summary
       operationId: getMetalakeSummary
       description: |
-        Return aggregate metadata counts for the specified metalake. The counts come from Gravitino
-        itself rather than from the search index, so they are available regardless of the search
-        configuration and do not depend on asynchronous index updates. The endpoint requires
-        metalake ownership and returns complete counts without per-object visibility filtering.
+        Return aggregate metadata counts for the specified metalake. The counts are read from
+        persisted Gravitino metadata rather than the search index or asynchronous dashboard metric
+        snapshots, so they are exact and independent of background refreshes. The endpoint requires
+        metalake ownership and returns counts without per-object visibility filtering. The catalog
+        count is always present; user and role counts are exact when authorization is enabled and
+        null otherwise. Disabled metalakes are supported without temporarily enabling the metalake.
       parameters:
         - name: metalake
           in: path

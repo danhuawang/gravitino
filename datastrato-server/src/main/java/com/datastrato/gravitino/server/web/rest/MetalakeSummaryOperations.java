@@ -6,7 +6,9 @@ package com.datastrato.gravitino.server.web.rest;
 import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.dto.responses.MetalakeSummaryResponse;
-import javax.annotation.Nullable;
+import com.datastrato.gravitino.metalake.MetalakeSummaryCounts;
+import com.datastrato.gravitino.metalake.MetalakeSummaryMetaService;
+import com.google.common.base.Preconditions;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -16,7 +18,6 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
-import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -30,23 +31,37 @@ import org.slf4j.LoggerFactory;
 /**
  * REST operations for retrieving aggregate information about a metalake.
  *
- * <p>The endpoint requires metalake ownership and reports complete counts without per-object
- * visibility filtering. Filtering would be a no-op: both {@code
- * LOAD_CATALOG_AUTHORIZATION_EXPRESSION} and {@code LOAD_ROLE_AUTHORIZATION_EXPRESSION} accept
- * {@code METALAKE::OWNER} for every object, which every caller of this endpoint has.
+ * <p>The endpoint requires metalake ownership and reports an exact catalog count plus exact user
+ * and role counts when authorization is enabled, without per-object visibility filtering. Filtering
+ * would be a no-op: both {@code LOAD_CATALOG_AUTHORIZATION_EXPRESSION} and {@code
+ * LOAD_ROLE_AUTHORIZATION_EXPRESSION} accept {@code METALAKE::OWNER} for every object, which every
+ * caller of this endpoint has.
  */
 @Path("/web/metalakes/{metalake}/summary")
 public class MetalakeSummaryOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(MetalakeSummaryOperations.class);
 
+  private final MetalakeSummaryMetaService summaryMetaService;
+
   @Context private HttpServletRequest httpRequest;
+
+  /** Creates metalake summary REST operations. */
+  public MetalakeSummaryOperations() {
+    this(MetalakeSummaryMetaService.getInstance());
+  }
+
+  MetalakeSummaryOperations(MetalakeSummaryMetaService summaryMetaService) {
+    this.summaryMetaService = Preconditions.checkNotNull(summaryMetaService);
+  }
 
   /**
    * Returns aggregate information about a metalake.
    *
-   * <p>Every count comes from Gravitino directly. A listing that fails propagates as an error
-   * instead of being reported as zero so that clients do not receive a misleading summary.
+   * <p>All counts come from one relational query so they describe the same persisted snapshot. A
+   * query failure propagates as an error instead of being reported as zero. Reading persistence
+   * directly also keeps the summary available while the metalake is disabled, when normal
+   * child-entity APIs intentionally reject operations.
    *
    * @param metalake The metalake name.
    * @return The metalake summary response.
@@ -66,46 +81,17 @@ public class MetalakeSummaryOperations {
           () -> {
             AccessControlDispatcher accessControlDispatcher =
                 GravitinoEnv.getInstance().accessControlDispatcher();
+            MetalakeSummaryCounts counts = summaryMetaService.loadCounts(metalake);
             MetalakeSummaryResponse response =
                 new MetalakeSummaryResponse(
-                    countCatalogs(metalake),
-                    countUsers(accessControlDispatcher, metalake),
-                    countRoles(accessControlDispatcher, metalake));
+                    counts.catalogCount(),
+                    accessControlDispatcher == null ? null : counts.userCount(),
+                    accessControlDispatcher == null ? null : counts.roleCount());
             LOG.info("Loaded summary for metalake: {}, {}", metalake, response);
             return Utils.ok(response);
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleMetalakeException(OperationType.LOAD, metalake, e);
     }
-  }
-
-  /** Returns the number of catalogs in the metalake. */
-  private long countCatalogs(String metalake) {
-    return GravitinoEnv.getInstance()
-        .catalogDispatcher()
-        .listCatalogs(Namespace.of(metalake))
-        .length;
-  }
-
-  /** Returns the number of users, or null when access control is disabled. */
-  @Nullable
-  private Long countUsers(
-      @Nullable AccessControlDispatcher accessControlDispatcher, String metalake) {
-    if (accessControlDispatcher == null) {
-      return null;
-    }
-
-    return accessControlDispatcher.countUsers(metalake);
-  }
-
-  /** Returns the number of roles, or null when access control is disabled. */
-  @Nullable
-  private Long countRoles(
-      @Nullable AccessControlDispatcher accessControlDispatcher, String metalake) {
-    if (accessControlDispatcher == null) {
-      return null;
-    }
-
-    return (long) accessControlDispatcher.listRoleNames(metalake).length;
   }
 }

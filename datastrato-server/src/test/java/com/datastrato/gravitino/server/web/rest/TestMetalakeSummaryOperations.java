@@ -8,9 +8,12 @@ import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.dto.responses.MetalakeSummaryResponse;
+import com.datastrato.gravitino.metalake.MetalakeSummaryCounts;
+import com.datastrato.gravitino.metalake.MetalakeSummaryMetaService;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
@@ -22,10 +25,7 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
-import org.apache.gravitino.NameIdentifier;
-import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
-import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
@@ -48,9 +48,10 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
 
   private static final String METALAKE = "metalake1";
 
-  private static final CatalogDispatcher catalogDispatcher = mock(CatalogDispatcher.class);
   private static final AccessControlDispatcher accessControlDispatcher =
       mock(AccessControlDispatcher.class);
+  private static final MetalakeSummaryMetaService summaryMetaService =
+      mock(MetalakeSummaryMetaService.class);
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
     /** {@inheritDoc} */
@@ -72,13 +73,12 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
     Mockito.doReturn(36000L).when(config).get(TREE_LOCK_CLEAN_INTERVAL);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
   }
 
   /** Resets dispatcher mocks before each test. */
   @BeforeEach
   public void resetMocks() throws IllegalAccessException {
-    Mockito.reset(catalogDispatcher, accessControlDispatcher);
+    Mockito.reset(accessControlDispatcher, summaryMetaService);
     FieldUtils.writeField(
         GravitinoEnv.getInstance(), "accessControlDispatcher", accessControlDispatcher, true);
   }
@@ -94,7 +94,7 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
     }
 
     ResourceConfig resourceConfig = new ResourceConfig();
-    resourceConfig.register(MetalakeSummaryOperations.class);
+    resourceConfig.register(new MetalakeSummaryOperations(summaryMetaService));
     resourceConfig.register(
         new AbstractBinder() {
           /** {@inheritDoc} */
@@ -109,27 +109,20 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
   /** Tests a summary with catalogs, users, and roles. */
   @Test
   public void testGetSummary() {
-    when(catalogDispatcher.listCatalogs(Namespace.of(METALAKE)))
-        .thenReturn(
-            new NameIdentifier[] {
-              NameIdentifier.of(METALAKE, "catalog1"), NameIdentifier.of(METALAKE, "catalog2")
-            });
-    when(accessControlDispatcher.countUsers(METALAKE)).thenReturn(3L);
-    when(accessControlDispatcher.listRoleNames(METALAKE)).thenReturn(new String[] {"role1"});
+    when(summaryMetaService.loadCounts(METALAKE)).thenReturn(new MetalakeSummaryCounts(2L, 3L, 1L));
 
     MetalakeSummaryResponse summary = getSummary(Response.Status.OK.getStatusCode());
     Assertions.assertEquals(0, summary.getCode());
     Assertions.assertEquals(2, summary.getCatalogCount());
     Assertions.assertEquals(3L, summary.getUserCount());
     Assertions.assertEquals(1L, summary.getRoleCount());
+    verify(summaryMetaService).loadCounts(METALAKE);
   }
 
   /** Tests that an empty metalake returns zero counts. */
   @Test
   public void testEmptyMetalakeReportsZeroes() {
-    when(catalogDispatcher.listCatalogs(Namespace.of(METALAKE))).thenReturn(new NameIdentifier[0]);
-    when(accessControlDispatcher.countUsers(METALAKE)).thenReturn(0L);
-    when(accessControlDispatcher.listRoleNames(METALAKE)).thenReturn(new String[0]);
+    when(summaryMetaService.loadCounts(METALAKE)).thenReturn(new MetalakeSummaryCounts(0L, 0L, 0L));
 
     MetalakeSummaryResponse summary = getSummary(Response.Status.OK.getStatusCode());
     Assertions.assertEquals(0, summary.getCatalogCount());
@@ -141,8 +134,7 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
   @Test
   public void testUserAndRoleCountsAreAbsentWithoutAccessControl() throws IllegalAccessException {
     FieldUtils.writeField(GravitinoEnv.getInstance(), "accessControlDispatcher", null, true);
-    when(catalogDispatcher.listCatalogs(Namespace.of(METALAKE)))
-        .thenReturn(new NameIdentifier[] {NameIdentifier.of(METALAKE, "catalog1")});
+    when(summaryMetaService.loadCounts(METALAKE)).thenReturn(new MetalakeSummaryCounts(1L, 2L, 3L));
 
     MetalakeSummaryResponse summary = getSummary(Response.Status.OK.getStatusCode());
     Assertions.assertEquals(1, summary.getCatalogCount());
@@ -153,7 +145,7 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
   /** Tests that a missing metalake returns HTTP 404. */
   @Test
   public void testMissingMetalakeIsReported() {
-    when(catalogDispatcher.listCatalogs(Namespace.of(METALAKE)))
+    when(summaryMetaService.loadCounts(METALAKE))
         .thenThrow(new NoSuchMetalakeException("metalake does not exist"));
 
     Response response = request();
@@ -162,14 +154,11 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
     Assertions.assertEquals(ErrorConstants.NOT_FOUND_CODE, error.getCode());
   }
 
-  /** Tests that a failed count returns an error instead of zero. */
+  /** Tests that a failed persisted query returns an error instead of zero. */
   @Test
   public void testFailedCountIsNotReportedAsZero() {
-    // A summary must not claim the metalake is empty when the listing failed.
-    when(catalogDispatcher.listCatalogs(Namespace.of(METALAKE)))
-        .thenReturn(new NameIdentifier[] {NameIdentifier.of(METALAKE, "catalog1")});
-    when(accessControlDispatcher.countUsers(METALAKE))
-        .thenThrow(new RuntimeException("user count is unavailable"));
+    when(summaryMetaService.loadCounts(METALAKE))
+        .thenThrow(new RuntimeException("summary count is unavailable"));
 
     Response response = request();
     Assertions.assertEquals(
