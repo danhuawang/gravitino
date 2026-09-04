@@ -18,18 +18,12 @@
 import unittest
 from unittest.mock import MagicMock
 
-<<<<<<< HEAD
-from gravitino.client.gravitino_metalake import GravitinoMetalake
-from gravitino.constants.error import ErrorConstants
-from gravitino.dto.metalake_dto import MetalakeDTO
-=======
 from gravitino.api.catalog_change import CatalogChange
 from gravitino.client.gravitino_metalake import GravitinoMetalake
 from gravitino.constants.error import ErrorConstants
 from gravitino.dto.metalake_dto import MetalakeDTO
 from gravitino.dto.requests.catalog_update_request import CatalogUpdateRequest
 from gravitino.dto.requests.catalog_updates_request import CatalogUpdatesRequest
->>>>>>> upstream/branch-1.3
 from gravitino.dto.responses.metalake_response import MetalakeResponse
 from gravitino.exceptions.base import (
     ConnectionFailedException,
@@ -53,8 +47,6 @@ class TestMetalake(unittest.TestCase):
             error_handler=CATALOG_ERROR_HANDLER,
         )
 
-<<<<<<< HEAD
-=======
     def test_existing_catalog_connection_with_changes(self):
         rest_client = MagicMock()
         rest_client.post.return_value.body = b'{"code":0}'
@@ -73,7 +65,6 @@ class TestMetalake(unittest.TestCase):
             error_handler=CATALOG_ERROR_HANDLER,
         )
 
->>>>>>> upstream/branch-1.3
     def test_existing_catalog_connection_failure(self):
         rest_client = MagicMock()
         rest_client.post.return_value.body = (

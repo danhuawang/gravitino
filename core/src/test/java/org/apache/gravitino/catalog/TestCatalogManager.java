@@ -58,12 +58,9 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.Schema;
 import org.apache.gravitino.connector.BaseCatalog;
-<<<<<<< HEAD
-import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
-=======
 import org.apache.gravitino.connector.CatalogDropAware;
 import org.apache.gravitino.connector.CatalogOperations;
->>>>>>> upstream/branch-1.3
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.connector.capability.CapabilityResult;
 import org.apache.gravitino.exceptions.CatalogAlreadyExistsException;
@@ -1358,8 +1355,6 @@ public class TestCatalogManager {
       releaseConnection.countDown();
       executor.shutdownNow();
     }
-<<<<<<< HEAD
-=======
   }
 
   @Test
@@ -1439,7 +1434,6 @@ public class TestCatalogManager {
           .when(catalogManager)
           .createCatalogWrapper(any(CatalogEntity.class), eq(null));
     }
->>>>>>> upstream/branch-1.3
   }
 
   @Test

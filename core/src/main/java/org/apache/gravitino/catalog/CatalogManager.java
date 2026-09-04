@@ -706,8 +706,6 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         });
   }
 
-<<<<<<< HEAD
-=======
   /**
    * Test the connection of an existing catalog with proposed changes without persisting them.
    *
@@ -779,7 +777,6 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         });
   }
 
->>>>>>> upstream/branch-1.3
   @Override
   public void enableCatalog(NameIdentifier ident)
       throws NoSuchCatalogException, CatalogNotInUseException {

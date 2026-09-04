@@ -125,8 +125,6 @@ public class CatalogIT extends BaseIT {
     Assertions.assertEquals("catalog comment", catalog.comment());
     Assertions.assertTrue(catalog.properties().containsKey("metastore.uris"));
     Assertions.assertDoesNotThrow(() -> metalake.testConnection(catalogName));
-<<<<<<< HEAD
-=======
 
     Assertions.assertThrows(
         ConnectionFailedException.class,
@@ -139,7 +137,6 @@ public class CatalogIT extends BaseIT {
     Assertions.assertEquals("catalog comment", unchangedCatalog.comment());
     Assertions.assertEquals(hmsUri, unchangedCatalog.properties().get("metastore.uris"));
     Assertions.assertDoesNotThrow(() -> metalake.testConnection(catalogName));
->>>>>>> upstream/branch-1.3
 
     metalake.dropCatalog(catalogName, true);
   }

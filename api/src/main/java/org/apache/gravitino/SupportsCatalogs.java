@@ -226,8 +226,6 @@ public interface SupportsCatalogs {
     throw new UnsupportedOperationException(
         String.format("Catalog %s does not support connection testing", catalogName));
   }
-<<<<<<< HEAD
-=======
 
   /**
    * Test the connection of an existing catalog with proposed changes without persisting them.
@@ -250,5 +248,4 @@ public interface SupportsCatalogs {
         String.format(
             "Catalog %s does not support connection testing with proposed changes", catalogName));
   }
->>>>>>> upstream/branch-1.3
 }

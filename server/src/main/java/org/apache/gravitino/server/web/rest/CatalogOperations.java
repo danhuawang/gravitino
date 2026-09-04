@@ -232,21 +232,14 @@ public class CatalogOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       @PathParam("catalog") @AuthorizationMetadata(type = Entity.EntityType.CATALOG)
-<<<<<<< HEAD
-          String catalogName) {
-=======
           String catalogName,
       CatalogUpdatesRequest request) {
->>>>>>> upstream/branch-1.3
     LOG.info("Received test connection request for existing catalog: {}.{}", metalake, catalogName);
     try {
       return Utils.doAs(
           httpRequest,
           () -> {
             NameIdentifier ident = NameIdentifierUtil.ofCatalog(metalake, catalogName);
-<<<<<<< HEAD
-            catalogDispatcher.testConnection(ident);
-=======
             if (request == null) {
               catalogDispatcher.testConnection(ident);
             } else {
@@ -257,7 +250,6 @@ public class CatalogOperations {
                       .toArray(CatalogChange[]::new);
               catalogDispatcher.testConnection(ident, changes);
             }
->>>>>>> upstream/branch-1.3
             LOG.info(
                 "Successfully tested connection for existing catalog: {}.{}",
                 metalake,

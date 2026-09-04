@@ -34,7 +34,7 @@ public class TestGravitinoOracleJdbcCatalog {
 
   @BeforeAll
   static void initCatalogManager() {
-    GravitinoCatalogManager.create(() -> mock(GravitinoClient.class));
+    GravitinoCatalogManager.create("test_metalake", () -> mock(GravitinoClient.class));
   }
 
   @AfterAll

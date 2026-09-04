@@ -659,7 +659,6 @@ public class BaseIT {
     return null;
   }
 
-<<<<<<< HEAD
   private static String loadBackendSchemaContent(String gravitinoHome, String databaseType)
       throws IOException {
     String version = ConfigConstants.CURRENT_SCRIPT_VERSION;
@@ -679,7 +678,8 @@ public class BaseIT {
     return Files.readString(ossSchema, StandardCharsets.UTF_8)
         + System.lineSeparator()
         + Files.readString(enterpriseSchema, StandardCharsets.UTF_8);
-=======
+  }
+
   /**
    * Enables the Iceberg REST auxiliary service before the server starts. Callers that hold a {@link
    * BaseIT} instance rather than extending it use this instead of the protected fields.
@@ -690,7 +690,6 @@ public class BaseIT {
   public void enableIcebergAuxRestService(Map<String, String> icebergRestConfigs) {
     this.ignoreIcebergAuxRestService = false;
     this.customConfigs.putAll(icebergRestConfigs);
->>>>>>> upstream/branch-1.3
   }
 
   protected String getIcebergRestServiceUri() {

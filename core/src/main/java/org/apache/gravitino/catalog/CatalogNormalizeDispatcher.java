@@ -131,8 +131,6 @@ public class CatalogNormalizeDispatcher implements CatalogDispatcher {
   }
 
   @Override
-<<<<<<< HEAD
-=======
   public void testConnection(NameIdentifier ident, CatalogChange... changes) throws Exception {
     validateCatalogName(ident.name());
     Arrays.stream(changes)
@@ -146,7 +144,6 @@ public class CatalogNormalizeDispatcher implements CatalogDispatcher {
   }
 
   @Override
->>>>>>> upstream/branch-1.3
   public void enableCatalog(NameIdentifier ident) throws NoSuchCatalogException {
     dispatcher.enableCatalog(ident);
   }

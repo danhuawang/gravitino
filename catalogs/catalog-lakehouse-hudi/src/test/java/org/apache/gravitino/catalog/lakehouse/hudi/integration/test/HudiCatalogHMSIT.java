@@ -174,10 +174,7 @@ public class HudiCatalogHMSIT extends BaseIT {
     expectedProperties.put(PROPERTY_IN_USE, "true");
     // gravitino.identifier is reserved+hidden and omitted from API responses
     Assertions.assertEquals(expectedProperties, catalog.properties());
-<<<<<<< HEAD
     Assertions.assertFalse(catalog.properties().containsKey(StringIdentifier.ID_KEY));
-=======
->>>>>>> upstream/branch-1.3
     Assertions.assertDoesNotThrow(() -> metalake.testConnection(catalogName));
 
     // test list

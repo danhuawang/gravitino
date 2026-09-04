@@ -364,11 +364,7 @@ public class GravitinoEnv {
    *
    * <p>The internal dispatcher preserves normalization but skips hooks and event emission.
    *
-<<<<<<< HEAD
    * @return The internal FunctionDispatcher instance.
-=======
-   * <p>The internal FunctionDispatcher instance.
->>>>>>> upstream/branch-1.3
    */
   public FunctionDispatcher internalFunctionDispatcher() {
     return internalFunctionDispatcher;

@@ -401,8 +401,6 @@ public class TestCatalogOperations extends BaseOperationsTest {
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     Assertions.assertEquals(0, response.readEntity(BaseResponse.class).getCode());
 
-<<<<<<< HEAD
-=======
     CatalogUpdatesRequest proposedChanges =
         new CatalogUpdatesRequest(
             ImmutableList.of(
@@ -443,7 +441,6 @@ public class TestCatalogOperations extends BaseOperationsTest {
     Assertions.assertEquals("invalid proposed change", invalidChanges.getMessage());
     Assertions.assertNull(invalidChanges.getStack());
 
->>>>>>> upstream/branch-1.3
     doThrow(new ConnectionFailedException("sanitized failure"))
         .when(manager)
         .testConnection(any(NameIdentifier.class));
@@ -753,8 +750,6 @@ public class TestCatalogOperations extends BaseOperationsTest {
     Assertions.assertEquals(RuntimeException.class.getSimpleName(), errorResponse1.getType());
   }
 
-<<<<<<< HEAD
-=======
   @Test
   public void testSetCatalogWithNullRequest() {
     Response resp =
@@ -767,7 +762,6 @@ public class TestCatalogOperations extends BaseOperationsTest {
     assertNullRequestBodyRejected(resp);
   }
 
->>>>>>> upstream/branch-1.3
   private static TestCatalog buildCatalogWithProperties(
       String metalake, String catalogName, Map<String, String> properties) {
     CatalogEntity entity =

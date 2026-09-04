@@ -18,18 +18,12 @@
  */
 package org.apache.gravitino.server.web.rest;
 
-<<<<<<< HEAD
-import javax.ws.rs.core.Response;
-import org.apache.gravitino.dto.responses.ErrorConstants;
-import org.apache.gravitino.dto.responses.ErrorResponse;
-import org.apache.gravitino.exceptions.ConnectionFailedException;
-=======
 import java.util.List;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
+import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.UnmodifiableStatisticException;
->>>>>>> upstream/branch-1.3
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -64,7 +58,6 @@ public class TestExceptionHandlers {
   }
 
   @Test
-<<<<<<< HEAD
   public void testTableConnectionFailureUsesBadGateway() {
     Response response =
         ExceptionHandlers.handleTableException(
@@ -77,7 +70,9 @@ public class TestExceptionHandlers {
     ErrorResponse error = (ErrorResponse) response.getEntity();
     Assertions.assertEquals(ErrorConstants.CONNECTION_FAILED_CODE, error.getCode());
     Assertions.assertEquals(ConnectionFailedException.class.getSimpleName(), error.getType());
-=======
+  }
+
+  @Test
   void testUnsupportedOperationReturnsNotImplemented() {
     UnsupportedOperationException exception =
         new UnsupportedOperationException("Operation is not supported");
@@ -124,6 +119,5 @@ public class TestExceptionHandlers {
           Assertions.assertEquals(
               UnmodifiableStatisticException.class.getSimpleName(), errorResponse.getType());
         });
->>>>>>> upstream/branch-1.3
   }
 }

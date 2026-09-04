@@ -354,20 +354,12 @@ class GravitinoMetalake(
             url, json=catalog_disable_request, error_handler=CATALOG_ERROR_HANDLER
         )
 
-<<<<<<< HEAD
-    def test_connection(self, name: str) -> None:
-        """Test an existing catalog connection using its stored configuration.
-
-        Args:
-            name: The name of the existing catalog.
-=======
     def test_connection(self, name: str, *changes: CatalogChange) -> None:
         """Test an existing catalog connection with optional proposed changes.
 
         Args:
             name: The name of the existing catalog.
             changes: Proposed catalog changes to apply temporarily without persisting.
->>>>>>> upstream/branch-1.3
 
         Raises:
             NoSuchCatalogException: If the catalog does not exist.
@@ -380,9 +372,6 @@ class GravitinoMetalake(
             )
             + "/testConnection"
         )
-<<<<<<< HEAD
-        response = self.rest_client.post(url, error_handler=CATALOG_ERROR_HANDLER)
-=======
         if changes:
             requests = [
                 DTOConverters.to_catalog_update_request(change) for change in changes
@@ -394,7 +383,6 @@ class GravitinoMetalake(
             )
         else:
             response = self.rest_client.post(url, error_handler=CATALOG_ERROR_HANDLER)
->>>>>>> upstream/branch-1.3
         base_response = BaseResponse.from_json(response.body, infer_missing=True)
         base_response.validate()
         if base_response.code() == 0:

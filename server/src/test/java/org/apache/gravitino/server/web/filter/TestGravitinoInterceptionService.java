@@ -63,10 +63,7 @@ import org.apache.gravitino.server.web.rest.ViewOperations;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.apache.gravitino.utils.RequestContext;
 import org.glassfish.hk2.api.Descriptor;
-<<<<<<< HEAD
 import org.glassfish.hk2.api.Filter;
-=======
->>>>>>> upstream/branch-1.3
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;

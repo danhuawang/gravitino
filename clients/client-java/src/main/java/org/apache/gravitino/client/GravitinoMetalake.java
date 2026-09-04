@@ -448,8 +448,6 @@ public class GravitinoMetalake extends MetalakeDTO
     ErrorHandlers.catalogErrorHandler().accept(resp);
   }
 
-<<<<<<< HEAD
-=======
   /**
    * Test the connection of an existing catalog with proposed changes without persisting them.
    *
@@ -490,7 +488,6 @@ public class GravitinoMetalake extends MetalakeDTO
     ErrorHandlers.catalogErrorHandler().accept(resp);
   }
 
->>>>>>> upstream/branch-1.3
   @Override
   public SupportsRoles supportsRoles() {
     return this;

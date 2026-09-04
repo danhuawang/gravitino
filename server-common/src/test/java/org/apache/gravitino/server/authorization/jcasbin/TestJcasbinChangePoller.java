@@ -119,16 +119,11 @@ public class TestJcasbinChangePoller {
   }
 
   @Test
-<<<<<<< HEAD
   void testVirtualNamespaceTypesAreSkippedWithoutFailingTheBatch() {
-=======
-  void testPollEntityChangesInvalidatesFunctionByExactKey() {
->>>>>>> upstream/branch-1.3
     RecordingCache<String, Long> metadataIdCache = new RecordingCache<>();
     RecordingCache<Long, Optional<OwnerInfo>> ownerRelCache = new RecordingCache<>();
 
     JcasbinChangeListener poller = new JcasbinChangeListener(metadataIdCache, ownerRelCache, 1);
-<<<<<<< HEAD
 
     // TAG/POLICY/JOB live in a virtual namespace, so their change-log full name has more levels
     // than MetadataObjects.of() accepts. They must be skipped, not blow up the whole batch.
@@ -268,14 +263,20 @@ public class TestJcasbinChangePoller {
         () -> poller.onEntityChange(List.of(change(1L, MetadataObject.Type.CATALOG, "ml1.cat1"))));
 
     Assertions.assertEquals(1, metadataIdCache.invalidateAllCalls);
-=======
+  }
+
+  @Test
+  void testPollEntityChangesInvalidatesFunctionByExactKey() {
+    RecordingCache<String, Long> metadataIdCache = new RecordingCache<>();
+    RecordingCache<Long, Optional<OwnerInfo>> ownerRelCache = new RecordingCache<>();
+
+    JcasbinChangeListener poller = new JcasbinChangeListener(metadataIdCache, ownerRelCache, 1);
     poller.onEntityChange(List.of(change(1L, MetadataObject.Type.FUNCTION, "ml1.cat1.sch1.func1")));
 
     Assertions.assertEquals(
         List.of(key("ml1", "CATALOG", "cat1", "SCHEMA", "sch1", "FUNCTION", "func1")),
         metadataIdCache.invalidatedKeys);
     Assertions.assertEquals(List.of(), metadataIdCache.invalidatedPrefixes);
->>>>>>> upstream/branch-1.3
   }
 
   @Test

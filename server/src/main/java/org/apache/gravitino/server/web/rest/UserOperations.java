@@ -153,16 +153,6 @@ public class UserOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       UserAddRequest request) {
-<<<<<<< HEAD
-    String userName = request == null ? "" : request.getName();
-    if (request == null) {
-      return ExceptionHandlers.handleUserException(
-          OperationType.ADD,
-          userName,
-          metalake,
-          new IllegalArgumentException("Request body cannot be null"));
-    }
-=======
     if (request == null) {
       LOG.warn("Received add user request with null request body");
       return ExceptionHandlers.handleUserException(
@@ -173,7 +163,6 @@ public class UserOperations {
     }
 
     String userName = request.getName();
->>>>>>> upstream/branch-1.3
     try {
       return Utils.doAs(
           httpRequest,

@@ -331,8 +331,6 @@ public class TestGravitinoAdminClient extends TestBase {
         Method.POST,
         "/api/metalakes/mock/catalogs/catalog/testConnection",
         null,
-<<<<<<< HEAD
-=======
         new BaseResponse(),
         HttpStatus.SC_OK);
     Assertions.assertDoesNotThrow(() -> metaLake.testConnection("catalog", new CatalogChange[0]));
@@ -360,7 +358,6 @@ public class TestGravitinoAdminClient extends TestBase {
         Method.POST,
         "/api/metalakes/mock/catalogs/catalog/testConnection",
         null,
->>>>>>> upstream/branch-1.3
         ErrorResponse.unsupportedOperation("unsupported"),
         HttpStatus.SC_OK);
     exception =

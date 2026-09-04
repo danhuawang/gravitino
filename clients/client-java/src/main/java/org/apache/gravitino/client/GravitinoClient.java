@@ -547,8 +547,6 @@ public class GravitinoClient extends GravitinoClientBase
     getMetalake().testConnection(catalogName);
   }
 
-<<<<<<< HEAD
-=======
   /**
    * Test the connection of an existing catalog with proposed changes without persisting them.
    *
@@ -561,7 +559,6 @@ public class GravitinoClient extends GravitinoClientBase
     getMetalake().testConnection(catalogName, changes);
   }
 
->>>>>>> upstream/branch-1.3
   @Override
   public String[] listTags() throws NoSuchMetalakeException {
     return getMetalake().listTags();
