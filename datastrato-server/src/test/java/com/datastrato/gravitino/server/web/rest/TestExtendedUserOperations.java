@@ -16,13 +16,20 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.DirectoryUser;
 import com.datastrato.gravitino.authorization.IdpNameStatus;
 import com.datastrato.gravitino.authorization.UserWithGroups;
+import com.datastrato.gravitino.dto.authorization.DirectoryUserDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
+import com.datastrato.gravitino.dto.requests.DirectoryUserAddRequest;
+import com.datastrato.gravitino.dto.requests.DirectoryUserDeleteRequest;
+import com.datastrato.gravitino.dto.requests.DirectoryUserEnabledBatchUpdateRequest;
 import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
+import com.datastrato.gravitino.dto.responses.DirectoryUserResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
@@ -55,6 +62,7 @@ import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -128,8 +136,9 @@ public class TestExtendedUserOperations extends JerseyTest {
     when(accessControlDispatcher.listUsersWithGroups(metalake))
         .thenReturn(
             List.of(
-                new UserWithGroups(buildUser("lee.p"), List.of(), true),
-                new UserWithGroups(buildUser("dana.k"), List.of(), false)));
+                new UserWithGroups(buildUser("lee.p"), List.of(), IdentitySource.LOCAL),
+                new UserWithGroups(buildUser("dana.k"), List.of(), IdentitySource.PROVISIONED),
+                new UserWithGroups(buildUser("jordan.m"), List.of(), IdentitySource.JIT)));
 
     Response response =
         target("/web/security/metalakes/" + metalake + "/users")
@@ -140,11 +149,12 @@ public class TestExtendedUserOperations extends JerseyTest {
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     ExtendedUserListResponse body = response.readEntity(ExtendedUserListResponse.class);
     Assertions.assertEquals(0, body.getCode());
-    Assertions.assertEquals(2, body.getUsers().length);
+    Assertions.assertEquals(3, body.getUsers().length);
     Assertions.assertEquals("lee.p", body.getUsers()[0].name());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getUsers()[0].origin());
     Assertions.assertEquals("dana.k", body.getUsers()[1].name());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getUsers()[1].origin());
+    Assertions.assertEquals(IdentitySource.JIT, body.getUsers()[2].origin());
   }
 
   @Test
@@ -175,7 +185,8 @@ public class TestExtendedUserOperations extends JerseyTest {
     when(accessControlDispatcher.batchUpdateUserEnabled(any(), any(), anyBoolean()))
         .thenThrow(
             new IllegalArgumentException(
-                "Cannot batch update enabled for users under metalake metalake: users do not exist: [alice]"));
+                "Cannot batch update enabled for users under metalake metalake: every user must"
+                    + " exist and must not have an externalId"));
 
     Response response =
         target("/web/security/metalakes/" + metalake + "/users/enabled")
@@ -214,13 +225,14 @@ public class TestExtendedUserOperations extends JerseyTest {
 
   @Test
   public void testGetUser() {
-    ExtendedUserDTO user = ExtendedUserDTO.from(buildUser("lee.p"), true);
-    when(accessControlDispatcher.getExtendedUser("metalake", "lee.p")).thenReturn(user);
-    Response response = get("/web/security/metalakes/metalake/users/lee.p");
+    ExtendedUserDTO user =
+        ExtendedUserDTO.from(buildUser("dana.k"), IdentitySource.PROVISIONED, null);
+    when(accessControlDispatcher.getExtendedUser("metalake", "dana.k")).thenReturn(user);
+    Response response = get("/web/security/metalakes/metalake/users/dana.k");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     ExtendedUserResponse body = response.readEntity(ExtendedUserResponse.class);
-    Assertions.assertEquals("lee.p", body.getUser().name());
-    Assertions.assertEquals(IdentitySource.LOCAL, body.getUser().origin());
+    Assertions.assertEquals("dana.k", body.getUser().name());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, body.getUser().origin());
   }
 
   @Test
@@ -288,6 +300,192 @@ public class TestExtendedUserOperations extends JerseyTest {
                 entity(new LocalUserAddRequest(" ", null, true), MediaType.APPLICATION_JSON_TYPE));
 
     Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testListDirectoryUsers() {
+    when(accessControlDispatcher.listDirectoryUsers())
+        .thenReturn(
+            List.of(
+                new DirectoryUser(
+                    "dana.k",
+                    true,
+                    IdentitySource.PROVISIONED,
+                    List.of("finance"),
+                    List.of("Acme", "Contoso")),
+                new DirectoryUser(
+                    "jordan.m", true, IdentitySource.JIT, List.of(), List.of("Contoso")),
+                new DirectoryUser("lee.p", false, IdentitySource.LOCAL, List.of(), List.of("Acme")),
+                new DirectoryUser(
+                    "sam.o",
+                    true,
+                    IdentitySource.LOCAL,
+                    List.of("governance", "ops"),
+                    List.of("Contoso"))));
+
+    Response response = get("/web/security/directory/users");
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectoryUserListResponse body = response.readEntity(DirectoryUserListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    DirectoryUserDTO[] users = body.getUsers();
+    Assertions.assertEquals(4, users.length);
+    Assertions.assertEquals("dana.k", users[0].name());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, users[0].origin());
+    Assertions.assertEquals("jordan.m", users[1].name());
+    Assertions.assertEquals(IdentitySource.JIT, users[1].origin());
+    Assertions.assertEquals(IdentitySource.LOCAL, users[2].origin());
+    Assertions.assertEquals(IdentitySource.LOCAL, users[3].origin());
+  }
+
+  @Test
+  public void testListDirectoryUsersAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "SERVICE_ADMIN",
+        ExtendedUserOperations.class
+            .getMethod("listDirectoryUsers")
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
+  }
+
+  @Test
+  public void testBatchUpdateDirectoryUserEnabled() {
+    when(accessControlDispatcher.batchUpdateDirectoryUserEnabled(
+            eq(List.of("sam.o", "lee.p")),
+            eq(List.of(IdentitySource.LOCAL, IdentitySource.LOCAL)),
+            eq(false)))
+        .thenReturn(List.of("sam.o", "lee.p"));
+
+    Response response =
+        target("/web/security/directory/users/enabled")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .put(
+                entity(
+                    new DirectoryUserEnabledBatchUpdateRequest(
+                        new DirectoryUserEnabledBatchUpdateRequest.DirectoryUserEnabledUpdate[] {
+                          new DirectoryUserEnabledBatchUpdateRequest.DirectoryUserEnabledUpdate(
+                              "sam.o", IdentitySource.LOCAL),
+                          new DirectoryUserEnabledBatchUpdateRequest.DirectoryUserEnabledUpdate(
+                              "lee.p", IdentitySource.LOCAL)
+                        },
+                        false),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    NameListResponse body = response.readEntity(NameListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    Assertions.assertArrayEquals(new String[] {"sam.o", "lee.p"}, body.getNames());
+  }
+
+  @Test
+  public void testBatchUpdateDirectoryUserEnabledBadRequest() {
+    Response response =
+        target("/web/security/directory/users/enabled")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .put(
+                entity(
+                    new DirectoryUserEnabledBatchUpdateRequest(
+                        new DirectoryUserEnabledBatchUpdateRequest.DirectoryUserEnabledUpdate[] {
+                          new DirectoryUserEnabledBatchUpdateRequest.DirectoryUserEnabledUpdate(
+                              " ", IdentitySource.LOCAL)
+                        },
+                        false),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testBatchUpdateDirectoryUserEnabledAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "SERVICE_ADMIN",
+        ExtendedUserOperations.class
+            .getMethod(
+                "batchUpdateDirectoryUserEnabled", DirectoryUserEnabledBatchUpdateRequest.class)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
+  }
+
+  @Test
+  public void testAddDirectoryUser() {
+    when(accessControlDispatcher.addDirectoryUser(
+            eq("jordan.m"), eq("ChangeMe-2026!"), eq(List.of("governance", "ops"))))
+        .thenReturn(
+            new DirectoryUser(
+                "jordan.m", true, IdentitySource.LOCAL, List.of("governance", "ops"), List.of()));
+
+    Response response =
+        target("/web/security/directory/users")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new DirectoryUserAddRequest(
+                        "jordan.m", "ChangeMe-2026!", List.of("governance", "ops")),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectoryUserResponse body = response.readEntity(DirectoryUserResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    Assertions.assertEquals("jordan.m", body.getUser().name());
+    Assertions.assertEquals(IdentitySource.LOCAL, body.getUser().origin());
+    Assertions.assertEquals(List.of("governance", "ops"), body.getUser().groups());
+  }
+
+  @Test
+  public void testDeleteDirectoryUsers() {
+    when(accessControlDispatcher.deleteDirectoryUsers(
+            eq(List.of("sam.o", "lee.p")), eq(List.of(IdentitySource.LOCAL, IdentitySource.LOCAL))))
+        .thenReturn(List.of("sam.o", "lee.p"));
+
+    Response response =
+        target("/web/security/directory/users/delete")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new DirectoryUserDeleteRequest(
+                        new DirectoryUserDeleteRequest.DirectoryUserDelete[] {
+                          new DirectoryUserDeleteRequest.DirectoryUserDelete(
+                              "sam.o", IdentitySource.LOCAL),
+                          new DirectoryUserDeleteRequest.DirectoryUserDelete(
+                              "lee.p", IdentitySource.LOCAL)
+                        }),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    NameListResponse body = response.readEntity(NameListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    Assertions.assertArrayEquals(new String[] {"sam.o", "lee.p"}, body.getNames());
+  }
+
+  @Test
+  public void testDeleteDirectoryUsersBadRequest() {
+    Response response =
+        target("/web/security/directory/users/delete")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new DirectoryUserDeleteRequest(
+                        new DirectoryUserDeleteRequest.DirectoryUserDelete[] {
+                          new DirectoryUserDeleteRequest.DirectoryUserDelete(
+                              " ", IdentitySource.LOCAL)
+                        }),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testDeleteDirectoryUsersAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "SERVICE_ADMIN",
+        ExtendedUserOperations.class
+            .getMethod("deleteDirectoryUsers", DirectoryUserDeleteRequest.class)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
   }
 
   private Response get(String path) {

@@ -22,7 +22,7 @@ import org.apache.gravitino.dto.util.DTOConverters;
  */
 public class ExtendedUserDTO extends UserDTO {
 
-  /** Read model pairing a metalake user with its group names and IdP membership. */
+  /** Read model pairing a metalake user with its group names and identity origin. */
   public interface UserWithGroupNames {
     /**
      * @return The metalake user.
@@ -35,9 +35,9 @@ public class ExtendedUserDTO extends UserDTO {
     List<String> groups();
 
     /**
-     * @return {@code true} when the name exists in {@code idp_user_meta}.
+     * @return Local / Provisioned / JIT for the security Users table.
      */
-    boolean inBuiltInIdp();
+    IdentitySource origin();
   }
 
   @JsonProperty("origin")
@@ -101,6 +101,25 @@ public class ExtendedUserDTO extends UserDTO {
   }
 
   /**
+   * Builds an {@link ExtendedUserDTO} from a {@link User}, identity origin, and group names.
+   *
+   * @param user The metalake user.
+   * @param origin Local / Provisioned / JIT.
+   * @param groups Metalake group names for the user.
+   * @return The extended user DTO.
+   */
+  public static ExtendedUserDTO from(
+      User user, IdentitySource origin, @Nullable List<String> groups) {
+    Preconditions.checkArgument(user != null, "user cannot be null");
+    Preconditions.checkArgument(origin != null, "origin cannot be null");
+    Preconditions.checkArgument(StringUtils.isNotBlank(user.name()), "user name cannot be blank");
+    List<String> roles = user.roles() == null ? Collections.emptyList() : user.roles();
+    List<String> groupNames = groups == null ? Collections.emptyList() : groups;
+    return new ExtendedUserDTO(
+        user.id(), user.name(), roles, groupNames, DTOConverters.toDTO(user.auditInfo()), origin);
+  }
+
+  /**
    * Converts users with group names to extended DTOs.
    *
    * @param usersWithGroups Users bundled with metalake group names.
@@ -110,17 +129,8 @@ public class ExtendedUserDTO extends UserDTO {
     Preconditions.checkArgument(usersWithGroups != null, "usersWithGroups cannot be null");
     List<ExtendedUserDTO> result = new ArrayList<>();
     for (UserWithGroupNames userWithGroups : usersWithGroups) {
-      result.add(
-          from(userWithGroups.user(), userWithGroups.inBuiltInIdp(), userWithGroups.groups()));
+      result.add(from(userWithGroups.user(), userWithGroups.origin(), userWithGroups.groups()));
     }
     return result.toArray(new ExtendedUserDTO[0]);
-  }
-
-  private static ExtendedUserDTO from(User user, IdentitySource origin, List<String> groups) {
-    Preconditions.checkArgument(user != null, "user cannot be null");
-    Preconditions.checkArgument(StringUtils.isNotBlank(user.name()), "user name cannot be blank");
-    List<String> roles = user.roles() == null ? Collections.emptyList() : user.roles();
-    return new ExtendedUserDTO(
-        user.id(), user.name(), roles, groups, DTOConverters.toDTO(user.auditInfo()), origin);
   }
 }

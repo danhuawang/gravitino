@@ -201,11 +201,12 @@ components:
     IdentitySource:
       type: string
       description: |
-        Source of the identity. `Local` when the username exists in the built-in IdP and
-        `Provisioned` otherwise.
+        Source of the identity. `Local` when the username exists in the built-in IdP,
+        `Provisioned` otherwise. `JIT` is reserved for Directory Groups.
       enum:
         - Local
         - Provisioned
+        - JIT
 
     RoleUserAssignment:
       allOf:

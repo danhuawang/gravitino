@@ -3,7 +3,11 @@
  */
 package com.datastrato.gravitino.authorization.utils;
 
+import com.datastrato.gravitino.authorization.DirectoryGroup;
+import com.datastrato.gravitino.authorization.DirectoryUser;
 import com.datastrato.gravitino.authorization.UserWithGroups;
+import com.datastrato.gravitino.authorization.po.DirectoryGroupPO;
+import com.datastrato.gravitino.authorization.po.DirectoryUserPO;
 import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import com.google.common.base.Preconditions;
 import java.util.Collections;
@@ -56,6 +60,37 @@ public final class DatastratoPOConverters {
     Preconditions.checkNotNull(userPO, "userPO cannot be null");
     Preconditions.checkNotNull(namespace, "namespace cannot be null");
     UserEntity user = POConverters.fromExtendedUserPO(userPO, namespace);
-    return new UserWithGroups(user, parseNameArray(userPO.getGroupNames()), userPO.inBuiltInIdp());
+    return new UserWithGroups(user, parseNameArray(userPO.getGroupNames()), userPO.origin());
+  }
+
+  /**
+   * Converts a {@link DirectoryUserPO} row to {@link DirectoryUser}.
+   *
+   * @param userPO Directory user row.
+   * @return Directory user.
+   */
+  public static DirectoryUser fromDirectoryUserPO(DirectoryUserPO userPO) {
+    Preconditions.checkNotNull(userPO, "userPO cannot be null");
+    return new DirectoryUser(
+        userPO.getUserName(),
+        userPO.enabledOrDefault(),
+        userPO.origin(),
+        parseNameArray(userPO.getGroupNames()),
+        parseNameArray(userPO.getMetalakeNames()));
+  }
+
+  /**
+   * Converts a {@link DirectoryGroupPO} row to {@link DirectoryGroup}.
+   *
+   * @param groupPO Directory group row.
+   * @return Directory group.
+   */
+  public static DirectoryGroup fromDirectoryGroupPO(DirectoryGroupPO groupPO) {
+    Preconditions.checkNotNull(groupPO, "groupPO cannot be null");
+    return new DirectoryGroup(
+        groupPO.getGroupName(),
+        groupPO.memberCountOrZero(),
+        groupPO.origin(),
+        parseNameArray(groupPO.getMetalakeNames()));
   }
 }

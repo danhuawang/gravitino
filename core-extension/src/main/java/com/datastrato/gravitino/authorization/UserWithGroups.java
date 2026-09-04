@@ -4,6 +4,7 @@
 package com.datastrato.gravitino.authorization;
 
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Preconditions;
 import java.util.Collections;
 import java.util.List;
@@ -15,17 +16,17 @@ public class UserWithGroups implements ExtendedUserDTO.UserWithGroupNames {
 
   private final User user;
   private final List<String> groups;
-  private final boolean inBuiltInIdp;
+  private final IdentitySource origin;
 
   /**
    * @param user The metalake user.
    * @param groups Metalake group names for the user.
-   * @param inBuiltInIdp {@code true} when the name exists in {@code idp_user_meta}.
+   * @param origin Local / Provisioned / JIT from identity-store presence.
    */
-  public UserWithGroups(User user, @Nullable List<String> groups, boolean inBuiltInIdp) {
+  public UserWithGroups(User user, @Nullable List<String> groups, IdentitySource origin) {
     this.user = Preconditions.checkNotNull(user, "user cannot be null");
     this.groups = groups == null ? Collections.emptyList() : groups;
-    this.inBuiltInIdp = inBuiltInIdp;
+    this.origin = Preconditions.checkNotNull(origin, "origin cannot be null");
   }
 
   @Override
@@ -39,7 +40,7 @@ public class UserWithGroups implements ExtendedUserDTO.UserWithGroupNames {
   }
 
   @Override
-  public boolean inBuiltInIdp() {
-    return inBuiltInIdp;
+  public IdentitySource origin() {
+    return origin;
   }
 }

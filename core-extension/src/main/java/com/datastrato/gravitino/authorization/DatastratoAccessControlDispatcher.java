@@ -8,6 +8,7 @@ import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.authorization.IdentityType;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
@@ -16,6 +17,7 @@ import com.google.common.collect.Sets;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,6 +58,7 @@ import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
+import org.apache.gravitino.storage.relational.service.DatastratoGroupMetaService;
 import org.apache.gravitino.storage.relational.service.DatastratoRoleMetaService;
 import org.apache.gravitino.storage.relational.service.DatastratoUserMetaService;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
@@ -272,6 +275,169 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
+   * Lists Directory Users for Configure → Directory → Users.
+   *
+   * <p>Local users come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}; JIT
+   * from metalake {@code user_meta} only.
+   *
+   * @return Directory users ordered by username.
+   */
+  public List<DirectoryUser> listDirectoryUsers() {
+    return DatastratoUserMetaService.getInstance().listDirectoryUsers();
+  }
+
+  /**
+   * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
+   *
+   * <p>Requires every origin to be Local and every username to exist in {@code idp_user_meta}.
+   * Validation failure updates no rows.
+   *
+   * @param names Usernames to update.
+   * @param origins Origins aligned with {@code names}; every value must be Local.
+   * @param enabled Target enabled value.
+   * @return Distinct usernames that were updated.
+   */
+  public List<String> batchUpdateDirectoryUserEnabled(
+      List<String> names, List<IdentitySource> origins, boolean enabled) {
+    return DatastratoUserMetaService.getInstance()
+        .batchUpdateDirectoryUserEnabled(names, origins, enabled);
+  }
+
+  /**
+   * Creates a Local Directory User in {@code idp_user_meta} and adds the user to built-in IdP
+   * groups via {@code idp_user_group_rel}.
+   *
+   * <p>Implemented entirely in the enterprise module (no IdP manager calls). Validates groups and
+   * uniqueness first, then inserts the user and memberships in one transaction.
+   *
+   * @param username Username to create.
+   * @param password Plaintext password.
+   * @param groupNames Built-in IdP group names to join; {@code null} or empty means none.
+   * @return The created Directory User (Local origin, empty metalakes).
+   * @throws NotFoundException If any group is missing from {@code idp_group_meta}.
+   * @throws org.apache.gravitino.exceptions.AlreadyExistsException If the username already exists
+   *     in {@code idp_user_meta}.
+   */
+  public DirectoryUser addDirectoryUser(String username, String password, List<String> groupNames) {
+    return DatastratoUserMetaService.getInstance().addDirectoryUser(username, password, groupNames);
+  }
+
+  /**
+   * Soft-deletes Local Directory Users via {@link IdpUserGroupManager#removeUser(String)}.
+   *
+   * <p>Only validates that every request origin is Local (no DB existence check). Each call
+   * soft-deletes {@code idp_user_meta} and {@code idp_user_group_rel}. Metalake {@code user_meta}
+   * is left unchanged.
+   *
+   * @param names Usernames to delete.
+   * @param origins Origins aligned with {@code names}; every value must be Local.
+   * @return Distinct usernames that were soft-deleted.
+   */
+  public List<String> deleteDirectoryUsers(List<String> names, List<IdentitySource> origins) {
+    Preconditions.checkArgument(names != null && !names.isEmpty(), "names cannot be null or empty");
+    Preconditions.checkArgument(origins != null, "origins cannot be null");
+    Preconditions.checkArgument(
+        names.size() == origins.size(), "names and origins must have the same size");
+
+    LinkedHashSet<String> distinctNames = new LinkedHashSet<>();
+    for (int i = 0; i < names.size(); i++) {
+      String name = names.get(i);
+      IdentitySource origin = origins.get(i);
+      Preconditions.checkArgument(StringUtils.isNotBlank(name), "username cannot be blank");
+      Preconditions.checkArgument(origin != null, "origin cannot be null");
+      if (origin != IdentitySource.LOCAL) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Cannot delete Directory Users: only Local origin is supported, got %s for user %s",
+                origin.value(), name));
+      }
+      distinctNames.add(name);
+    }
+
+    List<String> deleted = Lists.newArrayList();
+    for (String name : distinctNames) {
+      if (idpUserGroupManager.removeUser(name)) {
+        deleted.add(name);
+      }
+    }
+    return deleted;
+  }
+
+  /**
+   * Lists identity-store groups for Configure → Directory → Groups.
+   *
+   * <p>Local groups come from {@code idp_group_meta}; Provisioned groups from {@code
+   * scim_group_meta}; JIT groups from metalake {@code group_meta} only.
+   *
+   * @return Directory groups ordered by group name.
+   */
+  public List<DirectoryGroup> listDirectoryGroups() {
+    return DatastratoGroupMetaService.getInstance().listDirectoryGroups();
+  }
+
+  /**
+   * Creates a Local Directory Group in {@code idp_group_meta} and adds IdP user members via {@code
+   * idp_user_group_rel}.
+   *
+   * <p>Implemented in the enterprise module (no IdP manager calls) so create + memberships stay in
+   * one transaction.
+   *
+   * @param groupName Group name to create.
+   * @param comment Optional comment.
+   * @param members Built-in IdP usernames to add; {@code null} or empty means none.
+   * @return The created Directory Group (Local origin, empty metalakes).
+   * @throws NotFoundException If any member is missing from {@code idp_user_meta}.
+   * @throws org.apache.gravitino.exceptions.AlreadyExistsException If the group already exists in
+   *     {@code idp_group_meta}.
+   */
+  public DirectoryGroup addDirectoryGroup(String groupName, String comment, List<String> members) {
+    return DatastratoGroupMetaService.getInstance().addDirectoryGroup(groupName, comment, members);
+  }
+
+  /**
+   * Soft-deletes Local Directory Groups via {@link IdpUserGroupManager#removeGroup(String,
+   * boolean)}.
+   *
+   * <p>Only validates that every request origin is Local (no DB existence check). Uses {@code
+   * force=true} so memberships in {@code idp_user_group_rel} are soft-deleted with the group.
+   * Metalake {@code group_meta} is left unchanged.
+   *
+   * @param names Group names to delete.
+   * @param origins Origins aligned with {@code names}; every value must be Local.
+   * @return Distinct group names that were soft-deleted.
+   */
+  public List<String> deleteDirectoryGroups(List<String> names, List<IdentitySource> origins) {
+    Preconditions.checkArgument(names != null && !names.isEmpty(), "names cannot be null or empty");
+    Preconditions.checkArgument(origins != null, "origins cannot be null");
+    Preconditions.checkArgument(
+        names.size() == origins.size(), "names and origins must have the same size");
+
+    LinkedHashSet<String> distinctNames = new LinkedHashSet<>();
+    for (int i = 0; i < names.size(); i++) {
+      String name = names.get(i);
+      IdentitySource origin = origins.get(i);
+      Preconditions.checkArgument(StringUtils.isNotBlank(name), "group name cannot be blank");
+      Preconditions.checkArgument(origin != null, "origin cannot be null");
+      if (origin != IdentitySource.LOCAL) {
+        throw new IllegalArgumentException(
+            String.format(
+                "Cannot delete Directory Groups: only Local origin is supported, got %s for group"
+                    + " %s",
+                origin.value(), name));
+      }
+      distinctNames.add(name);
+    }
+
+    List<String> deleted = Lists.newArrayList();
+    for (String name : distinctNames) {
+      if (idpUserGroupManager.removeGroup(name, true)) {
+        deleted.add(name);
+      }
+    }
+    return deleted;
+  }
+
+  /**
    * Looks up group names for a user before adding the user into a metalake.
    *
    * @param username The username.
@@ -458,7 +624,10 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Gets a metalake user with roles and {@code origin} in one JOIN to {@code idp_user_meta}.
+   * Gets a metalake user with roles, {@code origin}, and identity-store {@code enabled} in one SQL.
+   *
+   * <p>{@code origin} / {@code enabled} match {@link #listUsersWithGroups}: Local / Provisioned /
+   * JIT from IdP and SCIM; enabled from IdP then SCIM, default Active.
    *
    * @param metalake The metalake name.
    * @param username The username.
@@ -480,7 +649,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Lists metalake users with roles and {@code origin} in one JOIN to {@code idp_user_meta}.
+   * Lists metalake users with roles and identity-store {@code origin} in one SQL.
    *
    * @param metalake The metalake name.
    * @return Extended user DTOs for the security UI.
@@ -496,7 +665,31 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Lists metalake groups with roles and {@code origin} in one JOIN to {@code idp_group_meta}.
+   * Gets a metalake group with roles, {@code origin}, and {@code userCount} in one SQL.
+   *
+   * <p>Same origin / {@code userCount} rules as {@link #listExtendedGroups}.
+   *
+   * @param metalake The metalake name.
+   * @param groupName The group name.
+   * @return Extended group DTO for the security Overview page.
+   * @throws NoSuchGroupException If the metalake group does not exist.
+   */
+  public ExtendedGroupDTO getExtendedGroup(String metalake, String groupName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
+    Preconditions.checkArgument(StringUtils.isNotBlank(groupName), "groupName cannot be blank");
+    IdpNameStatusPO.GroupWithOrigin row =
+        SessionUtils.getWithoutCommit(
+            DatastratoGroupMetaMapper.class,
+            mapper -> mapper.getGroupByMetalakeWithOrigin(metalake, groupName));
+    if (row == null || row.getGroupId() == null) {
+      throw new NoSuchGroupException(
+          "Group %s does not exist in the metalake %s", groupName, metalake);
+    }
+    return IdpNameStatusPO.toExtendedGroup(row, metalake);
+  }
+
+  /**
+   * Lists metalake groups with roles and {@code origin} in one JOIN.
    *
    * @param metalake The metalake name.
    * @return Extended group DTOs for the security UI.
@@ -514,8 +707,9 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   /**
    * Lists metalake groups the user belongs to, including {@code origin}.
    *
-   * <p>Local users ({@code externalId} blank) use built-in IdP membership. Provisioned users use
-   * SCIM membership. Names that are not metalake groups are skipped.
+   * <p>Membership is resolved from IdP when the user is in {@code idp_user_meta} (and not SCIM),
+   * otherwise from SCIM when the user is in {@code scim_user_meta}. Names that are not metalake
+   * groups are skipped.
    *
    * @param metalake The metalake name.
    * @param username The username.
@@ -535,8 +729,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   /**
    * Lists metalake groups the user belongs to.
    *
-   * <p>Local users ({@code externalId} blank) use built-in IdP membership. Provisioned users use
-   * SCIM membership. Names that are not metalake groups are skipped.
+   * <p>Same membership rules as {@link #listExtendedGroupsForUser}.
    *
    * @param metalake The metalake name.
    * @param username The username.
@@ -550,8 +743,9 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   /**
    * Lists metalake users that belong to the group, including {@code origin}.
    *
-   * <p>Local groups ({@code externalId} blank) use built-in IdP membership. Provisioned groups use
-   * SCIM membership. Names that are not metalake users are skipped.
+   * <p>Membership is resolved from IdP when the group is in {@code idp_group_meta} (and not SCIM),
+   * otherwise from SCIM when the group is in {@code scim_group_meta}. Names that are not metalake
+   * users are skipped.
    *
    * @param metalake The metalake name.
    * @param groupName The group name.
@@ -571,8 +765,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   /**
    * Lists metalake users that belong to the group.
    *
-   * <p>Local groups ({@code externalId} blank) use built-in IdP membership. Provisioned groups use
-   * SCIM membership. Names that are not metalake users are skipped.
+   * <p>Same membership rules as {@link #listExtendedUsersForGroup}.
    *
    * @param metalake The metalake name.
    * @param groupName The group name.

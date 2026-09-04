@@ -15,11 +15,17 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.DirectoryGroup;
 import com.datastrato.gravitino.authorization.IdpNameStatus;
+import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
+import com.datastrato.gravitino.dto.requests.DirectoryGroupAddRequest;
+import com.datastrato.gravitino.dto.requests.DirectoryGroupDeleteRequest;
 import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
+import com.datastrato.gravitino.dto.responses.DirectoryGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
@@ -40,12 +46,14 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.connector.PropertiesMetadata;
+import org.apache.gravitino.dto.responses.NameListResponse;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -118,10 +126,13 @@ public class TestExtendedGroupOperations extends JerseyTest {
     String metalake = "metalake";
     Group local = buildGroup(1L, "contractors", Collections.singletonList("pii_reader"));
     Group provisioned = buildGroup(2L, "governance", Collections.singletonList("Gov Admin"));
+    Group jit = buildGroup(3L, "analysts", Collections.singletonList("Analyst"));
     when(accessControlDispatcher.listExtendedGroups(metalake))
         .thenReturn(
             new ExtendedGroupDTO[] {
-              ExtendedGroupDTO.from(local, true, 12), ExtendedGroupDTO.from(provisioned, false, 8)
+              ExtendedGroupDTO.from(local, IdentitySource.LOCAL, 12),
+              ExtendedGroupDTO.from(provisioned, IdentitySource.PROVISIONED, 8),
+              ExtendedGroupDTO.from(jit, IdentitySource.JIT, 0)
             });
 
     Response response =
@@ -133,13 +144,30 @@ public class TestExtendedGroupOperations extends JerseyTest {
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     ExtendedGroupListResponse body = response.readEntity(ExtendedGroupListResponse.class);
     Assertions.assertEquals(0, body.getCode());
-    Assertions.assertEquals(2, body.getGroups().length);
+    Assertions.assertEquals(3, body.getGroups().length);
     Assertions.assertEquals("contractors", body.getGroups()[0].name());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getGroups()[0].origin());
     Assertions.assertEquals(12, body.getGroups()[0].userCount());
     Assertions.assertEquals("governance", body.getGroups()[1].name());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getGroups()[1].origin());
     Assertions.assertEquals(8, body.getGroups()[1].userCount());
+    Assertions.assertEquals("analysts", body.getGroups()[2].name());
+    Assertions.assertEquals(IdentitySource.JIT, body.getGroups()[2].origin());
+    Assertions.assertEquals(0, body.getGroups()[2].userCount());
+  }
+
+  @Test
+  public void testGetGroup() {
+    Group governance = buildGroup(1L, "governance", Collections.singletonList("Gov Admin"));
+    when(accessControlDispatcher.getExtendedGroup("metalake", "governance"))
+        .thenReturn(ExtendedGroupDTO.from(governance, IdentitySource.PROVISIONED, 2));
+
+    Response response = get("/web/security/metalakes/metalake/groups/governance");
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    ExtendedGroupResponse body = response.readEntity(ExtendedGroupResponse.class);
+    Assertions.assertEquals("governance", body.getGroup().name());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, body.getGroup().origin());
+    Assertions.assertEquals(2, body.getGroup().userCount());
   }
 
   @Test
@@ -199,6 +227,118 @@ public class TestExtendedGroupOperations extends JerseyTest {
             .post(entity(new LocalGroupAddRequest(" ", null), MediaType.APPLICATION_JSON_TYPE));
 
     Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testListDirectoryGroups() {
+    when(accessControlDispatcher.listDirectoryGroups())
+        .thenReturn(
+            List.of(
+                new DirectoryGroup("analysts", 0, IdentitySource.JIT, List.of("Contoso")),
+                new DirectoryGroup("contractors", 0, IdentitySource.LOCAL, List.of("Acme")),
+                new DirectoryGroup(
+                    "governance", 2, IdentitySource.LOCAL, List.of("Acme", "Contoso")),
+                new DirectoryGroup("platform", 1, IdentitySource.PROVISIONED, List.of("Contoso"))));
+
+    Response response = get("/web/security/directory/groups");
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectoryGroupListResponse body = response.readEntity(DirectoryGroupListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    DirectoryGroupDTO[] groups = body.getGroups();
+    Assertions.assertEquals(4, groups.length);
+    Assertions.assertEquals(IdentitySource.JIT, groups[0].origin());
+    Assertions.assertEquals(IdentitySource.LOCAL, groups[1].origin());
+    Assertions.assertEquals(2, groups[2].memberCount());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, groups[3].origin());
+  }
+
+  @Test
+  public void testListDirectoryGroupsAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "SERVICE_ADMIN",
+        ExtendedGroupOperations.class
+            .getMethod("listDirectoryGroups")
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
+  }
+
+  @Test
+  public void testAddDirectoryGroup() {
+    when(accessControlDispatcher.addDirectoryGroup(
+            eq("ops"), eq("Operations"), eq(List.of("sam.o", "lee.p"))))
+        .thenReturn(new DirectoryGroup("ops", 2, IdentitySource.LOCAL, List.of()));
+
+    Response response =
+        target("/web/security/directory/groups")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new DirectoryGroupAddRequest("ops", "Operations", List.of("sam.o", "lee.p")),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectoryGroupResponse body = response.readEntity(DirectoryGroupResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    Assertions.assertEquals("ops", body.getGroup().name());
+    Assertions.assertEquals(2, body.getGroup().memberCount());
+    Assertions.assertEquals(IdentitySource.LOCAL, body.getGroup().origin());
+  }
+
+  @Test
+  public void testDeleteDirectoryGroups() {
+    when(accessControlDispatcher.deleteDirectoryGroups(
+            eq(List.of("governance", "ops")),
+            eq(List.of(IdentitySource.LOCAL, IdentitySource.LOCAL))))
+        .thenReturn(List.of("governance", "ops"));
+
+    Response response =
+        target("/web/security/directory/groups/delete")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new DirectoryGroupDeleteRequest(
+                        new DirectoryGroupDeleteRequest.DirectoryGroupDelete[] {
+                          new DirectoryGroupDeleteRequest.DirectoryGroupDelete(
+                              "governance", IdentitySource.LOCAL),
+                          new DirectoryGroupDeleteRequest.DirectoryGroupDelete(
+                              "ops", IdentitySource.LOCAL)
+                        }),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    NameListResponse body = response.readEntity(NameListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    Assertions.assertArrayEquals(new String[] {"governance", "ops"}, body.getNames());
+  }
+
+  @Test
+  public void testDeleteDirectoryGroupsBadRequest() {
+    Response response =
+        target("/web/security/directory/groups/delete")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new DirectoryGroupDeleteRequest(
+                        new DirectoryGroupDeleteRequest.DirectoryGroupDelete[] {
+                          new DirectoryGroupDeleteRequest.DirectoryGroupDelete(
+                              " ", IdentitySource.LOCAL)
+                        }),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testDeleteDirectoryGroupsAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "SERVICE_ADMIN",
+        ExtendedGroupOperations.class
+            .getMethod("deleteDirectoryGroups", DirectoryGroupDeleteRequest.class)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
   }
 
   private Response get(String path) {

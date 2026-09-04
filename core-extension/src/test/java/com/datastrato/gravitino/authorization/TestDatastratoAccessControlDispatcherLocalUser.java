@@ -4,11 +4,13 @@
 package com.datastrato.gravitino.authorization;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.authorization.IdentityType;
 import java.util.Collections;
 import java.util.List;
@@ -136,6 +138,66 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
 
     Assertions.assertSame(
         granted, dispatcher.addLocalGroup(METALAKE, "contractors", List.of("Analyst")));
+  }
+
+  @Test
+  public void testDeleteDirectoryUsersCallsIdpRemoveUser() {
+    when(idp.removeUser("sam.o")).thenReturn(true);
+    when(idp.removeUser("lee.p")).thenReturn(true);
+
+    Assertions.assertEquals(
+        List.of("sam.o", "lee.p"),
+        dispatcher.deleteDirectoryUsers(
+            List.of("sam.o", "lee.p"), List.of(IdentitySource.LOCAL, IdentitySource.LOCAL)));
+    verify(idp).removeUser("sam.o");
+    verify(idp).removeUser("lee.p");
+  }
+
+  @Test
+  public void testDeleteDirectoryUsersRejectsNonLocalOrigin() {
+    IllegalArgumentException ex =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                dispatcher.deleteDirectoryUsers(
+                    List.of("dana.k"), List.of(IdentitySource.PROVISIONED)));
+    Assertions.assertTrue(ex.getMessage().contains("only Local origin is supported"));
+    verify(idp, never()).removeUser(any());
+  }
+
+  @Test
+  public void testDeleteDirectoryUsersSkipsMissingWithoutExistenceCheck() {
+    when(idp.removeUser("missing.user")).thenReturn(false);
+
+    Assertions.assertEquals(
+        List.of(),
+        dispatcher.deleteDirectoryUsers(List.of("missing.user"), List.of(IdentitySource.LOCAL)));
+    verify(idp).removeUser("missing.user");
+  }
+
+  @Test
+  public void testDeleteDirectoryGroupsCallsIdpRemoveGroup() {
+    when(idp.removeGroup("governance", true)).thenReturn(true);
+    when(idp.removeGroup("ops", true)).thenReturn(true);
+
+    Assertions.assertEquals(
+        List.of("governance", "ops"),
+        dispatcher.deleteDirectoryGroups(
+            List.of("governance", "ops"), List.of(IdentitySource.LOCAL, IdentitySource.LOCAL)));
+    verify(idp).removeGroup("governance", true);
+    verify(idp).removeGroup("ops", true);
+  }
+
+  @Test
+  public void testDeleteDirectoryGroupsRejectsNonLocalOrigin() {
+    IllegalArgumentException ex =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                dispatcher.deleteDirectoryGroups(
+                    List.of("platform"), List.of(IdentitySource.PROVISIONED)));
+    Assertions.assertTrue(ex.getMessage().contains("only Local origin is supported"));
+    verify(idp, never()).removeGroup(any(), anyBoolean());
   }
 
   private void stubIdpUser(String name) {
