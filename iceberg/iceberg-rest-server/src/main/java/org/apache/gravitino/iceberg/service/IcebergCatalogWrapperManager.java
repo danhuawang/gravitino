@@ -97,6 +97,9 @@ public class IcebergCatalogWrapperManager implements AutoCloseable {
               ident -> {
                 if (ident.namespace().level(0).equals(metalakeName)) {
                   catalogWrapperCache.invalidate(ident.name());
+                  if (ident.name().equals(configProvider.getDefaultCatalogName())) {
+                    catalogWrapperCache.invalidate(IcebergConstants.ICEBERG_REST_DEFAULT_CATALOG);
+                  }
                 }
               });
     }

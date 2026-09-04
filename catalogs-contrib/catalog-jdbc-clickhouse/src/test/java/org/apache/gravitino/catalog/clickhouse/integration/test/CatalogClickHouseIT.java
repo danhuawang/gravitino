@@ -48,6 +48,7 @@ import org.apache.gravitino.CatalogChange;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.Schema;
+import org.apache.gravitino.StringIdentifier;
 import org.apache.gravitino.SupportsSchemas;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.catalog.clickhouse.ClickHouseConstants.TableConstants;
@@ -483,6 +484,51 @@ public class CatalogClickHouseIT extends BaseIT {
                 idx ->
                     idx.type() == Index.IndexType.DATA_SKIPPING_MINMAX
                         && Arrays.deepEquals(idx.fieldNames(), new String[][] {{"amount"}})));
+  }
+
+  @Test
+  void testCreateAndLoadCompositePrimaryKey() {
+    String table = GravitinoITUtils.genRandomName("composite_primary_key");
+    NameIdentifier ident = NameIdentifier.of(schemaName, table);
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.LongType.get(), "id", false, false, DEFAULT_VALUE_NOT_SET),
+          Column.of(
+              "ts",
+              Types.TimestampType.withoutTimeZone(),
+              "timestamp",
+              false,
+              false,
+              DEFAULT_VALUE_NOT_SET),
+          Column.of("value", Types.StringType.get(), "value")
+        };
+    SortOrder[] sortOrders =
+        new SortOrder[] {
+          SortOrders.of(NamedReference.field("id"), SortDirection.ASCENDING),
+          SortOrders.of(NamedReference.field("ts"), SortDirection.ASCENDING)
+        };
+    Index[] indexes =
+        new Index[] {
+          Indexes.primary(Indexes.DEFAULT_PRIMARY_KEY_NAME, new String[][] {{"id"}, {"ts"}})
+        };
+
+    catalog
+        .asTableCatalog()
+        .createTable(
+            ident,
+            columns,
+            "composite primary key roundtrip",
+            createProperties(),
+            Transforms.EMPTY_TRANSFORM,
+            Distributions.NONE,
+            sortOrders,
+            indexes);
+
+    Index[] loadedIndexes = catalog.asTableCatalog().loadTable(ident).index();
+    Assertions.assertEquals(1, loadedIndexes.length);
+    Assertions.assertEquals(Index.IndexType.PRIMARY_KEY, loadedIndexes[0].type());
+    Assertions.assertEquals(Indexes.DEFAULT_PRIMARY_KEY_NAME, loadedIndexes[0].name());
+    Assertions.assertArrayEquals(new String[][] {{"id"}, {"ts"}}, loadedIndexes[0].fieldNames());
   }
 
   @Test

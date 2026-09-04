@@ -148,6 +148,17 @@ public class DatastratoCatalogDispatcher implements CatalogDispatcher {
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>Proposed changes are tested against a temporary effective configuration and are never
+   * persisted, so this does not touch the stored connection test result for the existing Catalog.
+   */
+  @Override
+  public void testConnection(NameIdentifier ident, CatalogChange... changes) throws Exception {
+    delegate.testConnection(ident, changes);
+  }
+
   /** {@inheritDoc} */
   @Override
   public void enableCatalog(NameIdentifier ident)

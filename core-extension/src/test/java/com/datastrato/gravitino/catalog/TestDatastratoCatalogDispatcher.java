@@ -84,6 +84,17 @@ class TestDatastratoCatalogDispatcher {
   }
 
   @Test
+  void testConnectionWithProposedChangesDoesNotTouchStore() throws Exception {
+    CatalogChange change = CatalogChange.setProperty("jdbc-url", "jdbc:mysql://other-host/db");
+
+    dispatcher.testConnection(IDENTIFIER, change);
+
+    verify(delegate).testConnection(IDENTIFIER, change);
+    verify(store, never()).loadCatalogConnectionSnapshot(any());
+    verify(store, never()).recordTestResult(any(), any(), any(), anyLong(), any());
+  }
+
+  @Test
   void testOtherErrorsPassThroughWithoutPersistence() throws Exception {
     when(store.loadCatalogConnectionSnapshot(IDENTIFIER)).thenReturn(before);
 

@@ -58,6 +58,8 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.Schema;
 import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.connector.CatalogDropAware;
+import org.apache.gravitino.connector.CatalogOperations;
 import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.connector.capability.CapabilityResult;
@@ -82,6 +84,7 @@ import org.apache.gravitino.storage.relational.SupportsEntityChangeLog;
 import org.apache.gravitino.storage.relational.po.cache.EntityChangeRecord;
 import org.apache.gravitino.storage.relational.po.cache.OperateType;
 import org.apache.gravitino.utils.PrincipalUtils;
+import org.apache.gravitino.utils.ThrowableFunction;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -1164,10 +1167,21 @@ public class TestCatalogManager {
         Mockito.mock(CatalogManager.CatalogWrapper.class, Mockito.RETURNS_DEEP_STUBS);
     Capability capability = Mockito.mock(Capability.class);
     CapabilityResult unsupportedResult = CapabilityResult.unsupported("Not managed");
+    CatalogOperations operations =
+        Mockito.mock(
+            CatalogOperations.class,
+            Mockito.withSettings().extraInterfaces(CatalogDropAware.class));
     Mockito.doReturn(catalogWrapper).when(catalogManager).loadCatalogAndWrap(ident);
     Mockito.doReturn(catalog).when(catalogWrapper).catalog();
     Mockito.doReturn(capability).when(catalogWrapper).capabilities();
     Mockito.doReturn(unsupportedResult).when(capability).managedStorage(any());
+    Mockito.doAnswer(
+            invocation -> {
+              ThrowableFunction<CatalogOperations, ?> function = invocation.getArgument(0);
+              return function.apply(operations);
+            })
+        .when(catalogWrapper)
+        .doWithCatalogOps(any());
 
     catalogManager.getCatalogCache().put(ident, catalogWrapper);
     boolean dropped = catalogManager.dropCatalog(ident);
@@ -1175,6 +1189,7 @@ public class TestCatalogManager {
     Assertions.assertTrue(dropped);
     Assertions.assertFalse(entityStore.exists(ident, EntityType.CATALOG));
     Assertions.assertNull(catalogManager.getCatalogCache().getIfPresent(ident));
+    Mockito.verify((CatalogDropAware) operations).onCatalogDropped();
   }
 
   @Test
@@ -1339,6 +1354,85 @@ public class TestCatalogManager {
     } finally {
       releaseConnection.countDown();
       executor.shutdownNow();
+    }
+  }
+
+  @Test
+  void testExistingCatalogConnectionWithProposedChanges() throws Exception {
+    NameIdentifier ident = NameIdentifier.of("metalake", "connection_changes_test");
+    Map<String, String> properties =
+        ImmutableMap.<String, String>builder()
+            .put("provider", "test")
+            .put(PROPERTY_KEY1, "value1")
+            .put(PROPERTY_KEY2, "value2")
+            .put(PROPERTY_KEY5_PREFIX + "1", "value3")
+            .put("removable", "stored")
+            .build();
+    catalogManager.createCatalog(
+        ident, Catalog.Type.RELATIONAL, provider, "stored comment", properties);
+    CatalogEntity storedBefore = entityStore.get(ident, EntityType.CATALOG, CatalogEntity.class);
+    CatalogManager.CatalogWrapper cachedBefore =
+        catalogManager.getCatalogCache().getIfPresent(ident);
+
+    CatalogManager.CatalogWrapper temporaryWrapper =
+        Mockito.mock(CatalogManager.CatalogWrapper.class);
+    CatalogOperations temporaryOperations = Mockito.mock(CatalogOperations.class);
+    AtomicReference<CatalogEntity> effectiveEntity = new AtomicReference<>();
+    Mockito.doAnswer(
+            invocation -> {
+              effectiveEntity.set(invocation.getArgument(0));
+              return temporaryWrapper;
+            })
+        .when(catalogManager)
+        .createCatalogWrapper(any(CatalogEntity.class), eq(null));
+    Mockito.doAnswer(
+            invocation -> {
+              ThrowableFunction<CatalogOperations, Object> operation = invocation.getArgument(0);
+              return operation.apply(temporaryOperations);
+            })
+        .when(temporaryWrapper)
+        .doWithCatalogOps(any());
+
+    NameIdentifier renamedIdent = NameIdentifier.of("metalake", "connection_changes_renamed");
+    try {
+      catalogManager.testConnection(
+          ident,
+          CatalogChange.rename(renamedIdent.name()),
+          CatalogChange.updateComment("temporary comment"),
+          CatalogChange.setProperty(PROPERTY_KEY2, "temporary value"),
+          CatalogChange.removeProperty("removable"));
+
+      CatalogEntity effective = effectiveEntity.get();
+      Assertions.assertNotNull(effective);
+      Assertions.assertEquals(renamedIdent.name(), effective.name());
+      Assertions.assertEquals("temporary comment", effective.getComment());
+      Assertions.assertEquals("temporary value", effective.getProperties().get(PROPERTY_KEY2));
+      Assertions.assertFalse(effective.getProperties().containsKey("removable"));
+      Mockito.verify(temporaryOperations).testConnection(renamedIdent);
+      Mockito.verify(temporaryWrapper).close();
+
+      CatalogEntity storedAfter = entityStore.get(ident, EntityType.CATALOG, CatalogEntity.class);
+      Assertions.assertEquals(storedBefore.name(), storedAfter.name());
+      Assertions.assertEquals(storedBefore.getComment(), storedAfter.getComment());
+      Assertions.assertEquals(storedBefore.getProperties(), storedAfter.getProperties());
+      Assertions.assertFalse(entityStore.exists(renamedIdent, EntityType.CATALOG));
+      Assertions.assertSame(cachedBefore, catalogManager.getCatalogCache().getIfPresent(ident));
+
+      Mockito.doThrow(new IOException("probe failed"))
+          .when(temporaryOperations)
+          .testConnection(any(NameIdentifier.class));
+      RuntimeException failure =
+          Assertions.assertThrows(
+              RuntimeException.class,
+              () ->
+                  catalogManager.testConnection(
+                      ident, CatalogChange.setProperty(PROPERTY_KEY2, "another value")));
+      Assertions.assertInstanceOf(IOException.class, failure.getCause());
+      Mockito.verify(temporaryWrapper, Mockito.times(2)).close();
+    } finally {
+      Mockito.doCallRealMethod()
+          .when(catalogManager)
+          .createCatalogWrapper(any(CatalogEntity.class), eq(null));
     }
   }
 

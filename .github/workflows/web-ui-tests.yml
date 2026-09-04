@@ -21,9 +21,14 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
+    # pnpm/action-setup v6 may install a pnpm binary that needs libatomic on
+    # gcp-arc-runners (error: libatomic.so.1: cannot open shared object file).
+    - name: Install libatomic
+      run: sudo apt-get update && sudo apt-get install -y libatomic1
+
     - name: Setup pnpm
-      uses: pnpm/action-setup@v4
+      uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       with:
         version: 9
     
