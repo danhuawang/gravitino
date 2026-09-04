@@ -88,6 +88,8 @@ public class TestExtendedRoleOperations extends JerseyTest {
     FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "tableDispatcher", tableDispatcher, true);
     FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalTableDispatcher", tableDispatcher, true);
+    FieldUtils.writeField(
         ExtendedDatastratoGravitinoEnv.getInstance(),
         "accessControlDispatcher",
         accessControlDispatcher,

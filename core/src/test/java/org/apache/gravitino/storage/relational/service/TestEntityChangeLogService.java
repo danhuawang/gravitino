@@ -509,15 +509,6 @@ public class TestEntityChangeLogService extends TestJDBCBackend {
     Assertions.assertEquals(function.id(), persistedFunction.id());
   }
 
-  private void renameTable(String from, String to) throws SQLException {
-    try (SqlSession session =
-            SqlSessionFactoryHelper.getInstance().getSqlSessionFactory().openSession(true);
-        Connection connection = session.getConnection();
-        Statement statement = connection.createStatement()) {
-      statement.execute(String.format("ALTER TABLE %s RENAME TO %s", from, to));
-    }
-  }
-
   @TestTemplate
   void testModelChangeLogEncodesNameLevelsContainingDots() throws IOException {
     String dottedSchema = "schema.with.dot";
