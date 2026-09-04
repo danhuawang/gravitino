@@ -238,13 +238,6 @@ public class CredentialProviderOperations {
         CatalogUpdateRequest.RemoveCatalogPropertyRequest removeProperty =
             (CatalogUpdateRequest.RemoveCatalogPropertyRequest) update;
         effectiveProperties.remove(removeProperty.getProperty());
-      } else if (update instanceof CatalogUpdateRequest.SetCatalogSecretBindingRequest) {
-        CatalogUpdateRequest.SetCatalogSecretBindingRequest setSecret =
-            (CatalogUpdateRequest.SetCatalogSecretBindingRequest) update;
-        effectiveProperties.put(setSecret.getProperty(), setSecret.getPlaintext());
-      } else if (update instanceof CatalogUpdateRequest.SetCatalogSecretReferenceRequest) {
-        throw new IllegalArgumentException(
-            "setSecretReference updates are not supported by credential provider tests");
       }
     }
     return effectiveProperties;

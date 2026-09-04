@@ -230,21 +230,12 @@ public class TestCredentialProviderOperations extends JerseyTest {
                         + "{\"@type\":\"removeProperty\",\"property\":\"remove-me\"},"
                         + "{\"@type\":\"setProperty\",\"property\":\"credential-providers\","
                         + "\"value\":\"test-provider\"},"
-                        + "{\"@type\":\"updateComment\",\"newComment\":\"ignored\"},"
-                        + "{\"@type\":\"setSecretBinding\",\"property\":\"secret-key\","
-                        + "\"provider\":\"vault\",\"plaintext\":\"proposed-secret\"}"
+                        + "{\"@type\":\"updateComment\",\"newComment\":\"ignored\"}"
                         + "]}"));
 
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     Assertions.assertEquals(
-        Map.of(
-            "credential-providers",
-            "test-provider",
-            "key",
-            "proposed-value",
-            "secret-key",
-            "proposed-secret"),
-        testProperties);
+        Map.of("credential-providers", "test-provider", "key", "proposed-value"), testProperties);
     verify(provider).close();
     verify(connectionTestStore, never())
         .recordTestResult(any(), any(), any(), any(), any(), anyLong(), any());

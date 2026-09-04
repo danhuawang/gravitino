@@ -55,12 +55,6 @@ public class CredentialProviderTestRequest implements RESTRequest {
   public void validate() throws IllegalArgumentException {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(path), "\"path\" field is required and cannot be empty");
-    updates.forEach(
-        update -> {
-          update.validate();
-          Preconditions.checkArgument(
-              !(update instanceof CatalogUpdateRequest.SetCatalogSecretReferenceRequest),
-              "setSecretReference updates are not supported by credential provider tests");
-        });
+    updates.forEach(CatalogUpdateRequest::validate);
   }
 }
