@@ -13,6 +13,7 @@ import org.apache.gravitino.listener.api.event.CatalogEvent;
 import org.apache.gravitino.listener.api.event.Event;
 import org.apache.gravitino.listener.api.event.FilesetEvent;
 import org.apache.gravitino.listener.api.event.GroupEvent;
+import org.apache.gravitino.listener.api.event.MetalakeEvent;
 import org.apache.gravitino.listener.api.event.ModelEvent;
 import org.apache.gravitino.listener.api.event.OwnerEvent;
 import org.apache.gravitino.listener.api.event.RoleEvent;
@@ -41,6 +42,7 @@ public class DataDiscoveryListener implements EventListenerPlugin {
     this.eventHandlers =
         ImmutableMap.<Class, EventHandler>builder()
             .put(TableEvent.class, new TableEventHandler(searchService))
+            .put(MetalakeEvent.class, new MetalakeEventHandler(searchService))
             .put(ViewEvent.class, new ViewEventHandler(searchService))
             .put(FunctionEvent.class, new FunctionEventHandler(searchService))
             .put(SchemaEvent.class, new SchemaEventHandler(searchService))
@@ -75,7 +77,9 @@ public class DataDiscoveryListener implements EventListenerPlugin {
     try {
 
       EventHandler handler = null;
-      if (event instanceof TableEvent) {
+      if (event instanceof MetalakeEvent) {
+        handler = eventHandlers.get(MetalakeEvent.class);
+      } else if (event instanceof TableEvent) {
         handler = eventHandlers.get(TableEvent.class);
       } else if (event instanceof ViewEvent) {
         handler = eventHandlers.get(ViewEvent.class);

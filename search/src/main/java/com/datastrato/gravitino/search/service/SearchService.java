@@ -28,6 +28,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.Striped;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.Closeable;
 import java.time.Duration;
@@ -36,11 +37,16 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
@@ -59,6 +65,11 @@ public class SearchService implements Closeable {
   private static final Logger LOG = LoggerFactory.getLogger(SearchService.class);
   private static final int REMOVE_METADATA_THREAD_NUM = 1;
   private static final int THREAD_POOL_QUEUE_SIZE = 100;
+  private static final int METALAKE_LOCK_STRIPES = 64;
+  private static final Map<String, Class<? extends SearchStorage>> STORAGE_MAP =
+      ImmutableMap.of(
+          GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY, InMemorySearchStorage.class,
+          GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH, OpenSearchStorage.class);
 
   private final int maxQueueSize;
   private final int backoffTime;
@@ -71,11 +82,10 @@ public class SearchService implements Closeable {
 
   private final Deque<SyncTask> syncTasks = new ArrayDeque<>();
   private final Object backoffLock = new Object();
-
-  private static final Map<String, Class<? extends SearchStorage>> STORAGE_MAP =
-      ImmutableMap.of(
-          GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY, InMemorySearchStorage.class,
-          GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH, OpenSearchStorage.class);
+  private final Set<String> inactiveMetalakes = ConcurrentHashMap.newKeySet();
+  private final Map<String, MetalakeLifecycleOperation> currentMetalakeLifecycleOperations =
+      new ConcurrentHashMap<>();
+  private final Striped<Lock> metalakeLocks = Striped.lock(METALAKE_LOCK_STRIPES);
 
   private final ExecutorService executorService;
   boolean stop = false;
@@ -279,22 +289,114 @@ public class SearchService implements Closeable {
     return syncTask;
   }
 
+  /**
+   * Removes search metadata asynchronously.
+   *
+   * <p>For a metalake, this removes all of its search resources regardless of {@code cascade}, and
+   * the returned future completes exceptionally if deletion fails. Other entity types use {@code
+   * cascade} to select only the entity or its hierarchy, and retain best-effort failure handling.
+   *
+   * @param nameIdentifier The identifier of the entity to remove.
+   * @param entityType The type of the entity to remove.
+   * @param cascade Whether to remove descendants of a non-metalake entity.
+   * @return A future representing the asynchronous removal.
+   */
   public Future<?> removeMetadata(
       NameIdentifier nameIdentifier, Entity.EntityType entityType, boolean cascade) {
+    String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
+    if (entityType == EntityType.METALAKE) {
+      return removeMetalake(metalake);
+    }
     return executorService.submit(
         () -> {
           try {
-            String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
             removeMetadataByQuery(
-                metalake,
-                entityType == Entity.EntityType.METALAKE
-                    ? null
-                    : createEntityNameQueryCondition(nameIdentifier, cascade));
-
+                metalake, createEntityNameQueryCondition(nameIdentifier, cascade));
           } catch (Exception e) {
             LOG.error("Failed to remove metadata for {}: {}", nameIdentifier, e.getMessage(), e);
           }
         });
+  }
+
+  /**
+   * Updates the effective in-use state of every search entity in a metalake.
+   *
+   * @param metalakeIdentifier The identifier of the metalake.
+   * @param inUse The effective in-use state.
+   * @return A future representing the asynchronous update.
+   */
+  public Future<?> updateMetalakeInUse(NameIdentifier metalakeIdentifier, boolean inUse) {
+    String metalake = metalakeIdentifier.name();
+    MetalakeLifecycleOperation operation = registerMetalakeLifecycleOperation(metalake, !inUse);
+    try {
+      return executorService.submit(
+          () -> {
+            Lock lock = metalakeLock(metalake);
+            try {
+              lock.lock();
+              try {
+                if (!isCurrentMetalakeLifecycleOperation(metalake, operation)) {
+                  return;
+                }
+                storage.updateMetalakeInUse(metalake, inUse);
+                completeMetalakeLifecycleOperation(metalake, operation, inUse);
+              } finally {
+                lock.unlock();
+              }
+            } catch (Exception e) {
+              discardMetalakeLifecycleOperation(metalake, operation);
+              LOG.error("Failed to update the in-use state for metalake {}", metalakeIdentifier, e);
+              throw new RuntimeException(
+                  "Failed to update the in-use state for metalake " + metalakeIdentifier, e);
+            }
+          });
+    } catch (RuntimeException e) {
+      discardMetalakeLifecycleOperation(metalake, operation);
+      throw e;
+    }
+  }
+
+  /**
+   * Queues a full metalake synchronization behind pending lifecycle storage updates.
+   *
+   * @param metalakeIdentifier The identifier of the metalake.
+   * @return A future containing the queued synchronization task, or an empty value if a newer
+   *     lifecycle event superseded this synchronization.
+   */
+  public Future<Optional<SyncTask>> synchronizeMetalake(NameIdentifier metalakeIdentifier) {
+    String metalake = metalakeIdentifier.name();
+    MetalakeLifecycleOperation operation = registerMetalakeLifecycleOperation(metalake, false);
+    try {
+      return executorService.submit(
+          () -> {
+            Lock lock = metalakeLock(metalake);
+            try {
+              lock.lock();
+              try {
+                if (!isCurrentMetalakeLifecycleOperation(metalake, operation)) {
+                  LOG.info(
+                      "Skip synchronization superseded by a newer lifecycle event for metalake {}",
+                      metalakeIdentifier);
+                  return Optional.empty();
+                }
+                SyncTask syncTask =
+                    synchronizeMetadata(metalakeIdentifier, EntityType.METALAKE, true);
+                completeMetalakeLifecycleOperation(metalake, operation, true);
+                return Optional.of(syncTask);
+              } finally {
+                lock.unlock();
+              }
+            } catch (Exception e) {
+              discardMetalakeLifecycleOperation(metalake, operation);
+              LOG.error("Failed to synchronize metalake {}", metalakeIdentifier, e);
+              throw e;
+            }
+          });
+    } catch (RuntimeException e) {
+      discardMetalakeLifecycleOperation(metalake, operation);
+      LOG.error("Failed to submit synchronization for metalake {}", metalakeIdentifier, e);
+      throw e;
+    }
   }
 
   /**
@@ -524,8 +626,37 @@ public class SearchService implements Closeable {
     storage.delete(metalake, entityIds, resultEntityType);
   }
 
-  public void write(List<SearchEntityPO> allEntities, WriteContext build) {
-    storage.write(allEntities, build);
+  /**
+   * Writes search entities grouped by metalake, skipping groups whose metalake is inactive.
+   *
+   * <p>A transactional write must contain entities from exactly one metalake because search
+   * transactions are metalake-scoped.
+   *
+   * @param allEntities The search entities to write.
+   * @param context The write context, optionally containing a transaction identifier.
+   * @throws IllegalArgumentException If a transactional write does not contain exactly one
+   *     metalake.
+   */
+  public void write(List<SearchEntityPO> allEntities, WriteContext context) {
+    Map<String, List<SearchEntityPO>> entitiesByMetalake =
+        allEntities.stream().collect(Collectors.groupingBy(SearchEntityPO::getMetalake));
+    Preconditions.checkArgument(
+        context.getTransactionId() == null || entitiesByMetalake.size() == 1,
+        "Transactional writes must contain entities from exactly one metalake");
+    for (Map.Entry<String, List<SearchEntityPO>> entry : entitiesByMetalake.entrySet()) {
+      String metalake = entry.getKey();
+      Lock lock = metalakeLock(metalake);
+      lock.lock();
+      try {
+        if (inactiveMetalakes.contains(metalake)) {
+          LOG.debug("Skip writing search entities for inactive metalake {}", metalake);
+          continue;
+        }
+        storage.write(entry.getValue(), context);
+      } finally {
+        lock.unlock();
+      }
+    }
   }
 
   public void commit(long transId) {
@@ -535,4 +666,73 @@ public class SearchService implements Closeable {
   public void rollback(long transId) {
     storage.rollback(transId);
   }
+
+  private Future<?> removeMetalake(String metalake) {
+    MetalakeLifecycleOperation operation = registerMetalakeLifecycleOperation(metalake, true);
+    try {
+      return executorService.submit(
+          () -> {
+            Lock lock = metalakeLock(metalake);
+            try {
+              lock.lock();
+              try {
+                if (!isCurrentMetalakeLifecycleOperation(metalake, operation)) {
+                  return;
+                }
+                PermissionProjectionCache.invalidate(metalake);
+                storage.deleteMetalake(metalake);
+                completeMetalakeLifecycleOperation(metalake, operation, false);
+              } finally {
+                lock.unlock();
+              }
+            } catch (Exception e) {
+              discardMetalakeLifecycleOperation(metalake, operation);
+              LOG.error("Failed to remove metalake metadata for {}", metalake, e);
+              throw new RuntimeException("Failed to remove metalake metadata for " + metalake, e);
+            }
+          });
+    } catch (RuntimeException e) {
+      discardMetalakeLifecycleOperation(metalake, operation);
+      throw e;
+    }
+  }
+
+  private MetalakeLifecycleOperation registerMetalakeLifecycleOperation(
+      String metalake, boolean markInactive) {
+    MetalakeLifecycleOperation operation = new MetalakeLifecycleOperation();
+    Lock lock = metalakeLock(metalake);
+    lock.lock();
+    try {
+      currentMetalakeLifecycleOperations.put(metalake, operation);
+      if (markInactive) {
+        inactiveMetalakes.add(metalake);
+      }
+    } finally {
+      lock.unlock();
+    }
+    return operation;
+  }
+
+  private void completeMetalakeLifecycleOperation(
+      String metalake, MetalakeLifecycleOperation operation, boolean activate) {
+    if (currentMetalakeLifecycleOperations.remove(metalake, operation) && activate) {
+      inactiveMetalakes.remove(metalake);
+    }
+  }
+
+  private boolean isCurrentMetalakeLifecycleOperation(
+      String metalake, MetalakeLifecycleOperation operation) {
+    return currentMetalakeLifecycleOperations.get(metalake) == operation;
+  }
+
+  private void discardMetalakeLifecycleOperation(
+      String metalake, MetalakeLifecycleOperation operation) {
+    currentMetalakeLifecycleOperations.remove(metalake, operation);
+  }
+
+  private Lock metalakeLock(String metalake) {
+    return metalakeLocks.get(metalake);
+  }
+
+  private static final class MetalakeLifecycleOperation {}
 }

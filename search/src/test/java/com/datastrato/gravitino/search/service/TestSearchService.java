@@ -20,6 +20,8 @@ import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
+import com.datastrato.gravitino.search.store.SearchStorage;
+import com.datastrato.gravitino.search.store.WriteContext;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -27,6 +29,13 @@ import com.google.common.collect.Maps;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
@@ -53,11 +62,7 @@ public class TestSearchService {
   public void initTest() throws IllegalAccessException {
     this.gravitinoService = new MockedGravitinoService();
 
-    Config config = Mockito.mock(Config.class);
-    Mockito.when(config.get(ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL)).thenReturn("memory");
-    Mockito.when(config.getAllConfig())
-        .thenReturn(ImmutableMap.of(ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL.getKey(), "memory"));
-    SearchService service = new SearchService(config);
+    SearchService service = newMemorySearchService();
     this.searchService = gravitinoService.createMokedSearchService(service);
     this.inMemorySearchStorage = (InMemorySearchStorage) searchService.storage;
 
@@ -381,6 +386,201 @@ public class TestSearchService {
         tableDTOs.getEntities().get(0).getFullQualifiedName());
   }
 
+  @Test
+  void testTransactionalWriteRejectsMultipleMetalakes() {
+    SearchEntityPO firstEntity =
+        SearchEntityPO.SearchEntityPOBuilder.builder()
+            .withEntityId(1001L)
+            .withEntityType(Entity.EntityType.SCHEMA)
+            .withMetalake("metalake_a")
+            .withEntityName("schema_a")
+            .withCatalogName("catalog")
+            .withFullQualifiedName("catalog.schema_a")
+            .build();
+    SearchEntityPO secondEntity =
+        SearchEntityPO.SearchEntityPOBuilder.builder()
+            .withEntityId(1002L)
+            .withEntityType(Entity.EntityType.SCHEMA)
+            .withMetalake("metalake_b")
+            .withEntityName("schema_b")
+            .withCatalogName("catalog")
+            .withFullQualifiedName("catalog.schema_b")
+            .build();
+    WriteContext context = WriteContext.builder().withTransactionId(1L).build();
+
+    IllegalArgumentException exception =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> searchService.write(ImmutableList.of(firstEntity, secondEntity), context));
+
+    Assertions.assertEquals(
+        "Transactional writes must contain entities from exactly one metalake",
+        exception.getMessage());
+  }
+
+  @Test
+  void testMetalakeInUseUpdateFutureReportsStorageFailure() throws Exception {
+    SearchStorage failingStorage = Mockito.mock(SearchStorage.class);
+    Mockito.doThrow(new RuntimeException("storage failure"))
+        .when(failingStorage)
+        .updateMetalakeInUse("failing_metalake", false);
+
+    try (SearchService failingService = newSearchServiceWithStorage(failingStorage)) {
+      Future<?> update =
+          failingService.updateMetalakeInUse(NameIdentifier.of("failing_metalake"), false);
+      ExecutionException exception =
+          Assertions.assertThrows(ExecutionException.class, () -> update.get(10, TimeUnit.SECONDS));
+
+      Assertions.assertTrue(
+          exception
+              .getCause()
+              .getMessage()
+              .contains("Failed to update the in-use state for metalake failing_metalake"));
+    }
+  }
+
+  @Test
+  void testMetalakeDeletionFutureReportsStorageFailure() throws Exception {
+    SearchStorage failingStorage = Mockito.mock(SearchStorage.class);
+    Mockito.doThrow(new RuntimeException("storage failure"))
+        .when(failingStorage)
+        .deleteMetalake("failing_metalake");
+
+    try (SearchService failingService = newSearchServiceWithStorage(failingStorage)) {
+      Future<?> deletion =
+          failingService.removeMetadata(
+              NameIdentifier.of("failing_metalake"), Entity.EntityType.METALAKE, true);
+      ExecutionException exception =
+          Assertions.assertThrows(
+              ExecutionException.class, () -> deletion.get(10, TimeUnit.SECONDS));
+
+      Assertions.assertTrue(
+          exception
+              .getCause()
+              .getMessage()
+              .contains("Failed to remove metalake metadata for failing_metalake"));
+    }
+  }
+
+  @Test
+  void testStaleDisableDoesNotOverrideNewerSynchronization() throws Exception {
+    String metalake = "test_metalake";
+    NameIdentifier metalakeIdentifier = NameIdentifier.of(metalake);
+    SearchStorage trackingStorage = Mockito.mock(SearchStorage.class);
+    CountDownLatch blockerStarted = new CountDownLatch(1);
+    CountDownLatch releaseBlocker = new CountDownLatch(1);
+
+    try (SearchService trackingService = newSearchServiceWithStorage(trackingStorage)) {
+      Future<?> blocker = blockLifecycleExecutor(trackingService, blockerStarted, releaseBlocker);
+      Assertions.assertTrue(blockerStarted.await(10, TimeUnit.SECONDS));
+
+      Future<?> staleDisable = trackingService.updateMetalakeInUse(metalakeIdentifier, false);
+      Future<Optional<SyncTask>> enable = trackingService.synchronizeMetalake(metalakeIdentifier);
+
+      releaseBlocker.countDown();
+      blocker.get(10, TimeUnit.SECONDS);
+      staleDisable.get(10, TimeUnit.SECONDS);
+      Assertions.assertTrue(enable.get(10, TimeUnit.SECONDS).isPresent());
+
+      Mockito.verify(trackingStorage, Mockito.never()).updateMetalakeInUse(metalake, false);
+    } finally {
+      releaseBlocker.countDown();
+    }
+  }
+
+  @Test
+  void testDelayedActivationDoesNotOverrideNewerDisable() throws Exception {
+    inMemorySearchStorage.clear();
+    String metalake = "delayed_activation_metalake";
+    NameIdentifier metalakeIdentifier = NameIdentifier.of(metalake);
+    gravitinoService.createMetalake(metalake);
+    CountDownLatch blockerStarted = new CountDownLatch(1);
+    CountDownLatch releaseBlocker = new CountDownLatch(1);
+    Future<?> blocker = blockLifecycleExecutor(searchService, blockerStarted, releaseBlocker);
+
+    try {
+      Assertions.assertTrue(blockerStarted.await(10, TimeUnit.SECONDS));
+      Future<Optional<SyncTask>> delayedActivation =
+          searchService.synchronizeMetalake(metalakeIdentifier);
+      Future<?> disable = searchService.updateMetalakeInUse(metalakeIdentifier, false);
+
+      releaseBlocker.countDown();
+      blocker.get(10, TimeUnit.SECONDS);
+      Optional<SyncTask> staleSyncTask = delayedActivation.get(10, TimeUnit.SECONDS);
+      disable.get(10, TimeUnit.SECONDS);
+
+      Assertions.assertFalse(staleSyncTask.isPresent());
+      Assertions.assertTrue(
+          inMemorySearchStorage.getSearchEntities().stream()
+              .noneMatch(entity -> metalake.equals(entity.getMetalake())));
+    } finally {
+      releaseBlocker.countDown();
+      inMemorySearchStorage.clear();
+    }
+  }
+
+  @Test
+  void testDroppedMetalakeRejectsStaleSyncWritesUntilReactivated() throws Exception {
+    inMemorySearchStorage.clear();
+    NameIdentifier metalakeIdentifier = NameIdentifier.of("test_metalake");
+    SyncTask initialSync =
+        searchService.synchronizeMetadata(metalakeIdentifier, Entity.EntityType.METALAKE, true);
+    initialSync.waitToFinished();
+
+    searchService.removeMetadata(metalakeIdentifier, Entity.EntityType.METALAKE, true).get();
+    Assertions.assertTrue(inMemorySearchStorage.getSearchEntities().isEmpty());
+
+    SearchEntityPO staleEntity =
+        SearchEntityPO.SearchEntityPOBuilder.builder()
+            .withEntityId(999L)
+            .withEntityType(Entity.EntityType.SCHEMA)
+            .withInUse(true)
+            .withMetalake("test_metalake")
+            .withEntityName("stale_schema")
+            .withCatalogName("stale_catalog")
+            .withFullQualifiedName("stale_catalog.stale_schema")
+            .build();
+    searchService.write(ImmutableList.of(staleEntity), WriteContext.DEFAULT);
+    Assertions.assertTrue(inMemorySearchStorage.getSearchEntities().isEmpty());
+
+    SyncTask reactivatedSync =
+        searchService
+            .synchronizeMetalake(metalakeIdentifier)
+            .get()
+            .orElseThrow(() -> new AssertionError("Metalake reactivation was superseded"));
+    reactivatedSync.waitToFinished();
+    Assertions.assertFalse(inMemorySearchStorage.getSearchEntities().isEmpty());
+    inMemorySearchStorage.clear();
+  }
+
+  @Test
+  void testFailedMetalakeReactivationKeepsStaleWritesBlocked() throws Exception {
+    inMemorySearchStorage.clear();
+    String metalake = "missing_metalake";
+    NameIdentifier metalakeIdentifier = NameIdentifier.of(metalake);
+    searchService.removeMetadata(metalakeIdentifier, Entity.EntityType.METALAKE, true).get();
+
+    ExecutionException exception =
+        Assertions.assertThrows(
+            ExecutionException.class,
+            () -> searchService.synchronizeMetalake(metalakeIdentifier).get());
+    Assertions.assertTrue(exception.getCause() instanceof NoSuchMetalakeException);
+
+    SearchEntityPO staleEntity =
+        SearchEntityPO.SearchEntityPOBuilder.builder()
+            .withEntityId(1000L)
+            .withEntityType(Entity.EntityType.SCHEMA)
+            .withInUse(true)
+            .withMetalake(metalake)
+            .withEntityName("stale_schema")
+            .withCatalogName("stale_catalog")
+            .withFullQualifiedName("stale_catalog.stale_schema")
+            .build();
+    searchService.write(ImmutableList.of(staleEntity), WriteContext.DEFAULT);
+
+    Assertions.assertTrue(inMemorySearchStorage.getSearchEntities().isEmpty());
+  }
+
   void testSyncTask(
       NameIdentifier nameIdentifier, Entity.EntityType type, boolean cascading, int expectedCount)
       throws Exception {
@@ -569,5 +769,43 @@ public class TestSearchService {
   protected NameIdentifier getIdentifier(SearchEntityPO searchEntityPO) {
     return NameIdentifier.parse(
         searchEntityPO.getMetalake() + "." + searchEntityPO.getFullQualifiedName());
+  }
+
+  private void awaitLatch(CountDownLatch latch) {
+    try {
+      if (!latch.await(10, TimeUnit.SECONDS)) {
+        throw new IllegalStateException("Timed out waiting to release the executor blocker");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new RuntimeException(e);
+    }
+  }
+
+  private SearchService newMemorySearchService() {
+    Config config = Mockito.mock(Config.class);
+    Mockito.when(config.get(ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL)).thenReturn("memory");
+    Mockito.when(config.getAllConfig())
+        .thenReturn(ImmutableMap.of(ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL.getKey(), "memory"));
+    return new SearchService(config);
+  }
+
+  private SearchService newSearchServiceWithStorage(SearchStorage storage)
+      throws IllegalAccessException {
+    SearchService service = newMemorySearchService();
+    FieldUtils.writeField(service, "storage", storage, true);
+    return service;
+  }
+
+  private Future<?> blockLifecycleExecutor(
+      SearchService service, CountDownLatch blockerStarted, CountDownLatch releaseBlocker)
+      throws IllegalAccessException {
+    ExecutorService executorService =
+        (ExecutorService) FieldUtils.readField(service, "executorService", true);
+    return executorService.submit(
+        () -> {
+          blockerStarted.countDown();
+          awaitLatch(releaseBlocker);
+        });
   }
 }

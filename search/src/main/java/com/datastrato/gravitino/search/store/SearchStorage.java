@@ -68,6 +68,25 @@ public interface SearchStorage extends Closeable {
   void delete(String metalake, List<Long> entityIds, Entity.EntityType entityType);
 
   /**
+   * Delete all search data owned by a metalake, including active storage resources and resources
+   * created by pending transactions.
+   *
+   * @param metalake The metalake whose search data should be deleted.
+   * @throws RuntimeException If the storage cannot complete the deletion.
+   */
+  void deleteMetalake(String metalake);
+
+  /**
+   * Update the effective in-use state of every entity indexed for a metalake. Implementations may
+   * retry transient or incomplete updates before failing the operation.
+   *
+   * @param metalake The metalake whose entities should be updated.
+   * @param inUse The effective in-use state.
+   * @throws RuntimeException If the storage cannot complete the update.
+   */
+  void updateMetalakeInUse(String metalake, boolean inUse);
+
+  /**
    * Begin a transaction. By default, the storage is in auto-commit mode. If we want to do a
    * transaction, we need to call this method to begin a transaction. This is helpful when you are
    * doing rolling upgrades or when you want to switch the alias of the indices to a new one.

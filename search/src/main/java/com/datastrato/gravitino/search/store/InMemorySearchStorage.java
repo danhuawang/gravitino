@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.search.store;
 
+import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS;
 import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS_DTO;
 import static java.util.stream.Collectors.toList;
 
@@ -16,6 +17,7 @@ import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO.SearchColumn;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -61,6 +63,18 @@ public class InMemorySearchStorage implements SearchStorage {
     for (Long entityId : entityIds) {
       searchEntityMap.remove(entityId);
     }
+  }
+
+  @Override
+  public void deleteMetalake(String metalake) {
+    searchEntityMap.entrySet().removeIf(entry -> metalake.equals(entry.getValue().getMetalake()));
+  }
+
+  @Override
+  public void updateMetalakeInUse(String metalake, boolean inUse) {
+    searchEntityMap.replaceAll(
+        (entityId, entity) ->
+            metalake.equals(entity.getMetalake()) ? copyWithInUse(entity, inUse) : entity);
   }
 
   @Override
@@ -174,6 +188,18 @@ public class InMemorySearchStorage implements SearchStorage {
 
   private static boolean contains(String value, String keyword) {
     return value != null && value.contains(keyword);
+  }
+
+  private SearchEntityPO copyWithInUse(SearchEntityPO entity, boolean inUse) {
+    try {
+      String json = codec.serialize(entity);
+      ObjectNode jsonObject = (ObjectNode) codec.objectMapper().readTree(json);
+      jsonObject.put("in_use", inUse);
+      return codec.deserialize(
+          jsonObject.toString(), ENTITY_TYPE_TO_CLASS.get(entity.getEntityType()));
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to update the in-use state", e);
+    }
   }
 
   Predicate<SearchEntityPO> buildFilter(Condition condition) {

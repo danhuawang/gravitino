@@ -27,6 +27,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Set;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
 import org.junit.jupiter.api.Assertions;
@@ -311,6 +312,72 @@ public class TestOpenSearchStorage {
 
     assertEntityFound(metalake, "retention_policy", Entity.EntityType.TABLE);
     assertEntityFound(metalake, "sensitive", Entity.EntityType.TAG);
+  }
+
+  @Test
+  void testMetalakeLifecycleUpdatesAndDeletesDedicatedIndices() throws Exception {
+    String metalake = "metalake-lifecycle";
+    SearchCatalogEntityPO catalog =
+        SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
+            .withEntityId(700)
+            .withEntityName("catalog")
+            .withFullQualifiedName("catalog")
+            .withEntityType(Entity.EntityType.CATALOG)
+            .withInUse(true)
+            .withMetalake(metalake)
+            .withCatalogName("catalog")
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("hive")
+            .build();
+    SearchEntityPO schema =
+        SearchEntityPO.SearchEntityPOBuilder.builder()
+            .withEntityId(701)
+            .withEntityName("schema")
+            .withFullQualifiedName("catalog.schema")
+            .withEntityType(Entity.EntityType.SCHEMA)
+            .withInUse(true)
+            .withMetalake(metalake)
+            .withCatalogName("catalog")
+            .build();
+    storage.write(ImmutableList.of(catalog, schema), true);
+
+    long transactionId = storage.beginTransaction(metalake);
+    storage.write(
+        ImmutableList.of(catalog, schema),
+        WriteContext.builder().withTransactionId(transactionId).build());
+    storage.updateMetalakeInUse(metalake, false);
+    storage.commit(transactionId);
+
+    List<SearchEntitiesDTO> entities =
+        storage.search(metalake, null, null, ImmutableList.of(), 10, 0);
+    Assertions.assertEquals(2, entities.size());
+    Assertions.assertTrue(
+        entities.stream()
+            .flatMap(group -> group.getEntities().stream())
+            .noneMatch(SearchEntityDTO::isInUse));
+    storage.beginTransaction(metalake);
+    String indexPattern = metalake + "_*_entity_index*";
+    Assertions.assertTrue(storage.getClient().indices().exists(e -> e.index(indexPattern)).value());
+
+    storage.deleteMetalake(metalake);
+
+    Set<String> remainingIndices =
+        storage
+            .getClient()
+            .indices()
+            .get(
+                request -> request.index(indexPattern).allowNoIndices(true).ignoreUnavailable(true))
+            .result()
+            .keySet();
+    Assertions.assertTrue(
+        remainingIndices.isEmpty(), "Metalake indices were not deleted: " + remainingIndices);
+    Assertions.assertTrue(
+        storage.search(metalake, null, null, ImmutableList.of(), 10, 0).isEmpty());
+
+    storage.write(ImmutableList.of(catalog), true);
+    assertEntityFound(metalake, "catalog", Entity.EntityType.CATALOG);
+    storage.deleteMetalake(metalake);
+    storage.deleteMetalake(metalake);
   }
 
   private void assertViewFound(String keyword) {

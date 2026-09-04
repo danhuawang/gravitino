@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -52,8 +53,10 @@ import org.apache.http.ssl.SSLContextBuilder;
 import org.opensearch.client.Request;
 import org.opensearch.client.Response;
 import org.opensearch.client.RestClient;
+import org.opensearch.client.json.JsonData;
 import org.opensearch.client.json.jackson.JacksonJsonpMapper;
 import org.opensearch.client.opensearch.OpenSearchClient;
+import org.opensearch.client.opensearch._types.Conflicts;
 import org.opensearch.client.opensearch._types.ErrorCause;
 import org.opensearch.client.opensearch._types.FieldValue;
 import org.opensearch.client.opensearch._types.OpenSearchException;
@@ -67,6 +70,8 @@ import org.opensearch.client.opensearch.core.BulkRequest;
 import org.opensearch.client.opensearch.core.BulkResponse;
 import org.opensearch.client.opensearch.core.SearchRequest;
 import org.opensearch.client.opensearch.core.SearchResponse;
+import org.opensearch.client.opensearch.core.UpdateByQueryRequest;
+import org.opensearch.client.opensearch.core.UpdateByQueryResponse;
 import org.opensearch.client.opensearch.core.bulk.BulkResponseItem;
 import org.opensearch.client.opensearch.core.search.SourceConfig;
 import org.opensearch.client.opensearch.core.search.TrackHits;
@@ -128,7 +133,7 @@ public class OpenSearchStorage implements SearchStorage {
           .put(EntityType.ROLE, ROLE_ENTITY_INDEX_SUFFIX)
           .build();
 
-  private final Set<String> createdIndicesAlias = Sets.newHashSet();
+  private final Set<String> createdIndicesAlias = ConcurrentHashMap.newKeySet();
 
   private static final Map<Long, OpenSearchStorageTransaction> TRANSACTION_MAP =
       Maps.newConcurrentMap();
@@ -594,6 +599,159 @@ public class OpenSearchStorage implements SearchStorage {
           metalake,
           e.getMessage());
     }
+  }
+
+  /**
+   * Deletes every concrete index owned by a metalake, including active alias targets and temporary
+   * transaction indices.
+   *
+   * @param metalake The metalake whose indices should be deleted.
+   * @throws RuntimeException If the indices cannot be resolved or OpenSearch does not acknowledge
+   *     their deletion.
+   */
+  @Override
+  public void deleteMetalake(String metalake) {
+    Set<String> concreteIndexNames = Sets.newHashSet();
+    try {
+      concreteIndexNames.addAll(getMetalakeConcreteIndexNames(metalake));
+      if (!concreteIndexNames.isEmpty()) {
+        boolean acknowledged =
+            client
+                .indices()
+                .delete(
+                    request ->
+                        request
+                            .index(new ArrayList<>(concreteIndexNames))
+                            .ignoreUnavailable(true)
+                            .allowNoIndices(true))
+                .acknowledged();
+        if (!acknowledged) {
+          throw new RuntimeException(
+              String.format(
+                  "OpenSearch did not acknowledge deletion of indices %s for metalake %s",
+                  concreteIndexNames, metalake));
+        }
+      }
+
+      createdIndicesAlias.removeAll(getMetalakeIndexAliases(metalake));
+      TRANSACTION_MAP.entrySet().removeIf(entry -> metalake.equals(entry.getValue().getMetalake()));
+    } catch (Exception e) {
+      LOG.error("Failed to delete search indices for metalake {}", metalake, e);
+      throw new RuntimeException(
+          String.format(
+              "Failed to delete search indices %s for metalake %s", concreteIndexNames, metalake),
+          e);
+    }
+  }
+
+  /**
+   * Updates the in-use state across all active and temporary indices for a metalake, retrying
+   * incomplete update-by-query responses and transient failures.
+   *
+   * @param metalake The metalake whose indexed entities should be updated.
+   * @param inUse The effective in-use state.
+   * @throws RuntimeException If OpenSearch does not complete the update within the configured
+   *     attempts.
+   */
+  @Override
+  public void updateMetalakeInUse(String metalake, boolean inUse) {
+    try {
+      UpdateByQueryRequest request =
+          new UpdateByQueryRequest.Builder()
+              .index(getMetalakeIndexPatterns(metalake))
+              .allowNoIndices(true)
+              .ignoreUnavailable(true)
+              .conflicts(Conflicts.Proceed)
+              .refresh(true)
+              .query(query -> query.matchAll(matchAll -> matchAll))
+              .script(
+                  script ->
+                      script.inline(
+                          inline ->
+                              inline
+                                  .source("ctx._source.in_use = params.inUse")
+                                  .params("inUse", JsonData.of(inUse))))
+              .build();
+      updateMetalakeInUseWithRetry(metalake, request);
+    } catch (Exception e) {
+      LOG.error("Failed to update the in-use state for metalake {}", metalake, e);
+      throw new RuntimeException("Failed to update the in-use state for metalake " + metalake, e);
+    }
+  }
+
+  private void updateMetalakeInUseWithRetry(String metalake, UpdateByQueryRequest request)
+      throws Exception {
+    int maxAttempts = Math.max(maxRetries, 1);
+    Exception lastFailure = null;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        UpdateByQueryResponse response = client.updateByQuery(request);
+        long versionConflicts =
+            response.versionConflicts() == null ? 0L : response.versionConflicts();
+        int failureCount = response.failures() == null ? 0 : response.failures().size();
+        if (!Boolean.TRUE.equals(response.timedOut())
+            && versionConflicts == 0
+            && failureCount == 0) {
+          return;
+        }
+
+        lastFailure =
+            new RuntimeException(
+                String.format(
+                    "OpenSearch update was incomplete (timed out: %s, failures: %d, version conflicts: %d)",
+                    response.timedOut(), failureCount, versionConflicts));
+      } catch (Exception e) {
+        lastFailure = e;
+      }
+
+      if (attempt < maxAttempts) {
+        LOG.warn(
+            "Failed to update the in-use state for metalake {} on attempt {}/{}; retrying",
+            metalake,
+            attempt,
+            maxAttempts,
+            lastFailure);
+        try {
+          Thread.sleep(retryBackoffMs * attempt);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw e;
+        }
+      }
+    }
+
+    throw lastFailure;
+  }
+
+  private List<String> getMetalakeIndexAliases(String metalake) {
+    return ENTITY_TYPE_TO_INDEX_SUFFIX.keySet().stream()
+        .map(entityType -> getIndicesAliasName(entityType, metalake))
+        .collect(Collectors.toList());
+  }
+
+  private Set<String> getMetalakeConcreteIndexNames(String metalake) throws Exception {
+    Set<String> concreteIndexNames =
+        Sets.newHashSet(
+            client
+                .indices()
+                .get(
+                    request ->
+                        request
+                            .index(getMetalakeIndexPatterns(metalake))
+                            .allowNoIndices(true)
+                            .ignoreUnavailable(true))
+                .result()
+                .keySet());
+    TRANSACTION_MAP.values().stream()
+        .filter(transaction -> metalake.equals(transaction.getMetalake()))
+        .forEach(transaction -> concreteIndexNames.addAll(transaction.getIndexNames()));
+    return concreteIndexNames;
+  }
+
+  private List<String> getMetalakeIndexPatterns(String metalake) {
+    return getMetalakeIndexAliases(metalake).stream()
+        .map(alias -> alias + "*")
+        .collect(Collectors.toList());
   }
 
   private static BoolQuery buildBoolQuery(String keyword, Condition filter, EntityType entityType) {
