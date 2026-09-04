@@ -203,6 +203,7 @@ public class EntityConverterUtils {
         getMetadataObjectOwner(
             NameIdentifierUtil.toMetadataObject(nameIdentifier, EntityType.CATALOG), levels[0]);
     Permissions permissions = getPermissions(nameIdentifier, EntityType.CATALOG);
+    // Catalog properties may contain credentials, so this conversion intentionally omits them.
     return SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
         .withEntityId(catalog.entity().id())
         .withEntityType(EntityType.CATALOG)
@@ -220,7 +221,6 @@ public class EntityConverterUtils {
         .withOwner(owner)
         .withUserPermissions(permissions.userPermissions())
         .withRolePermissions(permissions.rolePermissions())
-        .withEntityProperties(mapToKeyValueObjects(catalog.properties()))
         .withUpdateTime(System.currentTimeMillis())
         .build();
   }

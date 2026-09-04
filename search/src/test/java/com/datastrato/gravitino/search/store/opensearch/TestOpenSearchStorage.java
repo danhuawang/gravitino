@@ -27,6 +27,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.opensearch.client.opensearch.core.GetResponse;
 
 @Tag("gravitino-docker-test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -312,6 +314,51 @@ public class TestOpenSearchStorage {
 
     assertEntityFound(metalake, "retention_policy", Entity.EntityType.TABLE);
     assertEntityFound(metalake, "sensitive", Entity.EntityType.TAG);
+  }
+
+  @Test
+  void testRemovesCatalogPropertiesFromExistingIndices() throws Exception {
+    String metalake = "legacy-catalog-property-test";
+    String index = storage.getIndicesAliasName(Entity.EntityType.CATALOG, metalake);
+    SearchCatalogEntityPO catalog =
+        SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
+            .withEntityId(700)
+            .withEntityName("catalog")
+            .withFullQualifiedName("catalog")
+            .withEntityType(Entity.EntityType.CATALOG)
+            .withMetalake(metalake)
+            .withCatalogName("catalog")
+            .withType(Catalog.Type.FILESET)
+            .withProvider("hadoop")
+            .build();
+    storage.write(ImmutableList.of(catalog), true);
+
+    Map<String, Object> legacyDocument =
+        ImmutableMap.<String, Object>builder()
+            .put("entity_id", 700)
+            .put("entity_type", "catalog")
+            .put("metalake", metalake)
+            .put("entity_name", "catalog")
+            .put("catalog_name", "catalog")
+            .put("provider", "hadoop")
+            .put("type", "fileset")
+            .put(
+                "entity_properties",
+                ImmutableList.of(
+                    ImmutableMap.of("key", "s3-secret-access-key", "value", "legacy-secret")))
+            .build();
+    storage.getClient().index(i -> i.index(index).id("700").document(legacyDocument));
+    storage.getClient().indices().refresh(r -> r.index(index));
+
+    GetResponse<Object> beforeCleanup =
+        storage.getClient().get(g -> g.index(index).id("700"), Object.class);
+    Assertions.assertTrue(((Map<?, ?>) beforeCleanup.source()).containsKey("entity_properties"));
+
+    storage.removeCatalogPropertiesFromExistingIndices();
+
+    GetResponse<Object> afterCleanup =
+        storage.getClient().get(g -> g.index(index).id("700"), Object.class);
+    Assertions.assertFalse(((Map<?, ?>) afterCleanup.source()).containsKey("entity_properties"));
   }
 
   @Test

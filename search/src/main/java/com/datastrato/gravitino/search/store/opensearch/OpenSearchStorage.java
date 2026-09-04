@@ -50,8 +50,10 @@ import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.ssl.SSLContextBuilder;
+import org.apache.http.util.EntityUtils;
 import org.opensearch.client.Request;
 import org.opensearch.client.Response;
+import org.opensearch.client.ResponseException;
 import org.opensearch.client.RestClient;
 import org.opensearch.client.json.JsonData;
 import org.opensearch.client.json.jackson.JacksonJsonpMapper;
@@ -91,6 +93,10 @@ public class OpenSearchStorage implements SearchStorage {
   private static final Logger LOG = LoggerFactory.getLogger(OpenSearchStorage.class);
 
   private static final String INDEX_NAME_SEPARATOR = "_";
+
+  private static final String ENTITY_PROPERTIES_FIELD = "entity_properties";
+  private static final String REMOVE_ENTITY_PROPERTIES_SCRIPT =
+      "ctx._source.remove('" + ENTITY_PROPERTIES_FIELD + "')";
 
   private static final String CATALOG_ENTITY_SUFFIX = "catalog_entity_index";
   private static final String SCHEMA_ENTITY_INDEX_SUFFIX = "schema_entity_index";
@@ -152,6 +158,7 @@ public class OpenSearchStorage implements SearchStorage {
 
     initOpenSearchClient(openSearchConfig);
     checkIndexTemplate();
+    removeCatalogPropertiesFromExistingIndices();
   }
 
   private void checkIndexTemplate() {
@@ -469,20 +476,95 @@ public class OpenSearchStorage implements SearchStorage {
     while (retryTimes-- > 0) {
       try {
         Response response = restClient.performRequest(request);
-        if (response.getStatusLine().getStatusCode()
-            == javax.ws.rs.core.Response.Status.OK.getStatusCode()) {
+        int statusCode;
+        String reasonPhrase;
+        try {
+          statusCode = response.getStatusLine().getStatusCode();
+          reasonPhrase = response.getStatusLine().getReasonPhrase();
+        } finally {
+          EntityUtils.consume(response.getEntity());
+        }
+        if (statusCode >= 200 && statusCode < 300) {
           return;
         }
 
-        LOG.warn(
-            "Failed to send request to server: {}", response.getStatusLine().getReasonPhrase());
-        Thread.sleep(retryBackoffMs * (maxRetries - retryTimes));
+        LOG.warn("Failed to send request to server: {}", reasonPhrase);
       } catch (Exception e) {
+        if (e instanceof ResponseException) {
+          EntityUtils.consumeQuietly(((ResponseException) e).getResponse().getEntity());
+        }
         LOG.warn("Failed to send request to server", e);
+      }
+
+      if (retryTimes > 0) {
+        try {
+          Thread.sleep(retryBackoffMs * (maxRetries - retryTimes));
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException("Interrupted while retrying request to server", e);
+        }
       }
     }
 
     throw new RuntimeException("Failed to send request to server after retries");
+  }
+
+  void removeCatalogPropertiesFromExistingIndices() {
+    UpdateByQueryRequest request =
+        new UpdateByQueryRequest.Builder()
+            .index("*_" + CATALOG_ENTITY_SUFFIX + "*")
+            .allowNoIndices(true)
+            .ignoreUnavailable(true)
+            .conflicts(Conflicts.Proceed)
+            .refresh(true)
+            .query(
+                q ->
+                    q.nested(
+                        n ->
+                            n.path(ENTITY_PROPERTIES_FIELD)
+                                .ignoreUnmapped(true)
+                                .query(
+                                    nested ->
+                                        nested.exists(
+                                            e -> e.field(ENTITY_PROPERTIES_FIELD + ".key")))))
+            .script(s -> s.inline(i -> i.lang("painless").source(REMOVE_ENTITY_PROPERTIES_SCRIPT)))
+            .build();
+
+    int retryTimes = maxRetries;
+    while (retryTimes-- > 0) {
+      try {
+        UpdateByQueryResponse response = client.updateByQuery(request);
+        if (isCatalogPropertyCleanupComplete(response)) {
+          return;
+        }
+
+        LOG.warn(
+            "Catalog property cleanup incomplete: version conflicts={}, failures={}, timed out={}",
+            response.versionConflicts(),
+            response.failures() == null ? null : response.failures().size(),
+            response.timedOut());
+      } catch (Exception e) {
+        LOG.warn("Failed to remove catalog properties from existing indices", e);
+      }
+
+      if (retryTimes > 0) {
+        try {
+          Thread.sleep(retryBackoffMs * (maxRetries - retryTimes));
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException("Interrupted while cleaning up catalog properties", e);
+        }
+      }
+    }
+
+    throw new RuntimeException("Failed to remove catalog properties after retries");
+  }
+
+  private static boolean isCatalogPropertyCleanupComplete(UpdateByQueryResponse response) {
+    return Long.valueOf(0L).equals(response.versionConflicts())
+        && Boolean.FALSE.equals(response.timedOut())
+        && response.failures() != null
+        && response.failures().isEmpty();
   }
 
   @Override
@@ -569,7 +651,18 @@ public class OpenSearchStorage implements SearchStorage {
       String keyword, Condition filter, List<String> fields, EntityType entityType) {
     Function<SourceConfig.Builder, ObjectBuilder<SourceConfig>> sourceConfig;
     if (fields != null && !fields.isEmpty()) {
-      sourceConfig = src -> src.filter(f -> f.includes(fields));
+      sourceConfig =
+          src ->
+              src.filter(
+                  f -> {
+                    f.includes(fields);
+                    if (entityType == EntityType.CATALOG) {
+                      f.excludes(ENTITY_PROPERTIES_FIELD);
+                    }
+                    return f;
+                  });
+    } else if (entityType == EntityType.CATALOG) {
+      sourceConfig = src -> src.filter(f -> f.excludes(ENTITY_PROPERTIES_FIELD));
     } else {
       sourceConfig = src -> src.fetch(true);
     }
@@ -789,7 +882,9 @@ public class OpenSearchStorage implements SearchStorage {
       }
 
       // Query word match content in properties.
-      allQueries.add(buildPropertiesNestedQuery(word));
+      if (entityType != EntityType.CATALOG) {
+        allQueries.add(buildPropertiesNestedQuery(word));
+      }
     }
 
     return Query.of(q -> q.bool(b -> b.should(allQueries).minimumShouldMatch("1")));

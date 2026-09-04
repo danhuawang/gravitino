@@ -4,12 +4,16 @@
 package com.datastrato.gravitino.search.utils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.search.dto.SearchCatalogEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
+import com.google.common.collect.ImmutableList;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +55,7 @@ class SearchEntityCodecTest {
             + "}";
     String result = searchEntityCodec.serialize(po);
     assertEquals(expectedJson, result);
+    assertTrue(po.getEntityProperties().isEmpty());
 
     SearchCatalogEntityPO po1 =
         searchEntityCodec.deserialize(expectedJson, SearchCatalogEntityPO.class);
@@ -63,6 +68,75 @@ class SearchEntityCodecTest {
     assertEquals(dto.getMetalake(), po.getMetalake());
     assertEquals(dto.isInUse(), po.isInUse());
     assertEquals(dto.getEntityType(), po.getEntityType());
+  }
+
+  @Test
+  void testCatalogPropertiesAreDiscarded() {
+    SearchCatalogEntityPO catalog =
+        SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
+            .withEntityId(100)
+            .withEntityName("catalog")
+            .withEntityType(Entity.EntityType.CATALOG)
+            .withMetalake("test")
+            .withCatalogName("catalog")
+            .withProvider("hive")
+            .withType(Catalog.Type.RELATIONAL)
+            .withEntityProperties(
+                ImmutableList.of(new SearchEntityPO.PropertyPO("s3-secret-access-key", "secret")))
+            .build();
+
+    assertTrue(catalog.getEntityProperties().isEmpty());
+    assertFalse(searchEntityCodec.serialize(catalog).contains("\"entity_properties\""));
+
+    String legacyDocument =
+        """
+        {
+          "entity_id": 101,
+          "entity_type": "catalog",
+          "metalake": "test",
+          "entity_name": "catalog",
+          "catalog_name": "catalog",
+          "provider": "hive",
+          "type": "relational",
+          "entity_properties": [
+            {"key": "s3-secret-access-key", "value": "legacy-secret"}
+          ]
+        }
+        """;
+    SearchCatalogEntityPO legacyCatalog =
+        searchEntityCodec.deserialize(legacyDocument, SearchCatalogEntityPO.class);
+
+    assertTrue(legacyCatalog.getEntityProperties().isEmpty());
+    assertFalse(searchEntityCodec.serialize(legacyCatalog).contains("\"entity_properties\""));
+    SearchCatalogEntityDTO dto =
+        searchEntityCodec.convert(legacyCatalog, SearchCatalogEntityDTO.class);
+    assertNull(dto.getEntityProperties());
+  }
+
+  @Test
+  void testCatalogBuilderValidatesRequiredFields() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
+                .withEntityId(100)
+                .withEntityName("catalog")
+                .withEntityType(Entity.EntityType.CATALOG)
+                .withMetalake("test")
+                .withCatalogName("catalog")
+                .withType(Catalog.Type.RELATIONAL)
+                .build());
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
+                .withEntityId(100)
+                .withEntityName("catalog")
+                .withEntityType(Entity.EntityType.CATALOG)
+                .withMetalake("test")
+                .withCatalogName("catalog")
+                .withProvider("hive")
+                .build());
   }
 
   @Test

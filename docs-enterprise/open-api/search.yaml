@@ -262,7 +262,9 @@ components:
             $ref: "#/components/schemas/SearchPermission"
         entityProperties:
           type: array
-          description: Entity properties represented as key-value pairs
+          description: |
+            Entity properties represented as key-value pairs. Catalog properties are omitted
+            because they may contain credentials.
           items:
             $ref: "#/components/schemas/SearchProperty"
         updateTime:

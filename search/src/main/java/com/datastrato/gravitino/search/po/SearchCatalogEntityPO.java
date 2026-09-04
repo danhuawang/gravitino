@@ -6,6 +6,8 @@ package com.datastrato.gravitino.search.po;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.google.common.base.Preconditions;
+import java.util.Collections;
+import java.util.List;
 import lombok.EqualsAndHashCode;
 import org.apache.gravitino.Catalog;
 
@@ -32,6 +34,7 @@ public class SearchCatalogEntityPO extends SearchEntityPO {
 
     private SearchCatalogEntityPOBuilder() {
       super();
+      super.withEntityProperties(Collections.emptyList());
     }
 
     public SearchCatalogEntityPOBuilder withProvider(String provider) {
@@ -42,6 +45,18 @@ public class SearchCatalogEntityPO extends SearchEntityPO {
     public SearchCatalogEntityPOBuilder withType(Catalog.Type type) {
       this.type = type;
       return this;
+    }
+
+    /**
+     * Discards catalog properties because they may contain credentials that must not enter the
+     * search index.
+     *
+     * @param entityProperties catalog properties to discard
+     * @return this builder
+     */
+    @Override
+    public SearchCatalogEntityPOBuilder withEntityProperties(List<PropertyPO> entityProperties) {
+      return super.withEntityProperties(Collections.emptyList());
     }
 
     public static SearchCatalogEntityPOBuilder builder() {
@@ -57,6 +72,7 @@ public class SearchCatalogEntityPO extends SearchEntityPO {
 
     @Override
     SearchCatalogEntityPO internalBuild() {
+      validate();
       return new SearchCatalogEntityPO(this);
     }
   }
