@@ -83,7 +83,7 @@ public class CatalogHookDispatcher implements CatalogDispatcher {
 
     try {
       // Set the creator as the owner of the catalog.
-      OwnerDispatcher ownerDispatcher = GravitinoEnv.getInstance().ownerDispatcher();
+      OwnerDispatcher ownerDispatcher = GravitinoEnv.getInstance().internalOwnerDispatcher();
       if (ownerDispatcher != null) {
         ownerDispatcher.setOwner(
             ident.namespace().level(0),
@@ -173,6 +173,14 @@ public class CatalogHookDispatcher implements CatalogDispatcher {
   }
 
   @Override
+<<<<<<< HEAD
+=======
+  public void testConnection(NameIdentifier ident, CatalogChange... changes) throws Exception {
+    dispatcher.testConnection(ident, changes);
+  }
+
+  @Override
+>>>>>>> upstream/branch-1.3
   public void enableCatalog(NameIdentifier ident)
       throws NoSuchCatalogException, CatalogNotInUseException {
     dispatcher.enableCatalog(ident);

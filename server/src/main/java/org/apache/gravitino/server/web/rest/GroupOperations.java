@@ -76,7 +76,7 @@ public class GroupOperations {
     // and Jersey injection doesn't support null value. So GroupOperations chooses to retrieve
     // accessControlManager from GravitinoEnv instead of injection here.
     this.accessControlManager = GravitinoEnv.getInstance().accessControlDispatcher();
-    this.ownerDispatcher = GravitinoEnv.getInstance().ownerDispatcher();
+    this.ownerDispatcher = GravitinoEnv.getInstance().internalOwnerDispatcher();
   }
 
   @GET
@@ -112,6 +112,7 @@ public class GroupOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       GroupAddRequest request) {
+<<<<<<< HEAD
     String groupName = request == null ? "" : request.getName();
     if (request == null) {
       return ExceptionHandlers.handleGroupException(
@@ -120,6 +121,18 @@ public class GroupOperations {
           metalake,
           new IllegalArgumentException("Request body cannot be null"));
     }
+=======
+    if (request == null) {
+      LOG.warn("Received add group request with null request body");
+      return ExceptionHandlers.handleGroupException(
+          OperationType.ADD,
+          "",
+          metalake,
+          new IllegalArgumentException("Request body cannot be null"));
+    }
+
+    String groupName = request.getName();
+>>>>>>> upstream/branch-1.3
     try {
       return Utils.doAs(
           httpRequest,

@@ -75,7 +75,7 @@ public class UserOperations {
     // and Jersey injection doesn't support null value. So UserOperations chooses to retrieve
     // accessControlManager from GravitinoEnv instead of injection here.
     this.accessControlManager = GravitinoEnv.getInstance().accessControlDispatcher();
-    this.ownerManager = GravitinoEnv.getInstance().ownerDispatcher();
+    this.ownerManager = GravitinoEnv.getInstance().internalOwnerDispatcher();
   }
 
   @GET
@@ -153,6 +153,7 @@ public class UserOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       UserAddRequest request) {
+<<<<<<< HEAD
     String userName = request == null ? "" : request.getName();
     if (request == null) {
       return ExceptionHandlers.handleUserException(
@@ -161,6 +162,18 @@ public class UserOperations {
           metalake,
           new IllegalArgumentException("Request body cannot be null"));
     }
+=======
+    if (request == null) {
+      LOG.warn("Received add user request with null request body");
+      return ExceptionHandlers.handleUserException(
+          OperationType.ADD,
+          "",
+          metalake,
+          new IllegalArgumentException("Request body cannot be null"));
+    }
+
+    String userName = request.getName();
+>>>>>>> upstream/branch-1.3
     try {
       return Utils.doAs(
           httpRequest,

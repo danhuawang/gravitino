@@ -226,4 +226,29 @@ public interface SupportsCatalogs {
     throw new UnsupportedOperationException(
         String.format("Catalog %s does not support connection testing", catalogName));
   }
+<<<<<<< HEAD
+=======
+
+  /**
+   * Test the connection of an existing catalog with proposed changes without persisting them.
+   *
+   * <p>The default implementation preserves the existing connection-test behavior when no changes
+   * are supplied and rejects non-empty changes. Implementations that support testing proposed
+   * changes should override this method.
+   *
+   * @param catalogName the name of the existing catalog.
+   * @param changes the proposed changes to apply temporarily.
+   * @throws NoSuchCatalogException if the catalog does not exist.
+   * @throws Exception if the test failed.
+   */
+  default void testConnection(String catalogName, CatalogChange... changes) throws Exception {
+    if (changes.length == 0) {
+      testConnection(catalogName);
+      return;
+    }
+    throw new UnsupportedOperationException(
+        String.format(
+            "Catalog %s does not support connection testing with proposed changes", catalogName));
+  }
+>>>>>>> upstream/branch-1.3
 }

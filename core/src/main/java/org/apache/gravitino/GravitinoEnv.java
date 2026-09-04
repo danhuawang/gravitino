@@ -69,6 +69,7 @@ import org.apache.gravitino.hook.SchemaHookDispatcher;
 import org.apache.gravitino.hook.TableHookDispatcher;
 import org.apache.gravitino.hook.TagHookDispatcher;
 import org.apache.gravitino.hook.TopicHookDispatcher;
+import org.apache.gravitino.hook.ViewHookDispatcher;
 import org.apache.gravitino.job.BuiltInJobTemplateEventListener;
 import org.apache.gravitino.job.JobManager;
 import org.apache.gravitino.job.JobOperationDispatcher;
@@ -154,6 +155,7 @@ public class GravitinoEnv {
   private ViewDispatcher internalViewDispatcher;
 
   private MetalakeDispatcher metalakeDispatcher;
+  private MetalakeDispatcher internalMetalakeDispatcher;
 
   private CredentialOperationDispatcher credentialOperationDispatcher;
 
@@ -181,6 +183,7 @@ public class GravitinoEnv {
   private AuditLogManager auditLogManager;
 
   private JobOperationDispatcher jobOperationDispatcher;
+  private JobOperationDispatcher internalJobOperationDispatcher;
 
   private EventBus eventBus;
   private OwnerDispatcher ownerDispatcher;
@@ -240,6 +243,15 @@ public class GravitinoEnv {
    */
   public Config config() {
     return config;
+  }
+
+  /**
+   * Get the auxiliary service manager associated with the Gravitino environment.
+   *
+   * @return The auxiliary service manager instance.
+   */
+  public AuxiliaryServiceManager auxServiceManager() {
+    return auxServiceManager;
   }
 
   /**
@@ -352,7 +364,11 @@ public class GravitinoEnv {
    *
    * <p>The internal dispatcher preserves normalization but skips hooks and event emission.
    *
+<<<<<<< HEAD
    * @return The internal FunctionDispatcher instance.
+=======
+   * <p>The internal FunctionDispatcher instance.
+>>>>>>> upstream/branch-1.3
    */
   public FunctionDispatcher internalFunctionDispatcher() {
     return internalFunctionDispatcher;
@@ -436,6 +452,17 @@ public class GravitinoEnv {
    */
   public MetalakeDispatcher metalakeDispatcher() {
     return metalakeDispatcher;
+  }
+
+  /**
+   * Get the internal MetalakeDispatcher associated with the Gravitino environment.
+   *
+   * <p>The internal dispatcher preserves normalization but skips hooks and event emission.
+   *
+   * @return The internal MetalakeDispatcher instance.
+   */
+  public MetalakeDispatcher internalMetalakeDispatcher() {
+    return internalMetalakeDispatcher;
   }
 
   /**
@@ -632,6 +659,19 @@ public class GravitinoEnv {
     return jobOperationDispatcher;
   }
 
+  /**
+   * Get the internal JobOperationDispatcher associated with the Gravitino environment.
+   *
+   * <p>The internal dispatcher preserves validation but skips hooks and event emission.
+   *
+   * @return The internal JobOperationDispatcher instance.
+   */
+  public JobOperationDispatcher internalJobOperationDispatcher() {
+    Preconditions.checkArgument(
+        internalJobOperationDispatcher != null, "GravitinoEnv is not initialized.");
+    return internalJobOperationDispatcher;
+  }
+
   public StatisticDispatcher statisticDispatcher() {
     return statisticDispatcher;
   }
@@ -740,6 +780,7 @@ public class GravitinoEnv {
     this.metalakeManager = new MetalakeManager(entityStore, idGenerator);
     MetalakeNormalizeDispatcher metalakeNormalizeDispatcher =
         new MetalakeNormalizeDispatcher(metalakeManager);
+    this.internalMetalakeDispatcher = metalakeNormalizeDispatcher;
     MetalakeEventDispatcher metalakeEventDispatcher =
         new MetalakeEventDispatcher(eventBus, metalakeNormalizeDispatcher);
     this.metalakeDispatcher = new MetalakeHookDispatcher(metalakeEventDispatcher);
@@ -784,7 +825,8 @@ public class GravitinoEnv {
     TableEventDispatcher tableEventDispatcher =
         new TableEventDispatcher(eventBus, tableNormalizeDispatcher);
     this.tableDispatcher =
-        new TableHookDispatcher(tableEventDispatcher, this::ownerDispatcher, catalogManager);
+        new TableHookDispatcher(
+            tableEventDispatcher, this::internalOwnerDispatcher, catalogManager);
 
     // TODO: We can install hooks when we need, we only supports ownership post hook,
     //  partition doesn't have ownership, so we don't need it now.
@@ -832,12 +874,11 @@ public class GravitinoEnv {
     this.internalFunctionDispatcher = functionNormalizeDispatcher;
     FunctionEventDispatcher functionEventDispatcher =
         new FunctionEventDispatcher(eventBus, functionNormalizeDispatcher);
-    this.functionDispatcher = new FunctionHookDispatcher(functionEventDispatcher);
+    this.functionDispatcher =
+        new FunctionHookDispatcher(functionEventDispatcher, this::ownerDispatcher, catalogManager);
 
-    // View operation chain: ViewEventDispatcher -> ViewNormalizeDispatcher ->
-    // ViewOperationDispatcher.
-    // TODO(#11007): Add ViewHookDispatcher for view ownership and privilege hooks when view
-    // privilege support is finalized.
+    // View operation chain: ViewHookDispatcher -> ViewEventDispatcher -> ViewNormalizeDispatcher
+    // -> ViewOperationDispatcher.
     ViewOperationDispatcher viewOperationDispatcher =
         new ViewOperationDispatcher(catalogManager, entityStore, idGenerator);
     this.internalViewDispatcher = viewOperationDispatcher;
@@ -850,7 +891,8 @@ public class GravitinoEnv {
         new ViewNormalizeDispatcher(internalViewOperationDispatcher, catalogManager);
     ViewEventDispatcher viewEventDispatcher =
         new ViewEventDispatcher(eventBus, viewNormalizeDispatcher);
-    this.viewDispatcher = viewEventDispatcher;
+    this.viewDispatcher =
+        new ViewHookDispatcher(viewEventDispatcher, this::internalOwnerDispatcher, catalogManager);
 
     this.statisticDispatcher =
         new StatisticEventDispatcher(
@@ -895,6 +937,7 @@ public class GravitinoEnv {
     JobManager jobManager = new JobManager(config, entityStore, idGenerator);
     JobTemplateValidationDispatcher validationDispatcher =
         new JobTemplateValidationDispatcher(jobManager);
+    this.internalJobOperationDispatcher = validationDispatcher;
     JobEventDispatcher jobEventDispatcher = new JobEventDispatcher(eventBus, validationDispatcher);
     this.jobOperationDispatcher = new JobHookDispatcher(jobEventDispatcher);
 

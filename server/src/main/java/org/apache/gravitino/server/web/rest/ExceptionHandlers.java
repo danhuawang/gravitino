@@ -52,6 +52,7 @@ import org.apache.gravitino.exceptions.TableAlreadyExistsException;
 import org.apache.gravitino.exceptions.TagAlreadyAssociatedException;
 import org.apache.gravitino.exceptions.TagAlreadyExistsException;
 import org.apache.gravitino.exceptions.TopicAlreadyExistsException;
+import org.apache.gravitino.exceptions.UnmodifiableStatisticException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.exceptions.ViewAlreadyExistsException;
 import org.apache.gravitino.server.web.Utils;
@@ -1057,6 +1058,9 @@ public class ExceptionHandlers {
       } else if (e instanceof NotFoundException) {
         return Utils.notFound(errorMsg, e);
 
+      } else if (e instanceof UnmodifiableStatisticException) {
+        return Utils.operationConflict(errorMsg, e);
+
       } else if (e instanceof UnsupportedOperationException) {
         return Utils.unsupportedOperation(errorMsg, e);
 
@@ -1089,6 +1093,9 @@ public class ExceptionHandlers {
       } else if (e instanceof NotFoundException) {
         return Utils.notFound(errorMsg, e);
 
+      } else if (e instanceof UnmodifiableStatisticException) {
+        return Utils.operationConflict(errorMsg, e);
+
       } else if (e instanceof UnsupportedOperationException) {
         return Utils.unsupportedOperation(errorMsg, e);
 
@@ -1117,6 +1124,18 @@ public class ExceptionHandlers {
 
       String errorMsg =
           getBaseErrorMsg(formattedObject, op.name(), formattedParent, getErrorMsg(e));
+      // Classify domain-specific UnsupportedOperationException subclasses before the generic
+      // capability fallback below.
+      if (e instanceof UnmodifiableStatisticException) {
+        LOG.warn(errorMsg, e);
+        return Utils.operationConflict(errorMsg, e);
+      }
+
+      if (e instanceof UnsupportedOperationException) {
+        LOG.warn(errorMsg, e);
+        return Utils.unsupportedOperation(errorMsg, e);
+      }
+
       LOG.error(errorMsg, e);
       return Utils.internalError(errorMsg, e);
     }

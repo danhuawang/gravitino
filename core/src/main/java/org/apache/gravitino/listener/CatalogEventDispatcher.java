@@ -210,6 +210,15 @@ public class CatalogEventDispatcher implements CatalogDispatcher {
   }
 
   @Override
+<<<<<<< HEAD
+=======
+  public void testConnection(NameIdentifier ident, CatalogChange... changes) throws Exception {
+    // TODO(#12566): Support event dispatching for testConnection
+    dispatcher.testConnection(ident, changes);
+  }
+
+  @Override
+>>>>>>> upstream/branch-1.3
   public void enableCatalog(NameIdentifier ident)
       throws NoSuchCatalogException, CatalogNotInUseException {
     eventBus.dispatchEvent(new EnableCatalogPreEvent(PrincipalUtils.getCurrentUserName(), ident));

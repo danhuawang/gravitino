@@ -141,6 +141,16 @@ public class CatalogOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       CatalogCreateRequest request) {
+    if (request == null) {
+      LOG.warn("Received create catalog request with null request body");
+      return ExceptionHandlers.handleCatalogException(
+          OperationType.CREATE,
+          "",
+          metalake,
+          new IllegalArgumentException("Request body cannot be null"));
+    }
+
+    String catalogName = request.getName();
     LOG.info("Received create catalog request for metalake: {}", metalake);
     try {
       return Utils.doAs(
@@ -162,7 +172,7 @@ public class CatalogOperations {
 
     } catch (Exception e) {
       return ExceptionHandlers.handleCatalogException(
-          OperationType.CREATE, request.getName(), metalake, e);
+          OperationType.CREATE, catalogName, metalake, e);
     }
   }
 
@@ -178,6 +188,13 @@ public class CatalogOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       CatalogCreateRequest request) {
+    if (request == null) {
+      // Unlike a failed connection test, which handleTestConnectionException() reports inside an
+      // HTTP 200 response by design, a missing request body never reaches the connection test, so
+      // it is rejected with a regular HTTP 400.
+      return Utils.illegalArguments("Request body cannot be null");
+    }
+
     LOG.info("Received test connection request for catalog: {}.{}", metalake, request.getName());
     try {
       return Utils.doAs(
@@ -215,14 +232,32 @@ public class CatalogOperations {
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
       @PathParam("catalog") @AuthorizationMetadata(type = Entity.EntityType.CATALOG)
+<<<<<<< HEAD
           String catalogName) {
+=======
+          String catalogName,
+      CatalogUpdatesRequest request) {
+>>>>>>> upstream/branch-1.3
     LOG.info("Received test connection request for existing catalog: {}.{}", metalake, catalogName);
     try {
       return Utils.doAs(
           httpRequest,
           () -> {
             NameIdentifier ident = NameIdentifierUtil.ofCatalog(metalake, catalogName);
+<<<<<<< HEAD
             catalogDispatcher.testConnection(ident);
+=======
+            if (request == null) {
+              catalogDispatcher.testConnection(ident);
+            } else {
+              request.validate();
+              CatalogChange[] changes =
+                  request.getUpdates().stream()
+                      .map(CatalogUpdateRequest::catalogChange)
+                      .toArray(CatalogChange[]::new);
+              catalogDispatcher.testConnection(ident, changes);
+            }
+>>>>>>> upstream/branch-1.3
             LOG.info(
                 "Successfully tested connection for existing catalog: {}.{}",
                 metalake,
@@ -249,8 +284,15 @@ public class CatalogOperations {
       @PathParam("catalog") @AuthorizationMetadata(type = Entity.EntityType.CATALOG)
           String catalogName,
       CatalogSetRequest request) {
-    LOG.info("Received set request for catalog: {}.{}", metalake, catalogName);
+    if (request == null) {
+      return ExceptionHandlers.handleCatalogException(
+          OperationType.SET,
+          catalogName,
+          metalake,
+          new IllegalArgumentException("Request body cannot be null"));
+    }
 
+    LOG.info("Received set request for catalog: {}.{}", metalake, catalogName);
     OperationType op = request.isInUse() ? OperationType.ENABLE : OperationType.DISABLE;
 
     try {

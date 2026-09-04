@@ -24,8 +24,13 @@ on:
 jobs:
   SparkIT:
     name: JDK${{ inputs.java-version }}-${{ inputs.test-mode }}-Scala${{ inputs.scala-version }}
+<<<<<<< HEAD
     runs-on: gcp-arc-runners
     timeout-minutes: 90
+=======
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+>>>>>>> upstream/branch-1.3
     env:
       PLATFORM: ${{ inputs.architecture }}
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}

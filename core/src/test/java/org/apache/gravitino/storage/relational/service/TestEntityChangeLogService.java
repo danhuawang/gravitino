@@ -34,8 +34,12 @@ import org.apache.gravitino.job.JobHandle;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.FilesetEntity;
+<<<<<<< HEAD
 import org.apache.gravitino.meta.JobEntity;
 import org.apache.gravitino.meta.JobTemplateEntity;
+=======
+import org.apache.gravitino.meta.FunctionEntity;
+>>>>>>> upstream/branch-1.3
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.meta.SchemaEntity;
@@ -463,6 +467,58 @@ public class TestEntityChangeLogService extends TestJDBCBackend {
         Entity.EntityType.MODEL,
         NameIdentifierUtil.ofModel(METALAKE_NAME, CATALOG_NAME, SCHEMA_NAME, "model2").toString(),
         OperateType.DROP);
+
+    FunctionEntity function =
+        createFunctionEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            NamespaceUtil.ofFunction(METALAKE_NAME, CATALOG_NAME, SCHEMA_NAME),
+            "function1",
+            AUDIT_INFO);
+    FunctionMetaService.getInstance().insertFunction(function, false);
+    long maxIdBeforeFunctionDrop = maxEntityChangeId();
+    Assertions.assertTrue(
+        backend.delete(function.nameIdentifier(), Entity.EntityType.FUNCTION, false));
+    assertEntityChange(
+        maxIdBeforeFunctionDrop,
+        METALAKE_NAME,
+        Entity.EntityType.FUNCTION,
+        NameIdentifierUtil.ofFunction(METALAKE_NAME, CATALOG_NAME, SCHEMA_NAME, "function1")
+            .toString(),
+        OperateType.DROP);
+  }
+
+  @TestTemplate
+  void testFunctionDropRollsBackWhenChangeLogInsertFails() throws Exception {
+    createParentEntities(METALAKE_NAME, CATALOG_NAME, SCHEMA_NAME, AUDIT_INFO);
+    FunctionEntity function =
+        createFunctionEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            NamespaceUtil.ofFunction(METALAKE_NAME, CATALOG_NAME, SCHEMA_NAME),
+            "function_rolled_back",
+            AUDIT_INFO);
+    FunctionMetaService.getInstance().insertFunction(function, false);
+
+    renameTable("entity_change_log", "entity_change_log_bak");
+    try {
+      Assertions.assertThrows(
+          Exception.class,
+          () -> backend.delete(function.nameIdentifier(), Entity.EntityType.FUNCTION, false));
+    } finally {
+      renameTable("entity_change_log_bak", "entity_change_log");
+    }
+
+    FunctionEntity persistedFunction =
+        FunctionMetaService.getInstance().getFunctionByIdentifier(function.nameIdentifier());
+    Assertions.assertEquals(function.id(), persistedFunction.id());
+  }
+
+  private void renameTable(String from, String to) throws SQLException {
+    try (SqlSession session =
+            SqlSessionFactoryHelper.getInstance().getSqlSessionFactory().openSession(true);
+        Connection connection = session.getConnection();
+        Statement statement = connection.createStatement()) {
+      statement.execute(String.format("ALTER TABLE %s RENAME TO %s", from, to));
+    }
   }
 
   @TestTemplate
