@@ -66,6 +66,10 @@ public class TestDatastratoRoleAssignmentBaseSQLProvider {
                     .build()));
 
     assertTrue(sql.startsWith("<script>INSERT INTO user_role_rel"));
+    assertTrue(
+        sql.contains(
+            "SELECT user_id AS principal_id, role_id, audit_info, current_version, last_version,"
+                + " deleted_at FROM user_role_rel WHERE 1 = 0 UNION ALL"));
     assertTrue(sql.contains("<foreach collection='assignments'"));
     assertTrue(sql.contains("#{item.userId} AS principal_id"));
     assertTrue(sql.contains("WHERE NOT EXISTS"));
@@ -87,6 +91,10 @@ public class TestDatastratoRoleAssignmentBaseSQLProvider {
                     .build()));
 
     assertTrue(sql.startsWith("<script>INSERT INTO group_role_rel"));
+    assertTrue(
+        sql.contains(
+            "SELECT group_id AS principal_id, role_id, audit_info, current_version, last_version,"
+                + " deleted_at FROM group_role_rel WHERE 1 = 0 UNION ALL"));
     assertTrue(sql.contains("#{item.groupId} AS principal_id"));
     assertTrue(sql.contains("UNION ALL"));
     assertTrue(sql.contains("existing_assignment.role_id = batch_assignment.role_id"));

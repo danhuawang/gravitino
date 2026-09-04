@@ -173,6 +173,12 @@ public class DatastratoRoleAssignmentBaseSQLProvider {
         + " batch_assignment.audit_info, batch_assignment.current_version,"
         + " batch_assignment.last_version, batch_assignment.deleted_at"
         + " FROM ("
+        + "SELECT "
+        + principalIdColumn
+        + " AS principal_id, role_id, audit_info, current_version, last_version, deleted_at"
+        + " FROM "
+        + relationTableName
+        + " WHERE 1 = 0 UNION ALL "
         + "<foreach collection='assignments' item='item' separator=' UNION ALL '>"
         + "SELECT #{item."
         + principalIdProperty

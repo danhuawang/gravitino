@@ -54,8 +54,11 @@ paths:
       summary: Assign multiple roles to multiple users and groups
       operationId: assignRolesToPrincipals
       description: |
-        Assigns all requested roles to all requested users and groups atomically. Existing active
-        assignments are retained with their original assignment audit information.
+        Assigns all requested roles to all requested users and groups. Roles that do not exist are
+        created without privileges or properties. Users and groups that exist in the built-in IdP
+        but not in the metalake are added to the metalake before assignment. The user-role and
+        group-role assignment writes are atomic, and existing active assignments retain their
+        original assignment audit information.
       requestBody:
         required: true
         content:
@@ -68,7 +71,9 @@ paths:
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "404":
-          description: Not Found - A target metalake, role, user, or group does not exist
+          description: >-
+            Not Found - The target metalake or a requested user or group does not exist in the
+            built-in IdP
           content:
             application/vnd.gravitino.v1+json:
               schema:

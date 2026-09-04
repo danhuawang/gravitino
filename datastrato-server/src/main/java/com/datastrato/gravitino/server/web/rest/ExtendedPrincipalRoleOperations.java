@@ -121,6 +121,9 @@ public class ExtendedPrincipalRoleOperations {
   /**
    * Assigns multiple roles to multiple users and groups.
    *
+   * <p>Roles that do not exist are created without privileges. Users and groups that exist in the
+   * built-in IdP but not in the metalake are added to the metalake before assignment.
+   *
    * @param metalake The metalake name.
    * @param request The roles, users, and groups to assign.
    * @return A successful base response when all assignments are persisted.
@@ -128,7 +131,10 @@ public class ExtendedPrincipalRoleOperations {
   @PUT
   @Path("roles/assignments")
   @Produces("application/vnd.gravitino.v1+json")
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GRANTS")
+  @AuthorizationExpression(
+      expression =
+          "METALAKE::OWNER || (METALAKE::MANAGE_GRANTS && METALAKE::CREATE_ROLE"
+              + " && METALAKE::MANAGE_USERS && METALAKE::MANAGE_GROUPS)")
   public Response assignRolesToPrincipals(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,

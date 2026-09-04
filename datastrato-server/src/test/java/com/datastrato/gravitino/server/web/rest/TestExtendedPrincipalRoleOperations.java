@@ -55,8 +55,8 @@ import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
-import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
+import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
@@ -197,7 +197,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
             Lists.newArrayList("reader"),
             Lists.newArrayList("alice"),
             Lists.newArrayList("missing-group"));
-    doThrow(new NoSuchGroupException("Group missing-group does not exist"))
+    doThrow(new NotFoundException("Group missing-group does not exist in the IdP"))
         .when(ACCESS_CONTROL_DISPATCHER)
         .assignRolesToPrincipals(any(), any(), any(), any());
 
@@ -210,7 +210,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
     Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
     ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
     Assertions.assertEquals(ErrorConstants.NOT_FOUND_CODE, errorResponse.getCode());
-    Assertions.assertEquals(NoSuchGroupException.class.getSimpleName(), errorResponse.getType());
+    Assertions.assertEquals(NotFoundException.class.getSimpleName(), errorResponse.getType());
   }
 
   /** Tests listing all visible roles with owners and direct principal counts. */
@@ -385,7 +385,9 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
     AuthorizationExpression assignExpression =
         assignRoles.getAnnotation(AuthorizationExpression.class);
     Assertions.assertEquals(
-        "METALAKE::OWNER || METALAKE::MANAGE_GRANTS", assignExpression.expression());
+        "METALAKE::OWNER || (METALAKE::MANAGE_GRANTS && METALAKE::CREATE_ROLE"
+            + " && METALAKE::MANAGE_USERS && METALAKE::MANAGE_GROUPS)",
+        assignExpression.expression());
     Assertions.assertEquals(
         Entity.EntityType.METALAKE,
         assignRoles.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());

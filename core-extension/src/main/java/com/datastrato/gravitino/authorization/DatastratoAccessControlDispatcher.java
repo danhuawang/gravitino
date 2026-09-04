@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
@@ -52,6 +53,15 @@ import org.apache.gravitino.exceptions.RoleAlreadyExistsException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.idp.IdpUserGroupManager;
 import org.apache.gravitino.idp.model.IdpGroup;
+import org.apache.gravitino.listener.EventBus;
+import org.apache.gravitino.listener.api.event.GrantGroupRolesEvent;
+import org.apache.gravitino.listener.api.event.GrantGroupRolesFailureEvent;
+import org.apache.gravitino.listener.api.event.GrantGroupRolesPreEvent;
+import org.apache.gravitino.listener.api.event.GrantUserRolesEvent;
+import org.apache.gravitino.listener.api.event.GrantUserRolesFailureEvent;
+import org.apache.gravitino.listener.api.event.GrantUserRolesPreEvent;
+import org.apache.gravitino.listener.api.info.GroupInfo;
+import org.apache.gravitino.listener.api.info.UserInfo;
 import org.apache.gravitino.lock.LockType;
 import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.AuditInfo;
@@ -74,6 +84,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   private final IdpUserGroupManager idpUserGroupManager;
   private final DatastratoRoleMetaService roleMetaService;
   private final DatastratoUserMetaService userMetaService;
+  @Nullable private final EventBus eventBus;
 
   /**
    * Creates the enterprise access-control dispatcher.
@@ -86,12 +97,29 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
       AccessControlDispatcher accessControlDispatcher,
       EntityStore entityStore,
       IdpUserGroupManager idpUserGroupManager) {
+    this(accessControlDispatcher, entityStore, idpUserGroupManager, null);
+  }
+
+  /**
+   * Creates the enterprise access-control dispatcher.
+   *
+   * @param accessControlDispatcher The wrapped OSS dispatcher.
+   * @param entityStore The entity store.
+   * @param idpUserGroupManager The built-in IdP user and group manager.
+   * @param eventBus The event bus used to publish enterprise access-control events.
+   */
+  public DatastratoAccessControlDispatcher(
+      AccessControlDispatcher accessControlDispatcher,
+      EntityStore entityStore,
+      IdpUserGroupManager idpUserGroupManager,
+      @Nullable EventBus eventBus) {
     this(
         accessControlDispatcher,
         entityStore,
         idpUserGroupManager,
         DatastratoRoleMetaService.getInstance(),
-        DatastratoUserMetaService.getInstance());
+        DatastratoUserMetaService.getInstance(),
+        eventBus);
   }
 
   DatastratoAccessControlDispatcher(
@@ -100,11 +128,28 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
       IdpUserGroupManager idpUserGroupManager,
       DatastratoRoleMetaService roleMetaService,
       DatastratoUserMetaService userMetaService) {
+    this(
+        accessControlDispatcher,
+        entityStore,
+        idpUserGroupManager,
+        roleMetaService,
+        userMetaService,
+        null);
+  }
+
+  DatastratoAccessControlDispatcher(
+      AccessControlDispatcher accessControlDispatcher,
+      EntityStore entityStore,
+      IdpUserGroupManager idpUserGroupManager,
+      DatastratoRoleMetaService roleMetaService,
+      DatastratoUserMetaService userMetaService,
+      @Nullable EventBus eventBus) {
     this.accessControlDispatcher = accessControlDispatcher;
     this.entityStore = entityStore;
     this.idpUserGroupManager = Preconditions.checkNotNull(idpUserGroupManager);
     this.roleMetaService = Preconditions.checkNotNull(roleMetaService);
     this.userMetaService = Preconditions.checkNotNull(userMetaService);
+    this.eventBus = eventBus;
   }
 
   @Override
@@ -899,8 +944,9 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   /**
    * Assigns multiple roles to multiple users and groups with direct batch relation SQL.
    *
-   * <p>All requested principals and roles are validated before either relation table is changed.
-   * User-role and group-role assignments are then inserted in one transaction.
+   * <p>Missing roles are created without privileges. Requested users and groups that are not yet in
+   * the metalake are added after their existence in the built-in IdP is verified. All user-role and
+   * group-role assignments are then inserted in one transaction.
    *
    * @param metalake The metalake name.
    * @param roles The role names.
@@ -934,43 +980,62 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
         Sets.newHashSet(groupNames).size() == groupNames.size(),
         "Duplicate group names are not allowed");
 
-    TreeLockUtils.doWithTreeLock(
-        NameIdentifier.of(AuthorizationUtils.ofUserNamespace(metalake).levels()),
-        LockType.WRITE,
-        () ->
-            TreeLockUtils.doWithTreeLock(
-                NameIdentifier.of(AuthorizationUtils.ofGroupNamespace(metalake).levels()),
-                LockType.WRITE,
-                () ->
-                    TreeLockUtils.doWithTreeLock(
-                        NameIdentifier.of(AuthorizationUtils.ofRoleNamespace(metalake).levels()),
-                        LockType.READ,
-                        () -> {
-                          List<RoleEntity> loadedRoles = loadRoles(metalake, roleNames);
-                          List<UserEntity> loadedUsers = loadUsers(metalake, userNames);
-                          List<GroupEntity> loadedGroups = loadGroups(metalake, groupNames);
+    String initiator = PrincipalUtils.getCurrentUserName();
+    dispatchGrantRolesPreEvents(initiator, metalake, roleNames, userNames, groupNames);
+    List<UserEntity> updatedUsers = Lists.newArrayListWithCapacity(userNames.size());
+    List<GroupEntity> updatedGroups = Lists.newArrayListWithCapacity(groupNames.size());
+    try {
+      TreeLockUtils.doWithTreeLock(
+          NameIdentifier.of(AuthorizationUtils.ofUserNamespace(metalake).levels()),
+          LockType.WRITE,
+          () ->
+              TreeLockUtils.doWithTreeLock(
+                  NameIdentifier.of(AuthorizationUtils.ofGroupNamespace(metalake).levels()),
+                  LockType.WRITE,
+                  () ->
+                      TreeLockUtils.doWithTreeLock(
+                          NameIdentifier.of(AuthorizationUtils.ofRoleNamespace(metalake).levels()),
+                          LockType.WRITE,
+                          () -> {
+                            Map<String, UserEntity> usersByName =
+                                loadUsersByName(metalake, userNames);
+                            Map<String, GroupEntity> groupsByName =
+                                loadGroupsByName(metalake, groupNames);
+                            List<String> missingUsers = missingNames(userNames, usersByName);
+                            List<String> missingGroups = missingNames(groupNames, groupsByName);
 
-                          Instant assignmentTime = Instant.now();
-                          String modifier = PrincipalUtils.getCurrentPrincipal().getName();
-                          List<UserEntity> updatedUsers =
-                              Lists.newArrayListWithCapacity(loadedUsers.size());
-                          for (UserEntity user : loadedUsers) {
-                            updatedUsers.add(
-                                withAssignedRoles(user, loadedRoles, modifier, assignmentTime));
-                          }
-                          List<GroupEntity> updatedGroups =
-                              Lists.newArrayListWithCapacity(loadedGroups.size());
-                          for (GroupEntity group : loadedGroups) {
-                            updatedGroups.add(
-                                withAssignedRoles(group, loadedRoles, modifier, assignmentTime));
-                          }
+                            validateIdpPrincipals(missingUsers, missingGroups);
+                            List<RoleEntity> loadedRoles = loadOrCreateRoles(metalake, roleNames);
 
-                          roleMetaService.batchAssignRolesToPrincipals(
-                              loadedRoles, updatedUsers, updatedGroups);
-                          notifyAuthorizationPlugins(
-                              metalake, loadedRoles, updatedUsers, updatedGroups);
-                          return null;
-                        })));
+                            addUsersToMetalake(metalake, missingUsers, usersByName);
+                            addGroupsToMetalake(metalake, missingGroups, groupsByName);
+
+                            List<UserEntity> loadedUsers = orderedUsers(userNames, usersByName);
+                            List<GroupEntity> loadedGroups =
+                                orderedGroups(groupNames, groupsByName);
+
+                            Instant assignmentTime = Instant.now();
+                            String modifier = PrincipalUtils.getCurrentPrincipal().getName();
+                            for (UserEntity user : loadedUsers) {
+                              updatedUsers.add(
+                                  withAssignedRoles(user, loadedRoles, modifier, assignmentTime));
+                            }
+                            for (GroupEntity group : loadedGroups) {
+                              updatedGroups.add(
+                                  withAssignedRoles(group, loadedRoles, modifier, assignmentTime));
+                            }
+
+                            roleMetaService.batchAssignRolesToPrincipals(
+                                loadedRoles, updatedUsers, updatedGroups);
+                            notifyAuthorizationPlugins(
+                                metalake, loadedRoles, updatedUsers, updatedGroups);
+                            return null;
+                          })));
+      dispatchGrantRolesSuccessEvents(initiator, metalake, roleNames, updatedUsers, updatedGroups);
+    } catch (Exception e) {
+      dispatchGrantRolesFailureEvents(initiator, metalake, roleNames, userNames, groupNames, e);
+      throw e;
+    }
   }
 
   @Override
@@ -1131,77 +1196,181 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
         });
   }
 
-  private List<RoleEntity> loadRoles(String metalake, List<String> roleNames) {
+  private void dispatchGrantRolesPreEvents(
+      String initiator,
+      String metalake,
+      List<String> roles,
+      List<String> users,
+      List<String> groups) {
+    if (eventBus == null) {
+      return;
+    }
+    for (String user : users) {
+      eventBus.dispatchEvent(new GrantUserRolesPreEvent(initiator, metalake, user, roles));
+    }
+    for (String group : groups) {
+      eventBus.dispatchEvent(new GrantGroupRolesPreEvent(initiator, metalake, group, roles));
+    }
+  }
+
+  private void dispatchGrantRolesSuccessEvents(
+      String initiator,
+      String metalake,
+      List<String> roles,
+      List<UserEntity> users,
+      List<GroupEntity> groups) {
+    if (eventBus == null) {
+      return;
+    }
+    for (UserEntity user : users) {
+      eventBus.dispatchEvent(
+          new GrantUserRolesEvent(initiator, metalake, new UserInfo(user), roles));
+    }
+    for (GroupEntity group : groups) {
+      eventBus.dispatchEvent(
+          new GrantGroupRolesEvent(initiator, metalake, new GroupInfo(group), roles));
+    }
+  }
+
+  private void dispatchGrantRolesFailureEvents(
+      String initiator,
+      String metalake,
+      List<String> roles,
+      List<String> users,
+      List<String> groups,
+      Exception exception) {
+    if (eventBus == null) {
+      return;
+    }
+    for (String user : users) {
+      eventBus.dispatchEvent(
+          new GrantUserRolesFailureEvent(initiator, metalake, exception, user, roles));
+    }
+    for (String group : groups) {
+      eventBus.dispatchEvent(
+          new GrantGroupRolesFailureEvent(initiator, metalake, exception, group, roles));
+    }
+  }
+
+  private Map<String, UserEntity> loadUsersByName(String metalake, List<String> userNames) {
+    Map<String, UserEntity> usersByName = Maps.newHashMap();
+    if (!userNames.isEmpty()) {
+      for (UserEntity user : userMetaService.batchGetUsers(metalake, userNames)) {
+        usersByName.put(user.name(), user);
+      }
+    }
+    return usersByName;
+  }
+
+  private Map<String, GroupEntity> loadGroupsByName(String metalake, List<String> groupNames) {
+    Map<String, GroupEntity> groupsByName = Maps.newHashMap();
+    if (!groupNames.isEmpty()) {
+      List<NameIdentifier> identifiers = Lists.newArrayListWithCapacity(groupNames.size());
+      for (String groupName : groupNames) {
+        identifiers.add(AuthorizationUtils.ofGroup(metalake, groupName));
+      }
+      for (GroupEntity group :
+          entityStore.batchGet(identifiers, Entity.EntityType.GROUP, GroupEntity.class)) {
+        groupsByName.put(group.name(), group);
+      }
+    }
+    return groupsByName;
+  }
+
+  private static List<String> missingNames(List<String> names, Map<String, ?> entitiesByName) {
+    List<String> missing = Lists.newArrayList();
+    for (String name : names) {
+      if (!entitiesByName.containsKey(name)) {
+        missing.add(name);
+      }
+    }
+    return missing;
+  }
+
+  private void validateIdpPrincipals(List<String> missingUsers, List<String> missingGroups) {
+    for (String user : missingUsers) {
+      idpUserGroupManager.getUser(user);
+    }
+    for (String group : missingGroups) {
+      idpUserGroupManager.getGroup(group);
+    }
+  }
+
+  private void addUsersToMetalake(
+      String metalake, List<String> missingUsers, Map<String, UserEntity> usersByName) {
+    for (String userName : missingUsers) {
+      User addedUser = accessControlDispatcher.addUser(metalake, userName);
+      usersByName.put(userName, requireUserEntity(addedUser, metalake));
+    }
+  }
+
+  private void addGroupsToMetalake(
+      String metalake, List<String> missingGroups, Map<String, GroupEntity> groupsByName) {
+    for (String groupName : missingGroups) {
+      Group addedGroup = accessControlDispatcher.addGroup(metalake, groupName);
+      groupsByName.put(groupName, requireGroupEntity(addedGroup, metalake));
+    }
+  }
+
+  private List<RoleEntity> loadOrCreateRoles(String metalake, List<String> roleNames) {
     List<RoleEntity> roles = Lists.newArrayListWithCapacity(roleNames.size());
     for (String roleName : roleNames) {
-      Role loadedRole = accessControlDispatcher.getRole(metalake, roleName);
-      Preconditions.checkState(
-          loadedRole instanceof RoleEntity,
-          "Role %s under metalake %s is not a role entity",
-          roleName,
-          metalake);
-      roles.add((RoleEntity) loadedRole);
+      Role role;
+      try {
+        role = accessControlDispatcher.getRole(metalake, roleName);
+      } catch (NoSuchRoleException e) {
+        role =
+            accessControlDispatcher.createRole(
+                metalake, roleName, Collections.emptyMap(), Collections.emptyList());
+      }
+      roles.add(requireRoleEntity(role, metalake));
     }
     return roles;
   }
 
-  private List<UserEntity> loadUsers(String metalake, List<String> userNames) {
-    if (userNames.isEmpty()) {
-      return Lists.newArrayList();
-    }
-
-    Map<String, UserEntity> usersByName = Maps.newHashMap();
-    for (UserEntity user : userMetaService.batchGetUsers(metalake, userNames)) {
-      usersByName.put(user.name(), user);
-    }
-
+  private static List<UserEntity> orderedUsers(
+      List<String> userNames, Map<String, UserEntity> usersByName) {
     List<UserEntity> users = Lists.newArrayListWithCapacity(userNames.size());
-    List<String> missingUsers = Lists.newArrayList();
     for (String userName : userNames) {
-      UserEntity user = usersByName.get(userName);
-      if (user == null) {
-        missingUsers.add(userName);
-      } else {
-        users.add(user);
-      }
-    }
-    if (!missingUsers.isEmpty()) {
-      throw new NoSuchUserException(
-          "Users %s do not exist in the metalake %s", missingUsers, metalake);
+      users.add(usersByName.get(userName));
     }
     return users;
   }
 
-  private List<GroupEntity> loadGroups(String metalake, List<String> groupNames) {
-    if (groupNames.isEmpty()) {
-      return Lists.newArrayList();
-    }
-
-    List<NameIdentifier> identifiers = Lists.newArrayListWithCapacity(groupNames.size());
-    for (String groupName : groupNames) {
-      identifiers.add(AuthorizationUtils.ofGroup(metalake, groupName));
-    }
-    Map<String, GroupEntity> groupsByName = Maps.newHashMap();
-    for (GroupEntity group :
-        entityStore.batchGet(identifiers, Entity.EntityType.GROUP, GroupEntity.class)) {
-      groupsByName.put(group.name(), group);
-    }
-
+  private static List<GroupEntity> orderedGroups(
+      List<String> groupNames, Map<String, GroupEntity> groupsByName) {
     List<GroupEntity> groups = Lists.newArrayListWithCapacity(groupNames.size());
-    List<String> missingGroups = Lists.newArrayList();
     for (String groupName : groupNames) {
-      GroupEntity group = groupsByName.get(groupName);
-      if (group == null) {
-        missingGroups.add(groupName);
-      } else {
-        groups.add(group);
-      }
-    }
-    if (!missingGroups.isEmpty()) {
-      throw new NoSuchGroupException(
-          "Groups %s do not exist in the metalake %s", missingGroups, metalake);
+      groups.add(groupsByName.get(groupName));
     }
     return groups;
+  }
+
+  private static UserEntity requireUserEntity(User user, String metalake) {
+    Preconditions.checkState(
+        user instanceof UserEntity,
+        "User %s under metalake %s is not a user entity",
+        user.name(),
+        metalake);
+    return (UserEntity) user;
+  }
+
+  private static GroupEntity requireGroupEntity(Group group, String metalake) {
+    Preconditions.checkState(
+        group instanceof GroupEntity,
+        "Group %s under metalake %s is not a group entity",
+        group.name(),
+        metalake);
+    return (GroupEntity) group;
+  }
+
+  private static RoleEntity requireRoleEntity(Role role, String metalake) {
+    Preconditions.checkState(
+        role instanceof RoleEntity,
+        "Role %s under metalake %s is not a role entity",
+        role.name(),
+        metalake);
+    return (RoleEntity) role;
   }
 
   private static UserEntity withAssignedRoles(
