@@ -21,6 +21,13 @@ public class TestSparkOracleTypeConverter34 {
   }
 
   @Test
+  void testTimestampTypeMapsToTimestampWithoutTimeZone() {
+    Assertions.assertEquals(
+        Types.TimestampType.withoutTimeZone(),
+        sparkOracleTypeConverter.toGravitinoType(DataTypes.TimestampType));
+  }
+
+  @Test
   void testExternalTypeMapsToStringType() {
     Assertions.assertEquals(
         DataTypes.StringType,
