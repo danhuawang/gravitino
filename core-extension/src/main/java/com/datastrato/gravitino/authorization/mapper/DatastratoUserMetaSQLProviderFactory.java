@@ -124,5 +124,20 @@ public class DatastratoUserMetaSQLProviderFactory {
     protected String jsonArrayAgg(String expr) {
       return "JSON_AGG(" + expr + ")";
     }
+
+    /**
+     * PostgreSQL {@code scim_user_meta.enabled} is {@code SMALLINT}; cast so UNION ALL with boolean
+     * IdP / JIT {@code enabled} columns succeeds.
+     */
+    @Override
+    protected String scimUserEnabledAsBoolean() {
+      return "(su.enabled <> 0)";
+    }
+
+    /** Cast SCIM {@code SMALLINT} enabled before COALESCE with IdP boolean {@code enabled}. */
+    @Override
+    protected String coalescedEnabled() {
+      return "COALESCE(" + scimUserEnabledAsBoolean() + ", iu.enabled)";
+    }
   }
 }

@@ -58,6 +58,19 @@ public class TestDatastratoUserMetaBaseSQLProvider {
   }
 
   @Test
+  public void testPostgreSQLScimEnabledCastInDirectoryUsers() {
+    DatastratoUserMetaBaseSQLProvider withPgCast =
+        new DatastratoUserMetaBaseSQLProvider() {
+          @Override
+          protected String scimUserEnabledAsBoolean() {
+            return "(su.enabled <> 0)";
+          }
+        };
+    String sql = withPgCast.listDirectoryUsers();
+    assertTrue(sql.contains("(su.enabled <> 0) as enabled"));
+  }
+
+  @Test
   public void testListUserMetasByMetalakeNameAndNames() {
     String sql =
         provider.listUserMetasByMetalakeNameAndNames(

@@ -24,6 +24,8 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_user_meta"));
     assertFalse(sql.contains("gt.external_id"));
     assertTrue(sql.contains("COUNT(DISTINCT ut.user_id)"));
+    assertTrue(sql.contains("LEFT JOIN scim_group_meta sg"));
+    assertTrue(sql.contains("sg.group_name IS NOT NULL"));
     assertTrue(!sql.contains("as inBuiltInIdp"));
   }
 
@@ -36,7 +38,16 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("GROUP BY gt.group_id"));
     assertTrue(sql.contains("scim_group_meta"));
     assertTrue(sql.contains("idp_group_meta"));
+    assertTrue(sql.contains("LEFT JOIN scim_group_meta sg"));
     assertTrue(!sql.contains("as inBuiltInIdp"));
+  }
+
+  @Test
+  public void testListGroupsForMetalakeUserUsesScimMembershipAlias() {
+    String sql = provider.listGroupsForMetalakeUserWithOrigin("metalake", "alice");
+    assertTrue(sql.contains("sgm.group_name IS NOT NULL"));
+    assertFalse(sql.contains("WHEN MAX(CASE WHEN sg.group_name IS NOT NULL"));
+    assertTrue(sql.contains("scim_group_meta sgm"));
   }
 
   @Test

@@ -294,6 +294,42 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/security/metalakes/{metalake}/groups/{group}/roles:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
+    get:
+      tags:
+        - groups
+      summary: List roles assigned to a group
+      operationId: listGroupRoleAssignments
+      description: |
+        Returns all roles directly assigned to one metalake group. Each role includes its
+        securable objects and privileges together with audit information recorded on the
+        group-role assignment relation.
+      responses:
+        "200":
+          description: Returns the group's role assignments
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./authorization.yaml#/components/schemas/RoleAssignmentListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The specified metalake or group does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchGroupException:
+                  $ref: "../../docs/open-api/groups.yaml#/components/examples/NoSuchGroupException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/metalakes/{metalake}/groups/idp:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"

@@ -382,7 +382,13 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " ORDER BY identity.userName";
   }
 
-  private String directoryIdentityUnion() {
+  /**
+   * Builds the Local / Provisioned / JIT identity UNION for Directory Users.
+   *
+   * @return UNION ALL SQL selecting {@code userName}, {@code enabled}, {@code originCode}, and IdP
+   *     / SCIM ids.
+   */
+  protected String directoryIdentityUnion() {
     return "SELECT iu.user_name as userName, iu.enabled as enabled, "
         + IdentitySource.ORIGIN_CODE_LOCAL
         + " as originCode,"
@@ -391,7 +397,9 @@ public class DatastratoUserMetaBaseSQLProvider {
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
         + " iu WHERE iu.deleted_at = 0"
         + " UNION ALL "
-        + "SELECT su.user_name as userName, su.enabled as enabled, "
+        + "SELECT su.user_name as userName, "
+        + scimUserEnabledAsBoolean()
+        + " as enabled, "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
         + " as originCode,"
         + " CAST(NULL AS BIGINT) as idpUserId, su.user_id as scimUserId"
@@ -415,6 +423,20 @@ public class DatastratoUserMetaBaseSQLProvider {
         + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
         + " su WHERE su.user_name = ut.user_name AND su.deleted_at = 0)"
         + " GROUP BY ut.user_name";
+  }
+
+  /**
+   * Expression that projects {@code scim_user_meta.enabled} as a boolean for UNION with {@code
+   * idp_user_meta.enabled} / {@code TRUE}.
+   *
+   * <p>MySQL / H2 store SCIM {@code enabled} as {@code TINYINT(1)} which aligns with boolean
+   * comparisons; PostgreSQL uses {@code SMALLINT} and needs an explicit cast (see factory
+   * override).
+   *
+   * @return SQL boolean expression over alias {@code su}.
+   */
+  protected String scimUserEnabledAsBoolean() {
+    return "su.enabled";
   }
 
   private String idpDirectoryGroupAggregation() {

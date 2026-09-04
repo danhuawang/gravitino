@@ -193,12 +193,19 @@ public class IdpNameStatusPO {
     if (rows == null || rows.isEmpty()) {
       throw ifMissing.get();
     }
-    if (rows.size() == 1 && idGetter.apply(rows.get(0)) == null) {
+    List<UserWithOrigin> valid = new ArrayList<>();
+    for (UserWithOrigin row : rows) {
+      if (idGetter.apply(row) != null) {
+        valid.add(row);
+      }
+    }
+    if (valid.isEmpty()) {
+      // Sentinel LEFT JOIN row(s) with a null id mean the principal exists but has no members.
       return new ExtendedUserDTO[0];
     }
-    ExtendedUserDTO[] users = new ExtendedUserDTO[rows.size()];
-    for (int i = 0; i < rows.size(); i++) {
-      users[i] = toExtendedUser(rows.get(i), metalakeName);
+    ExtendedUserDTO[] users = new ExtendedUserDTO[valid.size()];
+    for (int i = 0; i < valid.size(); i++) {
+      users[i] = toExtendedUser(valid.get(i), metalakeName);
     }
     return users;
   }
@@ -211,12 +218,19 @@ public class IdpNameStatusPO {
     if (rows == null || rows.isEmpty()) {
       throw ifMissing.get();
     }
-    if (rows.size() == 1 && idGetter.apply(rows.get(0)) == null) {
+    List<GroupWithOrigin> valid = new ArrayList<>();
+    for (GroupWithOrigin row : rows) {
+      if (idGetter.apply(row) != null) {
+        valid.add(row);
+      }
+    }
+    if (valid.isEmpty()) {
+      // Sentinel LEFT JOIN row(s) with a null id mean the principal exists but has no members.
       return new ExtendedGroupDTO[0];
     }
-    ExtendedGroupDTO[] groups = new ExtendedGroupDTO[rows.size()];
-    for (int i = 0; i < rows.size(); i++) {
-      groups[i] = toExtendedGroup(rows.get(i), metalakeName);
+    ExtendedGroupDTO[] groups = new ExtendedGroupDTO[valid.size()];
+    for (int i = 0; i < valid.size(); i++) {
+      groups[i] = toExtendedGroup(valid.get(i), metalakeName);
     }
     return groups;
   }

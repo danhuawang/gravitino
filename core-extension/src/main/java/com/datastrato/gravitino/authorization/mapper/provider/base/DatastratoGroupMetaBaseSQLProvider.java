@@ -364,9 +364,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " as roleIds,"
         + " CASE WHEN MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
         + IdentitySource.ORIGIN_CODE_LOCAL
-        + " WHEN MAX(CASE WHEN "
-        + SCIM_GROUP_ALIAS
-        + ".group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + " WHEN MAX(CASE WHEN sgm.group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
         + " ELSE "
         + IdentitySource.ORIGIN_CODE_JIT
@@ -453,7 +451,16 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + groupJoin
         + " LEFT JOIN "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 LEFT OUTER JOIN ("
+        + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " "
+        + SCIM_GROUP_ALIAS
+        + " ON "
+        + SCIM_GROUP_ALIAS
+        + ".group_name = gt.group_name AND "
+        + SCIM_GROUP_ALIAS
+        + ".deleted_at = 0 LEFT OUTER JOIN ("
         + " SELECT * FROM "
         + GROUP_ROLE_RELATION_TABLE_NAME
         + " WHERE deleted_at = 0)"
