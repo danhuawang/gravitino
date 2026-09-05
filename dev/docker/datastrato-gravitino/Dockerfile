@@ -18,7 +18,7 @@
 #
 FROM registry.access.redhat.com/ubi9/openjdk-17:1.24
 
-ARG IMAGE_VERSION=2.0.0-SNAPSHOT
+ARG IMAGE_VERSION=1.3.0
 ARG IMAGE_RELEASE=1
 
 LABEL name="datastrato-enterprise-server" \

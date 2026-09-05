@@ -30,7 +30,7 @@
 # ==============================================================================
 
 ARG UBI_PYTHON_TAG=10.2
-ARG IMAGE_VERSION=2.0.0-SNAPSHOT
+ARG IMAGE_VERSION=1.3.0
 ARG IMAGE_RELEASE=1
 
 FROM registry.access.redhat.com/ubi10/python-312-minimal:${UBI_PYTHON_TAG}

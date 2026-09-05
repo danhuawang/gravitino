@@ -4,7 +4,7 @@
 openapi: 3.0.3
 info:
   title: Datastrato SCIM Token Admin REST API
-  version: 1.4.0-SNAPSHOT
+  version: 1.3.0
   description: |
     **Gravitino Enterprise only.** These APIs require a valid Gravitino Enterprise
     license and the `scim` plugin.
