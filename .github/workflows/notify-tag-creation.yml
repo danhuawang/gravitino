@@ -1,0 +1,29 @@
+name: Notify Tag Creation
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - '*.*.*'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send repository dispatch
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: 'datastrato',
+              repo: 'gravitino-test',
+              event_type: 'gravitino-enterprise-tag-created',
+              client_payload: {
+                tag_name: context.ref.replace('refs/tags/', ''),
+                repository: context.repo.repo,
+                sha: context.sha
+              }
+            });
+            
+            console.log(`Successfully dispatched event for tag: ${context.ref}`);
