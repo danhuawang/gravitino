@@ -140,8 +140,6 @@ public class TestRequestContext {
         RequestContext.takeAuditExtras().get("audit.reason"),
         "Child thread must not consume the parent's stash");
   }
-<<<<<<< HEAD
-=======
 
   /**
    * Unlike audit extras, the query-param snapshot is read by every {@code Event} constructed during
@@ -216,5 +214,4 @@ public class TestRequestContext {
     Assertions.assertFalse(
         RequestContext.isOperationSuccessFired(), "success must not overwrite a recorded failure");
   }
->>>>>>> upstream/branch-1.3
 }

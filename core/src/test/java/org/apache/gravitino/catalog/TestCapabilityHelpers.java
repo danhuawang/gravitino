@@ -18,12 +18,13 @@
  */
 package org.apache.gravitino.catalog;
 
-<<<<<<< HEAD
 import java.util.Locale;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.connector.capability.CapabilityResult;
+import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.rel.expressions.literals.Literal;
 import org.apache.gravitino.rel.expressions.literals.Literals;
 import org.apache.gravitino.rel.partitions.IdentityPartition;
@@ -31,6 +32,7 @@ import org.apache.gravitino.rel.partitions.Partition;
 import org.apache.gravitino.rel.partitions.Partitions;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 public class TestCapabilityHelpers {
 
@@ -142,16 +144,7 @@ public class TestCapabilityHelpers {
             quotedIdent, Capability.Scope.TABLE, QUOTE_AWARE_CAPABILITY);
 
     Assertions.assertEquals("My Table", result.name());
-=======
-import org.apache.gravitino.NameIdentifier;
-import org.apache.gravitino.Namespace;
-import org.apache.gravitino.connector.BaseCatalog;
-import org.apache.gravitino.exceptions.NoSuchCatalogException;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-
-public class TestCapabilityHelpers {
+  }
 
   @Test
   void testGetCapabilityPropagatesNoSuchCatalogException() {
@@ -183,6 +176,5 @@ public class TestCapabilityHelpers {
             () -> CapabilityHelpers.getCapability(tableIdent, catalogManager));
 
     Assertions.assertInstanceOf(IllegalStateException.class, e.getCause());
->>>>>>> upstream/branch-1.3
   }
 }

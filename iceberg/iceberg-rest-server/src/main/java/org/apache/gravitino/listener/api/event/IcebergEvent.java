@@ -53,13 +53,12 @@ public abstract class IcebergEvent extends Event {
     return icebergRequestContext.remoteHostName();
   }
 
-<<<<<<< HEAD
   /**
    * Returns HTTP headers unioned with inner-dispatcher extras, including encryption {@code
    * icebergEncryption.*} facts. Distinct keys from both sources are kept.
    */
   @Override
-  public Map<String, String> customInfo() {
+  protected Map<String, String> ownCustomInfo() {
     return icebergRequestContext.customInfo();
   }
 
@@ -73,11 +72,5 @@ public abstract class IcebergEvent extends Event {
    */
   static Map<String, String> mergeCustomInfo(IcebergRequestContext context) {
     return context.customInfo();
-=======
-  /** {@inheritDoc} */
-  @Override
-  protected Map<String, String> ownCustomInfo() {
-    return icebergRequestContext.httpHeaders();
->>>>>>> upstream/branch-1.3
   }
 }

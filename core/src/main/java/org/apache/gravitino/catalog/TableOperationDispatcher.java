@@ -33,7 +33,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -46,6 +45,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.StringIdentifier;
 import org.apache.gravitino.connector.HasPropertyMetadata;
+import org.apache.gravitino.connector.MaskAndOmitKeys;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
@@ -174,15 +174,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
     TableEntity updatedEntity = updateColumnsIfNecessaryWhenLoad(ident, entityCombinedTable);
 
     return EntityCombinedTable.of(entityCombinedTable.tableFromCatalog(), updatedEntity)
-<<<<<<< HEAD
-        .withHiddenProperties(
-            getMaskAndOmitKeys(
-                getCatalogIdentifier(ident),
-                HasPropertyMetadata::tablePropertiesMetadata,
-                entityCombinedTable.tableFromCatalog().properties()))
-=======
         .withHiddenProperties(entityCombinedTable.hiddenProperties())
->>>>>>> upstream/branch-1.3
         .withImported(entityCombinedTable.imported());
   }
 
@@ -292,15 +284,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
 
           if (catalogResult.managed) {
             return EntityCombinedTable.of(alteredTable)
-<<<<<<< HEAD
-                .withHiddenProperties(
-                    getMaskAndOmitKeys(
-                        getCatalogIdentifier(ident),
-                        HasPropertyMetadata::tablePropertiesMetadata,
-                        alteredTable.properties()));
-=======
                 .withHiddenProperties(catalogResult.hiddenProperties);
->>>>>>> upstream/branch-1.3
           }
 
           StringIdentifier stringId = getStringIdFromProperties(alteredTable.properties());
@@ -310,15 +294,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
             te = getEntity(ident, TABLE, TableEntity.class);
             if (te == null) {
               return EntityCombinedTable.of(alteredTable)
-<<<<<<< HEAD
-                  .withHiddenProperties(
-                      getMaskAndOmitKeys(
-                          getCatalogIdentifier(ident),
-                          HasPropertyMetadata::tablePropertiesMetadata,
-                          alteredTable.properties()));
-=======
                   .withHiddenProperties(catalogResult.hiddenProperties);
->>>>>>> upstream/branch-1.3
             }
           }
 
@@ -363,15 +339,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
                   tableId);
 
           return EntityCombinedTable.of(alteredTable, updatedTableEntity)
-<<<<<<< HEAD
-              .withHiddenProperties(
-                  getMaskAndOmitKeys(
-                      getCatalogIdentifier(ident),
-                      HasPropertyMetadata::tablePropertiesMetadata,
-                      alteredTable.properties()));
-=======
               .withHiddenProperties(catalogResult.hiddenProperties);
->>>>>>> upstream/branch-1.3
         });
   }
 
@@ -555,15 +523,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
     }
 
     return EntityCombinedTable.of(table.tableFromCatalog(), tableEntity)
-<<<<<<< HEAD
-        .withHiddenProperties(
-            getMaskAndOmitKeys(
-                getCatalogIdentifier(identifier),
-                HasPropertyMetadata::tablePropertiesMetadata,
-                table.tableFromCatalog().properties()));
-=======
         .withHiddenProperties(table.hiddenProperties());
->>>>>>> upstream/branch-1.3
   }
 
   private SchemaDispatcher getSchemaDispatcher() {
@@ -589,15 +549,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
 
     if (catalogResult.managed) {
       return EntityCombinedTable.of(table)
-<<<<<<< HEAD
-          .withHiddenProperties(
-              getMaskAndOmitKeys(
-                  catalogIdentifier,
-                  HasPropertyMetadata::tablePropertiesMetadata,
-                  table.properties()))
-=======
           .withHiddenProperties(catalogResult.hiddenProperties)
->>>>>>> upstream/branch-1.3
           // The metadata of managed table is stored by Gravitino, so it is always imported.
           .withImported(true /* imported */);
     }
@@ -609,15 +561,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
       TableEntity tableEntity = getEntity(ident, TABLE, TableEntity.class);
       if (tableEntity == null) {
         return EntityCombinedTable.of(table)
-<<<<<<< HEAD
-            .withHiddenProperties(
-                getMaskAndOmitKeys(
-                    catalogIdentifier,
-                    HasPropertyMetadata::tablePropertiesMetadata,
-                    table.properties()))
-=======
             .withHiddenProperties(catalogResult.hiddenProperties)
->>>>>>> upstream/branch-1.3
             // Some tables don't have properties or are not created by Gravitino,
             // we can't use stringIdentifier to judge whether schema is ever imported or not.
             // We need to check whether the entity exists.
@@ -625,15 +569,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
       }
 
       return EntityCombinedTable.of(table, tableEntity)
-<<<<<<< HEAD
-          .withHiddenProperties(
-              getMaskAndOmitKeys(
-                  catalogIdentifier,
-                  HasPropertyMetadata::tablePropertiesMetadata,
-                  table.properties()))
-=======
           .withHiddenProperties(catalogResult.hiddenProperties)
->>>>>>> upstream/branch-1.3
           // For some catalogs like PG, the identifier information is not stored in the table's
           // metadata, we need to check if this table exists in the store, if so we don't
           // need to import.
@@ -648,15 +584,7 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
             stringId.id());
 
     return EntityCombinedTable.of(table, tableEntity)
-<<<<<<< HEAD
-        .withHiddenProperties(
-            getMaskAndOmitKeys(
-                catalogIdentifier,
-                HasPropertyMetadata::tablePropertiesMetadata,
-                table.properties()))
-=======
         .withHiddenProperties(catalogResult.hiddenProperties)
->>>>>>> upstream/branch-1.3
         .withImported(tableEntity != null);
   }
 
@@ -709,17 +637,8 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
     Table table = catalogResult.table;
 
     // If the table is managed by Gravitino, we don't need to create TableEntity and store it again.
-<<<<<<< HEAD
-    boolean isManagedTable = isManagedEntity(catalogIdent, Capability.Scope.TABLE);
-    if (isManagedTable) {
-      return EntityCombinedTable.of(table)
-          .withHiddenProperties(
-              getMaskAndOmitKeys(
-                  catalogIdent, HasPropertyMetadata::tablePropertiesMetadata, table.properties()));
-=======
     if (catalogResult.managed) {
       return EntityCombinedTable.of(table).withHiddenProperties(catalogResult.hiddenProperties);
->>>>>>> upstream/branch-1.3
     }
 
     AuditInfo audit =
@@ -745,31 +664,19 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
       store.put(tableEntity, true /* overwrite */);
     } catch (Exception e) {
       LOG.error(FormattedErrorMessages.STORE_OP_FAILURE, "put", ident, e);
-<<<<<<< HEAD
-      return EntityCombinedTable.of(table)
-          .withHiddenProperties(
-              getMaskAndOmitKeys(
-                  catalogIdent, HasPropertyMetadata::tablePropertiesMetadata, table.properties()));
-=======
       return EntityCombinedTable.of(table).withHiddenProperties(catalogResult.hiddenProperties);
->>>>>>> upstream/branch-1.3
     }
 
     // Merge both the metadata from catalog operation and the metadata from entity store.
     return EntityCombinedTable.of(table, tableEntity)
-<<<<<<< HEAD
-        .withHiddenProperties(
-            getMaskAndOmitKeys(
-                catalogIdent, HasPropertyMetadata::tablePropertiesMetadata, table.properties()));
-=======
         .withHiddenProperties(catalogResult.hiddenProperties);
   }
 
   private TableCatalogResult snapshotTable(
       CatalogManager.CatalogWrapper catalog, Table table, boolean managed) throws Exception {
     Table snapshot = catalog.detachConnectorResult(table);
-    Set<String> hiddenProperties =
-        getHiddenPropertyNames(
+    MaskAndOmitKeys hiddenProperties =
+        getMaskAndOmitKeys(
             catalog, HasPropertyMetadata::tablePropertiesMetadata, snapshot.properties());
     return new TableCatalogResult(snapshot, managed, hiddenProperties);
   }
@@ -777,7 +684,6 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
   private TableCatalogResult snapshotTable(CatalogManager.CatalogWrapper catalog, Table table)
       throws Exception {
     return snapshotTable(catalog, table, isManagedEntity(catalog, Capability.Scope.TABLE));
->>>>>>> upstream/branch-1.3
   }
 
   private List<ColumnEntity> toColumnEntities(Column[] columns, AuditInfo audit) {
@@ -988,9 +894,9 @@ public class TableOperationDispatcher extends OperationDispatcher implements Tab
 
     final Table table;
     final boolean managed;
-    final Set<String> hiddenProperties;
+    final MaskAndOmitKeys hiddenProperties;
 
-    private TableCatalogResult(Table table, boolean managed, Set<String> hiddenProperties) {
+    private TableCatalogResult(Table table, boolean managed, MaskAndOmitKeys hiddenProperties) {
       this.table = table;
       this.managed = managed;
       this.hiddenProperties = hiddenProperties;

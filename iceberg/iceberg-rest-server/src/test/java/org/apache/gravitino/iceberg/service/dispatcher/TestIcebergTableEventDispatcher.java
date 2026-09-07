@@ -134,7 +134,7 @@ public class TestIcebergTableEventDispatcher {
 
     Event event = listener.popPostEvent();
     Assertions.assertEquals(IcebergCreateTableEvent.class, event.getClass());
-    Assertions.assertSame(context.httpHeaders(), event.customInfo());
+    Assertions.assertEquals(context.httpHeaders(), event.customInfo());
     Assertions.assertFalse(event.customInfo().containsKey(EXTRA_KEY));
   }
 
@@ -231,7 +231,7 @@ public class TestIcebergTableEventDispatcher {
     Assertions.assertFalse(
         second.customInfo().containsKey(EXTRA_KEY),
         "Extras must not survive into a later operation");
-    Assertions.assertSame(
+    Assertions.assertEquals(
         ((IcebergEvent) second).icebergRequestContext().httpHeaders(), second.customInfo());
   }
 

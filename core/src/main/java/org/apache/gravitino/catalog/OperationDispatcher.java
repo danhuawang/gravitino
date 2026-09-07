@@ -139,37 +139,35 @@ public abstract class OperationDispatcher {
       Map<String, String> properties) {
     return doWithCatalog(
         catalogIdent,
-<<<<<<< HEAD
         c ->
             c.doWithPropertiesMeta(
                 p ->
                     HiddenPropertyMaskUtils.classifyHiddenProperties(
                         properties, provider.apply(p))),
-=======
-        c -> getHiddenPropertyNames(c, provider, properties),
->>>>>>> upstream/branch-1.3
         IllegalArgumentException.class);
   }
 
   /**
-   * Classifies hidden properties using metadata from the supplied leased catalog wrapper.
+   * Classifies hidden properties using metadata from the supplied leased catalog wrapper, without
+   * re-entering {@link #doWithCatalog}. Callers that already hold a wrapper (e.g. while
+   * snapshotting a connector result before the lease ends) must use this instead of {@link
+   * #getMaskAndOmitKeys(NameIdentifier, ThrowableFunction, Map)} to avoid acquiring a second,
+   * likely stale, lease.
    *
    * @param catalog the leased catalog wrapper
    * @param provider the metadata provider for the entity type
    * @param properties the properties to classify
-   * @return the hidden property keys
+   * @return the hidden property classification
    * @throws Exception if reading the connector metadata fails
    */
-  protected Set<String> getHiddenPropertyNames(
+  protected MaskAndOmitKeys getMaskAndOmitKeys(
       CatalogManager.CatalogWrapper catalog,
       ThrowableFunction<HasPropertyMetadata, PropertiesMetadata> provider,
       Map<String, String> properties)
       throws Exception {
     return catalog.doWithPropertiesMeta(
         metadata ->
-            properties.keySet().stream()
-                .filter(provider.apply(metadata)::isHiddenProperty)
-                .collect(Collectors.toSet()));
+            HiddenPropertyMaskUtils.classifyHiddenProperties(properties, provider.apply(metadata)));
   }
 
   protected <T> void validateAlterProperties(

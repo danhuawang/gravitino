@@ -138,7 +138,7 @@ class TestIcebergRequestContext {
     IcebergLoadTableFailureEvent event =
         new IcebergLoadTableFailureEvent(
             context, NameIdentifier.of("ml", "cat", "ns", "t"), new RuntimeException("boom"));
-    Assertions.assertSame(context.httpHeaders(), event.customInfo());
+    Assertions.assertEquals(context.httpHeaders(), event.customInfo());
   }
 
   @Test

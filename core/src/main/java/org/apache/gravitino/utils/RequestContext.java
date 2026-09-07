@@ -26,11 +26,7 @@ import java.util.Map;
  * Holds per-request context data in a {@link ThreadLocal} so that event classes constructed on the
  * servlet thread can capture it without carrying a servlet dependency.
  *
-<<<<<<< HEAD
- * <p>Currently tracks three pieces of state:
-=======
  * <p>Currently tracks four pieces of state:
->>>>>>> upstream/branch-1.3
  *
  * <ul>
  *   <li><b>remoteAddress</b> — the client IP resolved from {@code X-Forwarded-For} or {@link
@@ -38,12 +34,6 @@ import java.util.Map;
  *   <li><b>operationOutcome</b> — set by {@link org.apache.gravitino.listener.EventBus} when an
  *       operation-layer {@link org.apache.gravitino.listener.api.event.Event} or {@link
  *       org.apache.gravitino.listener.api.event.FailureEvent} is dispatched, so that {@code
-<<<<<<< HEAD
- *       HttpAuditFilter} can skip emitting a redundant HTTP-level failure event for the same
- *       request.
- *   <li><b>auditExtras</b> — optional {@code customInfo} facts stashed by an inner dispatcher and
- *       consumed by the outer event dispatcher so one operation still produces one event.
-=======
  *       HttpAuditFilter} can skip emitting a redundant HTTP-level fallback event for the same
  *       request. Exposed as two independent-looking flags ({@code operationFailureFired}/{@code
  *       operationSuccessFired}) for callers, but backed by a single tri-state value — normally a
@@ -62,7 +52,6 @@ import java.util.Map;
  *       redacted — see {@code AuditLogRedactor}) once per request by {@code RequestContextFilter}
  *       and read (non-destructively) by every {@link org.apache.gravitino.listener.api.event.Event}
  *       constructor.
->>>>>>> upstream/branch-1.3
  * </ul>
  *
  * <p><b>Threading contract:</b> values must be set and cleared on the same (servlet) thread. Event
@@ -78,14 +67,9 @@ public class RequestContext {
   }
 
   private static final ThreadLocal<String> REMOTE_ADDRESS = new ThreadLocal<>();
-<<<<<<< HEAD
-  private static final ThreadLocal<Boolean> OPERATION_FAILURE_FIRED = new ThreadLocal<>();
-  private static final ThreadLocal<Map<String, String>> AUDIT_EXTRAS = new ThreadLocal<>();
-=======
   private static final ThreadLocal<OperationOutcome> OPERATION_OUTCOME = new ThreadLocal<>();
   private static final ThreadLocal<Map<String, String>> AUDIT_EXTRAS = new ThreadLocal<>();
   private static final ThreadLocal<Map<String, String>> REQUEST_QUERY_PARAMS = new ThreadLocal<>();
->>>>>>> upstream/branch-1.3
 
   private RequestContext() {}
 
@@ -239,47 +223,13 @@ public class RequestContext {
   }
 
   /**
-   * Stashes optional audit extras for the current request thread. An inner dispatcher calls this
-   * before returning or throwing so the outer event dispatcher can attach the extras to the
-   * existing table event.
-   *
-   * <p>A {@code null} or empty map clears any previously stashed extras.
-   *
-   * @param extras optional {@code customInfo} facts, or {@code null} to clear
-   */
-  public static void setAuditExtras(Map<String, String> extras) {
-    if (extras == null || extras.isEmpty()) {
-      AUDIT_EXTRAS.remove();
-      return;
-    }
-    AUDIT_EXTRAS.set(ImmutableMap.copyOf(extras));
-  }
-
-  /**
-   * Returns and clears audit extras stashed on this thread. The outer event dispatcher calls this
-   * when constructing the terminal table event.
-   *
-   * @return an immutable extras map, or an empty map when none were stashed
-   */
-  public static Map<String, String> takeAuditExtras() {
-    Map<String, String> extras = AUDIT_EXTRAS.get();
-    AUDIT_EXTRAS.remove();
-    return extras == null ? ImmutableMap.of() : extras;
-  }
-
-  /**
    * Removes all per-request bindings from the current thread. Must be called in a {@code finally}
    * block after the request completes to prevent thread-pool leaks.
    */
   public static void clear() {
     REMOTE_ADDRESS.remove();
-<<<<<<< HEAD
-    OPERATION_FAILURE_FIRED.remove();
-    AUDIT_EXTRAS.remove();
-=======
     OPERATION_OUTCOME.remove();
     AUDIT_EXTRAS.remove();
     REQUEST_QUERY_PARAMS.remove();
->>>>>>> upstream/branch-1.3
   }
 }
