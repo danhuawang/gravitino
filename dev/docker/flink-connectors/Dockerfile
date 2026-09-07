@@ -35,7 +35,7 @@
 # ==============================================================================
 
 ARG UBI_MINIMAL_TAG=10.2
-ARG IMAGE_VERSION=1.3.0
+ARG IMAGE_VERSION=1.3.1-SNAPSHOT
 ARG IMAGE_RELEASE=1
 
 FROM registry.access.redhat.com/ubi10/ubi-minimal:${UBI_MINIMAL_TAG}
