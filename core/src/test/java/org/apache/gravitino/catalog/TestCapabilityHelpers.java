@@ -18,6 +18,7 @@
  */
 package org.apache.gravitino.catalog;
 
+<<<<<<< HEAD
 import java.util.Locale;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
@@ -141,5 +142,47 @@ public class TestCapabilityHelpers {
             quotedIdent, Capability.Scope.TABLE, QUOTE_AWARE_CAPABILITY);
 
     Assertions.assertEquals("My Table", result.name());
+=======
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.Namespace;
+import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.exceptions.NoSuchCatalogException;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+public class TestCapabilityHelpers {
+
+  @Test
+  void testGetCapabilityPropagatesNoSuchCatalogException() {
+    NameIdentifier tableIdent =
+        NameIdentifier.of(Namespace.of("metalake", "catalog", "schema"), "table");
+    CatalogManager catalogManager = Mockito.mock(CatalogManager.class);
+    Mockito.when(catalogManager.doWithCatalog(Mockito.any(), Mockito.any()))
+        .thenThrow(new NoSuchCatalogException("Catalog %s does not exist", tableIdent));
+
+    // A missing catalog must stay a NoSuchCatalogException (mapped to 404 by the REST layer)
+    // instead of being wrapped into a plain RuntimeException (a 500).
+    Assertions.assertThrows(
+        NoSuchCatalogException.class,
+        () -> CapabilityHelpers.getCapability(tableIdent, catalogManager));
+  }
+
+  @Test
+  void testGetCapabilityWrapsCapabilityFailure() throws Exception {
+    NameIdentifier tableIdent =
+        NameIdentifier.of(Namespace.of("metalake", "catalog", "schema"), "table");
+    CatalogManager catalogManager = Mockito.mock(CatalogManager.class);
+    BaseCatalog<?> catalog = Mockito.mock(BaseCatalog.class);
+    CatalogTestUtils.mockDoWithCatalog(catalogManager, catalog);
+    Mockito.when(catalog.capability()).thenThrow(new IllegalStateException("boom"));
+
+    RuntimeException e =
+        Assertions.assertThrows(
+            RuntimeException.class,
+            () -> CapabilityHelpers.getCapability(tableIdent, catalogManager));
+
+    Assertions.assertInstanceOf(IllegalStateException.class, e.getCause());
+>>>>>>> upstream/branch-1.3
   }
 }
