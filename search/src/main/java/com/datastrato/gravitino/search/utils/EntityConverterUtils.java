@@ -44,7 +44,7 @@ import org.apache.gravitino.catalog.EntityCombinedSchema;
 import org.apache.gravitino.catalog.EntityCombinedTable;
 import org.apache.gravitino.catalog.EntityCombinedTopic;
 import org.apache.gravitino.catalog.EntityCombinedView;
-import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.connector.CatalogInfo;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.function.Function;
 import org.apache.gravitino.json.JsonUtils;
@@ -194,8 +194,8 @@ public class EntityConverterUtils {
   }
 
   public static SearchEntityPO toCatalogSearchEntityPO(
-      BaseCatalog catalog, Tag[] tags, NameIdentifier nameIdentifier) {
-    String inUseString = catalog.entity().getProperties().get("in-use");
+      CatalogInfo catalog, Tag[] tags, NameIdentifier nameIdentifier) {
+    String inUseString = catalog.properties().get("in-use");
     boolean inUse = inUseString == null || Boolean.parseBoolean(inUseString);
     String[] levels = nameIdentifier.namespace().levels();
 
@@ -205,7 +205,7 @@ public class EntityConverterUtils {
     Permissions permissions = getPermissions(nameIdentifier, EntityType.CATALOG);
     // Catalog properties may contain credentials, so this conversion intentionally omits them.
     return SearchCatalogEntityPO.SearchCatalogEntityPOBuilder.builder()
-        .withEntityId(catalog.entity().id())
+        .withEntityId(catalog.id())
         .withEntityType(EntityType.CATALOG)
         .withInUse(inUse)
         .withMetalake(levels[0])

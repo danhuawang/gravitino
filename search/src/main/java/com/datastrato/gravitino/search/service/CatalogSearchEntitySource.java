@@ -12,7 +12,7 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
-import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.connector.CatalogInfo;
 import org.apache.gravitino.tag.Tag;
 
 class CatalogSearchEntitySource extends ParentEntitySource {
@@ -25,23 +25,22 @@ class CatalogSearchEntitySource extends ParentEntitySource {
 
   @Override
   protected SearchEntityPO getSearchEntityPO(SearchEntityIdentifier searchEntityIdentifier) {
-    Catalog catalog = getCatalog(searchEntityIdentifier.entityIdent());
+    CatalogInfo catalog = getCatalog(searchEntityIdentifier.entityIdent());
     Tag[] metadataTags =
         SearchEntitySource.getMetadataObjectTags(
             searchEntityIdentifier.entityIdent(), searchEntityIdentifier.entityType());
     this.catalogType = catalog.type();
     return EntityConverterUtils.toCatalogSearchEntityPO(
-        (BaseCatalog<? extends BaseCatalog<?>>) catalog,
-        metadataTags,
-        searchEntityIdentifier.entityIdent());
+        catalog, metadataTags, searchEntityIdentifier.entityIdent());
   }
 
-  private static Catalog getCatalog(NameIdentifier nameIdentifier) {
-    return GravitinoEnv.getInstance().internalCatalogDispatcher().loadCatalog(nameIdentifier);
+  private static CatalogInfo getCatalog(NameIdentifier nameIdentifier) {
+    return (CatalogInfo)
+        GravitinoEnv.getInstance().internalCatalogDispatcher().loadCatalog(nameIdentifier);
   }
 
   static Catalog.Type getCatalogType(NameIdentifier nameIdentifier) {
-    Catalog catalog = getCatalog(nameIdentifier);
+    CatalogInfo catalog = getCatalog(nameIdentifier);
     return catalog.type();
   }
 
