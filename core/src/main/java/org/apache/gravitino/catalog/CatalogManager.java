@@ -57,7 +57,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Getter;
@@ -126,11 +129,38 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
   private static final Set<String> CONTRIB_CATALOGS_TYPES =
       ImmutableSet.of("jdbc-oceanbase", "jdbc-clickhouse", "jdbc-hologres");
 
-  /** Wrapper class for a catalog instance and its class loader. */
+  /**
+   * Wrapper class for a catalog instance and its class loader.
+   *
+   * <p>A wrapper is shared by all threads that read it from the catalog cache, while cache eviction
+   * (expiry, explicit invalidation, or remote change-log invalidation) happens outside the tree
+   * lock. To keep an eviction from tearing down a catalog that an in-flight operation is still
+   * using, the wrapper counts active operations: {@link #tryAcquire()} takes a lease, {@link
+   * #release()} returns it, and {@link #retire()} (called from the cache removal listener) only
+   * marks the wrapper unusable for new leases. The catalog and the ClassLoader are cleaned up
+   * exactly once, when the wrapper is retired and the last lease has been released.
+   */
   public static class CatalogWrapper {
 
-    private BaseCatalog catalog;
-    private IsolatedClassLoader classLoader;
+    // Volatile because cleanup() nulls it outside leaseLock (holding the lock across a catalog
+    // close would stall tryAcquire), while unleased readers such as callers of
+    // loadCatalogAndWrap() may read it from another thread. Leased readers cannot race with
+    // cleanup at all: cleanup is only claimed once the wrapper is retired and no lease is held.
+    private volatile BaseCatalog catalog;
+
+    private final IsolatedClassLoader classLoader;
+
+    /** Guards {@link #activeOps}, {@link #retired} and {@link #cleanupStarted}. */
+    private final Object leaseLock = new Object();
+
+    /** Number of leases currently held by in-flight operations. */
+    private int activeOps = 0;
+
+    /** Set when the wrapper leaves the cache; no new lease can be acquired afterwards. */
+    private boolean retired = false;
+
+    /** Set by the thread that claims the (exactly-once) resource cleanup. */
+    private boolean cleanupStarted = false;
 
     public CatalogWrapper(BaseCatalog catalog, IsolatedClassLoader classLoader) {
       this.catalog = catalog;
@@ -139,6 +169,79 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
 
     public BaseCatalog catalog() {
       return catalog;
+    }
+
+    /**
+     * Tries to take a lease on this wrapper, keeping its catalog and ClassLoader alive until the
+     * lease is released.
+     *
+     * @return true if the lease was taken, false if the wrapper has already been retired and the
+     *     caller must load a fresh wrapper.
+     */
+    boolean tryAcquire() {
+      synchronized (leaseLock) {
+        if (retired) {
+          return false;
+        }
+        activeOps++;
+        return true;
+      }
+    }
+
+    /**
+     * Releases a lease taken by {@link #tryAcquire()}. Cleans up the catalog and the ClassLoader if
+     * this was the last lease on an already retired wrapper.
+     *
+     * <p>Note that in that case the cleanup runs on the releasing thread, which is usually a
+     * request thread, so a slow catalog close is charged to that request. This only happens when
+     * the wrapper was evicted while the operation was in flight; the common case is that eviction
+     * finds no lease and cleans up on the cache's own thread.
+     */
+    void release() {
+      boolean shouldCleanup;
+      synchronized (leaseLock) {
+        Preconditions.checkState(activeOps > 0, "Releasing a lease that was never acquired");
+        activeOps--;
+        shouldCleanup = claimCleanupIfIdle();
+      }
+
+      if (shouldCleanup) {
+        cleanup();
+      }
+    }
+
+    /**
+     * Retires this wrapper: no new lease can be taken. The catalog and the ClassLoader are cleaned
+     * up immediately if no operation is in flight, otherwise by the last {@link #release()}.
+     */
+    void retire() {
+      boolean shouldCleanup;
+      synchronized (leaseLock) {
+        retired = true;
+        shouldCleanup = claimCleanupIfIdle();
+      }
+
+      if (shouldCleanup) {
+        cleanup();
+      }
+    }
+
+    /**
+     * Returns whether this wrapper has been retired and can no longer serve new operations.
+     *
+     * @return true if the wrapper has been retired.
+     */
+    boolean isRetired() {
+      synchronized (leaseLock) {
+        return retired;
+      }
+    }
+
+    @VisibleForTesting
+    int activeOperations() {
+      synchronized (leaseLock) {
+        return activeOps;
+      }
     }
 
     public <R> R doWithSchemaOps(ThrowableFunction<SupportsSchemas, R> fn) throws Exception {
@@ -193,8 +296,37 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
           });
     }
 
-    public <R> R doWithCredentialOps(ThrowableFunction<BaseCatalog, R> fn) throws Exception {
+    /**
+     * Runs an operation against the catalog instance itself, with the catalog's ClassLoader in
+     * place for the duration of the call.
+     *
+     * @param fn the operation to run
+     * @param <R> the result type
+     * @return the operation result
+     * @throws Exception if the operation fails
+     */
+    public <R> R doWithCatalog(ThrowableFunction<BaseCatalog, R> fn) throws Exception {
       return classLoader.withClassLoader(cl -> fn.apply(catalog));
+    }
+
+    public <R> R doWithCredentialOps(ThrowableFunction<BaseCatalog, R> fn) throws Exception {
+      return doWithCatalog(fn);
+    }
+
+    /**
+     * Converts a connector-backed result into a snapshot that no longer depends on this catalog's
+     * ClassLoader, reading the connector object with that ClassLoader installed.
+     *
+     * <p>Scoped to the conversion alone: the caller's surrounding work is Gravitino's own code and
+     * must keep the application ClassLoader as its thread context ClassLoader.
+     *
+     * @param result the value returned by a connector operation
+     * @param <R> the result type
+     * @return a detached snapshot, or the value itself if it carries no connector state
+     * @throws Exception if reading the connector object fails
+     */
+    <R> R detachConnectorResult(R result) throws Exception {
+      return classLoader.withClassLoader(ignored -> ConnectorObjectSnapshot.detach(result));
     }
 
     public <R> R doWithTopicOps(ThrowableFunction<TopicCatalog, R> fn) throws Exception {
@@ -237,28 +369,57 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
 
     public <R> R doWithPropertiesMeta(ThrowableFunction<HasPropertyMetadata, R> fn)
         throws Exception {
-      return classLoader.withClassLoader(cl -> fn.apply(catalog));
+      return doWithCatalog(fn::apply);
     }
 
     public Capability capabilities() throws Exception {
       return classLoader.withClassLoader(cl -> catalog.capability());
     }
 
+    /**
+     * Retires the wrapper and, once no operation is in flight anymore, releases its resources. Kept
+     * as an alias of {@link #retire()} so callers that own a wrapper exclusively (for example
+     * {@link CatalogManager#testConnection}) can keep using the {@link java.io.Closeable}-style
+     * API.
+     */
     public void close() {
+      retire();
+    }
+
+    /**
+     * Claims the exactly-once resource cleanup when the wrapper is retired and idle. Must be called
+     * while holding {@link #leaseLock}; the caller runs {@link #cleanup()} outside the lock so a
+     * slow catalog close does not block {@link #tryAcquire()}.
+     */
+    private boolean claimCleanupIfIdle() {
+      if (!retired || activeOps > 0 || cleanupStarted) {
+        return false;
+      }
+      cleanupStarted = true;
+      return true;
+    }
+
+    private void cleanup() {
+      // Drop the reference before closing so a failing close() cannot leave a half-closed catalog
+      // reachable: cleanup() runs exactly once, so a null assignment after close() would be skipped
+      // on that path. Unleased readers then see null and fail fast instead of using a closed
+      // catalog; leased readers cannot race with cleanup at all.
+      BaseCatalog toClose = catalog;
+      catalog = null;
+
       try {
         classLoader.withClassLoader(
             cl -> {
-              if (catalog != null) {
-                catalog.close();
+              if (toClose != null) {
+                toClose.close();
               }
-              catalog = null;
               return null;
             });
       } catch (Exception e) {
         LOG.warn("Failed to close catalog", e);
+      } finally {
+        classLoader.close();
       }
-
-      classLoader.close();
     }
 
     private SupportsSchemas asSchemas() {
@@ -306,6 +467,14 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
   private final ConcurrentHashMap<NameIdentifier, AtomicInteger> localMutationCounts =
       new ConcurrentHashMap<>();
 
+  // Cache loads and publications take the read lock; close() takes the write lock. Operations do
+  // not hold this lock after acquiring a CatalogLease because the lease itself keeps the wrapper
+  // alive while close() retires it.
+  private final ReentrantReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
+
+  /** Guarded by {@link #lifecycleLock}. */
+  private boolean closed;
+
   // Set to true when a CatalogChangeLogListener is active. markLocalMutation() is a no-op
   // unless this flag is set, preventing unbounded growth of localMutationCounts in deployments
   // that do not use a relational entity store (where the poller never runs).
@@ -329,13 +498,20 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
             .expireAfterAccess(cacheEvictionIntervalInMs, TimeUnit.MILLISECONDS)
             .removalListener(
                 (k, v, c) -> {
-                  for (Consumer<NameIdentifier> listener : removalListeners) {
-                    if (k != null) {
-                      listener.accept((NameIdentifier) k);
+                  LOG.debug("Removed catalog cache entry, identifier={}, cause={}", k, c);
+                  try {
+                    for (Consumer<NameIdentifier> listener : removalListeners) {
+                      if (k != null) {
+                        listener.accept((NameIdentifier) k);
+                      }
                     }
+                  } finally {
+                    // Retire rather than close: an operation that already leased this wrapper
+                    // keeps it alive, and the actual catalog/ClassLoader cleanup runs when the
+                    // last lease is released. Keep this in finally so a faulty external listener
+                    // cannot skip resource cleanup.
+                    ((CatalogWrapper) v).retire();
                   }
-                  LOG.info("Closing catalog {}.", k);
-                  ((CatalogWrapper) v).close();
                 })
             .scheduler(
                 Scheduler.forScheduledExecutorService(
@@ -364,17 +540,62 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
   }
 
   /**
-   * Closes the CatalogManager and releases any resources associated with it. This method
-   * invalidates all cached catalog instances and clears the cache.
+   * Closes the CatalogManager and invalidates all cached catalog instances. Idle resources are
+   * released immediately; resources protected by active leases are released when their last lease
+   * is closed.
    */
   @Override
   public void close() {
-    if (catalogChangeLogListener != null) {
-      ((SupportsEntityChangeLog) store).unregisterEntityChangeLogListener(catalogChangeLogListener);
-      trackLocalMutations = false;
-      localMutationCounts.clear();
+    lifecycleLock.writeLock().lock();
+    try {
+      if (closed) {
+        return;
+      }
+
+      // Holding the write lock prevents new cache loads and publications until shutdown has
+      // finished. Existing operations only hold CatalogLeases, so retiring their wrappers here is
+      // non-blocking and their cleanup remains deferred until the last lease is released.
+      unregisterChangeLogListener();
+      retireCachedWrappers();
+      closed = true;
+    } finally {
+      lifecycleLock.writeLock().unlock();
     }
+  }
+
+  private void unregisterChangeLogListener() {
+    if (catalogChangeLogListener != null) {
+      try {
+        ((SupportsEntityChangeLog) store)
+            .unregisterEntityChangeLogListener(catalogChangeLogListener);
+      } catch (RuntimeException e) {
+        LOG.warn("Failed to unregister the catalog change-log listener", e);
+      } finally {
+        trackLocalMutations = false;
+        localMutationCounts.clear();
+      }
+    }
+  }
+
+  /**
+   * Retires every wrapper still cached, so their resources are released as soon as the operations
+   * holding them finish. The cache's removal listener is asynchronous, so the wrappers are retired
+   * here synchronously; active leases defer the cleanup and keep their ClassLoader alive until the
+   * last operation releases it.
+   *
+   * <p>The caller holds {@link #lifecycleLock}'s write lock, so no wrapper can be loaded or
+   * published while the snapshot is taken.
+   */
+  private void retireCachedWrappers() {
+    List<CatalogWrapper> wrappers = new ArrayList<>(catalogCache.asMap().values());
     catalogCache.invalidateAll();
+    for (CatalogWrapper wrapper : wrappers) {
+      try {
+        wrapper.retire();
+      } catch (RuntimeException e) {
+        LOG.warn("Failed to retire a cached catalog wrapper while closing the CatalogManager", e);
+      }
+    }
   }
 
   /**
@@ -491,7 +712,7 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
    * Loads the catalog with the specified identifier.
    *
    * @param ident The identifier of the catalog to load.
-   * @return The loaded catalog.
+   * @return A metadata snapshot of the loaded catalog. Connector resources are not exposed.
    * @throws NoSuchCatalogException If the specified catalog does not exist.
    */
   @Override
@@ -500,10 +721,59 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         ident,
         LockType.READ,
         () -> {
-          BaseCatalog baseCatalog = loadCatalogAndWrap(ident).catalog();
-          baseCatalog.checkMetalakeInUse();
-          return baseCatalog;
+          try (CatalogLease lease = acquireCatalogLease(ident)) {
+            BaseCatalog baseCatalog = lease.catalog();
+            baseCatalog.checkMetalakeInUse();
+            return toCatalogInfo(lease.wrapper());
+          }
         });
+  }
+
+  /**
+   * Runs an operation against a catalog while keeping its catalog instance and ClassLoader alive.
+   *
+   * <p>Callers that need connector-only state, such as the authorization plugin or raw catalog
+   * properties, must use this method instead of casting the metadata snapshot returned by {@link
+   * #loadCatalog(NameIdentifier)}.
+   *
+   * <p><b>Note:</b> The callback must not retain the live catalog. Connector-backed metadata should
+   * be converted to a detached value before the callback returns.
+   *
+   * @param ident The identifier of the catalog to use.
+   * @param operation The operation to run against the live catalog instance.
+   * @return The value returned by the operation.
+   * @param <R> The result type of the operation.
+   * @throws NoSuchCatalogException If the specified catalog does not exist.
+   */
+  public <R> R doWithCatalog(NameIdentifier ident, ThrowableFunction<BaseCatalog, R> operation)
+      throws NoSuchCatalogException {
+    try {
+      // wrapper.doWithCatalog installs the catalog ClassLoader: the operation runs against the
+      // connector's own catalog instance, for example to call its authorization plugin.
+      return doWithCatalogWrapper(ident, wrapper -> wrapper.doWithCatalog(operation));
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to operate on catalog: " + ident, e);
+    }
+  }
+
+  /**
+   * Runs a callback with one leased wrapper, preserving the caller's context ClassLoader. The lease
+   * is kept inside CatalogManager so callers cannot release it before detaching connector-backed
+   * results. Wrapper methods install the catalog ClassLoader around connector calls.
+   */
+  <R> R doWithCatalogWrapper(NameIdentifier ident, ThrowableFunction<CatalogWrapper, R> operation)
+      throws Exception {
+    try (CatalogLease lease = acquireCatalogLease(ident)) {
+      // Deliberately no ClassLoader swap around the whole callback. The wrapper's doWithXxxOps,
+      // doWithPropertiesMeta and capabilities() already install the catalog ClassLoader for the
+      // connector calls that need it, while the rest of the callback is Gravitino's own code:
+      // entity-store reads in particular must not run with a connector ClassLoader as the thread
+      // context ClassLoader, because MyBatis resolves resources and drivers through it and a
+      // catalog that bundles its own JDBC driver would win those lookups.
+      return operation.apply(lease.wrapper());
+    }
   }
 
   /**
@@ -514,7 +784,7 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
    * @param provider The provider of the new catalog.
    * @param comment The comment for the new catalog.
    * @param properties The properties of the new catalog.
-   * @return The created catalog.
+   * @return A metadata snapshot of the created catalog.
    * @throws NoSuchMetalakeException If the specified metalake does not exist.
    * @throws CatalogAlreadyExistsException If a catalog with the same identifier already exists.
    */
@@ -556,14 +826,18 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         LockType.WRITE,
         () -> {
           checkMetalake(metalakeIdent, store);
-          boolean needClean = true;
+          lifecycleLock.readLock().lock();
+          boolean needClean = false;
           try {
+            checkOpen();
+            needClean = true;
             store.put(e, false /* overwrite */);
-            CatalogWrapper wrapper =
-                catalogCache.get(ident, id -> createCatalogWrapper(e, mergedConfig));
-
-            needClean = false;
-            return wrapper.catalog;
+            try (CatalogLease lease =
+                createAndCacheCatalogLease(ident, () -> createCatalogWrapper(e, mergedConfig))) {
+              Catalog catalog = toCatalogInfo(lease.wrapper());
+              needClean = false;
+              return catalog;
+            }
 
           } catch (EntityAlreadyExistsException e1) {
             needClean = false;
@@ -582,23 +856,30 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
             throw new RuntimeException(e3);
 
           } finally {
-            if (needClean) {
-              // since we put the catalog entity into the store but failed to create the catalog
-              // instance,
-              // we need to clean up the entity stored.
-              try {
-                if (store.delete(ident, EntityType.CATALOG, true)) {
-                  // This cleanup deletion writes a DROP record to the entity change log. Mark it as
-                  // a local mutation so the change-log poller consumes that record's token instead
-                  // of one meant for a later mutation of the same identifier. Without this, the
-                  // poller could treat a subsequent local change as remote and spuriously
-                  // invalidate (and asynchronously close) a cached catalog wrapper that is still in
-                  // use, causing a NullPointerException.
-                  markLocalMutation(ident);
+            try {
+              if (needClean) {
+                // since we put the catalog entity into the store but failed to create the catalog
+                // instance,
+                // we need to clean up the entity stored.
+                try {
+                  if (store.delete(ident, EntityType.CATALOG, true)) {
+                    // This cleanup deletion writes a DROP record to the entity change log. Mark it
+                    // as
+                    // a local mutation so the change-log poller consumes that record's token
+                    // instead
+                    // of one meant for a later mutation of the same identifier. Without this, the
+                    // poller could treat a subsequent local change as remote and spuriously
+                    // invalidate (and asynchronously close) a cached catalog wrapper that is still
+                    // in
+                    // use, causing a NullPointerException.
+                    markLocalMutation(ident);
+                  }
+                } catch (IOException e4) {
+                  LOG.error("Failed to clean up catalog {}", ident, e4);
                 }
-              } catch (IOException e4) {
-                LOG.error("Failed to clean up catalog {}", ident, e4);
               }
+            } finally {
+              lifecycleLock.readLock().unlock();
             }
           }
         });
@@ -682,14 +963,15 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         ident,
         LockType.READ,
         () -> {
-          CatalogWrapper wrapper = loadCatalogAndWrap(ident);
-          wrapper.catalog().checkMetalakeAndCatalogInUse();
-          try {
-            wrapper.doWithCatalogOps(
-                c -> {
-                  c.testConnection(ident);
-                  return null;
-                });
+          try (CatalogLease lease = acquireCatalogLease(ident)) {
+            lease.catalog().checkMetalakeAndCatalogInUse();
+            lease
+                .wrapper()
+                .doWithCatalogOps(
+                    c -> {
+                      c.testConnection(ident);
+                      return null;
+                    });
           } catch (UnsupportedOperationException e) {
             throw e;
           } catch (Exception e) {
@@ -721,10 +1003,10 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         ident,
         LockType.READ,
         () -> {
-          CatalogWrapper storedWrapper = loadCatalogAndWrap(ident);
-          BaseCatalog<?> storedCatalog = storedWrapper.catalog();
-          storedCatalog.checkMetalakeAndCatalogInUse();
-          try {
+          try (CatalogLease storedLease = acquireCatalogLease(ident)) {
+            CatalogWrapper storedWrapper = storedLease.wrapper();
+            BaseCatalog<?> storedCatalog = storedLease.catalog();
+            storedCatalog.checkMetalakeAndCatalogInUse();
             storedWrapper.doWithPropertiesMeta(
                 metadata -> {
                   Pair<Map<String, String>, Map<String, String>> alterProperty =
@@ -782,14 +1064,14 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         metalakeIdent,
         LockType.WRITE,
         () -> {
-          BaseCatalog baseCatalog = loadCatalogAndWrap(ident).catalog();
-          baseCatalog.checkMetalakeInUse();
+          try (CatalogLease lease = acquireCatalogLease(ident)) {
+            BaseCatalog baseCatalog = lease.catalog();
+            baseCatalog.checkMetalakeInUse();
 
-          if (baseCatalog.catalogInUse()) {
-            return null;
-          }
+            if (baseCatalog.catalogInUse()) {
+              return null;
+            }
 
-          try {
             store.update(
                 ident,
                 CatalogEntity.class,
@@ -823,14 +1105,14 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         metalakeIdent,
         LockType.WRITE,
         () -> {
-          BaseCatalog baseCatalog = loadCatalogAndWrap(ident).catalog();
-          baseCatalog.checkMetalakeInUse();
+          try (CatalogLease lease = acquireCatalogLease(ident)) {
+            BaseCatalog baseCatalog = lease.catalog();
+            baseCatalog.checkMetalakeInUse();
 
-          if (!baseCatalog.catalogInUse()) {
-            return null;
-          }
+            if (!baseCatalog.catalogInUse()) {
+              return null;
+            }
 
-          try {
             store.update(
                 ident,
                 CatalogEntity.class,
@@ -862,7 +1144,7 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
    *
    * @param ident The identifier of the catalog to alter.
    * @param changes The changes to apply to the catalog.
-   * @return The altered catalog.
+   * @return A metadata snapshot of the altered catalog.
    * @throws NoSuchCatalogException If the specified catalog does not exist.
    * @throws IllegalArgumentException If an unsupported catalog change is provided.
    */
@@ -875,31 +1157,30 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         LockType.READ,
         () -> {
           // There could be a race issue that someone is using the catalog from cache while we are
-          // updating it.
-          CatalogWrapper catalogWrapper = loadCatalogAndWrap(ident);
-          if (catalogWrapper == null) {
-            throw new NoSuchCatalogException(CATALOG_DOES_NOT_EXIST_MSG, ident);
-          }
+          // updating it. The lease keeps the wrapper alive for the whole validation.
+          try (CatalogLease lease = acquireCatalogLease(ident)) {
+            BaseCatalog catalog = lease.catalog();
+            catalog.checkMetalakeAndCatalogInUse();
 
-          BaseCatalog catalog = catalogWrapper.catalog();
-          catalog.checkMetalakeAndCatalogInUse();
-
-          try {
-            catalogWrapper.doWithPropertiesMeta(
-                f -> {
-                  Pair<Map<String, String>, Map<String, String>> alterProperty =
-                      getCatalogAlterProperty(changes);
-                  validatePropertyForAlter(
-                      f.catalogPropertiesMetadata(),
-                      alterProperty.getLeft(),
-                      alterProperty.getRight());
-                  return null;
-                });
-          } catch (IllegalArgumentException e1) {
-            throw e1;
-          } catch (Exception e) {
-            LOG.error("Failed to alter catalog {}", ident, e);
-            throw new RuntimeException(e);
+            try {
+              lease
+                  .wrapper()
+                  .doWithPropertiesMeta(
+                      f -> {
+                        Pair<Map<String, String>, Map<String, String>> alterProperty =
+                            getCatalogAlterProperty(changes);
+                        validatePropertyForAlter(
+                            f.catalogPropertiesMetadata(),
+                            alterProperty.getLeft(),
+                            alterProperty.getRight());
+                        return null;
+                      });
+            } catch (IllegalArgumentException e1) {
+              throw e1;
+            } catch (Exception e) {
+              LOG.error("Failed to alter catalog {}", ident, e);
+              throw new RuntimeException(e);
+            }
           }
           return null;
         });
@@ -913,7 +1194,15 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         nameIdentifierForLock,
         LockType.WRITE,
         () -> {
+          // Hold the lifecycle read lock across the whole mutation, from before the entity is
+          // persisted until the refreshed wrapper is published. Taking it only inside
+          // createAndCacheCatalogLease would leave a window in which close() grabs the write lock
+          // after the entity was already updated, so checkOpen() would fail the
+          // caller's alter even though the change took effect. Same lock ordering as everywhere
+          // else: tree lock first, lifecycle lock second.
+          lifecycleLock.readLock().lock();
           try {
+            checkOpen();
             CatalogEntity updatedCatalog =
                 store.update(
                     ident,
@@ -943,9 +1232,12 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
             CatalogEntity convertedCatalog = convertFilesetCatalogEntity(updatedCatalog);
             // Use put() instead of get() to force the updated wrapper into the cache, preventing
             // a background thread from overwriting it with stale data between invalidate and put.
-            CatalogWrapper newWrapper = createCatalogWrapper(convertedCatalog, null);
-            catalogCache.put(convertedCatalog.nameIdentifier(), newWrapper);
-            return newWrapper.catalog();
+            try (CatalogLease lease =
+                createAndCacheCatalogLease(
+                    convertedCatalog.nameIdentifier(),
+                    () -> createCatalogWrapper(convertedCatalog, null))) {
+              return toCatalogInfo(lease.wrapper());
+            }
 
           } catch (NoSuchEntityException ne) {
             LOG.warn("Catalog {} does not exist", ident, ne);
@@ -958,6 +1250,9 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
           } catch (IOException ioe) {
             LOG.error("Failed to alter catalog {}", ident, ioe);
             throw new RuntimeException(ioe);
+
+          } finally {
+            lifecycleLock.readLock().unlock();
           }
         });
   }
@@ -971,8 +1266,8 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
         metalakeIdent,
         LockType.WRITE,
         () -> {
-          try {
-            CatalogWrapper catalogWrapper = loadCatalogAndWrap(ident);
+          try (CatalogLease lease = acquireCatalogLease(ident)) {
+            CatalogWrapper catalogWrapper = lease.wrapper();
             catalogWrapper.catalog().checkMetalakeInUse();
 
             boolean catalogInUse = catalogWrapper.catalog().catalogInUse();
@@ -1131,26 +1426,122 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
   }
 
   /**
+   * Loads the catalog with the specified identifier, wraps it in a CatalogWrapper, caches the
+   * wrapper for reuse, and takes a lease on it. The lease keeps the catalog and its ClassLoader
+   * alive for the duration of the operation even if the cache evicts the wrapper concurrently, so
+   * the caller must close the lease when the operation is done, ideally with try-with-resources.
+   *
+   * <p>If the cached wrapper has already been retired (by an eviction, an invalidation or a drop),
+   * the stale entry is evicted and a fresh wrapper is loaded and cached.
+   *
+   * <p>Lookup, loading, and lease acquisition are atomic per catalog identifier.
+   *
+   * @param ident The identifier of the catalog to load.
+   * @return A lease on the CatalogWrapper containing the loaded catalog.
+   * @throws NoSuchCatalogException If the specified catalog does not exist.
+   */
+  CatalogLease acquireCatalogLease(NameIdentifier ident) throws NoSuchCatalogException {
+    lifecycleLock.readLock().lock();
+    try {
+      checkOpen();
+      AtomicReference<CatalogLease> acquiredLease = new AtomicReference<>();
+      AtomicReference<CatalogWrapper> newlyLoadedWrapper = new AtomicReference<>();
+      try {
+        catalogCache
+            .asMap()
+            .compute(
+                ident,
+                (key, cachedWrapper) -> {
+                  CatalogWrapper wrapper = cachedWrapper;
+                  if (wrapper == null || !wrapper.tryAcquire()) {
+                    wrapper = loadCatalogInternal(key);
+                    newlyLoadedWrapper.set(wrapper);
+                    Preconditions.checkState(
+                        wrapper.tryAcquire(), "A newly loaded catalog wrapper cannot be retired");
+                  }
+
+                  CatalogLease lease = new CatalogLease(wrapper);
+                  if (!acquiredLease.compareAndSet(null, lease)) {
+                    lease.close();
+                    throw new IllegalStateException(
+                        "Catalog cache compute invoked its mapping function more than once");
+                  }
+                  return wrapper;
+                });
+      } catch (RuntimeException | Error e) {
+        CatalogWrapper newlyLoaded = newlyLoadedWrapper.get();
+        if (newlyLoaded != null) {
+          newlyLoaded.retire();
+        }
+        CatalogLease lease = acquiredLease.get();
+        if (lease != null) {
+          lease.close();
+        }
+        throw e;
+      }
+      return Preconditions.checkNotNull(acquiredLease.get(), "Catalog lease was not acquired");
+    } finally {
+      lifecycleLock.readLock().unlock();
+    }
+  }
+
+  /**
    * Loads the catalog with the specified identifier, wraps it in a CatalogWrapper, and caches the
-   * wrapper for reuse. If the cached wrapper has already been closed (its underlying catalog is
-   * null), the stale entry is evicted and a fresh wrapper is loaded and cached.
+   * wrapper for reuse. If the cached wrapper has already been retired, the stale entry is evicted
+   * and a fresh wrapper is loaded and cached.
+   *
+   * <p>The returned wrapper is not leased, so a concurrent cache eviction may retire and close it
+   * while the caller is still using it. Prefer {@link #acquireCatalogLease(NameIdentifier)}, which
+   * keeps the wrapper alive for the duration of the operation.
    *
    * @param ident The identifier of the catalog to load.
    * @return The wrapped CatalogWrapper containing the loaded catalog.
    * @throws NoSuchCatalogException If the specified catalog does not exist.
    */
-  public CatalogWrapper loadCatalogAndWrap(NameIdentifier ident) throws NoSuchCatalogException {
-    CatalogWrapper wrapper = catalogCache.get(ident, this::loadCatalogInternal);
-    if (wrapper.catalog() != null) {
-      return wrapper;
+  @VisibleForTesting
+  CatalogWrapper loadCatalogAndWrap(NameIdentifier ident) throws NoSuchCatalogException {
+    lifecycleLock.readLock().lock();
+    try {
+      checkOpen();
+      return loadCatalogAndWrapInternal(ident);
+    } finally {
+      lifecycleLock.readLock().unlock();
     }
+  }
 
-    // The cached wrapper has already been closed (catalog() == null), e.g. by a prior
-    // dropCatalog or cache eviction. Evict the stale entry and reload a fresh one.
-    // Use a conditional remove so we do not clobber a wrapper that another thread may
-    // have concurrently reloaded into the cache between our initial get and this remove.
-    catalogCache.asMap().remove(ident, wrapper);
-    return catalogCache.get(ident, this::loadCatalogInternal);
+  private CatalogWrapper loadCatalogAndWrapInternal(NameIdentifier ident)
+      throws NoSuchCatalogException {
+    CatalogWrapper wrapper = catalogCache.get(ident, this::loadCatalogInternal);
+    if (wrapper.isRetired()) {
+      // The cached wrapper has already been retired, e.g. by a prior dropCatalog or cache eviction.
+      // Evict the stale entry and reload a fresh one. Use a conditional remove so we do not clobber
+      // a wrapper that another thread may have concurrently reloaded into the cache between our
+      // initial get and this remove.
+      catalogCache.asMap().remove(ident, wrapper);
+      wrapper = catalogCache.get(ident, this::loadCatalogInternal);
+    }
+    return wrapper;
+  }
+
+  private CatalogLease createAndCacheCatalogLease(
+      NameIdentifier ident, Supplier<CatalogWrapper> wrapperSupplier) {
+    lifecycleLock.readLock().lock();
+    try {
+      checkOpen();
+      CatalogWrapper wrapper = wrapperSupplier.get();
+      Preconditions.checkState(wrapper.tryAcquire(), "A new catalog wrapper cannot be retired");
+      CatalogLease lease = new CatalogLease(wrapper);
+      try {
+        catalogCache.put(ident, wrapper);
+        return lease;
+      } catch (RuntimeException | Error e) {
+        wrapper.retire();
+        lease.close();
+        throw e;
+      }
+    } finally {
+      lifecycleLock.readLock().unlock();
+    }
   }
 
   private boolean isManagedStorageCatalog(CatalogWrapper catalogWrapper) {
@@ -1276,9 +1667,28 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
    * @return The resolved properties.
    */
   private Map<String, String> getResolvedProperties(CatalogEntity entity) {
-    CatalogWrapper catalogWrapper = loadCatalogAndWrap(entity.nameIdentifier());
-    return catalogWrapper.classLoader.withClassLoader(
-        cl -> catalogWrapper.catalog.properties(), RuntimeException.class);
+    // Resolve properties while the cached wrapper is protected by an operation lease.
+    try (CatalogLease lease = acquireCatalogLease(entity.nameIdentifier())) {
+      CatalogWrapper catalogWrapper = lease.wrapper();
+      return catalogWrapper.classLoader.withClassLoader(
+          cl -> catalogWrapper.catalog.properties(), RuntimeException.class);
+    }
+  }
+
+  private Catalog toCatalogInfo(CatalogWrapper wrapper) {
+    try {
+      return wrapper.doWithCatalog(
+          catalog ->
+              catalog.entity().toCatalogInfoWithResolvedProps(new HashMap<>(catalog.properties())));
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create catalog metadata snapshot", e);
+    }
+  }
+
+  private void checkOpen() {
+    Preconditions.checkState(!closed, "CatalogManager is already closed");
   }
 
   private BaseCatalog<?> createBaseCatalog(IsolatedClassLoader classLoader, CatalogEntity entity) {

@@ -77,6 +77,10 @@ public final class EntityCombinedTable implements Table {
     return this;
   }
 
+  Set<String> hiddenProperties() {
+    return hiddenProperties;
+  }
+
   @Override
   public String name() {
     return table.name();

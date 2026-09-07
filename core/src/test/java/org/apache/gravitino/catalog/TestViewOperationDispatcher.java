@@ -152,7 +152,8 @@ public class TestViewOperationDispatcher extends TestOperationDispatcher {
 
     // Mock the catalog operations to return the view
     TestCatalog testCatalog =
-        (TestCatalog) catalogManager.loadCatalog(NameIdentifier.of(metalake, catalog));
+        (TestCatalog)
+            catalogManager.loadCatalogAndWrap(NameIdentifier.of(metalake, catalog)).catalog();
     TestCatalogOperations testCatalogOperations = (TestCatalogOperations) testCatalog.ops();
     testCatalogOperations.views.put(viewIdent1, mockView);
 
@@ -184,7 +185,8 @@ public class TestViewOperationDispatcher extends TestOperationDispatcher {
 
     // Create multiple views
     TestCatalog testCatalog =
-        (TestCatalog) catalogManager.loadCatalog(NameIdentifier.of(metalake, catalog));
+        (TestCatalog)
+            catalogManager.loadCatalogAndWrap(NameIdentifier.of(metalake, catalog)).catalog();
     TestCatalogOperations testCatalogOperations = (TestCatalogOperations) testCatalog.ops();
 
     for (int i = 1; i <= 3; i++) {
@@ -252,7 +254,8 @@ public class TestViewOperationDispatcher extends TestOperationDispatcher {
     View mockView = createMockView("auto_import_view", props, auditInfo);
 
     TestCatalog testCatalog =
-        (TestCatalog) catalogManager.loadCatalog(NameIdentifier.of(metalake, catalog));
+        (TestCatalog)
+            catalogManager.loadCatalogAndWrap(NameIdentifier.of(metalake, catalog)).catalog();
     TestCatalogOperations testCatalogOperations = (TestCatalogOperations) testCatalog.ops();
     testCatalogOperations.views.put(viewIdent, mockView);
 
@@ -301,7 +304,8 @@ public class TestViewOperationDispatcher extends TestOperationDispatcher {
     View mockView = createMockView("already_imported_view", props, auditInfo);
 
     TestCatalog testCatalog =
-        (TestCatalog) catalogManager.loadCatalog(NameIdentifier.of(metalake, catalog));
+        (TestCatalog)
+            catalogManager.loadCatalogAndWrap(NameIdentifier.of(metalake, catalog)).catalog();
     TestCatalogOperations testCatalogOperations = (TestCatalogOperations) testCatalog.ops();
     testCatalogOperations.views.put(viewIdent, mockView);
 
@@ -335,7 +339,8 @@ public class TestViewOperationDispatcher extends TestOperationDispatcher {
     View mockView = createMockView("concurrent_view", props, auditInfo);
 
     TestCatalog testCatalog =
-        (TestCatalog) catalogManager.loadCatalog(NameIdentifier.of(metalake, catalog));
+        (TestCatalog)
+            catalogManager.loadCatalogAndWrap(NameIdentifier.of(metalake, catalog)).catalog();
     TestCatalogOperations testCatalogOperations = (TestCatalogOperations) testCatalog.ops();
     testCatalogOperations.views.put(viewIdent, mockView);
 
@@ -398,7 +403,8 @@ public class TestViewOperationDispatcher extends TestOperationDispatcher {
     View mockView = createMockView("deleted_view", props, auditInfo);
 
     TestCatalog testCatalog =
-        (TestCatalog) catalogManager.loadCatalog(NameIdentifier.of(metalake, catalog));
+        (TestCatalog)
+            catalogManager.loadCatalogAndWrap(NameIdentifier.of(metalake, catalog)).catalog();
     TestCatalogOperations testCatalogOperations = (TestCatalogOperations) testCatalog.ops();
     testCatalogOperations.views.put(viewIdent, mockView);
 
@@ -523,7 +529,8 @@ public class TestViewOperationDispatcher extends TestOperationDispatcher {
         viewIdent, null, new Column[0], representations, null, null, ImmutableMap.of("k1", "v1"));
 
     TestCatalog testCatalog =
-        (TestCatalog) catalogManager.loadCatalog(NameIdentifier.of(metalake, catalog));
+        (TestCatalog)
+            catalogManager.loadCatalogAndWrap(NameIdentifier.of(metalake, catalog)).catalog();
     TestCatalogOperations testCatalogOperations = (TestCatalogOperations) testCatalog.ops();
     Assertions.assertTrue(testCatalogOperations.dropSchema(schemaIdent, false));
     Assertions.assertFalse(testCatalogOperations.schemaExists(schemaIdent));
@@ -557,7 +564,8 @@ public class TestViewOperationDispatcher extends TestOperationDispatcher {
     // now-empty namespaces, so the catalog no longer knows the view (dropView returns false),
     // while Gravitino still holds the orphaned schema entities.
     TestCatalog testCatalog =
-        (TestCatalog) catalogManager.loadCatalog(NameIdentifier.of(metalake, catalog));
+        (TestCatalog)
+            catalogManager.loadCatalogAndWrap(NameIdentifier.of(metalake, catalog)).catalog();
     TestCatalogOperations testCatalogOperations = (TestCatalogOperations) testCatalog.ops();
     Assertions.assertTrue(testCatalogOperations.dropView(viewIdent));
     Assertions.assertTrue(testCatalogOperations.dropSchema(schemaIdent, false));
