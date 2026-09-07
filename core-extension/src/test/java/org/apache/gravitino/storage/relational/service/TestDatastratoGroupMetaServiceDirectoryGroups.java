@@ -219,7 +219,7 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
   public void testAddDirectoryGroupRejectsDuplicate() {
     DatastratoGroupMetaService.getInstance().addDirectoryGroup("dup.group", null, List.of());
     assertThrows(
-        org.apache.gravitino.exceptions.AlreadyExistsException.class,
+        org.apache.gravitino.exceptions.GroupAlreadyExistsException.class,
         () ->
             DatastratoGroupMetaService.getInstance()
                 .addDirectoryGroup("dup.group", null, List.of()));

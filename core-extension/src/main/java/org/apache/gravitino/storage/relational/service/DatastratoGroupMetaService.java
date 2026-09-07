@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.gravitino.exceptions.AlreadyExistsException;
+import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.RandomIdGenerator;
@@ -80,7 +80,7 @@ public class DatastratoGroupMetaService {
    * @param members Built-in IdP usernames to add; {@code null} or empty means none.
    * @return The created Directory Group (Local origin, empty metalakes).
    * @throws NotFoundException If any member is missing from {@code idp_user_meta}.
-   * @throws AlreadyExistsException If the group name already exists in {@code idp_group_meta}.
+   * @throws GroupAlreadyExistsException If the group name already exists in {@code idp_group_meta}.
    */
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
@@ -103,7 +103,7 @@ public class DatastratoGroupMetaService {
         DatastratoGroupMetaMapper.class,
         mapper -> {
           if (!mapper.selectIdpGroupNamesByNames(List.of(groupName)).isEmpty()) {
-            throw new AlreadyExistsException("IdP group already exists: %s", groupName);
+            throw new GroupAlreadyExistsException("IdP group already exists: %s", groupName);
           }
 
           Map<String, Long> userIdsByName = new HashMap<>();

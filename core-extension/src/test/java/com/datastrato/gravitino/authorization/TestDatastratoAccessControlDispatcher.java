@@ -501,5 +501,25 @@ public class TestDatastratoAccessControlDispatcher {
         IllegalArgumentException.class, () -> dispatcher.countUsersByEnabled(""));
     Assertions.assertThrows(
         IllegalArgumentException.class, () -> dispatcher.countGroupsWithEmpty(" "));
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> dispatcher.addIdpUserGroupMemberships(List.of(), List.of("ops")));
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> dispatcher.addIdpUserGroupMemberships(List.of("alice"), List.of()));
+  }
+
+  @Test
+  public void testAddIdpUserGroupMembershipsDelegatesPerDistinctGroup() {
+    IdpUserGroupManager idpUserGroupManager = mock(IdpUserGroupManager.class);
+    DatastratoAccessControlDispatcher dispatcher =
+        new DatastratoAccessControlDispatcher(
+            mock(AccessControlDispatcher.class), mock(EntityStore.class), idpUserGroupManager);
+
+    dispatcher.addIdpUserGroupMemberships(
+        Lists.newArrayList("alice", "alice"), Lists.newArrayList("ops", "gov"));
+
+    verify(idpUserGroupManager).changeGroupMembership(eq("ops"), eq(List.of("alice")), eq(null));
+    verify(idpUserGroupManager).changeGroupMembership(eq("gov"), eq(List.of("alice")), eq(null));
   }
 }

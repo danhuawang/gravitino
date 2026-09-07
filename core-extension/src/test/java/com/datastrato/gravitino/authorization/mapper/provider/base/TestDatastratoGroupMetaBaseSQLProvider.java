@@ -64,5 +64,28 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains("GROUP BY gt.group_name"));
     assertTrue(sql.contains("ORDER BY identity.groupName"));
+    assertTrue(sql.contains("CAST(NULL AS BIGINT)"));
+  }
+
+  @Test
+  public void testListDirectoryGroupsMySQLCastsNullAsSigned() {
+    DatastratoGroupMetaBaseSQLProvider mysql =
+        new DatastratoGroupMetaBaseSQLProvider() {
+          @Override
+          protected String nullLongLiteral() {
+            return "CAST(NULL AS SIGNED)";
+          }
+        };
+    String sql = mysql.listDirectoryGroups();
+    assertTrue(sql.contains("CAST(NULL AS SIGNED)"));
+    assertFalse(sql.contains("CAST(NULL AS BIGINT)"));
+  }
+
+  @Test
+  public void testListIdpGroupNames() {
+    String sql = provider.listIdpGroupNames();
+    assertTrue(sql.contains("SELECT group_name FROM idp_group_meta"));
+    assertTrue(sql.contains("deleted_at = 0"));
+    assertTrue(sql.contains("ORDER BY group_name"));
   }
 }

@@ -4,6 +4,30 @@
 
 paths:
 
+  /web/security/idp/groups:
+    get:
+      tags:
+        - groups
+      summary: List Local IdP group names
+      operationId: listLocalIdpGroupNames
+      description: |
+        List active Local (built-in IdP) group names from `idp_group_meta`.
+
+        Instance-scoped: no metalake parameter. Returns names only — does not include Provisioned
+        or JIT identities, and does not report metalake membership.
+
+      responses:
+        "200":
+          description: Returns the list of Local IdP group names
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/NameListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/directory/groups:
     get:
       tags:

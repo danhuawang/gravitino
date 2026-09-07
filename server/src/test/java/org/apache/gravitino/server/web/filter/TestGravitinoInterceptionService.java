@@ -427,6 +427,10 @@ public class TestGravitinoInterceptionService {
     Mockito.when(extendedIdentityOperationsDescriptor.getImplementation())
         .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedIdentityOperations");
 
+    Descriptor extendedIdpOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(extendedIdpOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedIdpOperations");
+
     Descriptor extendedRoleOperationsDescriptor = Mockito.mock(Descriptor.class);
     Mockito.when(extendedRoleOperationsDescriptor.getImplementation())
         .thenReturn("com.datastrato.gravitino.server.web.rest.ExtendedRoleOperations");
@@ -470,6 +474,7 @@ public class TestGravitinoInterceptionService {
     Assertions.assertTrue(filter.matches(extendedUserOperationsDescriptor));
     Assertions.assertTrue(filter.matches(extendedGroupOperationsDescriptor));
     Assertions.assertTrue(filter.matches(extendedIdentityOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(extendedIdpOperationsDescriptor));
     Assertions.assertTrue(filter.matches(extendedRoleOperationsDescriptor));
     Assertions.assertTrue(filter.matches(extendedMetadataObjectRoleOperationsDescriptor));
     Assertions.assertTrue(filter.matches(enterpriseExtendedTagOperationsDescriptor));

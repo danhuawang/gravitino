@@ -360,8 +360,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @param groupNames Built-in IdP group names to join; {@code null} or empty means none.
    * @return The created Directory User (Local origin, empty metalakes).
    * @throws NotFoundException If any group is missing from {@code idp_group_meta}.
-   * @throws org.apache.gravitino.exceptions.AlreadyExistsException If the username already exists
-   *     in {@code idp_user_meta}.
+   * @throws UserAlreadyExistsException If the username already exists in {@code idp_user_meta}.
    */
   public DirectoryUser addDirectoryUser(String username, String password, List<String> groupNames) {
     return DatastratoUserMetaService.getInstance().addDirectoryUser(username, password, groupNames);
@@ -432,8 +431,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @param members Built-in IdP usernames to add; {@code null} or empty means none.
    * @return The created Directory Group (Local origin, empty metalakes).
    * @throws NotFoundException If any member is missing from {@code idp_user_meta}.
-   * @throws org.apache.gravitino.exceptions.AlreadyExistsException If the group already exists in
-   *     {@code idp_group_meta}.
+   * @throws GroupAlreadyExistsException If the group already exists in {@code idp_group_meta}.
    */
   public DirectoryGroup addDirectoryGroup(String groupName, String comment, List<String> members) {
     return DatastratoGroupMetaService.getInstance().addDirectoryGroup(groupName, comment, members);
@@ -618,6 +616,57 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
             DatastratoGroupMetaMapper.class,
             mapper -> mapper.listGroupsWithMetalakeStatus(metalake));
     return IdpNameStatus.fromJoinResult(IdpNameStatusPO.toStatuses(rows), metalake);
+  }
+
+  /**
+   * Lists Local IdP user names from {@code idp_user_meta} (instance-scoped, names only).
+   *
+   * @return Active Local IdP user names ordered by name.
+   */
+  public String[] listIdpUserNames() {
+    List<String> names =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class, DatastratoUserMetaMapper::listIdpUserNames);
+    return names == null ? new String[0] : names.toArray(new String[0]);
+  }
+
+  /**
+   * Lists Local IdP group names from {@code idp_group_meta} (instance-scoped, names only).
+   *
+   * @return Active Local IdP group names ordered by name.
+   */
+  public String[] listIdpGroupNames() {
+    List<String> names =
+        SessionUtils.getWithoutCommit(
+            DatastratoGroupMetaMapper.class, DatastratoGroupMetaMapper::listIdpGroupNames);
+    return names == null ? new String[0] : names.toArray(new String[0]);
+  }
+
+  /**
+   * Adds Local IdP users to Local IdP groups (cartesian product of usernames × groupNames).
+   *
+   * <p>Delegates to {@link IdpUserGroupManager#changeGroupMembership(String, List, List)} per
+   * group. Existing active memberships are unchanged and do not fail the request (idempotent).
+   *
+   * @param userNames Local IdP usernames.
+   * @param groupNames Local IdP group names.
+   */
+  public void addIdpUserGroupMemberships(List<String> userNames, List<String> groupNames) {
+    Preconditions.checkArgument(
+        userNames != null && !userNames.isEmpty(), "userNames cannot be null or empty");
+    Preconditions.checkArgument(
+        groupNames != null && !groupNames.isEmpty(), "groupNames cannot be null or empty");
+    for (String userName : userNames) {
+      Preconditions.checkArgument(StringUtils.isNotBlank(userName), "username cannot be blank");
+    }
+    for (String groupName : groupNames) {
+      Preconditions.checkArgument(StringUtils.isNotBlank(groupName), "group name cannot be blank");
+    }
+    List<String> distinctUsers = userNames.stream().distinct().toList();
+    List<String> distinctGroups = groupNames.stream().distinct().toList();
+    for (String groupName : distinctGroups) {
+      idpUserGroupManager.changeGroupMembership(groupName, distinctUsers, null);
+    }
   }
 
   /**

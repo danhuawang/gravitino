@@ -155,6 +155,17 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
+   * Lists all active Local IdP usernames from {@code idp_user_meta}.
+   *
+   * @return MyBatis SQL ordered by username.
+   */
+  public String listIdpUserNames() {
+    return "SELECT user_name FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " WHERE deleted_at = 0 ORDER BY user_name";
+  }
+
+  /**
    * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
    *
    * @param userNames Distinct usernames already validated as Local IdP users.
@@ -392,7 +403,9 @@ public class DatastratoUserMetaBaseSQLProvider {
     return "SELECT iu.user_name as userName, iu.enabled as enabled, "
         + IdentitySource.ORIGIN_CODE_LOCAL
         + " as originCode,"
-        + " iu.user_id as idpUserId, CAST(NULL AS BIGINT) as scimUserId"
+        + " iu.user_id as idpUserId, "
+        + nullLongLiteral()
+        + " as scimUserId"
         + " FROM "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
         + " iu WHERE iu.deleted_at = 0"
@@ -402,7 +415,9 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " as enabled, "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
         + " as originCode,"
-        + " CAST(NULL AS BIGINT) as idpUserId, su.user_id as scimUserId"
+        + " "
+        + nullLongLiteral()
+        + " as idpUserId, su.user_id as scimUserId"
         + " FROM "
         + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
         + " su WHERE su.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
@@ -413,7 +428,11 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " TRUE as enabled, "
         + IdentitySource.ORIGIN_CODE_JIT
         + " as originCode,"
-        + " CAST(NULL AS BIGINT) as idpUserId, CAST(NULL AS BIGINT) as scimUserId"
+        + " "
+        + nullLongLiteral()
+        + " as idpUserId, "
+        + nullLongLiteral()
+        + " as scimUserId"
         + " FROM "
         + USER_TABLE_NAME
         + " ut WHERE ut.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
@@ -671,6 +690,18 @@ public class DatastratoUserMetaBaseSQLProvider {
 
   protected String jsonArrayAgg(String expr) {
     return "JSON_ARRAYAGG(" + expr + ")";
+  }
+
+  /**
+   * Typed NULL used to align UNION ALL id columns.
+   *
+   * <p>PostgreSQL and H2 accept {@code CAST(NULL AS BIGINT)}. MySQL does not; subclasses override
+   * this to {@code CAST(NULL AS SIGNED)}.
+   *
+   * @return SQL NULL literal with an integer type.
+   */
+  protected String nullLongLiteral() {
+    return "CAST(NULL AS BIGINT)";
   }
 
   private String roleAggregationSubquery() {

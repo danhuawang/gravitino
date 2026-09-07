@@ -48,6 +48,15 @@ public class DatastratoUserMetaSQLProviderFactory {
     return getProvider().selectIdpUserNamesByNames(userNames);
   }
 
+  /**
+   * Lists all active Local IdP usernames from {@code idp_user_meta}.
+   *
+   * @return MyBatis SQL ordered by username.
+   */
+  public static String listIdpUserNames() {
+    return getProvider().listIdpUserNames();
+  }
+
   public static String batchUpdateIdpUserEnabledByUserNames(
       @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled) {
     return getProvider().batchUpdateIdpUserEnabledByUserNames(userNames, enabled);
@@ -115,7 +124,12 @@ public class DatastratoUserMetaSQLProviderFactory {
     return PROVIDERS.get(JDBCBackendType.fromString(databaseId));
   }
 
-  static class DatastratoUserMetaMySQLProvider extends DatastratoUserMetaBaseSQLProvider {}
+  static class DatastratoUserMetaMySQLProvider extends DatastratoUserMetaBaseSQLProvider {
+    @Override
+    protected String nullLongLiteral() {
+      return "CAST(NULL AS SIGNED)";
+    }
+  }
 
   static class DatastratoUserMetaH2Provider extends DatastratoUserMetaBaseSQLProvider {}
 

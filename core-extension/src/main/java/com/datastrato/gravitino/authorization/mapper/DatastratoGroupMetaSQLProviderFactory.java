@@ -27,6 +27,15 @@ public class DatastratoGroupMetaSQLProviderFactory {
     return getProvider().listGroupsWithMetalakeStatus(metalakeName);
   }
 
+  /**
+   * Lists all active Local IdP group names from {@code idp_group_meta}.
+   *
+   * @return MyBatis SQL ordered by group name.
+   */
+  public static String listIdpGroupNames() {
+    return getProvider().listIdpGroupNames();
+  }
+
   public static String listGroupsByMetalakeWithOrigin(@Param("metalakeName") String metalakeName) {
     return getProvider().listGroupsByMetalakeWithOrigin(metalakeName);
   }
@@ -83,7 +92,12 @@ public class DatastratoGroupMetaSQLProviderFactory {
     return PROVIDERS.get(JDBCBackendType.fromString(databaseId));
   }
 
-  static class DatastratoGroupMetaMySQLProvider extends DatastratoGroupMetaBaseSQLProvider {}
+  static class DatastratoGroupMetaMySQLProvider extends DatastratoGroupMetaBaseSQLProvider {
+    @Override
+    protected String nullLongLiteral() {
+      return "CAST(NULL AS SIGNED)";
+    }
+  }
 
   static class DatastratoGroupMetaH2Provider extends DatastratoGroupMetaBaseSQLProvider {}
 

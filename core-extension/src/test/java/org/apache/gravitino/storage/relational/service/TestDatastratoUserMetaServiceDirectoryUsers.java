@@ -344,7 +344,7 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     DatastratoUserMetaService.getInstance()
         .addDirectoryUser("dup.user", "ChangeMe-2026!", List.of());
     assertThrows(
-        org.apache.gravitino.exceptions.AlreadyExistsException.class,
+        org.apache.gravitino.exceptions.UserAlreadyExistsException.class,
         () ->
             DatastratoUserMetaService.getInstance()
                 .addDirectoryUser("dup.user", "ChangeMe-2026!", List.of()));

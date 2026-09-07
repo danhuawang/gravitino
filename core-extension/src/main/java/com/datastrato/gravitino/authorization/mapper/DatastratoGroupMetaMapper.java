@@ -20,6 +20,14 @@ public interface DatastratoGroupMetaMapper {
   String SCIM_USER_GROUP_REL_TABLE_NAME = "scim_user_group_rel";
 
   /**
+   * Lists all active Local IdP group names from {@code idp_group_meta}.
+   *
+   * @return Group names ordered by name.
+   */
+  @SelectProvider(type = DatastratoGroupMetaSQLProviderFactory.class, method = "listIdpGroupNames")
+  List<String> listIdpGroupNames();
+
+  /**
    * Lists active IdP group names with whether each is already in the metalake.
    *
    * @param metalakeName The metalake name.

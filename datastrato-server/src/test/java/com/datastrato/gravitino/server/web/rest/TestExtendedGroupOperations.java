@@ -9,6 +9,7 @@ import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
@@ -33,7 +34,10 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.connector.PropertiesMetadata;
+import org.apache.gravitino.dto.responses.ErrorConstants;
+import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.responses.NameListResponse;
+import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.rest.RESTUtils;
@@ -159,6 +163,27 @@ public class TestExtendedGroupOperations extends JerseyTest {
     Assertions.assertEquals("ops", body.getGroup().name());
     Assertions.assertEquals(2, body.getGroup().memberCount());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getGroup().origin());
+  }
+
+  @Test
+  public void testAddDirectoryGroupConflict() {
+    doThrow(new GroupAlreadyExistsException("IdP group already exists: ops"))
+        .when(accessControlDispatcher)
+        .addDirectoryGroup(eq("ops"), eq(null), eq(List.of()));
+
+    Response response =
+        target("/web/security/directory/groups")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new DirectoryGroupAddRequest("ops", null, List.of()),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.CONFLICT.getStatusCode(), response.getStatus());
+    ErrorResponse error = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, error.getCode());
+    Assertions.assertEquals(GroupAlreadyExistsException.class.getSimpleName(), error.getType());
   }
 
   @Test

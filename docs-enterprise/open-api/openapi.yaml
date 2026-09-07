@@ -154,6 +154,15 @@ paths:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./identity-lookups.yaml#/paths/~1web~1security~1identity~1groups~1%7BgroupName%7D"
 
+  /web/security/idp/users:
+    $ref: "./users.yaml#/paths/~1web~1security~1idp~1users"
+
+  /web/security/idp/memberships:
+    $ref: "./users.yaml#/paths/~1web~1security~1idp~1memberships"
+
+  /web/security/idp/groups:
+    $ref: "./groups.yaml#/paths/~1web~1security~1idp~1groups"
+
   /web/security/directory/users:
     $ref: "./users.yaml#/paths/~1web~1security~1directory~1users"
 

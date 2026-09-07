@@ -54,7 +54,22 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains("GROUP BY ut.user_name"));
     assertTrue(sql.contains("ORDER BY identity.userName"));
+    assertTrue(sql.contains("CAST(NULL AS BIGINT)"));
     assertFalse(sql.contains("#{metalakeName}"));
+  }
+
+  @Test
+  public void testListDirectoryUsersMySQLCastsNullAsSigned() {
+    DatastratoUserMetaBaseSQLProvider mysql =
+        new DatastratoUserMetaBaseSQLProvider() {
+          @Override
+          protected String nullLongLiteral() {
+            return "CAST(NULL AS SIGNED)";
+          }
+        };
+    String sql = mysql.listDirectoryUsers();
+    assertTrue(sql.contains("CAST(NULL AS SIGNED)"));
+    assertFalse(sql.contains("CAST(NULL AS BIGINT)"));
   }
 
   @Test
@@ -197,5 +212,14 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertFalse(sql.contains("as enabled"));
     assertTrue(sql.contains("as originCode"));
     assertFalse(sql.contains("as inBuiltInIdp"));
+  }
+
+  @Test
+  public void testListIdpUserNames() {
+    String sql = provider.listIdpUserNames();
+
+    assertTrue(sql.contains("SELECT user_name FROM idp_user_meta"));
+    assertTrue(sql.contains("deleted_at = 0"));
+    assertTrue(sql.contains("ORDER BY user_name"));
   }
 }

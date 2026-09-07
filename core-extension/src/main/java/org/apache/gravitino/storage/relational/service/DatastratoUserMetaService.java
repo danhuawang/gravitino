@@ -28,8 +28,8 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
-import org.apache.gravitino.exceptions.AlreadyExistsException;
 import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.idp.basic.password.PasswordHasherFactory;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.metrics.Monitored;
@@ -214,7 +214,7 @@ public class DatastratoUserMetaService {
    * @param groupNames Built-in IdP group names to join; {@code null} or empty means none.
    * @return The created Directory User (Local origin, empty metalakes).
    * @throws NotFoundException If any group is missing from {@code idp_group_meta}.
-   * @throws AlreadyExistsException If the username already exists in {@code idp_user_meta}.
+   * @throws UserAlreadyExistsException If the username already exists in {@code idp_user_meta}.
    */
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
@@ -239,7 +239,7 @@ public class DatastratoUserMetaService {
         DatastratoUserMetaMapper.class,
         mapper -> {
           if (!mapper.selectIdpUserNamesByNames(List.of(username)).isEmpty()) {
-            throw new AlreadyExistsException("IdP user already exists: %s", username);
+            throw new UserAlreadyExistsException("IdP user already exists: %s", username);
           }
 
           Map<String, Long> groupIdsByName = new HashMap<>();

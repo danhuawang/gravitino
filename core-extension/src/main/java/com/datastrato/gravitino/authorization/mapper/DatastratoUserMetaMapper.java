@@ -72,6 +72,14 @@ public interface DatastratoUserMetaMapper {
   List<String> selectIdpUserNamesByNames(@Param("userNames") List<String> userNames);
 
   /**
+   * Lists all active Local IdP usernames from {@code idp_user_meta}.
+   *
+   * @return Usernames ordered by name.
+   */
+  @SelectProvider(type = DatastratoUserMetaSQLProviderFactory.class, method = "listIdpUserNames")
+  List<String> listIdpUserNames();
+
+  /**
    * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
    *
    * @param userNames Distinct usernames.

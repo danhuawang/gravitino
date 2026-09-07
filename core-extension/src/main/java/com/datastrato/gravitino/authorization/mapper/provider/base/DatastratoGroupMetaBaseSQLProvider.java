@@ -43,6 +43,17 @@ public class DatastratoGroupMetaBaseSQLProvider {
   }
 
   /**
+   * Lists all active Local IdP group names from {@code idp_group_meta}.
+   *
+   * @return MyBatis SQL ordered by group name.
+   */
+  public String listIdpGroupNames() {
+    return "SELECT group_name FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " WHERE deleted_at = 0 ORDER BY group_name";
+  }
+
+  /**
    * Loads a metalake group with roles, identity-store origin, and {@code userCount} in one JOIN.
    *
    * <p>Same origin / {@code userCount} rules as {@link #listGroupsByMetalakeWithOrigin}.
@@ -222,7 +233,9 @@ public class DatastratoGroupMetaBaseSQLProvider {
     return "SELECT ig.group_name as groupName, "
         + IdentitySource.ORIGIN_CODE_LOCAL
         + " as originCode,"
-        + " ig.group_id as idpGroupId, CAST(NULL AS BIGINT) as scimGroupId"
+        + " ig.group_id as idpGroupId, "
+        + nullLongLiteral()
+        + " as scimGroupId"
         + " FROM "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
         + " ig WHERE ig.deleted_at = 0"
@@ -230,7 +243,9 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + "SELECT sg.group_name as groupName, "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
         + " as originCode,"
-        + " CAST(NULL AS BIGINT) as idpGroupId, sg.group_id as scimGroupId"
+        + " "
+        + nullLongLiteral()
+        + " as idpGroupId, sg.group_id as scimGroupId"
         + " FROM "
         + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
         + " sg WHERE sg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
@@ -240,7 +255,11 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + "SELECT gt.group_name as groupName, "
         + IdentitySource.ORIGIN_CODE_JIT
         + " as originCode,"
-        + " CAST(NULL AS BIGINT) as idpGroupId, CAST(NULL AS BIGINT) as scimGroupId"
+        + " "
+        + nullLongLiteral()
+        + " as idpGroupId, "
+        + nullLongLiteral()
+        + " as scimGroupId"
         + " FROM "
         + GROUP_TABLE_NAME
         + " gt WHERE gt.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
@@ -475,6 +494,18 @@ public class DatastratoGroupMetaBaseSQLProvider {
 
   protected String jsonArrayAgg(String expr) {
     return "JSON_ARRAYAGG(" + expr + ")";
+  }
+
+  /**
+   * Typed NULL used to align UNION ALL id columns.
+   *
+   * <p>PostgreSQL and H2 accept {@code CAST(NULL AS BIGINT)}. MySQL does not; subclasses override
+   * this to {@code CAST(NULL AS SIGNED)}.
+   *
+   * @return SQL NULL literal with an integer type.
+   */
+  protected String nullLongLiteral() {
+    return "CAST(NULL AS BIGINT)";
   }
 
   protected String groupNameInClause() {

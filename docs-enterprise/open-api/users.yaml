@@ -4,6 +4,67 @@
 
 paths:
 
+  /web/security/idp/users:
+    get:
+      tags:
+        - users
+      summary: List Local IdP user names
+      operationId: listLocalIdpUserNames
+      description: |
+        List active Local (built-in IdP) usernames from `idp_user_meta`.
+
+        Instance-scoped: no metalake parameter. Returns names only — does not include Provisioned
+        or JIT identities, and does not report metalake membership.
+
+      responses:
+        "200":
+          description: Returns the list of Local IdP usernames
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/NameListResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/idp/memberships:
+    post:
+      tags:
+        - users
+      summary: Add Local IdP users to Local IdP groups
+      operationId: addLocalIdpMemberships
+      description: |
+        Add Local (built-in IdP) users to Local IdP groups.
+
+        Builds the cartesian product of `usernames` × `groupNames` and adds missing memberships via
+        the built-in IdP. Existing active memberships are skipped and do not fail the request
+        (idempotent). Every username must exist in `idp_user_meta` and every group name in
+        `idp_group_meta`.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdpMembershipAddRequest"
+            examples:
+              IdpMembershipAddRequest:
+                $ref: "#/components/examples/IdpMembershipAddRequest"
+      responses:
+        "200":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BaseResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - A username or group name is missing from the Local IdP
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/directory/users:
     get:
       tags:
@@ -464,6 +525,30 @@ components:
         - Provisioned
         - JIT
 
+    IdpMembershipAddRequest:
+      type: object
+      required:
+        - usernames
+        - groupNames
+      properties:
+        usernames:
+          type: array
+          minItems: 1
+          description: Local IdP usernames to add to each listed group
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+            pattern: "^[^:]*$"
+        groupNames:
+          type: array
+          minItems: 1
+          description: Local IdP group names that each listed user should join
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+
     IdentityType:
       type: string
       description: Identity type for user or group lookup before add
@@ -805,3 +890,12 @@ components:
               - security
             metalakes:
               - Contoso
+
+    IdpMembershipAddRequest:
+      value:
+        usernames:
+          - sam.o
+          - lee.p
+        groupNames:
+          - governance
+          - ops

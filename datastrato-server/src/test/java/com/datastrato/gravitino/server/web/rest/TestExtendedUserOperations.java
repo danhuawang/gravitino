@@ -9,6 +9,7 @@ import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
@@ -34,7 +35,10 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.connector.PropertiesMetadata;
+import org.apache.gravitino.dto.responses.ErrorConstants;
+import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.responses.NameListResponse;
+import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.rest.RESTUtils;
@@ -235,6 +239,27 @@ public class TestExtendedUserOperations extends JerseyTest {
     Assertions.assertEquals("jordan.m", body.getUser().name());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getUser().origin());
     Assertions.assertEquals(List.of("governance", "ops"), body.getUser().groups());
+  }
+
+  @Test
+  public void testAddDirectoryUserConflict() {
+    doThrow(new UserAlreadyExistsException("IdP user already exists: jordan.m"))
+        .when(accessControlDispatcher)
+        .addDirectoryUser(eq("jordan.m"), eq("ChangeMe-2026!"), eq(List.of()));
+
+    Response response =
+        target("/web/security/directory/users")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(
+                entity(
+                    new DirectoryUserAddRequest("jordan.m", "ChangeMe-2026!", List.of()),
+                    MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.CONFLICT.getStatusCode(), response.getStatus());
+    ErrorResponse error = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ALREADY_EXISTS_CODE, error.getCode());
+    Assertions.assertEquals(UserAlreadyExistsException.class.getSimpleName(), error.getType());
   }
 
   @Test
