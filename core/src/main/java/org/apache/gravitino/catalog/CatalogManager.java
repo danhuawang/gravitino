@@ -765,9 +765,15 @@ public class CatalogManager implements CatalogDispatcher, Closeable {
    * Runs a callback with one leased wrapper, preserving the caller's context ClassLoader. The lease
    * is kept inside CatalogManager so callers cannot release it before detaching connector-backed
    * results. Wrapper methods install the catalog ClassLoader around connector calls.
+   *
+   * @param ident The identifier of the catalog to use.
+   * @param operation The operation to run against the leased catalog wrapper.
+   * @param <R> The result type of the operation.
+   * @return The value returned by the operation.
+   * @throws Exception if the operation or acquiring the lease fails.
    */
-  <R> R doWithCatalogWrapper(NameIdentifier ident, ThrowableFunction<CatalogWrapper, R> operation)
-      throws Exception {
+  public <R> R doWithCatalogWrapper(
+      NameIdentifier ident, ThrowableFunction<CatalogWrapper, R> operation) throws Exception {
     try (CatalogLease lease = acquireCatalogLease(ident)) {
       // Deliberately no ClassLoader swap around the whole callback. The wrapper's doWithXxxOps,
       // doWithPropertiesMeta and capabilities() already install the catalog ClassLoader for the

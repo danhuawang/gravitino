@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -67,6 +68,7 @@ import org.apache.gravitino.server.ServerConfig;
 import org.apache.gravitino.tag.TagDispatcher;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.apache.gravitino.utils.NamespaceUtil;
+import org.apache.gravitino.utils.ThrowableFunction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -397,7 +399,7 @@ class TestMetricsCollector {
       MetalakeSnapshot snapshot = collector.loadAllDataForMetalake(metalake());
 
       assertEquals(0, snapshot.getCatalogNodes().size());
-      verify(catalogManager, never()).loadCatalogAndWrap(any());
+      verify(catalogManager, never()).doWithCatalogWrapper(any(), any());
     }
   }
 
@@ -548,8 +550,8 @@ class TestMetricsCollector {
     when(store.list(
             NamespaceUtil.ofCatalog(metalakeName), CatalogEntity.class, Entity.EntityType.CATALOG))
         .thenReturn(ImmutableList.of(customCatalog));
-    when(catalogManager.loadCatalogAndWrap(
-            eq(NameIdentifierUtil.ofCatalog(metalakeName, customCatalogName))))
+    when(catalogManager.doWithCatalogWrapper(
+            eq(NameIdentifierUtil.ofCatalog(metalakeName, customCatalogName)), any()))
         .thenThrow(new RuntimeException("custom provider unavailable"));
 
     try (MockedStatic<MetricDataService> mockedMetricDataService =
@@ -734,9 +736,15 @@ class TestMetricsCollector {
 
   private void mockLoadCatalog() throws Exception {
     catalogWrapper = mock(CatalogManager.CatalogWrapper.class);
-    when(catalogManager.loadCatalogAndWrap(
-            eq(NameIdentifierUtil.ofCatalog(metalakeName, relationalCatalogName))))
-        .thenReturn(catalogWrapper);
+    doAnswer(
+            invocation -> {
+              ThrowableFunction<CatalogManager.CatalogWrapper, Object> operation =
+                  invocation.getArgument(1);
+              return operation.apply(catalogWrapper);
+            })
+        .when(catalogManager)
+        .doWithCatalogWrapper(
+            eq(NameIdentifierUtil.ofCatalog(metalakeName, relationalCatalogName)), any());
 
     when(catalogWrapper.capabilities()).thenReturn(Capability.DEFAULT);
     when(catalogWrapper.<Boolean>doWithViewOps(any())).thenReturn(true);
