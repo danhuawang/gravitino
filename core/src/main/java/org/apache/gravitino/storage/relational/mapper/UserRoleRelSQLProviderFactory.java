@@ -53,6 +53,18 @@ public class UserRoleRelSQLProviderFactory {
 
   static class UserRoleRelH2Provider extends UserRoleRelBaseSQLProvider {}
 
+  /**
+   * Returns SQL for listing users assigned to multiple roles.
+   *
+   * @param metalakeName metalake containing the roles
+   * @param roleNames role names to query
+   * @return SQL for the batch membership query
+   */
+  public static String listUserRoleMembersByRoleNames(
+      @Param("metalakeName") String metalakeName, @Param("roleNames") List<String> roleNames) {
+    return getProvider().listUserRoleMembersByRoleNames(metalakeName, roleNames);
+  }
+
   public static String batchInsertUserRoleRel(
       @Param("userRoleRels") List<UserRoleRelPO> userRoleRelPOs) {
     return getProvider().batchInsertUserRoleRel(userRoleRelPOs);

@@ -5,17 +5,14 @@ package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
-import com.datastrato.gravitino.authorization.RoleAssignment;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.IdpNameStatusDTO;
-import com.datastrato.gravitino.dto.authorization.RoleAssignmentDTO;
 import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.IdpGroupNameListResponse;
-import com.datastrato.gravitino.dto.responses.RoleAssignmentListResponse;
-import java.util.Arrays;
+import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -25,7 +22,8 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.Entity;
-import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.EntityStore;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.metalake.MetalakeManager;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -47,6 +45,7 @@ import org.apache.gravitino.server.web.rest.OperationType;
 public class ExtendedMetalakeGroupOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
+  private final EntityStore entityStore;
 
   @Context private HttpServletRequest httpRequest;
 
@@ -57,6 +56,7 @@ public class ExtendedMetalakeGroupOperations {
   public ExtendedMetalakeGroupOperations() {
     this.accessControlDispatcher =
         ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
+    this.entityStore = GravitinoEnv.getInstance().entityStore();
   }
 
   /**
@@ -211,8 +211,7 @@ public class ExtendedMetalakeGroupOperations {
   }
 
   /**
-   * Lists all roles assigned to a group, including role privileges and assignment audit
-   * information.
+   * Lists all roles assigned to a group with members, owner, and assignment information.
    *
    * @param metalake The metalake name.
    * @param group The group name.
@@ -232,22 +231,14 @@ public class ExtendedMetalakeGroupOperations {
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
             return Utils.ok(
-                new RoleAssignmentListResponse(
-                    toRoleAssignmentDTOs(
-                        accessControlDispatcher.listRoleAssignmentsByGroup(metalake, group))));
+                new RoleAssignmentDetailsListResponse(
+                    RoleAssignmentDTOConverter.toDTOs(
+                        metalake,
+                        accessControlDispatcher.listRoleAssignmentsByGroup(metalake, group),
+                        entityStore.relationOperations())));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.GET, group, metalake, e);
     }
-  }
-
-  private RoleAssignmentDTO[] toRoleAssignmentDTOs(RoleAssignment[] assignments) {
-    return Arrays.stream(assignments)
-        .map(
-            assignment ->
-                new RoleAssignmentDTO(
-                    DTOConverters.toDTO(assignment.role()),
-                    DTOConverters.toDTO(assignment.assignmentAudit())))
-        .toArray(RoleAssignmentDTO[]::new);
   }
 }

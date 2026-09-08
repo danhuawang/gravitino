@@ -24,6 +24,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -35,6 +36,8 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.RelationalEntity;
+import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
@@ -47,10 +50,12 @@ import org.apache.gravitino.storage.relational.mapper.UserRoleRelMapper;
 import org.apache.gravitino.storage.relational.po.ExtendedUserPO;
 import org.apache.gravitino.storage.relational.po.RolePO;
 import org.apache.gravitino.storage.relational.po.UserPO;
+import org.apache.gravitino.storage.relational.po.UserRoleMemberPO;
 import org.apache.gravitino.storage.relational.po.UserRoleRelPO;
 import org.apache.gravitino.storage.relational.utils.ExceptionUtils;
 import org.apache.gravitino.storage.relational.utils.POConverters;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 
 /** The service class for user metadata. It provides the basic database operations for user. */
 public class UserMetaService {
@@ -125,6 +130,48 @@ public class UserMetaService {
                     Collections.emptyList(),
                     AuthorizationUtils.ofUserNamespace(roleIdent.namespace().level(0))))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Lists users assigned to multiple roles in one database query.
+   *
+   * @param roleIdentifiers identifiers of roles in one metalake
+   * @return role-to-user relation entities
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "batchListUsersByRoleIdentifiers")
+  public List<RelationalEntity<?>> batchListUsersByRoleIdentifiers(
+      List<NameIdentifier> roleIdentifiers) {
+    if (roleIdentifiers == null || roleIdentifiers.isEmpty()) {
+      return new ArrayList<>();
+    }
+
+    String metalake = NameIdentifierUtil.getMetalake(roleIdentifiers.get(0));
+    for (NameIdentifier roleIdentifier : roleIdentifiers) {
+      AuthorizationUtils.checkRole(roleIdentifier);
+      Preconditions.checkArgument(
+          Objects.equals(NameIdentifierUtil.getMetalake(roleIdentifier), metalake),
+          "Role identifiers must belong to one metalake");
+    }
+
+    List<String> roleNames =
+        roleIdentifiers.stream().map(NameIdentifier::name).distinct().collect(Collectors.toList());
+    List<UserRoleMemberPO> members =
+        SessionUtils.getWithoutCommit(
+            UserMetaMapper.class,
+            mapper -> mapper.listUserRoleMembersByRoleNames(metalake, roleNames));
+    Namespace userNamespace = AuthorizationUtils.ofUserNamespace(metalake);
+    List<RelationalEntity<?>> relations = new ArrayList<>(members.size());
+    members.forEach(
+        member ->
+            relations.add(
+                new RelationalEntity<>(
+                    SupportsRelationOperations.Type.ROLE_USER_REL,
+                    NameIdentifierUtil.ofRole(metalake, member.getRoleName()),
+                    Entity.EntityType.ROLE,
+                    POConverters.fromUserPO(member, Collections.emptyList(), userNamespace))));
+    return relations;
   }
 
   @Monitored(metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME, baseMetricName = "insertUser")

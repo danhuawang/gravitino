@@ -217,6 +217,62 @@ components:
         assignmentAudit:
           $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
 
+    AssignedRole:
+      type: object
+      required:
+        - name
+        - properties
+        - audit
+      properties:
+        name:
+          type: string
+          description: The role name
+        properties:
+          type: object
+          description: A map of role properties
+          default: { }
+          additionalProperties:
+            type: string
+        audit:
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
+
+    RoleMembers:
+      type: object
+      required:
+        - users
+        - groups
+      properties:
+        users:
+          type: array
+          description: Users directly assigned to the role
+          items:
+            type: string
+        groups:
+          type: array
+          description: Groups directly assigned to the role
+          items:
+            type: string
+
+    RoleAssignmentDetails:
+      type: object
+      required:
+        - role
+        - members
+        - assignment
+      properties:
+        role:
+          $ref: "#/components/schemas/AssignedRole"
+        members:
+          $ref: "#/components/schemas/RoleMembers"
+        owner:
+          type: object
+          nullable: true
+          description: The role owner, or null when no owner is assigned
+          allOf:
+            - $ref: "../../docs/open-api/owners.yaml#/components/schemas/Owner"
+        assignment:
+          $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
+
     CatalogAuthorization:
       type: object
       required:
@@ -426,6 +482,24 @@ components:
           description: Roles and their principal-assignment audit information
           items:
             $ref: "#/components/schemas/RoleAssignment"
+
+    RoleAssignmentDetailsListResponse:
+      type: object
+      required:
+        - code
+        - roles
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        roles:
+          type: array
+          description: Roles with direct members, owners, and principal-assignment information
+          items:
+            $ref: "#/components/schemas/RoleAssignmentDetails"
 
     RoleSummaryListResponse:
       type: object

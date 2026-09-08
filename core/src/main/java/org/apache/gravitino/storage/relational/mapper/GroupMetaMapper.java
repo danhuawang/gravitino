@@ -22,6 +22,7 @@ package org.apache.gravitino.storage.relational.mapper;
 import java.util.List;
 import org.apache.gravitino.storage.relational.po.ExtendedGroupPO;
 import org.apache.gravitino.storage.relational.po.GroupPO;
+import org.apache.gravitino.storage.relational.po.GroupRoleMemberPO;
 import org.apache.gravitino.storage.relational.po.auth.GroupUpdatedAt;
 import org.apache.ibatis.annotations.DeleteProvider;
 import org.apache.ibatis.annotations.InsertProvider;
@@ -102,6 +103,19 @@ public interface GroupMetaMapper {
 
   @SelectProvider(type = GroupMetaSQLProviderFactory.class, method = "listGroupsByRoleId")
   List<GroupPO> listGroupsByRoleId(@Param("roleId") Long roleId);
+
+  /**
+   * Lists groups assigned to the requested roles in one query.
+   *
+   * @param metalakeName metalake containing the roles
+   * @param roleNames role names to query
+   * @return groups paired with their assigned role names
+   */
+  @SelectProvider(
+      type = GroupRoleRelSQLProviderFactory.class,
+      method = "listGroupRoleMembersByRoleNames")
+  List<GroupRoleMemberPO> listGroupRoleMembersByRoleNames(
+      @Param("metalakeName") String metalakeName, @Param("roleNames") List<String> roleNames);
 
   @DeleteProvider(
       type = GroupMetaSQLProviderFactory.class,

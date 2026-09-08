@@ -328,16 +328,16 @@ paths:
       summary: List roles assigned to a group
       operationId: listGroupRoleAssignments
       description: |
-        Returns all roles directly assigned to one metalake group. Each role includes its
-        securable objects and privileges together with audit information recorded on the
-        group-role assignment relation.
+        Returns all roles directly assigned to one metalake group. Each item includes role
+        metadata, direct user and group members, the role owner, and audit information
+        recorded on the group-role assignment relation. Role privileges are not returned.
       responses:
         "200":
           description: Returns the group's role assignments
           content:
             application/vnd.gravitino.v1+json:
               schema:
-                $ref: "./authorization.yaml#/components/schemas/RoleAssignmentListResponse"
+                $ref: "./authorization.yaml#/components/schemas/RoleAssignmentDetailsListResponse"
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "404":

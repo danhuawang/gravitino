@@ -127,6 +127,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
 
     ResourceConfig resourceConfig = new ResourceConfig();
     resourceConfig.register(ExtendedPrincipalRoleOperations.class);
+    resourceConfig.register(ExtendedRoleOperations.class);
     resourceConfig.register(
         new AbstractBinder() {
           /** Registers the mock servlet request factory. */
@@ -148,7 +149,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
             Lists.newArrayList("analysts", "admins"));
 
     Response response =
-        target("/web/security/metalakes/metalake1/roles/assignments")
+        target("/web/security/metalakes/metalake1/assignments/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(entity(request, MediaType.APPLICATION_JSON_TYPE));
@@ -171,7 +172,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
         new RoleAssignmentRequest(Collections.emptyList(), Lists.newArrayList("alice"), null);
 
     Response response =
-        target("/web/security/metalakes/metalake1/roles/assignments")
+        target("/web/security/metalakes/metalake1/assignments/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(entity(request, MediaType.APPLICATION_JSON_TYPE));
@@ -193,7 +194,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
         .assignRolesToPrincipals(any(), any(), any(), any());
 
     Response response =
-        target("/web/security/metalakes/metalake1/roles/assignments")
+        target("/web/security/metalakes/metalake1/assignments/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(entity(request, MediaType.APPLICATION_JSON_TYPE));

@@ -20,8 +20,10 @@ package org.apache.gravitino.storage.relational.mapper.provider.base;
 
 import static org.apache.gravitino.storage.relational.mapper.GroupRoleRelMapper.GROUP_ROLE_RELATION_TABLE_NAME;
 import static org.apache.gravitino.storage.relational.mapper.GroupRoleRelMapper.GROUP_TABLE_NAME;
+import static org.apache.gravitino.storage.relational.mapper.RoleMetaMapper.ROLE_TABLE_NAME;
 
 import java.util.List;
+import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.po.GroupRoleRelPO;
 import org.apache.ibatis.annotations.Param;
 
@@ -70,6 +72,43 @@ public class GroupRoleRelBaseSQLProvider {
         + " current_version = VALUES(current_version),"
         + " last_version = VALUES(last_version),"
         + " deleted_at = VALUES(deleted_at)"
+        + "</script>";
+  }
+
+  /**
+   * Builds SQL for listing groups assigned to multiple roles.
+   *
+   * @param metalakeName metalake containing the roles
+   * @param roleNames role names to query
+   * @return SQL for the batch membership query
+   */
+  public String listGroupRoleMembersByRoleNames(
+      @Param("metalakeName") String metalakeName, @Param("roleNames") List<String> roleNames) {
+    return "<script>"
+        + "SELECT ro.role_name as roleName,"
+        + " gr.group_id as groupId, gr.group_name as groupName,"
+        + " gr.metalake_id as metalakeId,"
+        + " gr.audit_info as auditInfo, gr.current_version as currentVersion,"
+        + " gr.last_version as lastVersion, gr.deleted_at as deletedAt"
+        + " FROM "
+        + ROLE_TABLE_NAME
+        + " ro JOIN "
+        + GROUP_ROLE_RELATION_TABLE_NAME
+        + " re ON ro.role_id = re.role_id"
+        + " JOIN "
+        + GROUP_TABLE_NAME
+        + " gr ON gr.group_id = re.group_id AND gr.metalake_id = ro.metalake_id"
+        + " JOIN "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mt ON ro.metalake_id = mt.metalake_id"
+        + " WHERE mt.metalake_name = #{metalakeName}"
+        + " AND ro.role_name IN ("
+        + "<foreach collection='roleNames' item='roleName' separator=','>"
+        + "#{roleName}"
+        + "</foreach>"
+        + ")"
+        + " AND ro.deleted_at = 0 AND re.deleted_at = 0"
+        + " AND gr.deleted_at = 0 AND mt.deleted_at = 0"
         + "</script>";
   }
 

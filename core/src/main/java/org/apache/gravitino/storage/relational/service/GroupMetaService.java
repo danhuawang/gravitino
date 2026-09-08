@@ -24,6 +24,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -35,6 +36,8 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.RelationalEntity;
+import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
@@ -46,6 +49,7 @@ import org.apache.gravitino.storage.relational.mapper.GroupRoleRelMapper;
 import org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper;
 import org.apache.gravitino.storage.relational.po.ExtendedGroupPO;
 import org.apache.gravitino.storage.relational.po.GroupPO;
+import org.apache.gravitino.storage.relational.po.GroupRoleMemberPO;
 import org.apache.gravitino.storage.relational.po.GroupRoleRelPO;
 import org.apache.gravitino.storage.relational.po.RolePO;
 import org.apache.gravitino.storage.relational.utils.ExceptionUtils;
@@ -163,6 +167,48 @@ public class GroupMetaService {
                     Collections.emptyList(),
                     AuthorizationUtils.ofGroupNamespace(roleIdent.namespace().level(0))))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Lists groups assigned to multiple roles in one database query.
+   *
+   * @param roleIdentifiers identifiers of roles in one metalake
+   * @return role-to-group relation entities
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "batchListGroupsByRoleIdentifiers")
+  public List<RelationalEntity<?>> batchListGroupsByRoleIdentifiers(
+      List<NameIdentifier> roleIdentifiers) {
+    if (roleIdentifiers == null || roleIdentifiers.isEmpty()) {
+      return new ArrayList<>();
+    }
+
+    String metalake = NameIdentifierUtil.getMetalake(roleIdentifiers.get(0));
+    for (NameIdentifier roleIdentifier : roleIdentifiers) {
+      AuthorizationUtils.checkRole(roleIdentifier);
+      Preconditions.checkArgument(
+          Objects.equals(NameIdentifierUtil.getMetalake(roleIdentifier), metalake),
+          "Role identifiers must belong to one metalake");
+    }
+
+    List<String> roleNames =
+        roleIdentifiers.stream().map(NameIdentifier::name).distinct().collect(Collectors.toList());
+    List<GroupRoleMemberPO> members =
+        SessionUtils.getWithoutCommit(
+            GroupMetaMapper.class,
+            mapper -> mapper.listGroupRoleMembersByRoleNames(metalake, roleNames));
+    Namespace groupNamespace = AuthorizationUtils.ofGroupNamespace(metalake);
+    List<RelationalEntity<?>> relations = new ArrayList<>(members.size());
+    members.forEach(
+        member ->
+            relations.add(
+                new RelationalEntity<>(
+                    SupportsRelationOperations.Type.ROLE_GROUP_REL,
+                    NameIdentifierUtil.ofRole(metalake, member.getRoleName()),
+                    Entity.EntityType.ROLE,
+                    POConverters.fromGroupPO(member, Collections.emptyList(), groupNamespace))));
+    return relations;
   }
 
   @Monitored(metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME, baseMetricName = "insertGroup")

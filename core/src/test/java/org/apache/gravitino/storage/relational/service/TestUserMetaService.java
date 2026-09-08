@@ -41,6 +41,8 @@ import java.util.stream.Collectors;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityAlreadyExistsException;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.RelationalEntity;
+import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
@@ -244,6 +246,77 @@ class TestUserMetaService extends TestJDBCBackend {
     assertFalse(legacyRecordExistsInDB(user.id(), Entity.EntityType.USER));
     assertEquals(0, countOwnerRel(metalake.id()));
     assertEquals(1, countOwnerRel(anotherMetaLake.id()));
+  }
+
+  @TestTemplate
+  void testBatchListUsersByRoleIdentifiers() throws IOException {
+    createAndInsertMakeLake(metalakeName);
+    createAndInsertCatalog(metalakeName, "catalog");
+
+    RoleEntity role1 =
+        createRoleEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofRoleNamespace(metalakeName),
+            "role1",
+            AUDIT_INFO,
+            "catalog");
+    RoleEntity role2 =
+        createRoleEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofRoleNamespace(metalakeName),
+            "role2",
+            AUDIT_INFO,
+            "catalog");
+    RoleEntity roleWithoutMembers =
+        createRoleEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofRoleNamespace(metalakeName),
+            "role3",
+            AUDIT_INFO,
+            "catalog");
+    backend.insert(role1, false);
+    backend.insert(role2, false);
+    backend.insert(roleWithoutMembers, false);
+
+    UserEntity user1 =
+        createUserEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofUserNamespace(metalakeName),
+            "user1",
+            AUDIT_INFO,
+            Lists.newArrayList(role1.name(), role2.name()),
+            Lists.newArrayList(role1.id(), role2.id()));
+    UserEntity user2 =
+        createUserEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofUserNamespace(metalakeName),
+            "user2",
+            AUDIT_INFO,
+            Lists.newArrayList(role2.name()),
+            Lists.newArrayList(role2.id()));
+    backend.insert(user1, false);
+    backend.insert(user2, false);
+
+    List<RelationalEntity<?>> relations =
+        backend.batchListEntitiesByRelation(
+            SupportsRelationOperations.Type.ROLE_USER_REL,
+            Lists.newArrayList(
+                role1.nameIdentifier(),
+                role2.nameIdentifier(),
+                roleWithoutMembers.nameIdentifier()),
+            Entity.EntityType.ROLE);
+
+    assertEquals(
+        Sets.newHashSet("role1:user1", "role2:user1", "role2:user2"),
+        relations.stream()
+            .map(relation -> relation.source().name() + ":" + relation.targetEntity().name())
+            .collect(Collectors.toSet()));
+    assertTrue(
+        relations.stream()
+            .allMatch(
+                relation ->
+                    relation.type() == SupportsRelationOperations.Type.ROLE_USER_REL
+                        && relation.sourceType() == Entity.EntityType.ROLE));
   }
 
   @TestTemplate

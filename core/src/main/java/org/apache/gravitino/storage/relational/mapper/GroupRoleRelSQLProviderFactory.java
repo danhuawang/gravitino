@@ -52,6 +52,18 @@ public class GroupRoleRelSQLProviderFactory {
 
   static class GroupRoleRelH2Provider extends GroupRoleRelBaseSQLProvider {}
 
+  /**
+   * Returns SQL for listing groups assigned to multiple roles.
+   *
+   * @param metalakeName metalake containing the roles
+   * @param roleNames role names to query
+   * @return SQL for the batch membership query
+   */
+  public static String listGroupRoleMembersByRoleNames(
+      @Param("metalakeName") String metalakeName, @Param("roleNames") List<String> roleNames) {
+    return getProvider().listGroupRoleMembersByRoleNames(metalakeName, roleNames);
+  }
+
   public static String batchInsertGroupRoleRel(
       @Param("groupRoleRels") List<GroupRoleRelPO> groupRoleRelPOS) {
     return getProvider().batchInsertGroupRoleRel(groupRoleRelPOS);

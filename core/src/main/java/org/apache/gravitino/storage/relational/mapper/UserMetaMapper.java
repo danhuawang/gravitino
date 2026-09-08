@@ -22,6 +22,7 @@ package org.apache.gravitino.storage.relational.mapper;
 import java.util.List;
 import org.apache.gravitino.storage.relational.po.ExtendedUserPO;
 import org.apache.gravitino.storage.relational.po.UserPO;
+import org.apache.gravitino.storage.relational.po.UserRoleMemberPO;
 import org.apache.gravitino.storage.relational.po.auth.AuthPrefetchRow;
 import org.apache.gravitino.storage.relational.po.auth.UserUpdatedAt;
 import org.apache.ibatis.annotations.DeleteProvider;
@@ -95,6 +96,19 @@ public interface UserMetaMapper {
 
   @SelectProvider(type = UserMetaSQLProviderFactory.class, method = "listUsersByRoleId")
   List<UserPO> listUsersByRoleId(@Param("roleId") Long roleId);
+
+  /**
+   * Lists users assigned to the requested roles in one query.
+   *
+   * @param metalakeName metalake containing the roles
+   * @param roleNames role names to query
+   * @return users paired with their assigned role names
+   */
+  @SelectProvider(
+      type = UserRoleRelSQLProviderFactory.class,
+      method = "listUserRoleMembersByRoleNames")
+  List<UserRoleMemberPO> listUserRoleMembersByRoleNames(
+      @Param("metalakeName") String metalakeName, @Param("roleNames") List<String> roleNames);
 
   @DeleteProvider(
       type = UserMetaSQLProviderFactory.class,

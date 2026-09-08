@@ -315,7 +315,7 @@ public class DatastratoRoleMetaService {
         assignments.stream()
             .filter(assignment -> assignment.getRoleId() != null)
             .collect(Collectors.toList());
-    return toRoleAssignments(metalake, activeAssignments);
+    return toRoleAssignments(metalake, activeAssignments, Collections.emptyMap());
   }
 
   private static void validateRoleAssignmentRows(

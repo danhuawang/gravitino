@@ -120,7 +120,7 @@ public class ExtendedPrincipalRoleOperations {
    * @return A successful base response when all assignments are persisted.
    */
   @PUT
-  @Path("roles/assignments")
+  @Path("assignments/roles")
   @Produces("application/vnd.gravitino.v1+json")
   @AuthorizationExpression(
       expression =

@@ -9,9 +9,12 @@ import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -24,14 +27,14 @@ import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
-import com.datastrato.gravitino.dto.authorization.RoleAssignmentDTO;
+import com.datastrato.gravitino.dto.authorization.RoleAssignmentDetailsDTO;
 import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
 import com.datastrato.gravitino.dto.responses.IdpUserNameListResponse;
-import com.datastrato.gravitino.dto.responses.RoleAssignmentListResponse;
+import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
 import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -49,8 +52,9 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.Namespace;
-import org.apache.gravitino.authorization.Group;
-import org.apache.gravitino.authorization.Privilege;
+import org.apache.gravitino.RelationalEntity;
+import org.apache.gravitino.SupportsRelationOperations;
+import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObjects;
@@ -71,6 +75,7 @@ import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -86,6 +91,8 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
   private static final DatastratoAccessControlDispatcher accessControlDispatcher =
       mock(DatastratoAccessControlDispatcher.class);
   private static final EntityStore entityStore = mock(EntityStore.class);
+  private static final SupportsRelationOperations relationOperations =
+      mock(SupportsRelationOperations.class);
   private static final Instant ASSIGNED_AT = Instant.parse("2026-08-27T01:02:03Z");
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
@@ -114,7 +121,8 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
 
   @BeforeEach
   public void resetMocks() throws IOException {
-    reset(accessControlDispatcher, entityStore);
+    reset(accessControlDispatcher, entityStore, relationOperations);
+    when(entityStore.relationOperations()).thenReturn(relationOperations);
     mockInUseMetalake();
   }
 
@@ -245,17 +253,67 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
   }
 
   @Test
-  public void testListUserRoleAssignments() {
+  public void testListUserRoleAssignments() throws IOException {
     when(accessControlDispatcher.listRoleAssignmentsByUser("metalake", "user1"))
-        .thenReturn(new RoleAssignment[] {buildAssignment("role1")});
+        .thenReturn(new RoleAssignment[] {buildAssignment("role1"), buildAssignment("role2")});
+    when(relationOperations.batchListEntitiesByRelation(
+            eq(SupportsRelationOperations.Type.ROLE_USER_REL),
+            anyList(),
+            eq(Entity.EntityType.ROLE)))
+        .thenReturn(
+            Lists.newArrayList(
+                roleRelation(
+                    SupportsRelationOperations.Type.ROLE_USER_REL, "role1", buildUser("user2")),
+                roleRelation(
+                    SupportsRelationOperations.Type.ROLE_USER_REL, "role1", buildUser("user1"))));
+    when(relationOperations.batchListEntitiesByRelation(
+            eq(SupportsRelationOperations.Type.ROLE_GROUP_REL),
+            anyList(),
+            eq(Entity.EntityType.ROLE)))
+        .thenReturn(
+            Lists.newArrayList(
+                roleRelation(
+                    SupportsRelationOperations.Type.ROLE_GROUP_REL,
+                    "role1",
+                    buildGroup("group1"))));
+    when(relationOperations.batchListEntitiesByRelation(
+            eq(SupportsRelationOperations.Type.OWNER_REL), anyList(), eq(Entity.EntityType.ROLE)))
+        .thenReturn(
+            Lists.newArrayList(
+                roleRelation(
+                    SupportsRelationOperations.Type.OWNER_REL, "role1", buildUser("owner1"))));
 
     Response response = get("/web/security/metalakes/metalake/users/user1/roles");
 
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-    RoleAssignmentListResponse result = response.readEntity(RoleAssignmentListResponse.class);
+    RoleAssignmentDetailsListResponse result =
+        response.readEntity(RoleAssignmentDetailsListResponse.class);
     Assertions.assertEquals(0, result.getCode());
+    Assertions.assertEquals(2, result.getRoles().length);
     assertAssignment(result.getRoles()[0]);
+    Assertions.assertEquals("role2", result.getRoles()[1].getRole().getName());
+    Assertions.assertEquals(0, result.getRoles()[1].getMembers().getUsers().length);
+    Assertions.assertEquals(0, result.getRoles()[1].getMembers().getGroups().length);
+    Assertions.assertNull(result.getRoles()[1].getOwner());
     verify(accessControlDispatcher).listRoleAssignmentsByUser("metalake", "user1");
+    verifyBatchRelationLookup(SupportsRelationOperations.Type.ROLE_USER_REL, 2);
+    verifyBatchRelationLookup(SupportsRelationOperations.Type.ROLE_GROUP_REL, 2);
+    verifyBatchRelationLookup(SupportsRelationOperations.Type.OWNER_REL, 2);
+  }
+
+  @Test
+  public void testListUserRoleAssignmentsWithEmptyResult() throws IOException {
+    when(accessControlDispatcher.listRoleAssignmentsByUser("metalake", "user1"))
+        .thenReturn(new RoleAssignment[0]);
+
+    Response response = get("/web/security/metalakes/metalake/users/user1/roles");
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    RoleAssignmentDetailsListResponse result =
+        response.readEntity(RoleAssignmentDetailsListResponse.class);
+    Assertions.assertEquals(0, result.getRoles().length);
+    verify(relationOperations, never())
+        .batchListEntitiesByRelation(any(), anyList(), eq(Entity.EntityType.ROLE));
   }
 
   @Test
@@ -372,7 +430,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     when(entityStore.get(any(), any(), any())).thenReturn(metalake);
   }
 
-  private static User buildUser(String name) {
+  private static UserEntity buildUser(String name) {
     return UserEntity.builder()
         .withId(1L)
         .withName(name)
@@ -383,7 +441,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
         .build();
   }
 
-  private static Group buildGroup(String name) {
+  private static GroupEntity buildGroup(String name) {
     return GroupEntity.builder()
         .withId(1L)
         .withName(name)
@@ -418,14 +476,35 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     return new RoleAssignment(role, assignmentAudit);
   }
 
-  private static void assertAssignment(RoleAssignmentDTO assignment) {
-    Role role = assignment.getRole();
-    Assertions.assertEquals("role1", role.name());
-    Assertions.assertEquals(1, role.securableObjects().size());
-    Assertions.assertEquals("catalog1", role.securableObjects().get(0).fullName());
-    Assertions.assertEquals(
-        Privilege.Name.USE_CATALOG, role.securableObjects().get(0).privileges().get(0).name());
-    Assertions.assertEquals(ASSIGNED_AT, assignment.getAssignmentAudit().lastModifiedTime());
-    Assertions.assertEquals("admin", assignment.getAssignmentAudit().lastModifier());
+  private void verifyBatchRelationLookup(
+      SupportsRelationOperations.Type relationType, int expectedRoleCount) throws IOException {
+    verify(relationOperations)
+        .batchListEntitiesByRelation(
+            eq(relationType),
+            argThat(identifiers -> identifiers.size() == expectedRoleCount),
+            eq(Entity.EntityType.ROLE));
+  }
+
+  private static RelationalEntity<UserEntity> roleRelation(
+      SupportsRelationOperations.Type relationType, String role, UserEntity user) {
+    return new RelationalEntity<>(
+        relationType, NameIdentifierUtil.ofRole("metalake", role), Entity.EntityType.ROLE, user);
+  }
+
+  private static RelationalEntity<GroupEntity> roleRelation(
+      SupportsRelationOperations.Type relationType, String role, GroupEntity group) {
+    return new RelationalEntity<>(
+        relationType, NameIdentifierUtil.ofRole("metalake", role), Entity.EntityType.ROLE, group);
+  }
+
+  private static void assertAssignment(RoleAssignmentDetailsDTO assignment) {
+    Assertions.assertEquals("role1", assignment.getRole().getName());
+    Assertions.assertArrayEquals(
+        new String[] {"user1", "user2"}, assignment.getMembers().getUsers());
+    Assertions.assertArrayEquals(new String[] {"group1"}, assignment.getMembers().getGroups());
+    Assertions.assertEquals("owner1", assignment.getOwner().name());
+    Assertions.assertEquals(Owner.Type.USER, assignment.getOwner().type());
+    Assertions.assertEquals(ASSIGNED_AT, assignment.getAssignment().lastModifiedTime());
+    Assertions.assertEquals("admin", assignment.getAssignment().lastModifier());
   }
 }

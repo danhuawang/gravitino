@@ -40,6 +40,8 @@ import java.util.stream.Collectors;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityAlreadyExistsException;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.RelationalEntity;
+import org.apache.gravitino.SupportsRelationOperations;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.PagedResult;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
@@ -143,6 +145,77 @@ class TestGroupMetaService extends TestJDBCBackend {
       backend.hardDeleteLegacyData(entityType, Instant.now().toEpochMilli() + 1000);
     }
     assertFalse(legacyRecordExistsInDB(group.id(), Entity.EntityType.GROUP));
+  }
+
+  @TestTemplate
+  void testBatchListGroupsByRoleIdentifiers() throws IOException {
+    createAndInsertMakeLake(metalakeName);
+    createAndInsertCatalog(metalakeName, catalogName);
+
+    RoleEntity role1 =
+        createRoleEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofRoleNamespace(metalakeName),
+            "role1",
+            AUDIT_INFO,
+            catalogName);
+    RoleEntity role2 =
+        createRoleEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofRoleNamespace(metalakeName),
+            "role2",
+            AUDIT_INFO,
+            catalogName);
+    RoleEntity roleWithoutMembers =
+        createRoleEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofRoleNamespace(metalakeName),
+            "role3",
+            AUDIT_INFO,
+            catalogName);
+    backend.insert(role1, false);
+    backend.insert(role2, false);
+    backend.insert(roleWithoutMembers, false);
+
+    GroupEntity group1 =
+        createGroupEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofGroupNamespace(metalakeName),
+            "group1",
+            AUDIT_INFO,
+            Lists.newArrayList(role1.name(), role2.name()),
+            Lists.newArrayList(role1.id(), role2.id()));
+    GroupEntity group2 =
+        createGroupEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofGroupNamespace(metalakeName),
+            "group2",
+            AUDIT_INFO,
+            Lists.newArrayList(role2.name()),
+            Lists.newArrayList(role2.id()));
+    backend.insert(group1, false);
+    backend.insert(group2, false);
+
+    List<RelationalEntity<?>> relations =
+        backend.batchListEntitiesByRelation(
+            SupportsRelationOperations.Type.ROLE_GROUP_REL,
+            Lists.newArrayList(
+                role1.nameIdentifier(),
+                role2.nameIdentifier(),
+                roleWithoutMembers.nameIdentifier()),
+            Entity.EntityType.ROLE);
+
+    assertEquals(
+        Sets.newHashSet("role1:group1", "role2:group1", "role2:group2"),
+        relations.stream()
+            .map(relation -> relation.source().name() + ":" + relation.targetEntity().name())
+            .collect(Collectors.toSet()));
+    assertTrue(
+        relations.stream()
+            .allMatch(
+                relation ->
+                    relation.type() == SupportsRelationOperations.Type.ROLE_GROUP_REL
+                        && relation.sourceType() == Entity.EntityType.ROLE));
   }
 
   @TestTemplate

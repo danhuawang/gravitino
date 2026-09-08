@@ -45,7 +45,7 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/roles/assignments:
+  /web/security/metalakes/{metalake}/assignments/roles:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     put:
