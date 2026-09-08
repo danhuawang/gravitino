@@ -1,0 +1,48 @@
+name: MCP Integration Test Action
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        required: true
+        description: 'Java version'
+        type: string
+
+jobs:
+  mcp-authz-integration-test:
+    name: JDK${{ inputs.java-version }}
+    runs-on: gcp-arc-runners
+    timeout-minutes: 60
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-java-toolchains
+        with:
+          java-version: ${{ inputs.java-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+
+      - name: Build Gravitino distribution
+        run: ./gradlew compileDistribution -x test -PskipWeb=true
+
+      - name: Run MCP authorization integration test
+        env:
+          GRAVITINO_HOME: ${{ github.workspace }}/distribution/package
+        run: |
+          ./mcp-server/dev/run_authz_integration_test.sh
+
+      - name: Upload server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-authz-it-logs
+          path: |
+            distribution/package/logs/**
+            mcp-server/gravitino-mcp-audit.log
+            mcp-server/gravitino-mcp.log
+          if-no-files-found: ignore
