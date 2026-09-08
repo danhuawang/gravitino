@@ -130,7 +130,7 @@ public class TestAuthorization {
     try (IsolatedClassLoader isolatedClassLoader =
         new IsolatedClassLoader(
             Collections.emptyList(), Collections.emptyList(), Collections.emptyList())) {
-      catalog.initAuthorizationPluginInstance(isolatedClassLoader);
+      catalog.initAuthorizationPluginInstance(isolatedClassLoader, METALAKE_ID);
       Assertions.assertNotNull(catalog.getAuthorizationPlugin());
 
       catalog.close();
@@ -162,7 +162,7 @@ public class TestAuthorization {
             new IsolatedClassLoader(
                 Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
         catalog) {
-      catalog.initAuthorizationPluginInstance(isolatedClassLoader);
+      catalog.initAuthorizationPluginInstance(isolatedClassLoader, METALAKE_ID);
 
       Assertions.assertNull(catalog.getAuthorizationPlugin());
     }
