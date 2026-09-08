@@ -130,7 +130,6 @@ public abstract class BaseCatalog extends AbstractCatalog {
   protected abstract AbstractCatalog realCatalog();
 
   /**
-<<<<<<< HEAD
    * Converts a Flink logical type to a Gravitino type. Subclasses may override this to special-case
    * types whose default mapping does not fit a particular catalog (e.g. Oracle has no pure date
    * type, so its catalog maps Flink's {@code DATE} to a Gravitino timestamp instead).
@@ -140,7 +139,9 @@ public abstract class BaseCatalog extends AbstractCatalog {
    */
   protected Type toGravitinoType(LogicalType logicalType) {
     return TypeUtils.toGravitinoType(logicalType);
-=======
+  }
+
+  /**
    * Converts a Gravitino type to a Flink type, allowing catalog-specific native type mappings.
    *
    * @param type the Gravitino type
@@ -148,7 +149,6 @@ public abstract class BaseCatalog extends AbstractCatalog {
    */
   protected DataType toFlinkType(Type type) {
     return TypeUtils.toFlinkType(type);
->>>>>>> upstream/branch-1.3
   }
 
   @Override
