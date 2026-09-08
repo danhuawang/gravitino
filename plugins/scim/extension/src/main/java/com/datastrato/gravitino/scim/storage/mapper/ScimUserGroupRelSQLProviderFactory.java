@@ -51,8 +51,10 @@ public class ScimUserGroupRelSQLProviderFactory {
       @Param("groupId") long groupId,
       @Param("userIds") List<Long> userIds,
       @Param("currentVersion") Long currentVersion,
-      @Param("lastVersion") Long lastVersion) {
-    return currentProvider().insertMemberships(groupId, userIds, currentVersion, lastVersion);
+      @Param("lastVersion") Long lastVersion,
+      @Param("auditInfo") String auditInfo) {
+    return currentProvider()
+        .insertMemberships(groupId, userIds, currentVersion, lastVersion, auditInfo);
   }
 
   public static String softDeleteMembersByUserId(@Param("userId") long userId) {

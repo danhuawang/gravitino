@@ -6,6 +6,7 @@ package com.datastrato.gravitino.scim;
 
 import com.datastrato.gravitino.scim.storage.po.ScimGroupMemberPO;
 import com.datastrato.gravitino.scim.storage.relational.ScimRelationalStorage;
+import com.datastrato.gravitino.scim.storage.relational.utils.ScimPOConverters;
 import com.datastrato.gravitino.scim.storage.service.ScimUserGroupRelMetaService;
 import com.google.common.base.Preconditions;
 import java.io.Closeable;
@@ -96,7 +97,11 @@ public class ScimUserGroupRelManager implements Closeable {
       return;
     }
     USER_GROUP_REL_META_SERVICE.insertMemberships(
-        groupId, userIds, POConverters.INIT_VERSION, POConverters.INIT_VERSION);
+        groupId,
+        userIds,
+        POConverters.INIT_VERSION,
+        POConverters.INIT_VERSION,
+        ScimPOConverters.newCreateAuditInfo());
   }
 
   /** Removes users from a group. */
@@ -113,7 +118,8 @@ public class ScimUserGroupRelManager implements Closeable {
         groupId,
         userIds == null ? List.of() : userIds,
         POConverters.INIT_VERSION,
-        POConverters.INIT_VERSION);
+        POConverters.INIT_VERSION,
+        ScimPOConverters.newCreateAuditInfo());
   }
 
   /** Replaces one membership entry's user id when the replacement user exists. */

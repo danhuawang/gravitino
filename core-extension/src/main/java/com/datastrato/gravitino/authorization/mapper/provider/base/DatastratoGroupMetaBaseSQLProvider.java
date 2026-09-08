@@ -133,9 +133,9 @@ public class DatastratoGroupMetaBaseSQLProvider {
    * Lists Directory Groups for Configure → Directory → Groups.
    *
    * <p>Local rows come from {@code idp_group_meta}; Provisioned from {@code scim_group_meta}
-   * excluding IdP names; JIT from distinct {@code group_meta} names absent from both identity
-   * stores. {@code memberCount} is the identity-store membership count (0 for JIT). Metalakes are
-   * distinct {@code metalake_meta} names that contain the group name in {@code group_meta}.
+   * excluding IdP names. Metalake-only ({@code JIT}) names are not included. {@code memberCount} is
+   * the identity-store membership count. Metalakes are distinct {@code metalake_meta} names that
+   * contain the group name in {@code group_meta}.
    *
    * @return MyBatis SQL ordered by group name.
    */
@@ -250,25 +250,107 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
         + " sg WHERE sg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0)"
-        + " UNION ALL "
-        + "SELECT gt.group_name as groupName, "
-        + IdentitySource.ORIGIN_CODE_JIT
-        + " as originCode,"
-        + " "
-        + nullLongLiteral()
-        + " as idpGroupId, "
-        + nullLongLiteral()
-        + " as scimGroupId"
-        + " FROM "
-        + GROUP_TABLE_NAME
-        + " gt WHERE gt.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
-        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0)"
-        + " AND NOT EXISTS (SELECT 1 FROM "
-        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
-        + " sg WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0)"
-        + " GROUP BY gt.group_name";
+        + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0)";
+  }
+
+  /**
+   * Loads one Directory Group Overview row by group name and origin.
+   *
+   * <p>{@code originCode} must be {@link IdentitySource#ORIGIN_CODE_LOCAL} or {@link
+   * IdentitySource#ORIGIN_CODE_PROVISIONED}. Local reads {@code idp_group_meta}; Provisioned reads
+   * {@code scim_group_meta} excluding IdP names. {@code memberCount} comes from the matching
+   * identity-store membership table.
+   *
+   * @param groupName Group name.
+   * @param originCode Directory origin code.
+   * @return MyBatis SQL selecting at most one row.
+   */
+  public String getDirectoryGroup(
+      @Param("groupName") String groupName, @Param("originCode") int originCode) {
+    if (originCode == IdentitySource.ORIGIN_CODE_LOCAL) {
+      return "SELECT identity.groupName as groupName, identity.originCode as originCode,"
+          + " COALESCE(idpMembers.memberCount, 0) as memberCount"
+          + " FROM ("
+          + "SELECT ig.group_name as groupName, "
+          + IdentitySource.ORIGIN_CODE_LOCAL
+          + " as originCode, ig.group_id as idpGroupId"
+          + " FROM "
+          + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+          + " ig WHERE ig.group_name = #{groupName} AND ig.deleted_at = 0"
+          + ") identity"
+          + " LEFT JOIN ("
+          + idpDirectoryMemberAggregation()
+          + ") idpMembers ON identity.idpGroupId = idpMembers.groupId";
+    }
+    if (originCode == IdentitySource.ORIGIN_CODE_PROVISIONED) {
+      return "SELECT identity.groupName as groupName, identity.originCode as originCode,"
+          + " COALESCE(scimMembers.memberCount, 0) as memberCount"
+          + " FROM ("
+          + "SELECT sg.group_name as groupName, "
+          + IdentitySource.ORIGIN_CODE_PROVISIONED
+          + " as originCode, sg.group_id as scimGroupId"
+          + " FROM "
+          + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+          + " sg WHERE sg.group_name = #{groupName} AND sg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+          + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0)"
+          + ") identity"
+          + " LEFT JOIN ("
+          + scimDirectoryMemberAggregation()
+          + ") scimMembers ON identity.scimGroupId = scimMembers.groupId";
+    }
+    throw new IllegalArgumentException(
+        "Directory group detail originCode must be Local or Provisioned, got: " + originCode);
+  }
+
+  /**
+   * Lists Directory Groups for Configure → Directory → User → Groups.
+   *
+   * <p>{@code originCode} must be Local or Provisioned. Local resolves membership from {@code
+   * idp_user_group_rel}; Provisioned from {@code scim_user_group_rel} (user not in IdP). Each row
+   * includes identity-store {@code memberCount}. Returns an empty list when the user exists but has
+   * no groups.
+   *
+   * @param userName Username.
+   * @param originCode Directory origin code.
+   * @return MyBatis SQL ordered by group name.
+   */
+  public String listDirectoryGroupsForUser(
+      @Param("userName") String userName, @Param("originCode") int originCode) {
+    if (originCode == IdentitySource.ORIGIN_CODE_LOCAL) {
+      return "SELECT ig.group_name as groupName, "
+          + IdentitySource.ORIGIN_CODE_LOCAL
+          + " as originCode, COALESCE(idpMembers.memberCount, 0) as memberCount, NULL as"
+          + " metalakeNames FROM "
+          + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+          + " iu JOIN "
+          + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+          + " iugr ON iugr.user_id = iu.user_id AND iugr.deleted_at = 0 JOIN "
+          + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+          + " ig ON ig.group_id = iugr.group_id AND ig.deleted_at = 0 LEFT JOIN ("
+          + idpDirectoryMemberAggregation()
+          + ") idpMembers ON idpMembers.groupId = ig.group_id WHERE iu.user_name = #{userName} AND"
+          + " iu.deleted_at = 0 ORDER BY ig.group_name";
+    }
+    if (originCode == IdentitySource.ORIGIN_CODE_PROVISIONED) {
+      return "SELECT sg.group_name as groupName, "
+          + IdentitySource.ORIGIN_CODE_PROVISIONED
+          + " as originCode, COALESCE(scimMembers.memberCount, 0) as memberCount, NULL as"
+          + " metalakeNames FROM "
+          + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+          + " su JOIN "
+          + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
+          + " sur ON sur.user_id = su.user_id AND sur.deleted_at = 0 JOIN "
+          + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+          + " sg ON sg.group_id = sur.group_id AND sg.deleted_at = 0 LEFT JOIN ("
+          + scimDirectoryMemberAggregation()
+          + ") scimMembers ON scimMembers.groupId = sg.group_id WHERE su.user_name = #{userName} AND"
+          + " su.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+          + " iu WHERE iu.user_name = su.user_name AND iu.deleted_at = 0) ORDER BY sg.group_name";
+    }
+    throw new IllegalArgumentException(
+        "Directory user groups originCode must be Local or Provisioned, got: " + originCode);
   }
 
   private String idpDirectoryMemberAggregation() {

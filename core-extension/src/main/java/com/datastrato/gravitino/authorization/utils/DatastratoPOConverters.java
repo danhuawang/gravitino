@@ -60,7 +60,12 @@ public final class DatastratoPOConverters {
     Preconditions.checkNotNull(userPO, "userPO cannot be null");
     Preconditions.checkNotNull(namespace, "namespace cannot be null");
     UserEntity user = POConverters.fromExtendedUserPO(userPO, namespace);
-    return new UserWithGroups(user, parseNameArray(userPO.getGroupNames()), userPO.origin());
+    return new UserWithGroups(
+        user,
+        parseNameArray(userPO.getGroupNames()),
+        userPO.origin(),
+        userPO.enabledOrDefault(),
+        userPO.getExternalId());
   }
 
   /**

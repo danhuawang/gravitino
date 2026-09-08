@@ -40,10 +40,10 @@ paths:
         Rows come from:
         - `idp_group_meta` → `origin=Local`
         - `scim_group_meta` (not also in IdP) → `origin=Provisioned`
-        - distinct `group_meta` names absent from IdP and SCIM → `origin=JIT`
 
-        `memberCount` is the identity-store membership count (0 for JIT). `metalakes` are metalake
-        names where the group name exists in `group_meta`.
+        Metalake-only (`group_meta`) names are not listed. `memberCount` is the identity-store
+        membership count. `metalakes` are metalake names where the group name exists in
+        `group_meta`.
 
       responses:
         "200":
@@ -99,6 +99,104 @@ paths:
                 $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
         "409":
           description: Conflict - The group name already exists in `idp_group_meta`
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/directory/groups/{group}:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
+      - name: origin
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+            - Local
+            - Provisioned
+        description: Identity origin of the Directory Group (`Local` or `Provisioned`)
+    get:
+      tags:
+        - groups
+      summary: Get a Directory Group
+      operationId: getDirectoryGroup
+      description: |
+        Get one Directory Group for Configure → Directory → Group Overview.
+
+        Requires `origin`:
+        - `Local` → load from `idp_group_meta` with IdP membership count
+        - `Provisioned` → load from `scim_group_meta` excluding IdP names with SCIM membership count
+
+        `memberCount` maps to Members on the Overview. `createTime` is reserved and currently
+        omitted (identity stores do not persist creation time).
+
+      responses:
+        "200":
+          description: Returns the Directory Group detail
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/DirectoryGroupDetailResponse"
+              examples:
+                DirectoryGroupDetailResponse:
+                  $ref: "#/components/examples/DirectoryGroupDetailResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The Directory Group does not exist for that origin
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/directory/groups/{group}/users:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
+      - name: origin
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+            - Local
+            - Provisioned
+        description: Identity origin of the Directory Group (`Local` or `Provisioned`)
+    get:
+      tags:
+        - groups
+      summary: List members of a Directory Group
+      operationId: listDirectoryGroupUsers
+      description: |
+        List identity-store users for Configure → Directory → Group → Members.
+
+        Requires `origin`:
+        - `Local` → membership from `idp_user_group_rel` / `idp_user_meta`
+        - `Provisioned` → membership from `scim_user_group_rel` / `scim_user_meta` (group not in IdP)
+
+        Each user includes `name` (Username), `enabled` (Status: Active / Suspended), and `origin`
+        matching the group's identity store. `groups` and `metalakes` are empty on this response.
+        Missing group for that origin returns 404; a group with no members returns an empty `users`
+        array. Footer member count is the length of `users`.
+
+      responses:
+        "200":
+          description: Returns the Directory Group's members
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./users.yaml#/components/schemas/DirectoryUserListResponse"
+              examples:
+                DirectoryGroupUsersResponse:
+                  $ref: "#/components/examples/DirectoryGroupUsersResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The Directory Group does not exist for that origin
           content:
             application/vnd.gravitino.v1+json:
               schema:
@@ -288,11 +386,13 @@ paths:
         group name exists in `idp_group_meta` (and not SCIM), otherwise `scim_user_group_rel` when
         it exists in `scim_group_meta`.
 
-        Each user includes `origin` and `enabled` (Status):
+        Each user includes `origin`, `enabled` (Status), and optional `externalId`:
         - `origin` is `Local` when the username exists in `idp_user_meta`, `Provisioned` when it
           exists in `scim_user_meta` (and not IdP), otherwise `JIT`
         - `enabled` comes from `idp_user_meta` or `scim_user_meta`, defaulting to Active when
           neither has a row
+        - `externalId` is set for Provisioned users from `scim_user_meta` and omitted for Local /
+          JIT
 
         Footer member count is the length of the returned `users` array (no separate `userCount`
         field on this response).
@@ -543,6 +643,45 @@ components:
         group:
           $ref: "#/components/schemas/DirectoryGroupDTO"
 
+    DirectoryGroupDetailDTO:
+      type: object
+      required:
+        - name
+        - memberCount
+        - origin
+      properties:
+        name:
+          type: string
+          description: Group name
+        memberCount:
+          type: integer
+          format: int32
+          description: Identity-store member count (Members on Overview)
+        origin:
+          $ref: "#/components/schemas/IdentitySource"
+        createTime:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Creation time when available. Currently omitted because identity stores do not persist
+            creation time.
+
+    DirectoryGroupDetailResponse:
+      type: object
+      required:
+        - code
+        - group
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        group:
+          $ref: "#/components/schemas/DirectoryGroupDetailDTO"
+
     ExtendedGroupResponse:
       type: object
       properties:
@@ -620,12 +759,6 @@ components:
       value:
         code: 0
         groups:
-          - name: analysts
-            memberCount: 0
-            origin: JIT
-            metalakes:
-              - Contoso
-              - Northwind
           - name: contractors
             memberCount: 0
             origin: Local
@@ -642,3 +775,26 @@ components:
             origin: Provisioned
             metalakes:
               - Contoso
+
+    DirectoryGroupDetailResponse:
+      value:
+        code: 0
+        group:
+          name: governance
+          memberCount: 2
+          origin: Provisioned
+
+    DirectoryGroupUsersResponse:
+      value:
+        code: 0
+        users:
+          - name: dana.k
+            enabled: true
+            origin: Provisioned
+            groups: []
+            metalakes: []
+          - name: ivanne
+            enabled: false
+            origin: Provisioned
+            groups: []
+            metalakes: []

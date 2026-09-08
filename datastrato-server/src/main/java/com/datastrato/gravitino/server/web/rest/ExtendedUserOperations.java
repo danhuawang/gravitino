@@ -5,29 +5,39 @@ package com.datastrato.gravitino.server.web.rest;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
 import com.datastrato.gravitino.dto.authorization.DirectoryUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.DirectoryUserAddRequest;
 import com.datastrato.gravitino.dto.requests.DirectoryUserDeleteRequest;
 import com.datastrato.gravitino.dto.requests.DirectoryUserEnabledBatchUpdateRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
+import com.datastrato.gravitino.dto.responses.DirectoryUserDetailResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryUserResponse;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.dto.responses.NameListResponse;
+import org.apache.gravitino.exceptions.ForbiddenException;
+import org.apache.gravitino.server.authorization.GravitinoAuthorizerProvider;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
+import org.apache.gravitino.utils.PrincipalUtils;
 
 /**
  * Enterprise REST APIs for Directory user administration.
@@ -53,7 +63,7 @@ public class ExtendedUserOperations {
   }
 
   /**
-   * Lists Directory Users for Configure → Directory → Users (Local / Provisioned / JIT).
+   * Lists Directory Users for Configure → Directory → Users (Local / Provisioned).
    *
    * @return Directory users with groups, metalakes, enabled, and origin.
    */
@@ -71,6 +81,73 @@ public class ExtendedUserOperations {
                       DirectoryUserDTO.from(accessControlDispatcher.listDirectoryUsers()))));
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.LIST, "", "", e);
+    }
+  }
+
+  /**
+   * Gets one Directory User for Configure → Directory → User Overview.
+   *
+   * <p>Instance-scoped (no metalake path): allow {@code SERVICE_ADMIN} or the signed-in user
+   * reading their own name. Self-check is done in-method so we do not rely on {@code USER::SELF}
+   * building a metalake-scoped NameIdentifier.
+   *
+   * @param user Username.
+   * @param origin Local or Provisioned.
+   * @return User detail including optional {@code externalId}.
+   */
+  @GET
+  @Path("directory/users/{user}")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "")
+  public Response getDirectoryUser(
+      @PathParam("user") String user, @QueryParam("origin") String origin) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            requireServiceAdminOrSelf(user);
+            IdentitySource identitySource = requireDirectoryOrigin(origin);
+            return Utils.ok(
+                new DirectoryUserDetailResponse(
+                    accessControlDispatcher.getDirectoryUser(user, identitySource)));
+          });
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
+    } catch (Exception e) {
+      return ExceptionHandlers.handleUserException(OperationType.GET, user, "", e);
+    }
+  }
+
+  /**
+   * Lists Directory Groups for Configure → Directory → User → Groups.
+   *
+   * <p>Same auth as {@link #getDirectoryUser}: service admin or self.
+   *
+   * @param user Username.
+   * @param origin Local or Provisioned.
+   * @return Groups with {@code memberCount} and {@code origin}.
+   */
+  @GET
+  @Path("directory/users/{user}/groups")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "")
+  public Response listDirectoryGroupsForUser(
+      @PathParam("user") String user, @QueryParam("origin") String origin) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            requireServiceAdminOrSelf(user);
+            IdentitySource identitySource = requireDirectoryOrigin(origin);
+            return Utils.ok(
+                new DirectoryGroupListResponse(
+                    DirectoryGroupDTO.from(
+                        accessControlDispatcher.listDirectoryGroupsForUser(user, identitySource))));
+          });
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
+    } catch (Exception e) {
+      return ExceptionHandlers.handleUserException(OperationType.LIST, user, "", e);
     }
   }
 
@@ -167,5 +244,38 @@ public class ExtendedUserOperations {
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.UPDATE, "", "", e);
     }
+  }
+
+  private static IdentitySource requireDirectoryOrigin(String origin) {
+    if (origin == null || origin.isBlank()) {
+      throw new IllegalArgumentException(
+          "Query parameter 'origin' is required (Local or Provisioned)");
+    }
+    IdentitySource identitySource = IdentitySource.fromValue(origin);
+    if (identitySource != IdentitySource.LOCAL && identitySource != IdentitySource.PROVISIONED) {
+      throw new IllegalArgumentException(
+          "Query parameter 'origin' must be Local or Provisioned, got: " + origin);
+    }
+    return identitySource;
+  }
+
+  /**
+   * Allows service admins or the signed-in user matching {@code user}. Used for Directory reads
+   * that have no metalake path parameter.
+   *
+   * @param user Directory username from the path.
+   */
+  static void requireServiceAdminOrSelf(String user) {
+    GravitinoAuthorizer authorizer =
+        GravitinoAuthorizerProvider.getInstance().getGravitinoAuthorizer();
+    if (authorizer.isServiceAdmin()) {
+      return;
+    }
+    if (Objects.equals(user, PrincipalUtils.getCurrentUserName())) {
+      return;
+    }
+    throw new ForbiddenException(
+        "User '%s' is not authorized to access directory user '%s'",
+        PrincipalUtils.getCurrentUserName(), user);
   }
 }

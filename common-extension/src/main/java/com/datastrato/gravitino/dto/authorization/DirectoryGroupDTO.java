@@ -14,9 +14,8 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Directory group DTO for Configure → Directory → Groups.
  *
- * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_group_meta}), {@link
- * IdentitySource#PROVISIONED} ({@code scim_group_meta}), or {@link IdentitySource#JIT} (metalake
- * {@code group_meta} only).
+ * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_group_meta}) or {@link
+ * IdentitySource#PROVISIONED} ({@code scim_group_meta}).
  */
 public class DirectoryGroupDTO {
 
@@ -28,7 +27,7 @@ public class DirectoryGroupDTO {
     String name();
 
     /**
-     * @return Identity-store member count (0 for JIT).
+     * @return Identity-store member count.
      */
     int memberCount();
 
@@ -74,7 +73,7 @@ public class DirectoryGroupDTO {
   }
 
   /**
-   * @return Identity-store member count (0 for JIT).
+   * @return Identity-store member count.
    */
   public int memberCount() {
     return memberCount;

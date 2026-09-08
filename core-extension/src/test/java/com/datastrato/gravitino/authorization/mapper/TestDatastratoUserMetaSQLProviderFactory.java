@@ -43,6 +43,28 @@ public class TestDatastratoUserMetaSQLProviderFactory {
     assertFalse(sql.contains("JSON_ARRAYAGG"));
   }
 
+  /**
+   * PostgreSQL {@code idp_user_meta.enabled} is {@code BOOLEAN}; {@code MAX(boolean)} is illegal.
+   * Aggregated enabled must go through integer {@code CASE WHEN} and cast SCIM {@code SMALLINT}.
+   */
+  @Test
+  public void testPostgreSQLGetUserEnabledAggregationAvoidsMaxBoolean() {
+    DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaPostgreSQLProvider provider =
+        new DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaPostgreSQLProvider();
+
+    String sql = provider.getUserByMetalakeWithOrigin("metalake", "admin");
+    String groupUsersSql = provider.listUsersForMetalakeGroupWithOrigin("metalake", "g1");
+
+    for (String s : new String[] {sql, groupUsersSql}) {
+      assertTrue(
+          s.contains(
+              "COALESCE(MAX(CASE WHEN COALESCE((su.enabled <> 0), iu.enabled) THEN 1 ELSE 0"
+                  + " END), 1) <> 0 as enabled"));
+      assertFalse(s.contains("MAX(COALESCE((su.enabled <> 0), iu.enabled))"));
+      assertFalse(s.contains("MAX(COALESCE(su.enabled, iu.enabled))"));
+    }
+  }
+
   private static void assertUsesJsonArrayAgg(String sql) {
     assertTrue(sql.contains("JSON_ARRAYAGG(rot.role_name) as roleNames"));
     assertTrue(sql.contains("JSON_ARRAYAGG(rot.role_id) as roleIds"));

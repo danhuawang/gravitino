@@ -166,6 +166,12 @@ paths:
   /web/security/directory/users:
     $ref: "./users.yaml#/paths/~1web~1security~1directory~1users"
 
+  /web/security/directory/users/{user}:
+    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1%7Buser%7D"
+
+  /web/security/directory/users/{user}/groups:
+    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1%7Buser%7D~1groups"
+
   /web/security/directory/users/delete:
     $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1delete"
 
@@ -174,6 +180,12 @@ paths:
 
   /web/security/directory/groups:
     $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups"
+
+  /web/security/directory/groups/{group}:
+    $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups~1%7Bgroup%7D"
+
+  /web/security/directory/groups/{group}/users:
+    $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups~1%7Bgroup%7D~1users"
 
   /web/security/directory/groups/delete:
     $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups~1delete"

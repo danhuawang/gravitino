@@ -4,7 +4,10 @@
 package com.datastrato.gravitino.authorization.mapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
@@ -32,6 +35,8 @@ public class TestIdpNameStatusPO {
 
     assertEquals(1, users.length);
     assertEquals("alice", users[0].name());
+    assertTrue(users[0].enabled());
+    assertEquals(null, users[0].externalId());
   }
 
   @Test
@@ -79,6 +84,45 @@ public class TestIdpNameStatusPO {
         () -> IdpNameStatusPO.toExtendedGroupsForMetalakeUser("metalake", "alice", null));
   }
 
+  @Test
+  public void testToExtendedUserMapsEnabledAndExternalId() throws Exception {
+    IdpNameStatusPO.UserWithOrigin provisioned = userRow(2L, "dana.k");
+    provisioned.setOriginCode(IdentitySource.ORIGIN_CODE_PROVISIONED);
+    provisioned.setEnabled(true);
+    provisioned.setExternalId("51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b");
+
+    ExtendedUserDTO dto = IdpNameStatusPO.toExtendedUser(provisioned, "metalake");
+
+    assertEquals("dana.k", dto.name());
+    assertEquals(IdentitySource.PROVISIONED, dto.origin());
+    assertTrue(dto.enabled());
+    assertEquals("51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b", dto.externalId());
+
+    IdpNameStatusPO.UserWithOrigin local = userRow(3L, "lee.p");
+    local.setExternalId("should-be-omitted");
+    ExtendedUserDTO localDto = IdpNameStatusPO.toExtendedUser(local, "metalake");
+    assertNull(localDto.externalId());
+  }
+
+  @Test
+  public void testToExtendedUserJitDefaultsEnabledAndOmitsExternalId() throws Exception {
+    IdpNameStatusPO.UserWithOrigin jit = userRow(4L, "guest.j");
+    jit.setOriginCode(IdentitySource.ORIGIN_CODE_JIT);
+    jit.setEnabled(null);
+    jit.setExternalId("should-be-omitted-for-jit");
+
+    ExtendedUserDTO dto = IdpNameStatusPO.toExtendedUser(jit, "metalake");
+
+    assertEquals("guest.j", dto.name());
+    assertEquals(IdentitySource.JIT, dto.origin());
+    assertTrue(dto.enabled());
+    assertNull(dto.externalId());
+    String json = JsonUtils.objectMapper().writeValueAsString(dto);
+    assertTrue(json.contains("\"origin\":\"JIT\""));
+    assertTrue(json.contains("\"enabled\":true"));
+    assertFalse(json.contains("externalId"));
+  }
+
   private static IdpNameStatusPO.UserWithOrigin userRow(Long userId, String userName)
       throws Exception {
     IdpNameStatusPO.UserWithOrigin row = new IdpNameStatusPO.UserWithOrigin();
@@ -96,6 +140,7 @@ public class TestIdpNameStatusPO {
                 AuditInfo.builder().withCreator("test").withCreateTime(Instant.EPOCH).build()),
         true);
     row.setOriginCode(IdentitySource.ORIGIN_CODE_LOCAL);
+    row.setEnabled(true);
     return row;
   }
 

@@ -160,7 +160,7 @@ public class ExtendedMetalakeUserOperations {
   @GET
   @Path("{user}")
   @Produces("application/vnd.gravitino.v1+json")
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF")
   public Response getUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -192,7 +192,7 @@ public class ExtendedMetalakeUserOperations {
   @GET
   @Path("{user}/groups")
   @Produces("application/vnd.gravitino.v1+json")
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF")
   public Response listGroupsForUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,

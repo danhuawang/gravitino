@@ -17,12 +17,15 @@ import static org.mockito.Mockito.when;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.authorization.DirectoryGroup;
+import com.datastrato.gravitino.authorization.DirectoryUser;
 import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
+import com.datastrato.gravitino.dto.authorization.DirectoryUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.DirectoryGroupAddRequest;
 import com.datastrato.gravitino.dto.requests.DirectoryGroupDeleteRequest;
 import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryGroupResponse;
+import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
 import java.io.IOException;
 import java.util.List;
 import javax.servlet.http.HttpServletRequest;
@@ -238,6 +241,57 @@ public class TestExtendedGroupOperations extends JerseyTest {
         "SERVICE_ADMIN",
         ExtendedGroupOperations.class
             .getMethod("deleteDirectoryGroups", DirectoryGroupDeleteRequest.class)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
+  }
+
+  @Test
+  public void testListDirectoryUsersForGroup() {
+    when(accessControlDispatcher.listDirectoryUsersForGroup(
+            eq("governance"), eq(IdentitySource.PROVISIONED)))
+        .thenReturn(
+            List.of(
+                new DirectoryUser("dana.k", true, IdentitySource.PROVISIONED, List.of(), List.of()),
+                new DirectoryUser(
+                    "ivanne", false, IdentitySource.PROVISIONED, List.of(), List.of())));
+
+    Response response =
+        target("/web/security/directory/groups/governance/users")
+            .queryParam("origin", "Provisioned")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectoryUserListResponse body = response.readEntity(DirectoryUserListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    DirectoryUserDTO[] users = body.getUsers();
+    Assertions.assertEquals(2, users.length);
+    Assertions.assertEquals("dana.k", users[0].name());
+    Assertions.assertTrue(users[0].enabled());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, users[0].origin());
+    Assertions.assertEquals("ivanne", users[1].name());
+    Assertions.assertFalse(users[1].enabled());
+  }
+
+  @Test
+  public void testListDirectoryUsersForGroupBadOrigin() {
+    Response response =
+        target("/web/security/directory/groups/governance/users")
+            .queryParam("origin", "JIT")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testListDirectoryUsersForGroupAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "SERVICE_ADMIN",
+        ExtendedGroupOperations.class
+            .getMethod("listDirectoryUsersForGroup", String.class, String.class)
             .getAnnotation(AuthorizationExpression.class)
             .expression());
   }

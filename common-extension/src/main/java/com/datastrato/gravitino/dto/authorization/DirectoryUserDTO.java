@@ -14,9 +14,8 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Directory user DTO for Configure → Directory → Users.
  *
- * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_user_meta}), {@link
- * IdentitySource#PROVISIONED} ({@code scim_user_meta}), or {@link IdentitySource#JIT} (metalake
- * {@code user_meta} only).
+ * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_user_meta}) or {@link
+ * IdentitySource#PROVISIONED} ({@code scim_user_meta}).
  */
 public class DirectoryUserDTO {
 
@@ -38,7 +37,7 @@ public class DirectoryUserDTO {
     IdentitySource origin();
 
     /**
-     * @return Identity-store group names (empty for JIT).
+     * @return Identity-store group names.
      */
     List<String> groups();
 
@@ -101,7 +100,7 @@ public class DirectoryUserDTO {
   }
 
   /**
-   * @return Identity-store group names (empty for JIT).
+   * @return Identity-store group names.
    */
   public List<String> groups() {
     return groups;

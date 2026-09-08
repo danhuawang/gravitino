@@ -95,7 +95,11 @@ public class IdpNameStatusPO {
   public static ExtendedUserDTO toExtendedUser(UserWithOrigin row, String metalakeName) {
     Namespace namespace = AuthorizationUtils.ofUserNamespace(metalakeName);
     return ExtendedUserDTO.from(
-        POConverters.fromExtendedUserPO(row, namespace), row.origin(), null);
+        POConverters.fromExtendedUserPO(row, namespace),
+        row.origin(),
+        null,
+        row.enabledOrDefault(),
+        row.getExternalId());
   }
 
   /**
@@ -294,6 +298,8 @@ public class IdpNameStatusPO {
   public static final class UserWithOrigin extends ExtendedUserPO {
 
     private Integer originCode;
+    private Boolean enabled;
+    private String externalId;
 
     /**
      * @return Origin code from SQL ({@link IdentitySource#ORIGIN_CODE_LOCAL}, {@link
@@ -316,6 +322,41 @@ public class IdpNameStatusPO {
     public IdentitySource origin() {
       return IdentitySource.fromOriginCode(
           originCode == null ? IdentitySource.ORIGIN_CODE_JIT : originCode);
+    }
+
+    /**
+     * @return Identity-store enabled flag, or {@code null} when unset.
+     */
+    public Boolean getEnabled() {
+      return enabled;
+    }
+
+    /**
+     * @param enabled Identity-store enabled flag.
+     */
+    public void setEnabled(Boolean enabled) {
+      this.enabled = enabled;
+    }
+
+    /**
+     * @return Enabled flag, defaulting to {@code true} when unset.
+     */
+    public boolean enabledOrDefault() {
+      return enabled == null || enabled;
+    }
+
+    /**
+     * @return SCIM external id when present.
+     */
+    public String getExternalId() {
+      return externalId;
+    }
+
+    /**
+     * @param externalId SCIM external id.
+     */
+    public void setExternalId(String externalId) {
+      this.externalId = externalId;
     }
   }
 

@@ -6,6 +6,10 @@ package com.datastrato.gravitino.authorization;
 import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
+import com.datastrato.gravitino.authorization.po.DirectoryGroupDetailPO;
+import com.datastrato.gravitino.authorization.po.DirectoryUserDetailPO;
+import com.datastrato.gravitino.dto.authorization.DirectoryGroupDetailDTO;
+import com.datastrato.gravitino.dto.authorization.DirectoryUserDetailDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
@@ -322,13 +326,40 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   /**
    * Lists Directory Users for Configure → Directory → Users.
    *
-   * <p>Local users come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}; JIT
-   * from metalake {@code user_meta} only.
+   * <p>Local users come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}.
+   * Metalake-only ({@code JIT}) names are not included.
    *
    * @return Directory users ordered by username.
    */
   public List<DirectoryUser> listDirectoryUsers() {
     return DatastratoUserMetaService.getInstance().listDirectoryUsers();
+  }
+
+  /**
+   * Gets one Directory User for Configure → Directory → User Overview.
+   *
+   * @param userName Username.
+   * @param origin Local or Provisioned (required).
+   * @return User detail with optional {@code externalId}.
+   * @throws NoSuchUserException If the identity-store user is missing for that origin.
+   */
+  public DirectoryUserDetailDTO getDirectoryUser(String userName, IdentitySource origin) {
+    DirectoryUserDetailPO row =
+        DatastratoUserMetaService.getInstance().getDirectoryUser(userName, origin);
+    return DirectoryUserDetailDTO.of(
+        row.getUserName(), row.enabledOrDefault(), row.origin(), row.getExternalId(), null);
+  }
+
+  /**
+   * Lists Directory Groups for Configure → Directory → User → Groups.
+   *
+   * @param userName Username.
+   * @param origin Local or Provisioned.
+   * @return Groups with {@code memberCount} and {@code origin}; empty when the user has no groups.
+   * @throws NoSuchUserException If the Directory User is missing for that origin.
+   */
+  public List<DirectoryGroup> listDirectoryGroupsForUser(String userName, IdentitySource origin) {
+    return DatastratoGroupMetaService.getInstance().listDirectoryGroupsForUser(userName, origin);
   }
 
   /**
@@ -411,12 +442,39 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Lists identity-store groups for Configure → Directory → Groups.
    *
    * <p>Local groups come from {@code idp_group_meta}; Provisioned groups from {@code
-   * scim_group_meta}; JIT groups from metalake {@code group_meta} only.
+   * scim_group_meta}. Metalake-only ({@code JIT}) names are not included.
    *
    * @return Directory groups ordered by group name.
    */
   public List<DirectoryGroup> listDirectoryGroups() {
     return DatastratoGroupMetaService.getInstance().listDirectoryGroups();
+  }
+
+  /**
+   * Gets one Directory Group for Configure → Directory → Group Overview.
+   *
+   * @param groupName Group name.
+   * @param origin Local or Provisioned (required).
+   * @return Group detail with {@code memberCount}.
+   * @throws NoSuchGroupException If the identity-store group is missing for that origin.
+   */
+  public DirectoryGroupDetailDTO getDirectoryGroup(String groupName, IdentitySource origin) {
+    DirectoryGroupDetailPO row =
+        DatastratoGroupMetaService.getInstance().getDirectoryGroup(groupName, origin);
+    return DirectoryGroupDetailDTO.of(
+        row.getGroupName(), row.memberCountOrZero(), row.origin(), null);
+  }
+
+  /**
+   * Lists Directory Users for Configure → Directory → Group → Members.
+   *
+   * @param groupName Group name.
+   * @param origin Local or Provisioned.
+   * @return Members with {@code enabled} and {@code origin}; empty when the group has no members.
+   * @throws NoSuchGroupException If the Directory Group is missing for that origin.
+   */
+  public List<DirectoryUser> listDirectoryUsersForGroup(String groupName, IdentitySource origin) {
+    return DatastratoUserMetaService.getInstance().listDirectoryUsersForGroup(groupName, origin);
   }
 
   /**
@@ -722,6 +780,9 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    *
    * <p>{@code origin} / {@code enabled} match {@link #listUsersWithGroups}: Local / Provisioned /
    * JIT from IdP and SCIM; enabled from IdP then SCIM, default Active.
+   *
+   * <p>Gets a metalake user with roles and identity-store {@code origin}, {@code enabled}, and
+   * optional {@code externalId} in one SQL.
    *
    * @param metalake The metalake name.
    * @param username The username.

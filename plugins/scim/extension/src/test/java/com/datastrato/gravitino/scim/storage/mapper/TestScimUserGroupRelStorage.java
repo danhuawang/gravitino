@@ -58,7 +58,8 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
 
     assertEquals(
         2,
-        scimUserGroupRelMapper.insertMemberships(GROUP_ID, List.of(USER_ID, USER_ID + 1), 1L, 0L));
+        scimUserGroupRelMapper.insertMemberships(
+            GROUP_ID, List.of(USER_ID, USER_ID + 1), 1L, 0L, TEST_AUDIT_INFO));
     assertEquals(Set.of(USER_ID, USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
   }
 
@@ -71,11 +72,13 @@ class TestScimUserGroupRelStorage extends AbstractScimUserGroupRelStorageTest {
     insertGroup(GROUP_ID, GROUP_NAME);
     insertMembership(USER_ID, GROUP_ID);
 
-    scimUserGroupRelMapper.insertMemberships(GROUP_ID, List.of(USER_ID, 999L, USER_ID + 1), 1L, 0L);
+    scimUserGroupRelMapper.insertMemberships(
+        GROUP_ID, List.of(USER_ID, 999L, USER_ID + 1), 1L, 0L, TEST_AUDIT_INFO);
 
     assertEquals(Set.of(USER_ID, USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
 
-    scimUserGroupRelMapper.insertMemberships(GROUP_ID, List.of(USER_ID, USER_ID + 1), 1L, 0L);
+    scimUserGroupRelMapper.insertMemberships(
+        GROUP_ID, List.of(USER_ID, USER_ID + 1), 1L, 0L, TEST_AUDIT_INFO);
     assertEquals(Set.of(USER_ID, USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
   }
 

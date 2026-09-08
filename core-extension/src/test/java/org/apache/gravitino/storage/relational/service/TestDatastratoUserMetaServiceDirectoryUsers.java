@@ -108,6 +108,7 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
               + "user_name VARCHAR(128) NOT NULL,"
               + "external_id VARCHAR(256),"
               + "enabled BOOLEAN NOT NULL DEFAULT TRUE,"
+              + "audit_info CLOB NOT NULL,"
               + "current_version INT NOT NULL DEFAULT 1,"
               + "last_version INT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
@@ -121,6 +122,7 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
               + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
               + "user_id BIGINT NOT NULL,"
               + "group_id BIGINT NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
     }
     SqlSessionFactoryHelper.getInstance().init(config);
@@ -157,14 +159,16 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
           "INSERT INTO idp_user_group_rel (user_id, group_id, deleted_at)"
               + " VALUES (100, 200, 0), (100, 201, 0)");
       statement.execute(
-          "INSERT INTO scim_user_meta (user_id, user_name, external_id, enabled, deleted_at)"
-              + " VALUES (10, 'dana.k', 'ext-dana', TRUE, 0),"
-              + " (11, 'sam.o', 'ext-sam', TRUE, 0)");
+          "INSERT INTO scim_user_meta (user_id, user_name, external_id, enabled, audit_info,"
+              + " deleted_at)"
+              + " VALUES (10, 'dana.k', 'ext-dana', TRUE, '{\"creator\":\"test\"}', 0),"
+              + " (11, 'sam.o', 'ext-sam', TRUE, '{\"creator\":\"test\"}', 0)");
       statement.execute(
           "INSERT INTO scim_group_meta (group_id, group_name, deleted_at)"
               + " VALUES (20, 'finance', 0)");
       statement.execute(
-          "INSERT INTO scim_user_group_rel (user_id, group_id, deleted_at) VALUES (10, 20, 0)");
+          "INSERT INTO scim_user_group_rel (user_id, group_id, audit_info, deleted_at)"
+              + " VALUES (10, 20, '{\"creator\":\"test\"}', 0)");
       statement.execute(
           "INSERT INTO user_meta"
               + " (user_id, user_name, metalake_id, enabled, audit_info, deleted_at)"
@@ -177,12 +181,12 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     }
   }
 
-  /** Verifies Local / Provisioned / JIT, groups, metalakes, and IdP precedence over SCIM. */
+  /** Verifies Local / Provisioned Directory Users (no metalake-only JIT). */
   @Test
   public void testListDirectoryUsers() {
     List<DirectoryUser> users = DatastratoUserMetaService.getInstance().listDirectoryUsers();
 
-    assertEquals(4, users.size());
+    assertEquals(3, users.size());
 
     DirectoryUser dana = users.get(0);
     assertEquals("dana.k", dana.name());
@@ -191,21 +195,14 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(List.of("finance"), dana.groups());
     assertEquals(List.of("Acme", "Contoso"), dana.metalakes());
 
-    DirectoryUser jordan = users.get(1);
-    assertEquals("jordan.m", jordan.name());
-    assertTrue(jordan.enabled());
-    assertEquals(IdentitySource.JIT, jordan.origin());
-    assertTrue(jordan.groups().isEmpty());
-    assertEquals(List.of("Contoso", "Northwind"), jordan.metalakes());
-
-    DirectoryUser lee = users.get(2);
+    DirectoryUser lee = users.get(1);
     assertEquals("lee.p", lee.name());
     assertFalse(lee.enabled());
     assertEquals(IdentitySource.LOCAL, lee.origin());
     assertTrue(lee.groups().isEmpty());
     assertEquals(List.of("Acme"), lee.metalakes());
 
-    DirectoryUser sam = users.get(3);
+    DirectoryUser sam = users.get(2);
     assertEquals("sam.o", sam.name());
     assertTrue(sam.enabled());
     assertEquals(IdentitySource.LOCAL, sam.origin());
@@ -265,8 +262,8 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     }
 
     List<DirectoryUser> users = DatastratoUserMetaService.getInstance().listDirectoryUsers();
+    assertFalse(users.get(1).enabled());
     assertFalse(users.get(2).enabled());
-    assertFalse(users.get(3).enabled());
   }
 
   @Test

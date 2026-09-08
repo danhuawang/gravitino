@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.dto.authorization;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
@@ -17,8 +18,8 @@ import org.apache.gravitino.dto.util.DTOConverters;
 
 /**
  * Enterprise user DTO for the security Users page. Extends OSS {@link UserDTO} with {@link
- * IdentitySource} derived from built-in IdP membership and serialized as {@code origin}, plus
- * metalake group membership for the Users table.
+ * IdentitySource} derived from identity-store presence and serialized as {@code origin}, metalake
+ * group membership, identity-store {@code enabled}, and optional SCIM {@code externalId}.
  */
 public class ExtendedUserDTO extends UserDTO {
 
@@ -38,6 +39,21 @@ public class ExtendedUserDTO extends UserDTO {
      * @return Local / Provisioned / JIT for the security Users table.
      */
     IdentitySource origin();
+
+    /**
+     * @return Identity-store enabled flag; defaults to {@code true} (Active).
+     */
+    default boolean enabled() {
+      return true;
+    }
+
+    /**
+     * @return SCIM external id when Provisioned; otherwise {@code null}.
+     */
+    @Nullable
+    default String externalId() {
+      return null;
+    }
   }
 
   @JsonProperty("origin")
@@ -45,6 +61,14 @@ public class ExtendedUserDTO extends UserDTO {
 
   @JsonProperty("groups")
   private List<String> groups = Collections.emptyList();
+
+  @JsonProperty("enabled")
+  private boolean enabled = true;
+
+  @Nullable
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  @JsonProperty("externalId")
+  private String externalId;
 
   /** Default constructor for Jackson deserialization. */
   private ExtendedUserDTO() {}
@@ -55,10 +79,14 @@ public class ExtendedUserDTO extends UserDTO {
       List<String> roles,
       List<String> groups,
       AuditDTO audit,
-      IdentitySource origin) {
+      IdentitySource origin,
+      boolean enabled,
+      @Nullable String externalId) {
     super(id, name, roles, audit);
     this.origin = origin;
     this.groups = groups == null ? Collections.emptyList() : groups;
+    this.enabled = enabled;
+    this.externalId = externalId;
   }
 
   /**
@@ -73,6 +101,21 @@ public class ExtendedUserDTO extends UserDTO {
    */
   public List<String> groups() {
     return groups;
+  }
+
+  /**
+   * @return Whether the user is enabled (Active / Suspended in the UI).
+   */
+  public boolean enabled() {
+    return enabled;
+  }
+
+  /**
+   * @return SCIM external id when Provisioned; {@code null} for Local and JIT.
+   */
+  @Nullable
+  public String externalId() {
+    return externalId;
   }
 
   /**
@@ -110,13 +153,43 @@ public class ExtendedUserDTO extends UserDTO {
    */
   public static ExtendedUserDTO from(
       User user, IdentitySource origin, @Nullable List<String> groups) {
+    return from(user, origin, groups, true, null);
+  }
+
+  /**
+   * Builds an {@link ExtendedUserDTO} with identity-store Status and optional External ID.
+   *
+   * @param user The metalake user.
+   * @param origin Local / Provisioned / JIT.
+   * @param groups Metalake group names for the user.
+   * @param enabled Identity-store enabled flag (Active / Suspended).
+   * @param externalId SCIM external id when Provisioned; otherwise {@code null}.
+   * @return The extended user DTO.
+   */
+  public static ExtendedUserDTO from(
+      User user,
+      IdentitySource origin,
+      @Nullable List<String> groups,
+      boolean enabled,
+      @Nullable String externalId) {
     Preconditions.checkArgument(user != null, "user cannot be null");
     Preconditions.checkArgument(origin != null, "origin cannot be null");
     Preconditions.checkArgument(StringUtils.isNotBlank(user.name()), "user name cannot be blank");
     List<String> roles = user.roles() == null ? Collections.emptyList() : user.roles();
     List<String> groupNames = groups == null ? Collections.emptyList() : groups;
+    String resolvedExternalId =
+        origin == IdentitySource.PROVISIONED && StringUtils.isNotBlank(externalId)
+            ? externalId
+            : null;
     return new ExtendedUserDTO(
-        user.id(), user.name(), roles, groupNames, DTOConverters.toDTO(user.auditInfo()), origin);
+        user.id(),
+        user.name(),
+        roles,
+        groupNames,
+        DTOConverters.toDTO(user.auditInfo()),
+        origin,
+        enabled,
+        resolvedExternalId);
   }
 
   /**
@@ -129,7 +202,13 @@ public class ExtendedUserDTO extends UserDTO {
     Preconditions.checkArgument(usersWithGroups != null, "usersWithGroups cannot be null");
     List<ExtendedUserDTO> result = new ArrayList<>();
     for (UserWithGroupNames userWithGroups : usersWithGroups) {
-      result.add(from(userWithGroups.user(), userWithGroups.origin(), userWithGroups.groups()));
+      result.add(
+          from(
+              userWithGroups.user(),
+              userWithGroups.origin(),
+              userWithGroups.groups(),
+              userWithGroups.enabled(),
+              userWithGroups.externalId()));
     }
     return result.toArray(new ExtendedUserDTO[0]);
   }

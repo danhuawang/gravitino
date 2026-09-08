@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 /** Tests for {@link DirectoryUserDTO}. */
 public class TestDirectoryUserDTO {
 
-  /** Verifies Local, Provisioned, and JIT mapping. */
+  /** Verifies Local and Provisioned mapping. */
   @Test
   public void testFromDirectoryUserView() {
     DirectoryUserDTO local =
@@ -38,15 +38,6 @@ public class TestDirectoryUserDTO {
     assertEquals(IdentitySource.PROVISIONED, provisioned.origin());
     assertEquals(List.of("finance"), provisioned.groups());
     assertEquals(List.of("Acme", "Contoso"), provisioned.metalakes());
-
-    DirectoryUserDTO jit =
-        DirectoryUserDTO.from(
-            view("jordan.m", true, IdentitySource.JIT, List.of(), List.of("Contoso")));
-    assertEquals("jordan.m", jit.name());
-    assertTrue(jit.enabled());
-    assertEquals(IdentitySource.JIT, jit.origin());
-    assertTrue(jit.groups().isEmpty());
-    assertEquals(List.of("Contoso"), jit.metalakes());
   }
 
   private static DirectoryUserDTO.DirectoryUserView view(

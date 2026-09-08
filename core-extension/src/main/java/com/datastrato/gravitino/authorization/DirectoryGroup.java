@@ -14,8 +14,8 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Instance-scoped directory group for Configure → Directory → Groups.
  *
- * <p>Rows come from {@code idp_group_meta} ({@code Local}), {@code scim_group_meta} ({@code
- * Provisioned}), or metalake {@code group_meta} only ({@code JIT}).
+ * <p>Rows come from {@code idp_group_meta} ({@code Local}) or {@code scim_group_meta} ({@code
+ * Provisioned}).
  */
 public final class DirectoryGroup implements DirectoryGroupDTO.DirectoryGroupView {
 
@@ -28,8 +28,8 @@ public final class DirectoryGroup implements DirectoryGroupDTO.DirectoryGroupVie
    * Creates a directory group.
    *
    * @param name Group name.
-   * @param memberCount Identity-store member count (0 for JIT).
-   * @param origin Local, Provisioned, or JIT.
+   * @param memberCount Identity-store member count.
+   * @param origin Local or Provisioned.
    * @param metalakes Metalake names where the group exists in {@code group_meta}.
    */
   public DirectoryGroup(

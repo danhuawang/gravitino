@@ -83,12 +83,14 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
           "CREATE TABLE scim_group_meta ("
               + "group_id BIGINT NOT NULL PRIMARY KEY,"
               + "group_name VARCHAR(128) NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE scim_user_group_rel ("
               + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
               + "user_id BIGINT NOT NULL,"
               + "group_id BIGINT NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
     }
     SqlSessionFactoryHelper.getInstance().init(config);
@@ -124,10 +126,12 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
           "INSERT INTO idp_user_group_rel (user_id, group_id, deleted_at)"
               + " VALUES (100, 200, 0), (101, 200, 0)");
       statement.execute(
-          "INSERT INTO scim_group_meta (group_id, group_name, deleted_at)"
-              + " VALUES (20, 'platform', 0), (21, 'governance', 0)");
+          "INSERT INTO scim_group_meta (group_id, group_name, audit_info, deleted_at)"
+              + " VALUES (20, 'platform', '{\"creator\":\"test\"}', 0),"
+              + " (21, 'governance', '{\"creator\":\"test\"}', 0)");
       statement.execute(
-          "INSERT INTO scim_user_group_rel (user_id, group_id, deleted_at) VALUES (10, 20, 0)");
+          "INSERT INTO scim_user_group_rel (user_id, group_id, audit_info, deleted_at)"
+              + " VALUES (10, 20, '{\"creator\":\"test\"}', 0)");
       statement.execute(
           "INSERT INTO group_meta (group_id, group_name, metalake_id, deleted_at)"
               + " VALUES (1000, 'governance', 1, 0),"
@@ -139,32 +143,26 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
     }
   }
 
-  /** Verifies Local / Provisioned / JIT, members, metalakes, and IdP precedence over SCIM. */
+  /** Verifies Local / Provisioned Directory Groups (no metalake-only JIT). */
   @Test
   public void testListDirectoryGroups() {
     List<DirectoryGroup> groups = DatastratoGroupMetaService.getInstance().listDirectoryGroups();
 
-    assertEquals(4, groups.size());
+    assertEquals(3, groups.size());
 
-    DirectoryGroup analysts = groups.get(0);
-    assertEquals("analysts", analysts.name());
-    assertEquals(0, analysts.memberCount());
-    assertEquals(IdentitySource.JIT, analysts.origin());
-    assertEquals(List.of("Contoso", "Northwind"), analysts.metalakes());
-
-    DirectoryGroup contractors = groups.get(1);
+    DirectoryGroup contractors = groups.get(0);
     assertEquals("contractors", contractors.name());
     assertEquals(0, contractors.memberCount());
     assertEquals(IdentitySource.LOCAL, contractors.origin());
     assertEquals(List.of("Acme"), contractors.metalakes());
 
-    DirectoryGroup governance = groups.get(2);
+    DirectoryGroup governance = groups.get(1);
     assertEquals("governance", governance.name());
     assertEquals(2, governance.memberCount());
     assertEquals(IdentitySource.LOCAL, governance.origin());
     assertEquals(List.of("Acme", "Contoso"), governance.metalakes());
 
-    DirectoryGroup platform = groups.get(3);
+    DirectoryGroup platform = groups.get(2);
     assertEquals("platform", platform.name());
     assertEquals(1, platform.memberCount());
     assertEquals(IdentitySource.PROVISIONED, platform.origin());

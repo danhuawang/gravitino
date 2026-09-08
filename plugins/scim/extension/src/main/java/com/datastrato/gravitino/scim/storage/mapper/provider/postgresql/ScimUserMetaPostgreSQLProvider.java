@@ -16,11 +16,11 @@ public class ScimUserMetaPostgreSQLProvider extends ScimUserMetaBaseSQLProvider 
   public String insert(@Param("userMeta") ScimUserMetaPO userMeta) {
     return "INSERT INTO "
         + ScimUserMetaMapper.TABLE_NAME
-        + " (user_id, user_name, external_id, enabled, current_version, last_version, deleted_at)"
-        + " VALUES (#{userMeta.userId}, #{userMeta.userName}, #{userMeta.externalId},"
+        + " (user_id, user_name, external_id, enabled, audit_info, current_version, last_version,"
+        + " deleted_at) VALUES (#{userMeta.userId}, #{userMeta.userName}, #{userMeta.externalId},"
         + " "
         + enabledSmallIntExpression("#{userMeta.enabled}")
-        + ", #{userMeta.currentVersion}, #{userMeta.lastVersion},"
+        + ", #{userMeta.auditInfo}, #{userMeta.currentVersion}, #{userMeta.lastVersion},"
         + " #{userMeta.deletedAt})";
   }
 

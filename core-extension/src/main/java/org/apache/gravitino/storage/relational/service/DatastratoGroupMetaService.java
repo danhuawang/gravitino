@@ -7,6 +7,7 @@ import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATI
 
 import com.datastrato.gravitino.authorization.DirectoryGroup;
 import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
+import com.datastrato.gravitino.authorization.po.DirectoryGroupDetailPO;
 import com.datastrato.gravitino.authorization.po.DirectoryGroupPO;
 import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
 import com.datastrato.gravitino.authorization.po.IdpUserIdPO;
@@ -14,6 +15,7 @@ import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,6 +23,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
+import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.RandomIdGenerator;
@@ -48,8 +51,8 @@ public class DatastratoGroupMetaService {
    * Lists identity-store groups for Configure → Directory → Groups.
    *
    * <p>Local groups come from {@code idp_group_meta}; Provisioned groups from {@code
-   * scim_group_meta}; JIT groups from metalake {@code group_meta} only. When a group name exists in
-   * an identity store and metalake tables, the identity-store row wins.
+   * scim_group_meta}. Metalake-only ({@code JIT}) names are not included. When a group name exists
+   * in an identity store and metalake tables, the identity-store row wins.
    *
    * @return Directory groups ordered by group name.
    */
@@ -61,6 +64,79 @@ public class DatastratoGroupMetaService {
         DatastratoGroupMetaMapper.class,
         mapper -> {
           List<DirectoryGroupPO> groupPOs = mapper.listDirectoryGroups();
+          return groupPOs.stream()
+              .map(DatastratoPOConverters::fromDirectoryGroupPO)
+              .collect(Collectors.toList());
+        });
+  }
+
+  /**
+   * Loads one Directory Group for Configure → Directory → Group Overview.
+   *
+   * <p>{@code origin} must be {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED}.
+   *
+   * @param groupName Group name.
+   * @param origin Local or Provisioned.
+   * @return Directory group detail row.
+   * @throws NoSuchGroupException If no matching identity-store group exists for that origin.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "getDirectoryGroup")
+  public DirectoryGroupDetailPO getDirectoryGroup(String groupName, IdentitySource origin) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(groupName), "groupName cannot be blank");
+    Preconditions.checkArgument(origin != null, "origin cannot be null");
+    if (origin != IdentitySource.LOCAL && origin != IdentitySource.PROVISIONED) {
+      throw new IllegalArgumentException(
+          "Directory group detail origin must be Local or Provisioned, got: " + origin.value());
+    }
+
+    DirectoryGroupDetailPO row =
+        SessionUtils.getWithoutCommit(
+            DatastratoGroupMetaMapper.class,
+            mapper -> mapper.getDirectoryGroup(groupName, origin.toOriginCode()));
+    if (row == null) {
+      throw new NoSuchGroupException(
+          "Directory group does not exist: %s (%s)", groupName, origin.value());
+    }
+    return row;
+  }
+
+  /**
+   * Lists Directory Groups for Configure → Directory → User → Groups.
+   *
+   * <p>{@code origin} must be {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED}.
+   * The Directory User must exist for that origin (same rules as {@link
+   * DatastratoUserMetaService#getDirectoryUser}).
+   *
+   * @param userName Username.
+   * @param origin Local or Provisioned.
+   * @return Groups with member counts, ordered by name.
+   * @throws org.apache.gravitino.exceptions.NoSuchUserException If the Directory User is missing
+   *     for that origin.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listDirectoryGroupsForUser")
+  public List<DirectoryGroup> listDirectoryGroupsForUser(String userName, IdentitySource origin) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(userName), "userName cannot be blank");
+    Preconditions.checkArgument(origin != null, "origin cannot be null");
+    if (origin != IdentitySource.LOCAL && origin != IdentitySource.PROVISIONED) {
+      throw new IllegalArgumentException(
+          "Directory user groups origin must be Local or Provisioned, got: " + origin.value());
+    }
+
+    // Ensure the Directory User exists for this origin (404 when missing).
+    DatastratoUserMetaService.getInstance().getDirectoryUser(userName, origin);
+
+    return SessionUtils.getWithoutCommit(
+        DatastratoGroupMetaMapper.class,
+        mapper -> {
+          List<DirectoryGroupPO> groupPOs =
+              mapper.listDirectoryGroupsForUser(userName, origin.toOriginCode());
+          if (groupPOs == null || groupPOs.isEmpty()) {
+            return Collections.emptyList();
+          }
           return groupPOs.stream()
               .map(DatastratoPOConverters::fromDirectoryGroupPO)
               .collect(Collectors.toList());

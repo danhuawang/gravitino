@@ -63,6 +63,16 @@ public class DatastratoGroupMetaSQLProviderFactory {
     return getProvider().listDirectoryGroups();
   }
 
+  public static String getDirectoryGroup(
+      @Param("groupName") String groupName, @Param("originCode") int originCode) {
+    return getProvider().getDirectoryGroup(groupName, originCode);
+  }
+
+  public static String listDirectoryGroupsForUser(
+      @Param("userName") String userName, @Param("originCode") int originCode) {
+    return getProvider().listDirectoryGroupsForUser(userName, originCode);
+  }
+
   public static String selectIdpGroupNamesByNames(@Param("groupNames") List<String> groupNames) {
     return getProvider().selectIdpGroupNamesByNames(groupNames);
   }

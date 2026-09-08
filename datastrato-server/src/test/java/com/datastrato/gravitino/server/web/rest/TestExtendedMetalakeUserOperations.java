@@ -253,6 +253,27 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
   }
 
   @Test
+  public void testGetUserAuthorization() throws NoSuchMethodException {
+    Method method =
+        ExtendedMetalakeUserOperations.class.getMethod("getUser", String.class, String.class);
+    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+    Assertions.assertNotNull(expression);
+    Assertions.assertEquals(
+        "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF", expression.expression());
+  }
+
+  @Test
+  public void testListUserGroupsAuthorization() throws NoSuchMethodException {
+    Method method =
+        ExtendedMetalakeUserOperations.class.getMethod(
+            "listGroupsForUser", String.class, String.class);
+    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+    Assertions.assertNotNull(expression);
+    Assertions.assertEquals(
+        "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF", expression.expression());
+  }
+
+  @Test
   public void testListUserRoleAssignments() throws IOException {
     when(accessControlDispatcher.listRoleAssignmentsByUser("metalake", "user1"))
         .thenReturn(new RoleAssignment[] {buildAssignment("role1"), buildAssignment("role2")});

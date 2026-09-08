@@ -68,7 +68,8 @@ public class ScimUserGroupRelMetaService {
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "insertMemberships")
   public int insertMemberships(
-      long groupId, List<Long> userIds, Long currentVersion, Long lastVersion) throws IOException {
+      long groupId, List<Long> userIds, Long currentVersion, Long lastVersion, String auditInfo)
+      throws IOException {
     if (userIds == null || userIds.isEmpty()) {
       return 0;
     }
@@ -76,7 +77,9 @@ public class ScimUserGroupRelMetaService {
       Integer inserted =
           SessionUtils.doWithCommitAndFetchResult(
               ScimUserGroupRelMapper.class,
-              mapper -> mapper.insertMemberships(groupId, userIds, currentVersion, lastVersion));
+              mapper ->
+                  mapper.insertMemberships(
+                      groupId, userIds, currentVersion, lastVersion, auditInfo));
       return inserted == null ? 0 : inserted;
     } catch (RuntimeException re) {
       ScimExceptionUtils.checkSQLException(re, "membership", String.valueOf(groupId));
@@ -126,7 +129,8 @@ public class ScimUserGroupRelMetaService {
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "replaceMembersByGroupId")
   public void replaceMembersByGroupId(
-      long groupId, List<Long> userIds, Long currentVersion, Long lastVersion) throws IOException {
+      long groupId, List<Long> userIds, Long currentVersion, Long lastVersion, String auditInfo)
+      throws IOException {
     SessionUtils.doMultipleWithCommit(
         () ->
             SessionUtils.doWithoutCommit(
@@ -134,7 +138,7 @@ public class ScimUserGroupRelMetaService {
         () -> {
           if (userIds != null && !userIds.isEmpty()) {
             try {
-              insertMemberships(groupId, userIds, currentVersion, lastVersion);
+              insertMemberships(groupId, userIds, currentVersion, lastVersion, auditInfo);
             } catch (IOException e) {
               throw new RuntimeException(e);
             }

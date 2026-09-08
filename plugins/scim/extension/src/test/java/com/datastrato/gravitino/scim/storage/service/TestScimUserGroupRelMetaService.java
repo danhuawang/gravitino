@@ -41,7 +41,10 @@ class TestScimUserGroupRelMetaService extends AbstractScimUserGroupRelMetaServic
     insertGroup(GROUP_ID, GROUP_NAME);
     ScimUserGroupRelMetaService metaService = ScimUserGroupRelMetaService.getInstance();
 
-    runServiceCall(() -> metaService.insertMemberships(GROUP_ID, List.of(USER_ID), 1L, 0L));
+    runServiceCall(
+        () ->
+            metaService.insertMemberships(
+                GROUP_ID, List.of(USER_ID), 1L, 0L, "{\"creator\":\"test\"}"));
     assertEquals(Set.of(USER_ID), memberUserIdsForGroup(GROUP_ID));
 
     runServiceCall(
@@ -73,7 +76,9 @@ class TestScimUserGroupRelMetaService extends AbstractScimUserGroupRelMetaServic
     ScimUserGroupRelMetaService metaService = ScimUserGroupRelMetaService.getInstance();
 
     runServiceCall(
-        () -> metaService.replaceMembersByGroupId(GROUP_ID, List.of(USER_ID + 1), 1L, 0L));
+        () ->
+            metaService.replaceMembersByGroupId(
+                GROUP_ID, List.of(USER_ID + 1), 1L, 0L, "{\"creator\":\"test\"}"));
 
     assertEquals(Set.of(USER_ID + 1), memberUserIdsForGroup(GROUP_ID));
   }

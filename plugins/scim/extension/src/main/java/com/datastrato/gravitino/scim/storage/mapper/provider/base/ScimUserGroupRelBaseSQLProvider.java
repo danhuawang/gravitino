@@ -59,17 +59,18 @@ public class ScimUserGroupRelBaseSQLProvider {
       @Param("groupId") long groupId,
       @Param("userIds") List<Long> userIds,
       @Param("currentVersion") Long currentVersion,
-      @Param("lastVersion") Long lastVersion) {
+      @Param("lastVersion") Long lastVersion,
+      @Param("auditInfo") String auditInfo) {
     return "<script><if test='userIds != null and userIds.size() > 0'>INSERT INTO "
         + ScimUserGroupRelMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " (user_id, group_id, current_version, last_version, deleted_at)"
-        + " SELECT u.user_id, #{groupId}, #{currentVersion}, #{lastVersion}, 0 FROM "
+        + " (user_id, group_id, audit_info, current_version, last_version, deleted_at)"
+        + " SELECT u.user_id, #{groupId}, #{auditInfo}, #{currentVersion}, #{lastVersion}, 0 FROM "
         + ScimUserMetaMapper.TABLE_NAME
         + " u WHERE u.deleted_at = 0 AND u.user_id IN ("
         + "<foreach collection='userIds' item='userId' separator=','>#{userId}</foreach>)"
         + " ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), group_id = VALUES(group_id),"
-        + " current_version = VALUES(current_version), last_version = VALUES(last_version),"
-        + " deleted_at = VALUES(deleted_at)</if></script>";
+        + " audit_info = VALUES(audit_info), current_version = VALUES(current_version),"
+        + " last_version = VALUES(last_version), deleted_at = VALUES(deleted_at)</if></script>";
   }
 
   public String softDeleteMembersByUserId(@Param("userId") long userId) {

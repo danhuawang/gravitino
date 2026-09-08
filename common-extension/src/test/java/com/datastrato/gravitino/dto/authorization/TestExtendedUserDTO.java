@@ -4,6 +4,7 @@
 package com.datastrato.gravitino.dto.authorization;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,10 +41,45 @@ public class TestExtendedUserDTO {
     ExtendedUserDTO local = ExtendedUserDTO.from(user("lee.p"), true);
     assertEquals("lee.p", local.name());
     assertEquals(IdentitySource.LOCAL, local.origin());
+    assertTrue(local.enabled());
+    assertEquals(null, local.externalId());
     assertTrue(JsonUtils.objectMapper().writeValueAsString(local).contains("\"origin\":\"Local\""));
+    assertTrue(JsonUtils.objectMapper().writeValueAsString(local).contains("\"enabled\":true"));
+    assertFalse(JsonUtils.objectMapper().writeValueAsString(local).contains("externalId"));
 
-    ExtendedUserDTO provisioned = ExtendedUserDTO.from(user("dana.k"), false);
+    ExtendedUserDTO provisioned =
+        ExtendedUserDTO.from(
+            user("dana.k"),
+            IdentitySource.PROVISIONED,
+            Collections.emptyList(),
+            true,
+            "51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b");
     assertEquals(IdentitySource.PROVISIONED, provisioned.origin());
+    assertTrue(provisioned.enabled());
+    assertEquals("51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b", provisioned.externalId());
+    assertTrue(
+        JsonUtils.objectMapper()
+            .writeValueAsString(provisioned)
+            .contains("\"externalId\":\"51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b\""));
+  }
+
+  @Test
+  public void testFromJitDefaultsEnabledAndOmitsExternalId() throws Exception {
+    ExtendedUserDTO jit =
+        ExtendedUserDTO.from(
+            user("guest.j"),
+            IdentitySource.JIT,
+            Collections.emptyList(),
+            true,
+            "should-be-omitted");
+
+    assertEquals(IdentitySource.JIT, jit.origin());
+    assertTrue(jit.enabled());
+    assertEquals(null, jit.externalId());
+    String json = JsonUtils.objectMapper().writeValueAsString(jit);
+    assertTrue(json.contains("\"origin\":\"JIT\""));
+    assertTrue(json.contains("\"enabled\":true"));
+    assertFalse(json.contains("externalId"));
   }
 
   @Test

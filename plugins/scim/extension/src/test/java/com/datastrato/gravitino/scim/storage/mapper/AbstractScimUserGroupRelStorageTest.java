@@ -7,9 +7,12 @@ package com.datastrato.gravitino.scim.storage.mapper;
 import com.datastrato.gravitino.scim.storage.po.ScimGroupMemberPO;
 import com.datastrato.gravitino.scim.storage.po.ScimGroupMetaPO;
 import com.datastrato.gravitino.scim.storage.po.ScimUserMetaPO;
+import com.datastrato.gravitino.scim.storage.relational.utils.ScimPOConverters;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.gravitino.meta.AuditInfo;
 
 /** Base helpers for SCIM user-group membership storage tests. */
 public abstract class AbstractScimUserGroupRelStorageTest extends AbstractScimMetaStorageTest {
@@ -17,6 +20,9 @@ public abstract class AbstractScimUserGroupRelStorageTest extends AbstractScimMe
   protected static final long GROUP_ID = 200L;
   protected static final String USERNAME = "alice";
   protected static final String GROUP_NAME = "engineers";
+  protected static final String TEST_AUDIT_INFO =
+      ScimPOConverters.serializeAuditInfo(
+          AuditInfo.builder().withCreator("test").withCreateTime(Instant.EPOCH).build());
 
   protected ScimUserGroupRelMapper scimUserGroupRelMapper;
   protected ScimUserMetaMapper scimUserMetaMapper;
@@ -52,6 +58,7 @@ public abstract class AbstractScimUserGroupRelStorageTest extends AbstractScimMe
             .withUserName(username)
             .withExternalId(externalId)
             .withEnabled(enabled)
+            .withAuditInfo(TEST_AUDIT_INFO)
             .withCurrentVersion(1L)
             .withLastVersion(0L)
             .withDeletedAt(0L)
@@ -72,6 +79,7 @@ public abstract class AbstractScimUserGroupRelStorageTest extends AbstractScimMe
             .withGroupId(groupId)
             .withGroupName(groupName)
             .withExternalId(externalId)
+            .withAuditInfo(TEST_AUDIT_INFO)
             .withCurrentVersion(1L)
             .withLastVersion(0L)
             .withDeletedAt(0L)
@@ -83,7 +91,7 @@ public abstract class AbstractScimUserGroupRelStorageTest extends AbstractScimMe
   }
 
   protected void insertMembership(long userId, long groupId) {
-    scimUserGroupRelMapper.insertMemberships(groupId, List.of(userId), 1L, 0L);
+    scimUserGroupRelMapper.insertMemberships(groupId, List.of(userId), 1L, 0L, TEST_AUDIT_INFO);
   }
 
   protected Set<Long> memberUserIdsForGroup(long groupId) {

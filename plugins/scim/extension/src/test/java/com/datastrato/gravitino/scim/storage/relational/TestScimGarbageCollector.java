@@ -83,10 +83,12 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
   void testCollectAndCleanMembership(String type) throws Exception {
     init(type);
     insertUserAndGroup();
-    scimUserGroupRelMapper().insertMemberships(GROUP_ID, List.of(USER_ID), 1L, 0L);
+    scimUserGroupRelMapper()
+        .insertMemberships(GROUP_ID, List.of(USER_ID), 1L, 0L, "{\"creator\":\"test\"}");
     scimUserGroupRelMapper().softDeleteMembersByGroupAndUserIds(GROUP_ID, List.of(USER_ID));
     updateLegacyDeletedAt(System.currentTimeMillis() - 700_000L);
-    scimUserGroupRelMapper().insertMemberships(GROUP_ID, List.of(USER_ID), 1L, 0L);
+    scimUserGroupRelMapper()
+        .insertMemberships(GROUP_ID, List.of(USER_ID), 1L, 0L, "{\"creator\":\"test\"}");
 
     getConfig().set(STORE_DELETE_AFTER_TIME, 600_000L);
     closeSession();
@@ -136,10 +138,12 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
   void testSoftDeleteOrphanMemberships(String type) throws Exception {
     init(type);
     insertUserAndGroup();
-    scimUserGroupRelMapper().insertMemberships(GROUP_ID, List.of(USER_ID), 1L, 0L);
+    scimUserGroupRelMapper()
+        .insertMemberships(GROUP_ID, List.of(USER_ID), 1L, 0L, "{\"creator\":\"test\"}");
 
     insertUserAndGroup(USER_ID + 1, "bob", GROUP_ID + 1, "orphan-group");
-    scimUserGroupRelMapper().insertMemberships(GROUP_ID + 1, List.of(USER_ID + 1), 1L, 0L);
+    scimUserGroupRelMapper()
+        .insertMemberships(GROUP_ID + 1, List.of(USER_ID + 1), 1L, 0L, "{\"creator\":\"test\"}");
     scimUserMetaMapper().softDeleteByExternalId(externalIdForUser(USER_ID + 1));
 
     closeSession();
@@ -222,6 +226,7 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
                 .withUserName(username)
                 .withExternalId(externalIdForUser(userId))
                 .withEnabled(true)
+                .withAuditInfo("{\"creator\":\"test\"}")
                 .withCurrentVersion(1L)
                 .withLastVersion(0L)
                 .withDeletedAt(0L)
@@ -232,6 +237,7 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
                 .withGroupId(groupId)
                 .withGroupName(groupName)
                 .withExternalId(externalIdForGroup(groupId))
+                .withAuditInfo("{\"creator\":\"test\"}")
                 .withCurrentVersion(1L)
                 .withLastVersion(0L)
                 .withDeletedAt(0L)

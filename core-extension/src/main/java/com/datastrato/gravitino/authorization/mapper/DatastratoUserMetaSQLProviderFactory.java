@@ -115,6 +115,16 @@ public class DatastratoUserMetaSQLProviderFactory {
     return getProvider().listDirectoryUsers();
   }
 
+  public static String getDirectoryUser(
+      @Param("userName") String userName, @Param("originCode") int originCode) {
+    return getProvider().getDirectoryUser(userName, originCode);
+  }
+
+  public static String listDirectoryUsersForGroup(
+      @Param("groupName") String groupName, @Param("originCode") int originCode) {
+    return getProvider().listDirectoryUsersForGroup(groupName, originCode);
+  }
+
   private static DatastratoUserMetaBaseSQLProvider getProvider() {
     String databaseId =
         SqlSessionFactoryHelper.getInstance()

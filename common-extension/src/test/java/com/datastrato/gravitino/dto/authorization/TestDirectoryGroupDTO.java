@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 /** Tests for {@link DirectoryGroupDTO}. */
 public class TestDirectoryGroupDTO {
 
-  /** Verifies Local, Provisioned, and JIT mapping. */
+  /** Verifies Local and Provisioned mapping. */
   @Test
   public void testFromDirectoryGroupView() {
     DirectoryGroupDTO local =
@@ -27,14 +27,6 @@ public class TestDirectoryGroupDTO {
     assertEquals("platform", provisioned.name());
     assertEquals(1, provisioned.memberCount());
     assertEquals(IdentitySource.PROVISIONED, provisioned.origin());
-
-    DirectoryGroupDTO jit =
-        DirectoryGroupDTO.from(
-            view("analysts", 0, IdentitySource.JIT, List.of("Contoso", "Northwind")));
-    assertEquals("analysts", jit.name());
-    assertEquals(0, jit.memberCount());
-    assertEquals(IdentitySource.JIT, jit.origin());
-    assertEquals(List.of("Contoso", "Northwind"), jit.metalakes());
   }
 
   private static DirectoryGroupDTO.DirectoryGroupView view(

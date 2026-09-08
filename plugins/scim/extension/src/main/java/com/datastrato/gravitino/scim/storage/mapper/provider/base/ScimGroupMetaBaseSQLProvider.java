@@ -13,16 +13,16 @@ public class ScimGroupMetaBaseSQLProvider {
 
   private static final String SELECT_COLUMNS =
       " group_id as groupId, group_name as groupName, group_comment as groupComment,"
-          + " external_id as externalId, current_version as currentVersion,"
-          + " last_version as lastVersion, deleted_at as deletedAt";
+          + " external_id as externalId, audit_info as auditInfo, current_version as"
+          + " currentVersion, last_version as lastVersion, deleted_at as deletedAt";
 
   public String insert(@Param("groupMeta") ScimGroupMetaPO groupMeta) {
     return "INSERT INTO "
         + ScimGroupMetaMapper.TABLE_NAME
-        + " (group_id, group_name, group_comment, external_id, current_version, last_version,"
-        + " deleted_at) VALUES (#{groupMeta.groupId}, #{groupMeta.groupName},"
-        + " #{groupMeta.groupComment}, #{groupMeta.externalId}, #{groupMeta.currentVersion},"
-        + " #{groupMeta.lastVersion}, #{groupMeta.deletedAt})";
+        + " (group_id, group_name, group_comment, external_id, audit_info, current_version,"
+        + " last_version, deleted_at) VALUES (#{groupMeta.groupId}, #{groupMeta.groupName},"
+        + " #{groupMeta.groupComment}, #{groupMeta.externalId}, #{groupMeta.auditInfo},"
+        + " #{groupMeta.currentVersion}, #{groupMeta.lastVersion}, #{groupMeta.deletedAt})";
   }
 
   public String selectByExternalId(@Param("externalId") String externalId) {

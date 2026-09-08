@@ -24,6 +24,7 @@ public class ScimUserMetaPO {
   private String userName;
   private String externalId;
   private Boolean enabled;
+  private String auditInfo;
   private Long currentVersion;
   private Long lastVersion;
   private Long deletedAt;

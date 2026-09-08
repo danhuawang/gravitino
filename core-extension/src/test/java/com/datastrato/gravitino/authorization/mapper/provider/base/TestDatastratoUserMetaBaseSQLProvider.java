@@ -4,8 +4,10 @@
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.collect.Lists;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +32,9 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_group_meta"));
     assertFalse(sql.contains("ut.external_id"));
     assertFalse(sql.contains("ut.enabled"));
+    assertTrue(sql.contains("as enabled"));
+    assertTrue(sql.contains("as externalId"));
+    assertTrue(sql.contains("su.external_id"));
     assertTrue(sql.contains("as originCode"));
     assertTrue(sql.contains("idp_user_meta"));
     assertTrue(sql.contains("UNION ALL"));
@@ -45,17 +50,19 @@ public class TestDatastratoUserMetaBaseSQLProvider {
 
     assertTrue(sql.contains("idp_user_meta"));
     assertTrue(sql.contains("scim_user_meta"));
-    assertTrue(sql.contains("user_meta"));
     assertTrue(sql.contains("idp_user_group_rel"));
     assertTrue(sql.contains("scim_user_group_rel"));
     assertTrue(sql.contains("originCode"));
     assertTrue(sql.contains("metalakeNames"));
     assertTrue(sql.contains("UNION ALL"));
     assertTrue(sql.contains("NOT EXISTS"));
-    assertTrue(sql.contains("GROUP BY ut.user_name"));
     assertTrue(sql.contains("ORDER BY identity.userName"));
     assertTrue(sql.contains("CAST(NULL AS BIGINT)"));
+    // Metalake names are aggregated per username for the Directory Users table.
+    assertTrue(sql.contains("GROUP BY ut.user_name"));
     assertFalse(sql.contains("#{metalakeName}"));
+    // No metalake-only JIT identity branch (origin code 2).
+    assertFalse(sql.contains(" " + 2 + " as originCode"));
   }
 
   @Test
@@ -194,9 +201,21 @@ public class TestDatastratoUserMetaBaseSQLProvider {
 
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("idp_user_meta"));
-    assertFalse(sql.contains("external_id"));
-    assertFalse(sql.contains("as enabled"));
+    assertTrue(sql.contains("as enabled"));
+    assertTrue(sql.contains("as externalId"));
+    assertTrue(sql.contains("external_id"));
     assertTrue(sql.contains("as originCode"));
+    // Local / Provisioned / JIT origin codes.
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_LOCAL));
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_PROVISIONED));
+    assertTrue(sql.contains("ELSE " + IdentitySource.ORIGIN_CODE_JIT));
+    assertTrue(
+        sql.contains(
+            "COALESCE(MAX(CASE WHEN COALESCE(su.enabled, iu.enabled) THEN 1 ELSE 0 END), 1) <> 0"
+                + " as enabled"));
+    // Must not apply MAX() directly to a boolean/TINYINT expression (breaks on PostgreSQL
+    // BOOLEAN).
+    assertFalse(sql.contains("MAX(COALESCE(su.enabled, iu.enabled))"));
     assertTrue(sql.contains("ut.user_name = #{userName}"));
     assertTrue(sql.contains("GROUP BY ut.user_id"));
     assertFalse(sql.contains("as inBuiltInIdp"));
@@ -208,10 +227,47 @@ public class TestDatastratoUserMetaBaseSQLProvider {
 
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("idp_user_meta"));
-    assertFalse(sql.contains("external_id"));
-    assertFalse(sql.contains("as enabled"));
+    assertTrue(sql.contains("as enabled"));
+    assertTrue(sql.contains("as externalId"));
+    assertTrue(sql.contains("external_id"));
     assertTrue(sql.contains("as originCode"));
     assertFalse(sql.contains("as inBuiltInIdp"));
+  }
+
+  @Test
+  public void testListDirectoryUsersForGroupLocal() {
+    String sql =
+        provider.listDirectoryUsersForGroup("governance", IdentitySource.ORIGIN_CODE_LOCAL);
+    assertTrue(sql.contains("idp_group_meta"));
+    assertTrue(sql.contains("idp_user_group_rel"));
+    assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("iu.enabled"));
+    assertTrue(sql.contains("ig.group_name = #{groupName}"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_LOCAL + " as originCode"));
+    assertFalse(sql.contains("scim_user_meta"));
+    assertFalse(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
+  }
+
+  @Test
+  public void testListDirectoryUsersForGroupProvisioned() {
+    String sql =
+        provider.listDirectoryUsersForGroup("governance", IdentitySource.ORIGIN_CODE_PROVISIONED);
+    assertTrue(sql.contains("scim_group_meta"));
+    assertTrue(sql.contains("scim_user_group_rel"));
+    assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("su.enabled"));
+    assertTrue(sql.contains("sg.group_name = #{groupName}"));
+    assertTrue(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " as originCode"));
+    assertFalse(sql.contains("idp_user_group_rel"));
+    assertFalse(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
+  }
+
+  @Test
+  public void testListDirectoryUsersForGroupRejectsJit() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> provider.listDirectoryUsersForGroup("governance", IdentitySource.ORIGIN_CODE_JIT));
   }
 
   @Test

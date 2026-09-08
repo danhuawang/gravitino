@@ -153,6 +153,7 @@ public class TestDatastratoRoleMetaService {
               + "user_name VARCHAR(128) NOT NULL,"
               + "external_id VARCHAR(256),"
               + "enabled BOOLEAN NOT NULL DEFAULT TRUE,"
+              + "audit_info CLOB NOT NULL,"
               + "current_version INT NOT NULL DEFAULT 1,"
               + "last_version INT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
@@ -162,6 +163,7 @@ public class TestDatastratoRoleMetaService {
               + "group_name VARCHAR(128) NOT NULL,"
               + "group_comment VARCHAR(1024) DEFAULT '',"
               + "external_id VARCHAR(256),"
+              + "audit_info CLOB NOT NULL,"
               + "current_version INT NOT NULL DEFAULT 1,"
               + "last_version INT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
@@ -170,6 +172,7 @@ public class TestDatastratoRoleMetaService {
               + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
               + "user_id BIGINT NOT NULL,"
               + "group_id BIGINT NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
               + "current_version INT NOT NULL DEFAULT 1,"
               + "last_version INT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
@@ -254,15 +257,18 @@ public class TestDatastratoRoleMetaService {
           "INSERT INTO idp_user_group_rel (user_id, group_id, deleted_at)"
               + " VALUES (1000, 2000, 0)");
       statement.execute(
-          "INSERT INTO scim_user_meta (user_id, user_name, external_id, enabled, deleted_at)"
-              + " VALUES (12, 'userProvisioned', 'provisioned-user-id', FALSE, 0)");
+          "INSERT INTO scim_user_meta (user_id, user_name, external_id, enabled, audit_info,"
+              + " deleted_at)"
+              + " VALUES (12, 'userProvisioned', 'provisioned-user-id', FALSE,"
+              + " '{\"creator\":\"test\"}', 0)");
       statement.execute(
-          "INSERT INTO scim_group_meta (group_id, group_name, external_id, deleted_at)"
-              + " VALUES (22, 'groupProvisioned', 'provisioned-group-id', 0)");
+          "INSERT INTO scim_group_meta (group_id, group_name, external_id, audit_info, deleted_at)"
+              + " VALUES (22, 'groupProvisioned', 'provisioned-group-id',"
+              + " '{\"creator\":\"test\"}', 0)");
       statement.execute(
           "INSERT INTO scim_user_group_rel"
-              + " (user_id, group_id, deleted_at)"
-              + " VALUES (12, 22, 0)");
+              + " (user_id, group_id, audit_info, deleted_at)"
+              + " VALUES (12, 22, '{\"creator\":\"test\"}', 0)");
     }
 
     String roleAudit = JsonUtils.anyFieldMapper().writeValueAsString(buildRoleAudit());

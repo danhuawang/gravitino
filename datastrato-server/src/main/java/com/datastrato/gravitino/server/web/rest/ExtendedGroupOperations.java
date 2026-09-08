@@ -6,18 +6,23 @@ package com.datastrato.gravitino.server.web.rest;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
+import com.datastrato.gravitino.dto.authorization.DirectoryUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.DirectoryGroupAddRequest;
 import com.datastrato.gravitino.dto.requests.DirectoryGroupDeleteRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryGroupDetailResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryGroupResponse;
+import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
 import java.util.ArrayList;
 import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.dto.responses.NameListResponse;
@@ -51,7 +56,7 @@ public class ExtendedGroupOperations {
   }
 
   /**
-   * Lists Directory Groups for Configure → Directory → Groups (Local / Provisioned / JIT).
+   * Lists Directory Groups for Configure → Directory → Groups (Local / Provisioned).
    *
    * @return Directory groups with memberCount, metalakes, and origin.
    */
@@ -69,6 +74,62 @@ public class ExtendedGroupOperations {
                       DirectoryGroupDTO.from(accessControlDispatcher.listDirectoryGroups()))));
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.LIST, "", "", e);
+    }
+  }
+
+  /**
+   * Gets one Directory Group for Configure → Directory → Group Overview.
+   *
+   * @param group Group name.
+   * @param origin Local or Provisioned.
+   * @return Group detail including {@code memberCount}.
+   */
+  @GET
+  @Path("directory/groups/{group}")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  public Response getDirectoryGroup(
+      @PathParam("group") String group, @QueryParam("origin") String origin) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            IdentitySource identitySource = requireDirectoryOrigin(origin);
+            return Utils.ok(
+                new DirectoryGroupDetailResponse(
+                    accessControlDispatcher.getDirectoryGroup(group, identitySource)));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(OperationType.GET, group, "", e);
+    }
+  }
+
+  /**
+   * Lists Directory Users for Configure → Directory → Group → Members.
+   *
+   * @param group Group name.
+   * @param origin Local or Provisioned.
+   * @return Members with {@code enabled} (Status) and {@code origin}.
+   */
+  @GET
+  @Path("directory/groups/{group}/users")
+  @Produces("application/vnd.gravitino.v1+json")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  public Response listDirectoryUsersForGroup(
+      @PathParam("group") String group, @QueryParam("origin") String origin) {
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            IdentitySource identitySource = requireDirectoryOrigin(origin);
+            return Utils.ok(
+                new DirectoryUserListResponse(
+                    DirectoryUserDTO.from(
+                        accessControlDispatcher.listDirectoryUsersForGroup(
+                            group, identitySource))));
+          });
+    } catch (Exception e) {
+      return ExceptionHandlers.handleGroupException(OperationType.LIST, group, "", e);
     }
   }
 
@@ -131,5 +192,18 @@ public class ExtendedGroupOperations {
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.REMOVE, "", "", e);
     }
+  }
+
+  private static IdentitySource requireDirectoryOrigin(String origin) {
+    if (origin == null || origin.isBlank()) {
+      throw new IllegalArgumentException(
+          "Query parameter 'origin' is required (Local or Provisioned)");
+    }
+    IdentitySource identitySource = IdentitySource.fromValue(origin);
+    if (identitySource != IdentitySource.LOCAL && identitySource != IdentitySource.PROVISIONED) {
+      throw new IllegalArgumentException(
+          "Query parameter 'origin' must be Local or Provisioned, got: " + origin);
+    }
+    return identitySource;
   }
 }

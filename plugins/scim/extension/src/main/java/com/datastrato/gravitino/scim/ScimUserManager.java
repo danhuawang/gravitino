@@ -92,6 +92,7 @@ public class ScimUserManager implements Closeable {
             .withUserName(userName)
             .withExternalId(resolvedExternalId)
             .withEnabled(enabled)
+            .withAuditInfo(ScimPOConverters.newCreateAuditInfo())
             .withCurrentVersion(POConverters.INIT_VERSION)
             .withLastVersion(POConverters.INIT_VERSION)
             .withDeletedAt(0L)

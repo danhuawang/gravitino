@@ -77,11 +77,10 @@ paths:
         Rows come from:
         - `idp_user_meta` → `origin=Local`
         - `scim_user_meta` (not also in IdP) → `origin=Provisioned`
-        - distinct `user_meta` names absent from IdP and SCIM → `origin=JIT`
 
-        `enabled` maps to Active / Suspended in the UI (from identity store, or aggregated from
-        `user_meta` for JIT). `groups` are identity-store group names (empty for JIT). `metalakes`
-        are metalake names where the username exists in `user_meta`.
+        Metalake-only (`user_meta`) names are not listed. `enabled` maps to Active / Suspended in
+        the UI (from the identity store). `groups` are identity-store group names. `metalakes` are
+        metalake names where the username exists in `user_meta`.
 
       responses:
         "200":
@@ -137,6 +136,103 @@ paths:
                 $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
         "409":
           description: Conflict - The username already exists in `idp_user_meta`
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/directory/users/{user}:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
+      - name: origin
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+            - Local
+            - Provisioned
+        description: Identity origin of the Directory User (`Local` or `Provisioned`)
+    get:
+      tags:
+        - users
+      summary: Get a Directory User
+      operationId: getDirectoryUser
+      description: |
+        Get one Directory User for Configure → Directory → User Overview.
+
+        Requires `origin`:
+        - `Local` → load from `idp_user_meta` (`externalId` omitted)
+        - `Provisioned` → load from `scim_user_meta` excluding IdP names (`externalId` when present)
+
+        `enabled` maps to Status (Active / Suspended). `createTime` is reserved and currently
+        omitted (identity stores do not persist creation time).
+
+      responses:
+        "200":
+          description: Returns the Directory User detail
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/DirectoryUserDetailResponse"
+              examples:
+                DirectoryUserDetailResponse:
+                  $ref: "#/components/examples/DirectoryUserDetailResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The Directory User does not exist for that origin
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /web/security/directory/users/{user}/groups:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
+      - name: origin
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+            - Local
+            - Provisioned
+        description: Identity origin of the Directory User (`Local` or `Provisioned`)
+    get:
+      tags:
+        - users
+      summary: List groups for a Directory User
+      operationId: listDirectoryUserGroups
+      description: |
+        List identity-store groups for Configure → Directory → User → Groups.
+
+        Requires `origin`:
+        - `Local` → membership from `idp_user_group_rel` / `idp_group_meta`
+        - `Provisioned` → membership from `scim_user_group_rel` / `scim_group_meta` (user not in IdP)
+
+        Each group includes `memberCount` (Members) and `origin` matching the user's identity store.
+        `metalakes` is empty on this response. Missing user for that origin returns 404; a user with
+        no groups returns an empty `groups` array.
+
+      responses:
+        "200":
+          description: Returns the Directory User's groups
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "./groups.yaml#/components/schemas/DirectoryGroupListResponse"
+              examples:
+                DirectoryUserGroupsResponse:
+                  $ref: "#/components/examples/DirectoryUserGroupsResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "404":
+          description: Not Found - The Directory User does not exist for that origin
           content:
             application/vnd.gravitino.v1+json:
               schema:
@@ -232,7 +328,9 @@ paths:
         - `JIT` when it exists in neither identity store
 
         `enabled` (Active / Suspended) comes from `idp_user_meta` or `scim_user_meta`, defaulting
-        to Active when neither has a row. `groups` lists metalake group names for the Users table.
+        to Active when neither has a row. `externalId` is set for Provisioned users from
+        `scim_user_meta` and omitted for Local / JIT. `groups` lists metalake group names for the
+        Users table.
 
       responses:
         "200":
@@ -371,8 +469,9 @@ paths:
         - `JIT` when it exists in neither identity store
 
         `enabled` (Active / Suspended) comes from `idp_user_meta` or `scim_user_meta`, defaulting
-        to Active when neither has a row. `auditInfo.createTime` maps to Created on the Overview
-        page. `groups` may be empty here; use `listSecurityUserGroups` for membership.
+        to Active when neither has a row. `externalId` is set for Provisioned users from
+        `scim_user_meta` and omitted for Local / JIT. `auditInfo.createTime` maps to Created on the
+        Overview page. `groups` may be empty here; use `listSecurityUserGroups` for membership.
 
       responses:
         "200":
@@ -520,6 +619,7 @@ components:
         - `Local`: name exists in the built-in IdP (`idp_user_meta` / `idp_group_meta`)
         - `Provisioned`: name exists in SCIM (`scim_user_meta` / `scim_group_meta`) and not IdP
         - `JIT`: name exists in metalake `user_meta` / `group_meta` but not in IdP or SCIM
+          (metalake security pages only; Directory Users/Groups lists omit JIT)
       enum:
         - Local
         - Provisioned
@@ -613,6 +713,7 @@ components:
           required:
             - origin
             - groups
+            - enabled
           properties:
             origin:
               $ref: "#/components/schemas/IdentitySource"
@@ -623,6 +724,15 @@ components:
                 empty on get user and group-membership responses.
               items:
                 type: string
+            enabled:
+              type: boolean
+              description: >
+                Identity-store enabled flag (Active / Suspended). From `idp_user_meta` or
+                `scim_user_meta`, defaulting to true when neither has a row.
+            externalId:
+              type: string
+              nullable: true
+              description: SCIM externalId when Provisioned; omitted for Local and JIT
 
     ExtendedUserListResponse:
       type: object
@@ -707,7 +817,7 @@ components:
           $ref: "#/components/schemas/IdentitySource"
         groups:
           type: array
-          description: Identity-store group names (empty for JIT)
+          description: Identity-store group names
           items:
             type: string
         metalakes:
@@ -823,6 +933,48 @@ components:
         user:
           $ref: "#/components/schemas/DirectoryUserDTO"
 
+    DirectoryUserDetailDTO:
+      type: object
+      required:
+        - name
+        - enabled
+        - origin
+      properties:
+        name:
+          type: string
+          description: Username
+        enabled:
+          type: boolean
+          description: Whether the user is enabled (Active / Suspended in the UI)
+        origin:
+          $ref: "#/components/schemas/IdentitySource"
+        externalId:
+          type: string
+          nullable: true
+          description: SCIM externalId when Provisioned; omitted for Local
+        createTime:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Creation time when available. Currently omitted because identity stores do not persist
+            creation time.
+
+    DirectoryUserDetailResponse:
+      type: object
+      required:
+        - code
+        - user
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        user:
+          $ref: "#/components/schemas/DirectoryUserDetailDTO"
+
   examples:
     LocalUserAddRequest:
       value:
@@ -868,13 +1020,6 @@ components:
             metalakes:
               - Acme
               - Contoso
-          - name: jordan.m
-            enabled: true
-            origin: JIT
-            groups: []
-            metalakes:
-              - Contoso
-              - Northwind
           - name: lee.p
             enabled: false
             origin: Local
@@ -890,6 +1035,28 @@ components:
               - security
             metalakes:
               - Contoso
+
+    DirectoryUserDetailResponse:
+      value:
+        code: 0
+        user:
+          name: dana.k
+          enabled: true
+          origin: Provisioned
+          externalId: 51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b
+
+    DirectoryUserGroupsResponse:
+      value:
+        code: 0
+        groups:
+          - name: finance
+            memberCount: 3
+            origin: Provisioned
+            metalakes: []
+          - name: platform
+            memberCount: 1
+            origin: Provisioned
+            metalakes: []
 
     IdpMembershipAddRequest:
       value:

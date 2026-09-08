@@ -12,9 +12,11 @@ import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
 import com.datastrato.gravitino.scim.storage.po.ScimUserMetaPO;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.base.Preconditions;
+import java.time.Instant;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
+import org.apache.gravitino.utils.PrincipalUtils;
 
 /** Converts SCIM POs to domain objects. */
 public final class ScimPOConverters {
@@ -61,6 +63,19 @@ public final class ScimPOConverters {
     } catch (JsonProcessingException e) {
       throw new RuntimeException("Failed to serialize audit info:", e);
     }
+  }
+
+  /**
+   * Builds create-time audit JSON for the current principal (same pattern as SCIM tokens).
+   *
+   * @return serialized {@link AuditInfo}
+   */
+  public static String newCreateAuditInfo() {
+    return serializeAuditInfo(
+        AuditInfo.builder()
+            .withCreator(PrincipalUtils.getCurrentPrincipal().getName())
+            .withCreateTime(Instant.now())
+            .build());
   }
 
   /** Deserializes audit metadata from relational storage. */

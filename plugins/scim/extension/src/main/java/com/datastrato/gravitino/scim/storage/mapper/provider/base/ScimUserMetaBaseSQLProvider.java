@@ -14,16 +14,16 @@ public class ScimUserMetaBaseSQLProvider {
 
   private static final String SELECT_COLUMNS =
       " user_id as userId, user_name as userName, external_id as externalId,"
-          + " enabled as enabled, current_version as currentVersion,"
+          + " enabled as enabled, audit_info as auditInfo, current_version as currentVersion,"
           + " last_version as lastVersion, deleted_at as deletedAt";
 
   public String insert(@Param("userMeta") ScimUserMetaPO userMeta) {
     return "INSERT INTO "
         + ScimUserMetaMapper.TABLE_NAME
-        + " (user_id, user_name, external_id, enabled, current_version, last_version, deleted_at)"
-        + " VALUES (#{userMeta.userId}, #{userMeta.userName}, #{userMeta.externalId},"
-        + " #{userMeta.enabled}, #{userMeta.currentVersion}, #{userMeta.lastVersion},"
-        + " #{userMeta.deletedAt})";
+        + " (user_id, user_name, external_id, enabled, audit_info, current_version, last_version,"
+        + " deleted_at) VALUES (#{userMeta.userId}, #{userMeta.userName}, #{userMeta.externalId},"
+        + " #{userMeta.enabled}, #{userMeta.auditInfo}, #{userMeta.currentVersion},"
+        + " #{userMeta.lastVersion}, #{userMeta.deletedAt})";
   }
 
   public String selectByExternalId(@Param("externalId") String externalId) {

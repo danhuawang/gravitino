@@ -4,8 +4,10 @@
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import org.junit.jupiter.api.Test;
 
 public class TestDatastratoGroupMetaBaseSQLProvider {
@@ -62,9 +64,11 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("originCode"));
     assertTrue(sql.contains("UNION ALL"));
     assertTrue(sql.contains("NOT EXISTS"));
-    assertTrue(sql.contains("GROUP BY gt.group_name"));
     assertTrue(sql.contains("ORDER BY identity.groupName"));
     assertTrue(sql.contains("CAST(NULL AS BIGINT)"));
+    assertTrue(sql.contains("GROUP BY gt.group_name"));
+    // No metalake-only JIT identity branch (origin code 2).
+    assertFalse(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
   }
 
   @Test
@@ -79,6 +83,41 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     String sql = mysql.listDirectoryGroups();
     assertTrue(sql.contains("CAST(NULL AS SIGNED)"));
     assertFalse(sql.contains("CAST(NULL AS BIGINT)"));
+  }
+
+  @Test
+  public void testListDirectoryGroupsForUserLocal() {
+    String sql = provider.listDirectoryGroupsForUser("sam.o", IdentitySource.ORIGIN_CODE_LOCAL);
+    assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("idp_user_group_rel"));
+    assertTrue(sql.contains("idp_group_meta"));
+    assertTrue(sql.contains("memberCount"));
+    assertTrue(sql.contains("iu.user_name = #{userName}"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_LOCAL + " as originCode"));
+    assertFalse(sql.contains("scim_user_meta"));
+    assertFalse(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
+  }
+
+  @Test
+  public void testListDirectoryGroupsForUserProvisioned() {
+    String sql =
+        provider.listDirectoryGroupsForUser("dana.k", IdentitySource.ORIGIN_CODE_PROVISIONED);
+    assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("scim_user_group_rel"));
+    assertTrue(sql.contains("scim_group_meta"));
+    assertTrue(sql.contains("memberCount"));
+    assertTrue(sql.contains("su.user_name = #{userName}"));
+    assertTrue(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " as originCode"));
+    assertFalse(sql.contains("idp_user_group_rel"));
+    assertFalse(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
+  }
+
+  @Test
+  public void testListDirectoryGroupsForUserRejectsJit() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> provider.listDirectoryGroupsForUser("jordan.m", IdentitySource.ORIGIN_CODE_JIT));
   }
 
   @Test

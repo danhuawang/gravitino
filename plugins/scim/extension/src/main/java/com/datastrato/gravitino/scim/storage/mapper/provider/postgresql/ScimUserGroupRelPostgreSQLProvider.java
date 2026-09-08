@@ -18,18 +18,19 @@ public class ScimUserGroupRelPostgreSQLProvider extends ScimUserGroupRelBaseSQLP
       @Param("groupId") long groupId,
       @Param("userIds") List<Long> userIds,
       @Param("currentVersion") Long currentVersion,
-      @Param("lastVersion") Long lastVersion) {
+      @Param("lastVersion") Long lastVersion,
+      @Param("auditInfo") String auditInfo) {
     return "<script><if test='userIds != null and userIds.size() > 0'>INSERT INTO "
         + ScimUserGroupRelMapper.SCIM_USER_GROUP_REL_TABLE_NAME
-        + " (user_id, group_id, current_version, last_version, deleted_at)"
-        + " SELECT u.user_id, #{groupId}, #{currentVersion}, #{lastVersion}, 0 FROM "
+        + " (user_id, group_id, audit_info, current_version, last_version, deleted_at)"
+        + " SELECT u.user_id, #{groupId}, #{auditInfo}, #{currentVersion}, #{lastVersion}, 0 FROM "
         + ScimUserMetaMapper.TABLE_NAME
         + " u WHERE u.deleted_at = 0 AND u.user_id IN ("
         + "<foreach collection='userIds' item='userId' separator=','>#{userId}</foreach>)"
         + " ON CONFLICT (user_id, group_id, deleted_at) DO UPDATE SET"
         + " user_id = EXCLUDED.user_id, group_id = EXCLUDED.group_id,"
-        + " current_version = EXCLUDED.current_version, last_version = EXCLUDED.last_version,"
-        + " deleted_at = EXCLUDED.deleted_at</if></script>";
+        + " audit_info = EXCLUDED.audit_info, current_version = EXCLUDED.current_version,"
+        + " last_version = EXCLUDED.last_version, deleted_at = EXCLUDED.deleted_at</if></script>";
   }
 
   @Override

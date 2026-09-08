@@ -17,6 +17,28 @@ public class UserWithGroups implements ExtendedUserDTO.UserWithGroupNames {
   private final User user;
   private final List<String> groups;
   private final IdentitySource origin;
+  private final boolean enabled;
+  private final String externalId;
+
+  /**
+   * @param user The metalake user.
+   * @param groups Metalake group names for the user.
+   * @param origin Local / Provisioned / JIT from identity-store presence.
+   * @param enabled Identity-store enabled flag.
+   * @param externalId SCIM external id when Provisioned; otherwise {@code null}.
+   */
+  public UserWithGroups(
+      User user,
+      @Nullable List<String> groups,
+      IdentitySource origin,
+      boolean enabled,
+      @Nullable String externalId) {
+    this.user = Preconditions.checkNotNull(user, "user cannot be null");
+    this.groups = groups == null ? Collections.emptyList() : groups;
+    this.origin = Preconditions.checkNotNull(origin, "origin cannot be null");
+    this.enabled = enabled;
+    this.externalId = externalId;
+  }
 
   /**
    * @param user The metalake user.
@@ -24,9 +46,7 @@ public class UserWithGroups implements ExtendedUserDTO.UserWithGroupNames {
    * @param origin Local / Provisioned / JIT from identity-store presence.
    */
   public UserWithGroups(User user, @Nullable List<String> groups, IdentitySource origin) {
-    this.user = Preconditions.checkNotNull(user, "user cannot be null");
-    this.groups = groups == null ? Collections.emptyList() : groups;
-    this.origin = Preconditions.checkNotNull(origin, "origin cannot be null");
+    this(user, groups, origin, true, null);
   }
 
   @Override
@@ -42,5 +62,16 @@ public class UserWithGroups implements ExtendedUserDTO.UserWithGroupNames {
   @Override
   public IdentitySource origin() {
     return origin;
+  }
+
+  @Override
+  public boolean enabled() {
+    return enabled;
+  }
+
+  @Override
+  @Nullable
+  public String externalId() {
+    return externalId;
   }
 }

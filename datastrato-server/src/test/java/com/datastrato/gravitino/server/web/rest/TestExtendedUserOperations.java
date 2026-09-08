@@ -11,17 +11,21 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.DirectoryGroup;
 import com.datastrato.gravitino.authorization.DirectoryUser;
+import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
 import com.datastrato.gravitino.dto.authorization.DirectoryUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.requests.DirectoryUserAddRequest;
 import com.datastrato.gravitino.dto.requests.DirectoryUserDeleteRequest;
 import com.datastrato.gravitino.dto.requests.DirectoryUserEnabledBatchUpdateRequest;
+import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryUserResponse;
 import java.io.IOException;
@@ -34,23 +38,29 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.responses.NameListResponse;
+import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.UserAlreadyExistsException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.GravitinoAuthorizerProvider;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
+import org.apache.gravitino.utils.PrincipalUtils;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 public class TestExtendedUserOperations extends JerseyTest {
@@ -58,6 +68,8 @@ public class TestExtendedUserOperations extends JerseyTest {
   private static final DatastratoAccessControlDispatcher accessControlDispatcher =
       mock(DatastratoAccessControlDispatcher.class);
   private static final EntityStore entityStore = mock(EntityStore.class);
+  private static final GravitinoAuthorizer gravitinoAuthorizer = mock(GravitinoAuthorizer.class);
+  private static GravitinoAuthorizer previousAuthorizer;
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
     @Override
@@ -81,11 +93,22 @@ public class TestExtendedUserOperations extends JerseyTest {
         "accessControlDispatcher",
         accessControlDispatcher,
         true);
+    GravitinoAuthorizerProvider authorizerProvider = GravitinoAuthorizerProvider.getInstance();
+    previousAuthorizer =
+        (GravitinoAuthorizer) FieldUtils.readField(authorizerProvider, "gravitinoAuthorizer", true);
+    FieldUtils.writeField(authorizerProvider, "gravitinoAuthorizer", gravitinoAuthorizer, true);
+  }
+
+  @AfterAll
+  public static void tearDownAuthorizer() throws IllegalAccessException {
+    FieldUtils.writeField(
+        GravitinoAuthorizerProvider.getInstance(), "gravitinoAuthorizer", previousAuthorizer, true);
   }
 
   @BeforeEach
   public void resetMocks() throws IOException {
-    reset(accessControlDispatcher, entityStore);
+    reset(accessControlDispatcher, entityStore, gravitinoAuthorizer);
+    when(gravitinoAuthorizer.isServiceAdmin()).thenReturn(true);
     mockInUseMetalake();
   }
 
@@ -153,6 +176,32 @@ public class TestExtendedUserOperations extends JerseyTest {
             .getMethod("listDirectoryUsers")
             .getAnnotation(AuthorizationExpression.class)
             .expression());
+  }
+
+  @Test
+  public void testGetDirectoryUserAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "",
+        ExtendedUserOperations.class
+            .getMethod("getDirectoryUser", String.class, String.class)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
+  }
+
+  @Test
+  public void testRequireServiceAdminOrSelf() {
+    when(gravitinoAuthorizer.isServiceAdmin()).thenReturn(true);
+    Assertions.assertDoesNotThrow(() -> ExtendedUserOperations.requireServiceAdminOrSelf("anyone"));
+
+    when(gravitinoAuthorizer.isServiceAdmin()).thenReturn(false);
+    try (MockedStatic<PrincipalUtils> principalUtils = mockStatic(PrincipalUtils.class)) {
+      principalUtils.when(PrincipalUtils::getCurrentUserName).thenReturn("dana.k");
+      Assertions.assertDoesNotThrow(
+          () -> ExtendedUserOperations.requireServiceAdminOrSelf("dana.k"));
+      Assertions.assertThrows(
+          ForbiddenException.class,
+          () -> ExtendedUserOperations.requireServiceAdminOrSelf("other.user"));
+    }
   }
 
   @Test
@@ -313,6 +362,55 @@ public class TestExtendedUserOperations extends JerseyTest {
         "SERVICE_ADMIN",
         ExtendedUserOperations.class
             .getMethod("deleteDirectoryUsers", DirectoryUserDeleteRequest.class)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression());
+  }
+
+  @Test
+  public void testListDirectoryGroupsForUser() {
+    when(accessControlDispatcher.listDirectoryGroupsForUser(
+            eq("dana.k"), eq(IdentitySource.PROVISIONED)))
+        .thenReturn(
+            List.of(
+                new DirectoryGroup("finance", 3, IdentitySource.PROVISIONED, List.of()),
+                new DirectoryGroup("platform", 1, IdentitySource.PROVISIONED, List.of())));
+
+    Response response =
+        target("/web/security/directory/users/dana.k/groups")
+            .queryParam("origin", "Provisioned")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    DirectoryGroupListResponse body = response.readEntity(DirectoryGroupListResponse.class);
+    Assertions.assertEquals(0, body.getCode());
+    DirectoryGroupDTO[] groups = body.getGroups();
+    Assertions.assertEquals(2, groups.length);
+    Assertions.assertEquals("finance", groups[0].name());
+    Assertions.assertEquals(3, groups[0].memberCount());
+    Assertions.assertEquals(IdentitySource.PROVISIONED, groups[0].origin());
+    Assertions.assertEquals("platform", groups[1].name());
+  }
+
+  @Test
+  public void testListDirectoryGroupsForUserBadOrigin() {
+    Response response =
+        target("/web/security/directory/users/dana.k/groups")
+            .queryParam("origin", "JIT")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+  }
+
+  @Test
+  public void testListDirectoryGroupsForUserAuthorization() throws NoSuchMethodException {
+    Assertions.assertEquals(
+        "",
+        ExtendedUserOperations.class
+            .getMethod("listDirectoryGroupsForUser", String.class, String.class)
             .getAnnotation(AuthorizationExpression.class)
             .expression());
   }

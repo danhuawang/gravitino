@@ -16,6 +16,8 @@ public class UserWithGroupsPO extends ExtendedUserPO {
 
   private String groupNames;
   private Integer originCode;
+  private Boolean enabled;
+  private String externalId;
 
   /**
    * @return JSON array of metalake group names for the user.
@@ -54,6 +56,41 @@ public class UserWithGroupsPO extends ExtendedUserPO {
         originCode == null ? IdentitySource.ORIGIN_CODE_JIT : originCode);
   }
 
+  /**
+   * @return Identity-store enabled flag, or {@code null} when unset.
+   */
+  public Boolean getEnabled() {
+    return enabled;
+  }
+
+  /**
+   * @param enabled Identity-store enabled flag.
+   */
+  public void setEnabled(Boolean enabled) {
+    this.enabled = enabled;
+  }
+
+  /**
+   * @return Enabled flag, defaulting to {@code true} when unset.
+   */
+  public boolean enabledOrDefault() {
+    return enabled == null || enabled;
+  }
+
+  /**
+   * @return SCIM external id when present.
+   */
+  public String getExternalId() {
+    return externalId;
+  }
+
+  /**
+   * @param externalId SCIM external id.
+   */
+  public void setExternalId(String externalId) {
+    this.externalId = externalId;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -65,11 +102,14 @@ public class UserWithGroupsPO extends ExtendedUserPO {
     UserWithGroupsPO that = (UserWithGroupsPO) o;
     return super.equals(o)
         && Objects.equal(getGroupNames(), that.getGroupNames())
-        && Objects.equal(getOriginCode(), that.getOriginCode());
+        && Objects.equal(getOriginCode(), that.getOriginCode())
+        && Objects.equal(getEnabled(), that.getEnabled())
+        && Objects.equal(getExternalId(), that.getExternalId());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(super.hashCode(), getGroupNames(), getOriginCode());
+    return Objects.hashCode(
+        super.hashCode(), getGroupNames(), getOriginCode(), getEnabled(), getExternalId());
   }
 }

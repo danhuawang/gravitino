@@ -78,7 +78,9 @@ class TestScimUserGroupRelBaseSQLProvider {
   @Test
   void testInsertByUserIdsEmpty() {
     ScimUserGroupRelBaseSQLProvider provider = new ScimUserGroupRelBaseSQLProvider();
-    String script = provider.insertMemberships(GROUP_ID, Collections.emptyList(), 1L, 0L);
+    String script =
+        provider.insertMemberships(
+            GROUP_ID, Collections.emptyList(), 1L, 0L, "{\"creator\":\"test\"}");
 
     SqlSource sqlSource =
         new XMLLanguageDriver().createSqlSource(new Configuration(), script, Map.class);
@@ -97,23 +99,28 @@ class TestScimUserGroupRelBaseSQLProvider {
   @Test
   void testInsertByUserIdsNonEmpty() {
     ScimUserGroupRelBaseSQLProvider provider = new ScimUserGroupRelBaseSQLProvider();
-    String script = provider.insertMemberships(GROUP_ID, Arrays.asList(100L, 101L), 1L, 0L);
+    String script =
+        provider.insertMemberships(
+            GROUP_ID, Arrays.asList(100L, 101L), 1L, 0L, "{\"creator\":\"test\"}");
 
     Assertions.assertTrue(script.contains("u.user_id IN"));
     Assertions.assertTrue(script.contains("#{groupId}"));
     Assertions.assertTrue(script.contains("SELECT"));
     Assertions.assertTrue(script.contains("ON DUPLICATE KEY UPDATE"));
+    Assertions.assertTrue(script.contains("audit_info"));
     Assertions.assertFalse(script.contains("external_id"));
   }
 
   @Test
   void testPgInsertByUserIdsOnConflict() {
     String script =
-        new ScimUserGroupRelPostgreSQLProvider().insertMemberships(GROUP_ID, List.of(100L), 1L, 0L);
+        new ScimUserGroupRelPostgreSQLProvider()
+            .insertMemberships(GROUP_ID, List.of(100L), 1L, 0L, "{\"creator\":\"test\"}");
 
     Assertions.assertTrue(script.contains("ON CONFLICT (user_id, group_id, deleted_at)"));
     Assertions.assertTrue(script.contains("DO UPDATE SET"));
     Assertions.assertTrue(script.contains("EXCLUDED.user_id"));
+    Assertions.assertTrue(script.contains("audit_info"));
     Assertions.assertFalse(script.contains("external_id"));
   }
 

@@ -24,6 +24,7 @@ public class ScimGroupMetaPO {
   private String groupName;
   private String groupComment;
   private String externalId;
+  private String auditInfo;
   private Long currentVersion;
   private Long lastVersion;
   private Long deletedAt;

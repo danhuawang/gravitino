@@ -91,6 +91,7 @@ public class ScimGroupManager implements Closeable {
             .withGroupName(groupName)
             .withGroupComment("")
             .withExternalId(resolvedExternalId)
+            .withAuditInfo(ScimPOConverters.newCreateAuditInfo())
             .withCurrentVersion(POConverters.INIT_VERSION)
             .withLastVersion(POConverters.INIT_VERSION)
             .withDeletedAt(0L)

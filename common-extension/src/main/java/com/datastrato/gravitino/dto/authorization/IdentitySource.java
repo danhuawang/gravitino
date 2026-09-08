@@ -10,9 +10,10 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * Source of a metalake user or group identity for the security UI. Serialized as JSON {@code
  * origin}.
  *
- * <p>For Directory and metalake security Users: {@code Local} from {@code idp_user_meta}, {@code
- * Provisioned} from {@code scim_user_meta}, {@code JIT} when present in neither. Directory Groups
- * use the same three-way split against group identity stores.
+ * <p>For Directory Users/Groups lists: {@code Local} from IdP tables, {@code Provisioned} from SCIM
+ * tables (Directory lists do not include metalake-only {@code JIT} rows). For metalake security
+ * Users/Groups: {@code Local} / {@code Provisioned} / {@code JIT} when present only in metalake
+ * tables.
  */
 public enum IdentitySource {
   /** Present in the built-in IdP. */
@@ -91,6 +92,22 @@ public enum IdentitySource {
         return JIT;
       default:
         throw new IllegalArgumentException("Unknown origin code: " + originCode);
+    }
+  }
+
+  /**
+   * @return SQL / PO origin code for this identity source.
+   */
+  public int toOriginCode() {
+    switch (this) {
+      case LOCAL:
+        return ORIGIN_CODE_LOCAL;
+      case PROVISIONED:
+        return ORIGIN_CODE_PROVISIONED;
+      case JIT:
+        return ORIGIN_CODE_JIT;
+      default:
+        throw new IllegalStateException("Unknown identity source: " + this);
     }
   }
 }

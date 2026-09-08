@@ -14,8 +14,8 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Instance-scoped directory user for Configure → Directory → Users.
  *
- * <p>Rows come from {@code idp_user_meta} ({@code Local}), {@code scim_user_meta} ({@code
- * Provisioned}), or metalake {@code user_meta} only ({@code JIT}).
+ * <p>Rows come from {@code idp_user_meta} ({@code Local}) or {@code scim_user_meta} ({@code
+ * Provisioned}).
  */
 public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
 
@@ -30,8 +30,8 @@ public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
    *
    * @param name Username.
    * @param enabled Whether the user is enabled (Active / Suspended in the UI).
-   * @param origin Local, Provisioned, or JIT.
-   * @param groups Identity-store group names (empty for JIT).
+   * @param origin Local or Provisioned.
+   * @param groups Identity-store group names.
    * @param metalakes Metalake names where the username exists in {@code user_meta}.
    */
   public DirectoryUser(

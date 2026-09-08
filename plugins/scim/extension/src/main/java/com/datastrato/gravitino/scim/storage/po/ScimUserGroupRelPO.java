@@ -23,6 +23,7 @@ public class ScimUserGroupRelPO {
   private Long id;
   private Long userId;
   private Long groupId;
+  private String auditInfo;
   private Long currentVersion;
   private Long lastVersion;
   private Long deletedAt;

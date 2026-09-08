@@ -42,7 +42,8 @@ public interface ScimUserGroupRelMapper {
       @Param("groupId") long groupId,
       @Param("userIds") List<Long> userIds,
       @Param("currentVersion") Long currentVersion,
-      @Param("lastVersion") Long lastVersion);
+      @Param("lastVersion") Long lastVersion,
+      @Param("auditInfo") String auditInfo);
 
   @UpdateProvider(
       type = ScimUserGroupRelSQLProviderFactory.class,

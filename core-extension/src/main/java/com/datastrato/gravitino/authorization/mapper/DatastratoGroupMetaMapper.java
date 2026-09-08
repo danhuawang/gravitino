@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.authorization.mapper;
 
+import com.datastrato.gravitino.authorization.po.DirectoryGroupDetailPO;
 import com.datastrato.gravitino.authorization.po.DirectoryGroupPO;
 import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
 import com.datastrato.gravitino.authorization.po.IdpUserIdPO;
@@ -118,6 +119,32 @@ public interface DatastratoGroupMetaMapper {
       type = DatastratoGroupMetaSQLProviderFactory.class,
       method = "listDirectoryGroups")
   List<DirectoryGroupPO> listDirectoryGroups();
+
+  /**
+   * Loads one Directory Group Overview row by group name and origin code.
+   *
+   * @param groupName Group name.
+   * @param originCode {@link com.datastrato.gravitino.dto.authorization.IdentitySource} Local or
+   *     Provisioned code.
+   * @return Detail row, or {@code null} when missing.
+   */
+  @SelectProvider(type = DatastratoGroupMetaSQLProviderFactory.class, method = "getDirectoryGroup")
+  DirectoryGroupDetailPO getDirectoryGroup(
+      @Param("groupName") String groupName, @Param("originCode") int originCode);
+
+  /**
+   * Lists Directory Groups the user belongs to for Configure → Directory → User → Groups.
+   *
+   * @param userName Username.
+   * @param originCode {@link com.datastrato.gravitino.dto.authorization.IdentitySource} Local or
+   *     Provisioned code.
+   * @return Group rows ordered by group name; empty when the user has no memberships.
+   */
+  @SelectProvider(
+      type = DatastratoGroupMetaSQLProviderFactory.class,
+      method = "listDirectoryGroupsForUser")
+  List<DirectoryGroupPO> listDirectoryGroupsForUser(
+      @Param("userName") String userName, @Param("originCode") int originCode);
 
   /**
    * Returns group names that have an active row in {@code idp_group_meta}.

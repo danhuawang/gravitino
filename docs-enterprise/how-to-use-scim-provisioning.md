@@ -122,7 +122,6 @@ Example:
 # Existing Gravitino server, entity store, and OAuth settings omitted
 
 gravitino.authenticators = oauth
-gravitino.authorization.enable = true
 
 gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.web.rest.feature
 gravitino.auxService.names = scim
@@ -381,7 +380,6 @@ Append SCIM and OAuth settings to `gravitino.conf` (see [Configuration](#configu
 
 ```properties
 gravitino.authenticators = oauth
-gravitino.authorization.enable = true
 
 gravitino.server.rest.extensionPackages = com.datastrato.gravitino.scim.web.rest.feature
 gravitino.auxService.names = scim
