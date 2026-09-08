@@ -706,8 +706,12 @@ public class DatastratoUserMetaBaseSQLProvider {
 
   private String roleAggregationSubquery() {
     return "SELECT rt.user_id as userId,"
-        + " JSON_ARRAYAGG(rot.role_name) as roleNames,"
-        + " JSON_ARRAYAGG(rot.role_id) as roleIds"
+        + " "
+        + jsonArrayAgg("rot.role_name")
+        + " as roleNames,"
+        + " "
+        + jsonArrayAgg("rot.role_id")
+        + " as roleIds"
         + " FROM "
         + USER_ROLE_RELATION_TABLE_NAME
         + " rt JOIN "
@@ -719,7 +723,9 @@ public class DatastratoUserMetaBaseSQLProvider {
 
   private String groupAggregationSubquery() {
     return "SELECT membership.userId as userId,"
-        + " JSON_ARRAYAGG(membership.groupName) as groupNames"
+        + " "
+        + jsonArrayAgg("membership.groupName")
+        + " as groupNames"
         + " FROM ("
         + userGroupMembershipSubquery()
         + ") membership"
