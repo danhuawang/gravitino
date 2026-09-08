@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS `idp_user_meta` (
     `user_name` VARCHAR(128) NOT NULL COMMENT 'idp username',
     `password_hash` VARCHAR(1024) NOT NULL COMMENT 'idp user password hash',
     `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'whether the user is enabled, 0 is disabled, 1 is enabled',
+    `audit_info` MEDIUMTEXT NOT NULL COMMENT 'idp user audit info',
     `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp user current version',
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp user last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'idp user deleted at',
@@ -110,6 +111,7 @@ CREATE TABLE IF NOT EXISTS `idp_group_meta` (
     `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'idp group id',
     `group_name` VARCHAR(128) NOT NULL COMMENT 'idp group name',
     `group_comment` VARCHAR(1024) DEFAULT '' COMMENT 'idp group comment',
+    `audit_info` MEDIUMTEXT NOT NULL COMMENT 'idp group audit info',
     `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp group current version',
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp group last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'idp group deleted at',
@@ -121,6 +123,7 @@ CREATE TABLE IF NOT EXISTS `idp_user_group_rel` (
     `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'auto increment id',
     `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'idp user id',
     `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'idp group id',
+    `audit_info` MEDIUMTEXT NOT NULL COMMENT 'idp user group relation audit info',
     `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp relation current version',
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'idp relation last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'idp relation deleted at',
@@ -132,6 +135,37 @@ CREATE TABLE IF NOT EXISTS `idp_user_group_rel` (
 
 ALTER TABLE `idp_user_meta`
     ADD COLUMN `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'whether the user is enabled, 0 is disabled, 1 is enabled' AFTER `password_hash`;
+
+-- add audit_info as nullable first for MySQL 5.7 compatibility (TEXT cannot have defaults)
+ALTER TABLE `idp_user_meta`
+    ADD COLUMN `audit_info` MEDIUMTEXT COMMENT 'idp user audit info' AFTER `enabled`;
+
+UPDATE `idp_user_meta`
+    SET `audit_info` = '{}'
+    WHERE `audit_info` IS NULL;
+
+ALTER TABLE `idp_user_meta`
+    MODIFY COLUMN `audit_info` MEDIUMTEXT NOT NULL COMMENT 'idp user audit info' AFTER `enabled`;
+
+ALTER TABLE `idp_group_meta`
+    ADD COLUMN `audit_info` MEDIUMTEXT COMMENT 'idp group audit info' AFTER `group_comment`;
+
+UPDATE `idp_group_meta`
+    SET `audit_info` = '{}'
+    WHERE `audit_info` IS NULL;
+
+ALTER TABLE `idp_group_meta`
+    MODIFY COLUMN `audit_info` MEDIUMTEXT NOT NULL COMMENT 'idp group audit info' AFTER `group_comment`;
+
+ALTER TABLE `idp_user_group_rel`
+    ADD COLUMN `audit_info` MEDIUMTEXT COMMENT 'idp user group relation audit info' AFTER `group_id`;
+
+UPDATE `idp_user_group_rel`
+    SET `audit_info` = '{}'
+    WHERE `audit_info` IS NULL;
+
+ALTER TABLE `idp_user_group_rel`
+    MODIFY COLUMN `audit_info` MEDIUMTEXT NOT NULL COMMENT 'idp user group relation audit info' AFTER `group_id`;
 
 CREATE TABLE IF NOT EXISTS `iceberg_cleanup_job` (
   `id`                BIGINT(20)    UNSIGNED NOT NULL COMMENT 'globally unique cleanup job id',
