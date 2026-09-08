@@ -58,7 +58,7 @@ public abstract class IcebergFailureEvent extends FailureEvent {
    * icebergEncryption.*} facts. Distinct keys from both sources are kept.
    */
   @Override
-  public Map<String, String> customInfo() {
+  protected Map<String, String> ownCustomInfo() {
     return icebergRequestContext.customInfo();
   }
 }

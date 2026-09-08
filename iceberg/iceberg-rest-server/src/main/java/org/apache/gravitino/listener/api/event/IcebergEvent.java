@@ -58,7 +58,7 @@ public abstract class IcebergEvent extends Event {
    * icebergEncryption.*} facts. Distinct keys from both sources are kept.
    */
   @Override
-  public Map<String, String> customInfo() {
+  protected Map<String, String> ownCustomInfo() {
     return icebergRequestContext.customInfo();
   }
 

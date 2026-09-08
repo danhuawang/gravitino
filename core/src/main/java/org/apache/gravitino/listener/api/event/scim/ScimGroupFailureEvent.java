@@ -41,7 +41,7 @@ public abstract class ScimGroupFailureEvent extends FailureEvent {
   }
 
   @Override
-  public Map<String, String> customInfo() {
+  protected Map<String, String> ownCustomInfo() {
     return ScimAuditInfos.ofFailure(
         ScimAuditInfos.RESOURCE_GROUP, resourceId, externalId, exception());
   }

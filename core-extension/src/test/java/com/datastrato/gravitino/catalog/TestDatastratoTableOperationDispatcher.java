@@ -97,7 +97,14 @@ public class TestDatastratoTableOperationDispatcher extends TestDatastratoOperat
     Assertions.assertEquals("comment", table1.comment());
     testProperties(props, table1.properties());
     Assertions.assertEquals(0, table1.partitioning().length);
-    Assertions.assertArrayEquals(columns, table1.columns());
+    // The catalog wrapper detaches connector-backed results (e.g. into ColumnDTO) before the
+    // lease ends, so table1.columns() is no longer the same Column implementation as the
+    // original request; compare by name and type instead of array/object equality.
+    Assertions.assertEquals(columns.length, table1.columns().length);
+    for (int i = 0; i < columns.length; i++) {
+      Assertions.assertEquals(columns[i].name(), table1.columns()[i].name());
+      Assertions.assertEquals(columns[i].dataType(), table1.columns()[i].dataType());
+    }
 
     // Test required table properties exception
     Map<String, String> illegalTableProperties =

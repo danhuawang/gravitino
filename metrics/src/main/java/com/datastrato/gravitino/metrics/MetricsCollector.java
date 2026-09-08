@@ -596,15 +596,13 @@ public class MetricsCollector implements Closeable {
       Set<AssetNode> catalogTopicNodes = new HashSet<>();
       Set<AssetNode> catalogModelNodes = new HashSet<>();
       try {
-        CatalogManager.CatalogWrapper catalogWrapper = loadCatalog(catalog);
-        boolean managedSchema = managedStorage(catalogWrapper, Capability.Scope.SCHEMA);
-        boolean managedTable = managedStorage(catalogWrapper, Capability.Scope.TABLE);
-        boolean managedView = managedStorage(catalogWrapper, Capability.Scope.VIEW);
-        boolean managedTopic = managedStorage(catalogWrapper, Capability.Scope.TOPIC);
-        boolean hierarchicalSchema = supportsHierarchicalSchema(catalogWrapper);
-        boolean viewListingSupported =
-            catalog.getType() == Catalog.Type.RELATIONAL
-                && (managedView || supportsViewListing(catalogWrapper));
+        CatalogCapabilities catalogCapabilities = loadCatalogCapabilities(catalog);
+        boolean managedSchema = catalogCapabilities.managedSchema;
+        boolean managedTable = catalogCapabilities.managedTable;
+        boolean managedView = catalogCapabilities.managedView;
+        boolean managedTopic = catalogCapabilities.managedTopic;
+        boolean hierarchicalSchema = catalogCapabilities.hierarchicalSchema;
+        boolean viewListingSupported = catalogCapabilities.viewListingSupported;
 
         if (catalog.getType() == Catalog.Type.RELATIONAL) {
           viewListingSupportByCatalog.put(catalog.name(), viewListingSupported);
@@ -854,10 +852,30 @@ public class MetricsCollector implements Closeable {
         objectIdToOwners.get(catalogEntity.id()));
   }
 
-  private CatalogManager.CatalogWrapper loadCatalog(CatalogEntity catalog)
+  private CatalogCapabilities loadCatalogCapabilities(CatalogEntity catalog)
       throws CatalogCollectionException {
     try {
-      return catalogManager.loadCatalogAndWrap(catalog.nameIdentifier());
+      return catalogManager.doWithCatalogWrapper(
+          catalog.nameIdentifier(),
+          catalogWrapper -> {
+            boolean managedSchema = managedStorage(catalogWrapper, Capability.Scope.SCHEMA);
+            boolean managedTable = managedStorage(catalogWrapper, Capability.Scope.TABLE);
+            boolean managedView = managedStorage(catalogWrapper, Capability.Scope.VIEW);
+            boolean managedTopic = managedStorage(catalogWrapper, Capability.Scope.TOPIC);
+            boolean hierarchicalSchema = supportsHierarchicalSchema(catalogWrapper);
+            boolean viewListingSupported =
+                catalog.getType() == Catalog.Type.RELATIONAL
+                    && (managedView || supportsViewListing(catalogWrapper));
+            return new CatalogCapabilities(
+                managedSchema,
+                managedTable,
+                managedView,
+                managedTopic,
+                hierarchicalSchema,
+                viewListingSupported);
+          });
+    } catch (CatalogCollectionException e) {
+      throw e;
     } catch (Exception e) {
       throw new CatalogCollectionException(e);
     }
@@ -1217,6 +1235,31 @@ public class MetricsCollector implements Closeable {
   private static class CatalogCollectionException extends Exception {
     private CatalogCollectionException(Throwable cause) {
       super(cause);
+    }
+  }
+
+  /** Capability flags read from a catalog while its lease is held. */
+  private static class CatalogCapabilities {
+    private final boolean managedSchema;
+    private final boolean managedTable;
+    private final boolean managedView;
+    private final boolean managedTopic;
+    private final boolean hierarchicalSchema;
+    private final boolean viewListingSupported;
+
+    private CatalogCapabilities(
+        boolean managedSchema,
+        boolean managedTable,
+        boolean managedView,
+        boolean managedTopic,
+        boolean hierarchicalSchema,
+        boolean viewListingSupported) {
+      this.managedSchema = managedSchema;
+      this.managedTable = managedTable;
+      this.managedView = managedView;
+      this.managedTopic = managedTopic;
+      this.hierarchicalSchema = hierarchicalSchema;
+      this.viewListingSupported = viewListingSupported;
     }
   }
 }

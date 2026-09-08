@@ -42,7 +42,7 @@ import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
 import org.apache.gravitino.catalog.EntityCombinedTable;
-import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.connector.CatalogInfo;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.awaitility.Awaitility;
@@ -704,7 +704,7 @@ public class TestSearchService {
     // The memory search storage should have 12 entities now.
 
     // Simulate catalog1 has been removed
-    Map<String, BaseCatalog> original = gravitinoService.catalogs;
+    Map<String, CatalogInfo> original = gravitinoService.catalogs;
 
     Map<String, Integer> removeCatalogAndExpectMap = Maps.newHashMap();
     removeCatalogAndExpectMap.put("test_metalake.test_catalog1", 6);
@@ -713,7 +713,7 @@ public class TestSearchService {
 
     for (Map.Entry<String, Integer> entry : removeCatalogAndExpectMap.entrySet()) {
       String key = entry.getKey();
-      BaseCatalog catalog = original.get(key);
+      CatalogInfo catalog = original.get(key);
       try {
         gravitinoService.catalogs.remove(key);
         testSyncTaskWithoutCleanData(metalakeIdent, METALAKE, true, entry.getValue());

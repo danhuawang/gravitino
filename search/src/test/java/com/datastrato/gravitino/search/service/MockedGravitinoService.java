@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 
 import com.datastrato.gravitino.DatastratoGravitinoEnv;
-import com.datastrato.gravitino.TestCatalog;
 import com.datastrato.gravitino.TestSchema;
 import com.datastrato.gravitino.TestTable;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
@@ -40,7 +39,7 @@ import org.apache.gravitino.catalog.FunctionDispatcher;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
-import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.connector.CatalogInfo;
 import org.apache.gravitino.dto.rel.ColumnDTO;
 import org.apache.gravitino.exceptions.NoSuchFunctionException;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
@@ -52,7 +51,6 @@ import org.apache.gravitino.function.FunctionDefinition;
 import org.apache.gravitino.function.FunctionType;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
-import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.ColumnEntity;
 import org.apache.gravitino.meta.FunctionEntity;
 import org.apache.gravitino.meta.GroupEntity;
@@ -80,7 +78,7 @@ import org.mockito.Mockito;
 
 public class MockedGravitinoService {
   private Map<String, BaseMetalake> metalakes = new HashMap<>();
-  public Map<String, BaseCatalog> catalogs = new HashMap<>();
+  public Map<String, CatalogInfo> catalogs = new HashMap<>();
   public Map<String, EntityCombinedSchema> schemas = new HashMap<>();
   public Map<String, EntityCombinedTable> tables = new HashMap<>();
   public Map<String, EntityCombinedView> views = new HashMap<>();
@@ -617,22 +615,19 @@ public class MockedGravitinoService {
     roles.remove(NameIdentifierUtil.ofRole(metalake, roleName).toString());
   }
 
-  public BaseCatalog createCatalog(NameIdentifier nameIdentifier) throws IllegalAccessException {
-    BaseCatalog baseCatalog = new TestCatalog();
-    FieldUtils.writeField(
-        baseCatalog,
-        "entity",
-        CatalogEntity.builder()
-            .withName(nameIdentifier.name())
-            .withAuditInfo(AuditInfo.EMPTY)
-            .withId(entityIdAllocator++)
-            .withProvider("jdbc-mysql")
-            .withType(Catalog.Type.RELATIONAL)
-            .withProperties(ImmutableMap.of())
-            .build(),
-        true);
-    catalogs.put(nameIdentifier.toString(), baseCatalog);
-    return baseCatalog;
+  public CatalogInfo createCatalog(NameIdentifier nameIdentifier) {
+    CatalogInfo catalog =
+        new CatalogInfo(
+            entityIdAllocator++,
+            nameIdentifier.name(),
+            Catalog.Type.RELATIONAL,
+            "jdbc-mysql",
+            null,
+            ImmutableMap.of(),
+            AuditInfo.EMPTY,
+            nameIdentifier.namespace());
+    catalogs.put(nameIdentifier.toString(), catalog);
+    return catalog;
   }
 
   public EntityCombinedSchema createSchema(NameIdentifier nameIdentifier) {
@@ -865,7 +860,7 @@ public class MockedGravitinoService {
     } else if (functions.containsKey(key)) {
       return functions.get(key).id();
     } else if (catalogs.containsKey(key)) {
-      return catalogs.get(key).entity().id();
+      return catalogs.get(key).id();
     } else if (tags.containsKey(nameIdentifier.name())) {
       return ((TagEntity) tags.get(nameIdentifier.name())).id();
     } else if (policies.containsKey(nameIdentifier.name())) {

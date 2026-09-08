@@ -41,7 +41,7 @@ public abstract class ScimUserFailureEvent extends FailureEvent {
   }
 
   @Override
-  public Map<String, String> customInfo() {
+  protected Map<String, String> ownCustomInfo() {
     return ScimAuditInfos.ofFailure(
         ScimAuditInfos.RESOURCE_USER, resourceId, externalId, exception());
   }
