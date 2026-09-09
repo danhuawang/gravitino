@@ -20,10 +20,13 @@
 package org.apache.iceberg.jdbc;
 
 import com.google.common.base.Preconditions;
+import java.io.Closeable;
 import java.util.Map;
+import java.util.function.Function;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.iceberg.common.cache.SupportsMetadataLocation;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.jdbc.JdbcUtil.SchemaVersion;
 
 // Use Iceberg package to reuse JdbcUtil related classes.
@@ -37,9 +40,21 @@ public class JdbcCatalogWithMetadataLocationSupport extends JdbcCatalog
     super(null, null, initializeCatalogTables);
   }
 
+  JdbcCatalogWithMetadataLocationSupport(
+      Function<Map<String, String>, FileIO> ioBuilder,
+      Function<Map<String, String>, JdbcClientPool> clientPoolBuilder,
+      boolean initializeCatalogTables) {
+    super(ioBuilder, clientPoolBuilder, initializeCatalogTables);
+  }
+
   @Override
   public void initialize(String name, Map<String, String> properties) {
-    super.initialize(name, properties);
+    try {
+      super.initialize(name, properties);
+    } catch (RuntimeException e) {
+      closePartiallyInitializedResources(e);
+      throw e;
+    }
     loadFields();
   }
 
@@ -82,6 +97,26 @@ public class JdbcCatalogWithMetadataLocationSupport extends JdbcCatalog
           jdbcSchemaVersion != null, "Failed to get schemaVersion field from JDBC catalog");
     } catch (IllegalAccessException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  private void closePartiallyInitializedResources(RuntimeException initializationException) {
+    // JdbcCatalog creates these resources before updating the JDBC schema, but registers them with
+    // its CloseableGroup only after the update succeeds. Its close() method therefore cannot clean
+    // them up when initialization fails during the schema update.
+    closePartiallyInitializedResource("connections", initializationException);
+    closePartiallyInitializedResource("io", initializationException);
+  }
+
+  private void closePartiallyInitializedResource(
+      String fieldName, RuntimeException initializationException) {
+    try {
+      Closeable resource = (Closeable) FieldUtils.readField(this, fieldName, true);
+      if (resource != null) {
+        resource.close();
+      }
+    } catch (Exception closeException) {
+      initializationException.addSuppressed(closeException);
     }
   }
 }

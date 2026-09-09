@@ -58,6 +58,12 @@ public class IcebergCatalogUtil {
 
   private static final Logger LOG = LoggerFactory.getLogger(IcebergCatalogUtil.class);
 
+  /**
+   * Column that Iceberg adds to the {@code iceberg_tables} control table in its V1 view-support
+   * migration (see {@code JdbcUtil} in iceberg-core).
+   */
+  private static final String ICEBERG_TYPE_COLUMN = "iceberg_type";
+
   private static final ConcurrentHashMap<String, InMemoryCatalog> MEMORY_CATALOGS =
       new ConcurrentHashMap<>();
 
@@ -170,13 +176,58 @@ public class IcebergCatalogUtil {
     try {
       jdbcCatalog.initialize(icebergCatalogName, properties);
     } catch (UncheckedSQLException e) {
-      if (e.getCause() instanceof SQLException
-          && e.getCause().getMessage().contains("Access denied")) {
+      Throwable cause = e.getCause();
+      if (cause instanceof SQLException
+          && cause.getMessage() != null
+          && cause.getMessage().contains("Access denied")) {
         throw new ConnectionFailedException(e, e.getMessage());
       }
-      throw e;
+      if (!isConcurrentViewMigrationConflict(e)) {
+        throw e;
+      }
+      // Iceberg's V1 view-support migration adds the `iceberg_type` column to the shared
+      // `iceberg_tables` control table with a non-idempotent `ALTER TABLE ... ADD COLUMN`. When
+      // several Iceberg JDBC catalogs share the same backend `uri` (hence one `iceberg_tables`), a
+      // losing racer finds the column already added by another catalog and fails initialization.
+      // The schema is already at V1, so re-initialize a fresh catalog once: the column now exists,
+      // Iceberg skips the migration, and initialization completes.
+      LOG.info(
+          "iceberg_type column already added by another Iceberg JDBC catalog sharing the same "
+              + "backend uri; re-initializing catalog {}",
+          icebergCatalogName);
+      jdbcCatalog =
+          new JdbcCatalogWithMetadataLocationSupport(
+              icebergConfig.get(IcebergConfig.JDBC_INIT_TABLES));
+      jdbcCatalog.setConf(hdfsConfiguration);
+      jdbcCatalog.initialize(icebergCatalogName, properties);
     }
     return jdbcCatalog;
+  }
+
+  /**
+   * Whether an {@link UncheckedSQLException} from {@code JdbcCatalog.initialize} is the benign
+   * conflict raised when another Iceberg JDBC catalog sharing the same backend {@code uri} already
+   * ran Iceberg's V1 view-support migration.
+   *
+   * <p>That migration adds the {@value #ICEBERG_TYPE_COLUMN} column to the shared {@code
+   * iceberg_tables} table with a non-idempotent {@code ALTER TABLE ... ADD COLUMN}, so a losing
+   * racer fails with a duplicate-column error whose wording differs per database (MySQL: {@code
+   * Duplicate column name 'iceberg_type'}; PostgreSQL: {@code column "iceberg_type" ... already
+   * exists}; SQLite: {@code duplicate column name: iceberg_type}).
+   *
+   * @param e the exception thrown by catalog initialization
+   * @return {@code true} if the failure is a duplicate {@value #ICEBERG_TYPE_COLUMN} column
+   *     conflict
+   */
+  @VisibleForTesting
+  static boolean isConcurrentViewMigrationConflict(UncheckedSQLException e) {
+    Throwable cause = e.getCause();
+    if (!(cause instanceof SQLException) || cause.getMessage() == null) {
+      return false;
+    }
+    String message = cause.getMessage().toLowerCase(Locale.ROOT);
+    return message.contains(ICEBERG_TYPE_COLUMN)
+        && (message.contains("duplicate column") || message.contains("already exists"));
   }
 
   private static Catalog loadRestCatalog(IcebergConfig icebergConfig) {
