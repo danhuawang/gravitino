@@ -4,7 +4,7 @@
 #
 # Copy fixture *.input files into a temp tree, run apply / check-year, and
 # compare against golden expected/ files. Fixtures use .input so RAT and
-# checkDatastratoLicenseHeaders do not treat them as real source.
+# checkEnterpriseFilesHaveEnterpriseOnlyHeader do not treat them as real source.
 
 set -euo pipefail
 

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Hermetic tests for the build-time license enforcement in {@code enterprise-licenses.gradle.kts}.
+ * Hermetic tests for the build-time license enforcement in {@code enterprise-licensing}.
  *
  * <p>Covers the two scenarios raised in review of PR #1314:
  * <ol>
@@ -38,9 +38,21 @@ import org.junit.jupiter.api.io.TempDir;
  * </ol>
  *
  * <p>The git plumbing is exercised against a temporary git repo (no real repo
- * or remote needed), mirroring what {@code checkNewFileLicenseHeaders} does.
+ * or remote needed), mirroring what {@code checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader} does.
  */
 class TestLicenseHeaderClassifier {
+
+  @Test
+  void shouldCheckHeaderAcceptsSourceAndRejectsOthers() {
+    assertTrue(LicenseHeaderClassifier.shouldCheckHeader("Foo.java"));
+    assertTrue(LicenseHeaderClassifier.shouldCheckHeader("run.sh"));
+    assertTrue(LicenseHeaderClassifier.shouldCheckHeader("Dockerfile"));
+    assertTrue(LicenseHeaderClassifier.shouldCheckHeader("Dockerfile.iceberg-rest"));
+    assertTrue(LicenseHeaderClassifier.shouldCheckHeader("Jenkinsfile"));
+    assertFalse(LicenseHeaderClassifier.shouldCheckHeader("README.md"));
+    assertFalse(LicenseHeaderClassifier.shouldCheckHeader("package.json"));
+    assertFalse(LicenseHeaderClassifier.shouldCheckHeader("guide.txt"));
+  }
 
   @Test
   void detectsDatastratoCopyright() {
@@ -62,67 +74,63 @@ class TestLicenseHeaderClassifier {
   }
 
   @Test
-  void listedFileAcceptsIncCopyrightOnlyAndKeepsYear() {
+  void enterpriseFileAcceptsIncCopyrightOnlyAndKeepsYear() {
     String current = "/*\n * Copyright 2026 Datastrato Inc.\n */";
     assertTrue(LicenseHeaderClassifier.hasApprovedDatastratoCopyright(current));
-    assertFalse(LicenseHeaderClassifier.isListedFileViolation(current));
-    assertNull(LicenseHeaderClassifier.listedFileViolationReason(current));
+    assertNull(LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(current));
 
     String keptYear = "/*\n * Copyright 2024 Datastrato Inc.\n */";
     assertTrue(LicenseHeaderClassifier.hasApprovedDatastratoCopyright(keptYear));
-    assertFalse(LicenseHeaderClassifier.isListedFileViolation(keptYear));
-    assertNull(LicenseHeaderClassifier.listedFileViolationReason(keptYear));
+    assertNull(LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(keptYear));
   }
 
   @Test
-  void listedFileRejectsPvtLtd() {
+  void enterpriseFileRejectsPvtLtd() {
     String pvtLtd = "/*\n * Copyright 2026 Datastrato Pvt Ltd.\n */";
     assertTrue(LicenseHeaderClassifier.hasDatastratoCopyright(pvtLtd));
     assertFalse(LicenseHeaderClassifier.hasApprovedDatastratoCopyright(pvtLtd));
-    assertTrue(LicenseHeaderClassifier.isListedFileViolation(pvtLtd));
     assertEquals(
-        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
-        LicenseHeaderClassifier.listedFileViolationReason(pvtLtd));
+        LicenseHeaderClassifier.ENTERPRISE_ONLY_MISSING_INC_COPYRIGHT,
+        LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(pvtLtd));
 
     String pvtLtdAndGrant =
         "/*\n * Copyright 2024 Datastrato Pvt Ltd.\n * "
             + LicenseHeaderClassifier.APACHE_SENTENCE
             + "\n */";
     assertEquals(
-        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
-        LicenseHeaderClassifier.listedFileViolationReason(pvtLtdAndGrant));
+        LicenseHeaderClassifier.ENTERPRISE_ONLY_MISSING_INC_COPYRIGHT,
+        LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(pvtLtdAndGrant));
   }
 
   @Test
-  void listedFileRejectsApacheGrantEvenOnInc() {
+  void enterpriseFileRejectsApacheGrantEvenOnInc() {
     String apacheGrant =
         "/*\n * Copyright 2026 Datastrato Inc.\n * "
             + LicenseHeaderClassifier.APACHE_SENTENCE
             + "\n */";
     assertTrue(LicenseHeaderClassifier.hasApprovedDatastratoCopyright(apacheGrant));
-    assertTrue(LicenseHeaderClassifier.isListedFileViolation(apacheGrant));
     assertEquals(
-        LicenseHeaderClassifier.LISTED_APACHE_GRANT_NOT_ALLOWED,
-        LicenseHeaderClassifier.listedFileViolationReason(apacheGrant));
+        LicenseHeaderClassifier.ENTERPRISE_ONLY_APACHE_GRANT_NOT_ALLOWED,
+        LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(apacheGrant));
   }
 
   @Test
-  void listedFileRejectsMissingAndAsfHeaders() {
+  void enterpriseFileRejectsMissingAndAsfHeaders() {
     assertEquals(
-        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
-        LicenseHeaderClassifier.listedFileViolationReason("package pkg;"));
+        LicenseHeaderClassifier.ENTERPRISE_ONLY_MISSING_INC_COPYRIGHT,
+        LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason("package pkg;"));
     assertEquals(
-        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
-        LicenseHeaderClassifier.listedFileViolationReason(
+        LicenseHeaderClassifier.ENTERPRISE_ONLY_MISSING_INC_COPYRIGHT,
+        LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(
             "/*\n * Licensed to the Apache Software Foundation (ASF) under one\n */"));
     assertEquals(
-        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
-        LicenseHeaderClassifier.listedFileViolationReason(
+        LicenseHeaderClassifier.ENTERPRISE_ONLY_MISSING_INC_COPYRIGHT,
+        LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(
             "/*\n * SPDX-License-Identifier: Apache-2.0\n */"));
   }
 
   @Test
-  void listedFileIgnoresCopyrightAfterHeaderWindow(@TempDir Path dir) throws IOException {
+  void enterpriseFileIgnoresCopyrightAfterHeaderWindow(@TempDir Path dir) throws IOException {
     Path buriedInc = dir.resolve("BuriedInc.java");
     List<String> missingHeader = new ArrayList<>();
     missingHeader.add("class BuriedInc {");
@@ -134,8 +142,8 @@ class TestLicenseHeaderClassifier {
     Files.write(buriedInc, missingHeader);
     assertTrue(Files.readAllLines(buriedInc).size() > 20);
     assertEquals(
-        LicenseHeaderClassifier.LISTED_MISSING_APPROVED_HEADER,
-        LicenseHeaderClassifier.listedFileViolationReason(
+        LicenseHeaderClassifier.ENTERPRISE_ONLY_MISSING_INC_COPYRIGHT,
+        LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(
             LicenseHeaderClassifier.readHeader(buriedInc)));
 
     Path approvedWithBuriedPvt = dir.resolve("ApprovedBuried.java");
@@ -153,7 +161,7 @@ class TestLicenseHeaderClassifier {
     Files.write(approvedWithBuriedPvt, approved);
     assertTrue(Files.readAllLines(approvedWithBuriedPvt).size() > 20);
     assertNull(
-        LicenseHeaderClassifier.listedFileViolationReason(
+        LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(
             LicenseHeaderClassifier.readHeader(approvedWithBuriedPvt)));
   }
 
@@ -162,9 +170,9 @@ class TestLicenseHeaderClassifier {
     Path file = dir.resolve("PvtLtdOnly.java");
     Files.write(
         file, Arrays.asList("/*", " * Copyright 2026 Datastrato Pvt Ltd.", " */", "package pkg;"));
-    assertFalse(LicenseHeaderClassifier.isViolation(file));
-    assertTrue(
-        LicenseHeaderClassifier.isListedFileViolation(LicenseHeaderClassifier.readHeader(file)));
+    String header = LicenseHeaderClassifier.readHeader(file);
+    assertFalse(LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header));
+    assertNotNull(LicenseHeaderClassifier.enterpriseOnlyHeaderViolationReason(header));
   }
 
   @Test
@@ -186,7 +194,7 @@ class TestLicenseHeaderClassifier {
     assertFalse(
         header.contains("Copyright 2026 Datastrato Pvt Ltd."),
         "header region must not include line 50");
-    assertFalse(LicenseHeaderClassifier.isViolation(file));
+    assertFalse(LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header));
   }
 
   @Test
@@ -201,7 +209,9 @@ class TestLicenseHeaderClassifier {
             " * " + LicenseHeaderClassifier.APACHE_SENTENCE,
             " */",
             "package pkg;"));
-    assertTrue(LicenseHeaderClassifier.isViolation(file));
+    assertTrue(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(
+            LicenseHeaderClassifier.readHeader(file)));
   }
 
   @Test
@@ -211,7 +221,9 @@ class TestLicenseHeaderClassifier {
     Files.write(
         copyrightOnly,
         Arrays.asList("/*", " * Copyright 2026 Datastrato Pvt Ltd.", " */", "package pkg;"));
-    assertFalse(LicenseHeaderClassifier.isViolation(copyrightOnly));
+    assertFalse(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(
+            LicenseHeaderClassifier.readHeader(copyrightOnly)));
 
     Path asf = dir.resolve("AsfPort.java");
     Files.write(
@@ -222,7 +234,9 @@ class TestLicenseHeaderClassifier {
             " * or more contributor license agreements.",
             " */",
             "package pkg;"));
-    assertFalse(LicenseHeaderClassifier.isViolation(asf));
+    assertFalse(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(
+            LicenseHeaderClassifier.readHeader(asf)));
   }
 
   // --- Integration: NewFileFinder against a temp git repo (Rory's two cases) ---
@@ -251,7 +265,8 @@ class TestLicenseHeaderClassifier {
     assertNotNull(added, "base ref branch-1.3 must be resolvable");
     assertEquals(1, added.size());
     assertTrue(added.contains("pkg/A.java"));
-    assertTrue(LicenseHeaderClassifier.isViolation(repo.resolve("pkg/A.java")));
+    assertTrue(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header(repo.resolve("pkg/A.java"))));
   }
 
   @Test
@@ -283,7 +298,8 @@ class TestLicenseHeaderClassifier {
     assertNotNull(added);
     assertEquals(2, added.size());
     for (String f : added) {
-      assertFalse(LicenseHeaderClassifier.isViolation(repo.resolve(f)));
+      assertFalse(
+          LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header(repo.resolve(f))));
     }
   }
 
@@ -321,7 +337,7 @@ class TestLicenseHeaderClassifier {
     assertEquals(2, added.size());
     int violations = 0;
     for (String f : added) {
-      if (LicenseHeaderClassifier.isViolation(repo.resolve(f))) {
+      if (LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header(repo.resolve(f)))) {
         violations++;
       }
     }
@@ -372,7 +388,8 @@ class TestLicenseHeaderClassifier {
     assertNotNull(added);
     assertEquals(1, added.size());
     assertTrue(added.contains("pkg/Build.kt"));
-    assertTrue(LicenseHeaderClassifier.isViolation(repo.resolve("pkg/Build.kt")));
+    assertTrue(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header(repo.resolve("pkg/Build.kt"))));
   }
 
   @Test
@@ -396,7 +413,9 @@ class TestLicenseHeaderClassifier {
     assertNotNull(added);
     assertEquals(1, added.size());
     assertTrue(added.contains("Dockerfile.iceberg-rest"));
-    assertTrue(LicenseHeaderClassifier.isViolation(repo.resolve("Dockerfile.iceberg-rest")));
+    assertTrue(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(
+            header(repo.resolve("Dockerfile.iceberg-rest"))));
   }
 
   @Test
@@ -422,11 +441,12 @@ class TestLicenseHeaderClassifier {
     assertNotNull(added);
     assertEquals(1, added.size());
     assertTrue(added.contains("README.md"));
-    // out of scope by file type - the task skips it before isViolation is considered
-    assertFalse(LicenseHeaderClassifier.isSupportedFile("README.md"));
-    // the header carries both markers, so isViolation would be true if it were in scope;
+    // out of scope by file type - the task skips it before isAddedEnterpriseFileViolation is considered
+    assertFalse(LicenseHeaderClassifier.shouldCheckHeader("README.md"));
+    // the header carries both markers, so isAddedEnterpriseFileViolation would be true if it were in scope;
     // the file-type skip is what protects non-source files from being flagged
-    assertTrue(LicenseHeaderClassifier.isViolation(repo.resolve("README.md")));
+    assertTrue(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header(repo.resolve("README.md"))));
   }
 
   @Test
@@ -500,7 +520,8 @@ class TestLicenseHeaderClassifier {
     assertNotNull(added);
     assertEquals(1, added.size());
     assertTrue(added.contains("pkg/New.java"));
-    assertTrue(LicenseHeaderClassifier.isViolation(repo.resolve("pkg/New.java")));
+    assertTrue(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header(repo.resolve("pkg/New.java"))));
   }
 
   @Test
@@ -524,7 +545,8 @@ class TestLicenseHeaderClassifier {
     assertNotNull(added);
     assertEquals(1, added.size());
     assertTrue(added.contains("pkg/New.java"));
-    assertTrue(LicenseHeaderClassifier.isViolation(repo.resolve("pkg/New.java")));
+    assertTrue(
+        LicenseHeaderClassifier.isAddedEnterpriseFileViolation(header(repo.resolve("pkg/New.java"))));
   }
 
   @Test
@@ -582,6 +604,10 @@ class TestLicenseHeaderClassifier {
 
     assertEquals("origin/branch-1.3", NewFileFinder.resolveBaseRef(repo.toFile(), ""));
     assertEquals("origin/branch-1.3", NewFileFinder.resolveBaseRef(repo.toFile(), "  "));
+  }
+
+  private static String header(Path file) throws IOException {
+    return LicenseHeaderClassifier.readHeader(file);
   }
 
   // --- helpers ---

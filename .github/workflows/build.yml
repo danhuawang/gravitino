@@ -174,7 +174,7 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      # fetch-depth: 0 so checkNewFileLicenseHeaders can merge-base against the PR base.
+      # fetch-depth: 0 so checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader can merge-base against the PR base.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -195,7 +195,7 @@ jobs:
           wget https://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb
           sudo dpkg -i libssl1.1_1.1.1f-1ubuntu2_amd64.deb  
 
-      # Ensure origin/<base> exists for checkNewFileLicenseHeaders (and coverage).
+      # Ensure origin/<base> exists for checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader (and coverage).
       - name: Fetch PR base ref
         if: github.event_name == 'pull_request'
         run: git fetch origin ${{ github.base_ref }} --no-tags

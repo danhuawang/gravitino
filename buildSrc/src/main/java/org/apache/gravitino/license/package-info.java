@@ -5,7 +5,7 @@
  * Build-time license logic for the enterprise licensing policy.
  *
  * <p>This package lives in {@code buildSrc} and is used by the applied
- * {@code enterprise-licenses.gradle.kts} script (not by runtime code). It is kept
+ * {@code enterprise-licensing.gradle.kts} scripts (not by runtime code). It is kept
  * separate from the upstream-owned {@code build.gradle.kts} so upstream syncs
  * do not touch Datastrato license policy.
  *

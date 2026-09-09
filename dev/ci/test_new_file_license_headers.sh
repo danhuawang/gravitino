@@ -3,7 +3,7 @@
 # Copyright 2026 Datastrato Pvt Ltd.
 
 # Applies one change as an uncommitted patch to isolated worktrees, then verifies that
-# checkNewFileLicenseHeaders uses each tracking branch's remote upstream without CI input or a
+# checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader uses each tracking branch's remote upstream without CI input or a
 # Gradle base-ref override. A valid committed file must pass and an invalid committed file must fail.
 #
 # Usage:
@@ -60,14 +60,14 @@ run_check() {
   (
     cd "$worktree"
     env -u GITHUB_BASE_REF -u ORG_GRADLE_PROJECT_licenseBaseRef \
-      ./gradlew checkNewFileLicenseHeaders
+      ./gradlew checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader
   ) >"$log_file" 2>&1
 }
 
 assert_selected_base() {
   local log_file="$1"
   local expected_ref="$2"
-  grep -F "checkNewFileLicenseHeaders: using base ref '$expected_ref'" "$log_file" >/dev/null || {
+  grep -F "checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader: using base ref '$expected_ref'" "$log_file" >/dev/null || {
     sed -n '1,240p' "$log_file" >&2
     fail "license check did not use $expected_ref"
   }

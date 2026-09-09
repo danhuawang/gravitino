@@ -194,7 +194,7 @@ class TestMixedDistributionLicenses {
     Path dir = Path.of(System.getProperty("user.dir")).toAbsolutePath();
     for (int i = 0; i < 6; i++) {
       if (Files.isRegularFile(dir.resolve("settings.gradle.kts"))
-          && Files.isRegularFile(dir.resolve("enterprise-licenses.gradle.kts"))) {
+          && Files.isRegularFile(dir.resolve("enterprise-licensing.gradle.kts"))) {
         return dir;
       }
       dir = dir.getParent();

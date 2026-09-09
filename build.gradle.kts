@@ -971,13 +971,13 @@ tasks.rat {
 // enforcement). Kept in a separate file so upstream syncs do not touch
 // Datastrato license logic; only this apply line and the additive rat
 // exclusion fold below remain in the upstream-owned build.gradle.kts.
-apply(from = "enterprise-licenses.gradle.kts")
+apply(from = "enterprise-licensing.gradle.kts")
 
-// Fold the enterprise exclusions (exposed via extra) into the rat task
-// additively, without clobbering the upstream exclusions above. The RatTask
-// type is only importable here, so this stays in build.gradle.kts.
+// Fold filesWithheldFromRat into the rat task additively, without
+// clobbering the upstream exclusions above. The RatTask type is only
+// importable here, so this stays in build.gradle.kts.
 tasks.rat {
-  setExcludes(excludes + (project.extra["enterpriseRatExcludes"] as List<String>))
+  setExcludes(excludes + (project.extra["filesWithheldFromRat"] as List<String>))
 }
 
 tasks.register<Exec>("testDatastratoLicenseHeaderScript") {

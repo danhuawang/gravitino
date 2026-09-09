@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -16,14 +17,16 @@ import java.util.regex.Pattern;
 /**
  * Header classification for the repo licensing policy.
  *
- * <p>{@link #isViolation(Path)} is the new-file rule: a file fails iff its header region carries
- * both a Datastrato copyright ({@code Pvt Ltd} or {@code Inc.}) and {@link #APACHE_SENTENCE}.
- * Upstream ASF ports and copyright-only Datastrato files pass, including {@code Pvt Ltd}.
+ * <p>Public API, in caller order: {@link #shouldCheckHeader} (name kind), {@link #readHeader}
+ * (I/O), then the two job predicates, then the header facts.
  *
- * <p>{@link #isListedFileViolation(String)} is the listed-file rule used by {@code
- * checkDatastratoLicenseHeaders}: the header must be copyright-only {@code Copyright YYYY
- * Datastrato Inc.}. {@code Pvt Ltd}, the Apache grant line, and a missing Datastrato copyright
+ * <p>{@link #enterpriseOnlyHeaderViolationReason(String)} is the Inc. job: copyright-only {@code
+ * Copyright YYYY Datastrato Inc.}. {@code Pvt Ltd}, the grant line, and a missing Inc. copyright
  * fail. The year is not checked.
+ *
+ * <p>{@link #isAddedEnterpriseFileViolation(String)} is the added-file job: fail iff the header
+ * carries both a Datastrato copyright ({@code Pvt Ltd} or {@code Inc.}) and {@link
+ * #APACHE_SENTENCE}. ASF ports and copyright-only Datastrato files pass, including {@code Pvt Ltd}.
  */
 public final class LicenseHeaderClassifier {
 
@@ -37,47 +40,65 @@ public final class LicenseHeaderClassifier {
   public static final String APACHE_SENTENCE =
       "This software is licensed under the Apache License version 2.";
 
-  /** Listed-file failure when the header is not {@code Copyright YYYY Datastrato Inc.}. */
-  public static final String LISTED_MISSING_APPROVED_HEADER =
+  /** Enterprise-file failure when the header is not {@code Copyright YYYY Datastrato Inc.}. */
+  public static final String ENTERPRISE_ONLY_MISSING_INC_COPYRIGHT =
       "missing Copyright YYYY Datastrato Inc.";
 
-  /** Listed-file failure when the header still carries {@link #APACHE_SENTENCE}. */
-  public static final String LISTED_APACHE_GRANT_NOT_ALLOWED =
+  /** Enterprise-file failure when the header still carries {@link #APACHE_SENTENCE}. */
+  public static final String ENTERPRISE_ONLY_APACHE_GRANT_NOT_ALLOWED =
       "Apache grant sentence is not allowed";
 
   /** Number of leading lines considered the header region. */
   public static final int HEADER_LINE_COUNT = 20;
 
-  /** Source extensions covered by the new-file and enterprise header checks. */
-  private static final Set<String> SUPPORTED_EXTENSIONS =
+  /** Extensions of files that carry a license header in this repo. */
+  private static final Set<String> EXTENSIONS_WITH_LICENSE_HEADERS =
       Collections.unmodifiableSet(
           new HashSet<>(
-              java.util.Arrays.asList("java", "scala", "kt", "kts", "py", "sh", "template", "conf")));
+              Arrays.asList(
+                  // keep-sorted start
+                  "conf",
+                  "java",
+                  "kt",
+                  "kts",
+                  "py",
+                  "scala",
+                  "sh",
+                  "template"
+                  // keep-sorted end
+                  )));
 
-  /** Exact file names (no extension) covered by the checks. */
-  private static final Set<String> SUPPORTED_FILE_NAMES =
+  /** Exact basenames that carry a license header in this repo. */
+  private static final Set<String> FILE_NAMES_WITH_LICENSE_HEADERS =
       Collections.unmodifiableSet(
-          new HashSet<>(java.util.Arrays.asList("Dockerfile", "Jenkinsfile")));
+          new HashSet<>(
+              Arrays.asList(
+                  // keep-sorted start
+                  "Dockerfile",
+                  "Jenkinsfile"
+                  // keep-sorted end
+                  )));
+
+  /** Basename prefixes that carry a license header (e.g. {@code Dockerfile.}). */
+  private static final Set<String> FILE_NAME_PREFIXES_WITH_LICENSE_HEADERS =
+      Collections.unmodifiableSet(
+          new HashSet<>(
+              Arrays.asList(
+                  // keep-sorted start
+                  "Dockerfile."
+                  // keep-sorted end
+                  )));
 
   private LicenseHeaderClassifier() {}
 
   /**
-   * Whether a file is in scope for the license checks: a supported source extension, or a {@code
-   * Dockerfile}/{@code Dockerfile.*}/{@code Jenkinsfile} name. Non-source files (e.g. {@code .md},
-   * {@code .json}) are out of scope and intentionally skipped.
+   * Whether we should header-check this basename. Matches the extension, exact-name, and prefix
+   * lists below. Does not read the file.
    */
-  public static boolean isSupportedFile(String fileName) {
-    String name = fileName;
-    int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
-    if (slash >= 0) {
-      name = fileName.substring(slash + 1);
-    }
-    int dot = name.lastIndexOf('.');
-    String ext = (dot >= 0 && dot < name.length() - 1) ? name.substring(dot + 1) : "";
-    if (!ext.isEmpty() && SUPPORTED_EXTENSIONS.contains(ext)) {
-      return true;
-    }
-    return name.equals("Dockerfile") || name.startsWith("Dockerfile.") || name.equals("Jenkinsfile");
+  public static boolean shouldCheckHeader(String fileName) {
+    return hasLicenseHeaderExtension(fileName)
+        || isLicenseHeaderFileName(fileName)
+        || hasLicenseHeaderPrefix(fileName);
   }
 
   /** Returns the first {@link #HEADER_LINE_COUNT} lines of {@code file}, joined with newlines. */
@@ -98,6 +119,28 @@ public final class LicenseHeaderClassifier {
   }
 
   /**
+   * Why a header fails {@code checkEnterpriseFilesHaveEnterpriseOnlyHeader}, or {@code null} if it
+   * passes.
+   */
+  public static String enterpriseOnlyHeaderViolationReason(String header) {
+    if (!hasApprovedDatastratoCopyright(header)) {
+      return ENTERPRISE_ONLY_MISSING_INC_COPYRIGHT;
+    }
+    if (hasApacheSentence(header)) {
+      return ENTERPRISE_ONLY_APACHE_GRANT_NOT_ALLOWED;
+    }
+    return null;
+  }
+
+  /**
+   * Whether {@code header} fails the added-file rule: it carries both a Datastrato copyright and
+   * the Apache license sentence.
+   */
+  public static boolean isAddedEnterpriseFileViolation(String header) {
+    return hasDatastratoCopyright(header) && hasApacheSentence(header);
+  }
+
+  /**
    * Whether {@code header} contains a Datastrato copyright line ({@code Pvt Ltd} or {@code Inc.}).
    */
   public static boolean hasDatastratoCopyright(String header) {
@@ -105,7 +148,7 @@ public final class LicenseHeaderClassifier {
   }
 
   /**
-   * Whether {@code header} contains the approved listed-file form {@code Copyright YYYY Datastrato
+   * Whether {@code header} contains the approved Inc. form {@code Copyright YYYY Datastrato
    * Inc.}.
    */
   public static boolean hasApprovedDatastratoCopyright(String header) {
@@ -117,34 +160,16 @@ public final class LicenseHeaderClassifier {
     return header.contains(APACHE_SENTENCE);
   }
 
-  /**
-   * Whether a listed enterprise file fails the post-migration check: it lacks {@code Datastrato
-   * Inc.} copyright, or still carries {@link #APACHE_SENTENCE}.
-   */
-  public static boolean isListedFileViolation(String header) {
-    return listedFileViolationReason(header) != null;
+  private static boolean hasLicenseHeaderExtension(String name) {
+    int dot = name.lastIndexOf('.');
+    return dot >= 0 && EXTENSIONS_WITH_LICENSE_HEADERS.contains(name.substring(dot + 1));
   }
 
-  /**
-   * Why a listed enterprise file fails {@code checkDatastratoLicenseHeaders}, or {@code null} if it
-   * passes.
-   */
-  public static String listedFileViolationReason(String header) {
-    if (!hasApprovedDatastratoCopyright(header)) {
-      return LISTED_MISSING_APPROVED_HEADER;
-    }
-    if (hasApacheSentence(header)) {
-      return LISTED_APACHE_GRANT_NOT_ALLOWED;
-    }
-    return null;
+  private static boolean isLicenseHeaderFileName(String name) {
+    return FILE_NAMES_WITH_LICENSE_HEADERS.contains(name);
   }
 
-  /**
-   * Whether {@code file} violates the new-file policy: it carries both a Datastrato copyright and the
-   * Apache license sentence in its header region.
-   */
-  public static boolean isViolation(Path file) throws IOException {
-    String header = readHeader(file);
-    return hasDatastratoCopyright(header) && hasApacheSentence(header);
+  private static boolean hasLicenseHeaderPrefix(String name) {
+    return FILE_NAME_PREFIXES_WITH_LICENSE_HEADERS.stream().anyMatch(name::startsWith);
   }
 }
