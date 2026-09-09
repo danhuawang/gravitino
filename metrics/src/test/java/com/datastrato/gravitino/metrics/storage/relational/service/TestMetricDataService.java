@@ -192,6 +192,89 @@ class TestMetricDataService {
   }
 
   @Test
+  void testCatalogAssociationCountsUseCurrentPoliciesAndIncludeDisabledPolicies()
+      throws SQLException {
+    long catalogId = 8_001L;
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+        Statement statement = conn.createStatement()) {
+      statement.executeUpdate(
+          "INSERT INTO catalog_meta"
+              + " (catalog_id, catalog_name, metalake_id, type, provider, audit_info, deleted_at)"
+              + " VALUES (8001, 'metric_catalog', 1, 'RELATIONAL', 'test', '{}', 0)");
+      statement.executeUpdate(
+          "INSERT INTO schema_meta"
+              + " (schema_id, schema_name, metalake_id, catalog_id, audit_info, deleted_at)"
+              + " VALUES (8002, 'metric_schema', 1, 8001, '{}', 0)");
+      statement.executeUpdate(
+          "INSERT INTO table_meta"
+              + " (table_id, table_name, metalake_id, catalog_id, schema_id, audit_info, deleted_at)"
+              + " VALUES (8003, 'metric_table', 1, 8001, 8002, '{}', 0)");
+      statement.executeUpdate(
+          "INSERT INTO tag_meta"
+              + " (tag_id, tag_name, metalake_id, audit_info, deleted_at) VALUES"
+              + " (8101, 'tag_one', 1, '{}', 0),"
+              + " (8102, 'tag_two', 1, '{}', 0),"
+              + " (8103, 'deleted_tag', 1, '{}', 1),"
+              + " (8104, 'deleted_relation_tag', 1, '{}', 0)");
+      // A tag associated with both the catalog and a table must be counted only once.
+      statement.executeUpdate(
+          "INSERT INTO tag_relation_meta"
+              + " (tag_id, metadata_object_id, metadata_object_type, audit_info, deleted_at)"
+              + " VALUES (8101, 8001, 'CATALOG', '{}', 0),"
+              + " (8101, 8003, 'TABLE', '{}', 0),"
+              + " (8102, 8002, 'SCHEMA', '{}', 0),"
+              + " (8103, 8003, 'TABLE', '{}', 0),"
+              + " (8104, 8003, 'TABLE', '{}', 1)");
+      statement.executeUpdate(
+          "INSERT INTO policy_meta"
+              + " (policy_id, policy_name, policy_type, metalake_id, audit_info, deleted_at) VALUES"
+              + " (8201, 'enabled_policy_for_catalog', 'custom', 1, '{}', 0),"
+              + " (8202, 'disabled_policy_for_catalog', 'custom', 1, '{}', 0),"
+              + " (8203, 'deleted_policy_for_catalog', 'custom', 1, '{}', 1)");
+      statement.executeUpdate(
+          "INSERT INTO policy_meta"
+              + " (policy_id, policy_name, policy_type, metalake_id, audit_info,"
+              + " current_version, last_version, deleted_at) VALUES"
+              + " (8204, 'deleted_current_version_policy', 'custom', 1, '{}', 2, 2, 0)");
+      statement.executeUpdate(
+          "INSERT INTO policy_version_info"
+              + " (metalake_id, policy_id, version, enabled, deleted_at) VALUES"
+              + " (1, 8201, 1, TRUE, 0),"
+              + " (1, 8202, 1, FALSE, 0),"
+              + " (1, 8203, 1, TRUE, 0),"
+              + " (1, 8204, 1, TRUE, 0),"
+              + " (1, 8204, 2, TRUE, 1)");
+      statement.executeUpdate(
+          "INSERT INTO policy_relation_meta"
+              + " (policy_id, metadata_object_id, metadata_object_type, audit_info, deleted_at)"
+              + " VALUES (8201, 8001, 'CATALOG', '{}', 0),"
+              + " (8201, 8003, 'TABLE', '{}', 0),"
+              + " (8202, 8002, 'SCHEMA', '{}', 0),"
+              + " (8203, 8003, 'TABLE', '{}', 0),"
+              + " (8204, 8003, 'TABLE', '{}', 0)");
+
+      assertEquals(2L, service.listAssociatedTagCountsByCatalogId(1L).get(catalogId));
+      assertEquals(2L, service.listAssociatedPolicyCountsByCatalogId(1L).get(catalogId));
+    } finally {
+      try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+          Statement statement = conn.createStatement()) {
+        statement.executeUpdate(
+            "DELETE FROM policy_relation_meta WHERE policy_id IN (8201, 8202, 8203, 8204)");
+        statement.executeUpdate(
+            "DELETE FROM policy_version_info WHERE policy_id IN (8201, 8202, 8203, 8204)");
+        statement.executeUpdate(
+            "DELETE FROM policy_meta WHERE policy_id IN (8201, 8202, 8203, 8204)");
+        statement.executeUpdate(
+            "DELETE FROM tag_relation_meta WHERE tag_id IN (8101, 8102, 8103, 8104)");
+        statement.executeUpdate("DELETE FROM tag_meta WHERE tag_id IN (8101, 8102, 8103, 8104)");
+        statement.executeUpdate("DELETE FROM table_meta WHERE catalog_id = 8001");
+        statement.executeUpdate("DELETE FROM schema_meta WHERE catalog_id = 8001");
+        statement.executeUpdate("DELETE FROM catalog_meta WHERE catalog_id = 8001");
+      }
+    }
+  }
+
+  @Test
   void testCleanMetricsByTimestamp() {
     String user = "u1";
     long now = System.currentTimeMillis();

@@ -5,6 +5,7 @@ package com.datastrato.gravitino.metrics.storage.relational.service;
 
 import com.datastrato.gravitino.metrics.MetricsCollector;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
+import com.datastrato.gravitino.metrics.storage.relational.CatalogAssociationCountPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.datastrato.gravitino.metrics.storage.relational.OwnerNameRelPO;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.NameIdentifier;
@@ -78,7 +80,36 @@ public class MetricDataService {
     POLICY_COUNT("policy_count"),
 
     /** Number of current, non-deleted policies whose current version is disabled. */
-    DISABLED_POLICY_COUNT("disabled_policy_count");
+    DISABLED_POLICY_COUNT("disabled_policy_count"),
+
+    /** Number of visible Schemas in a Catalog. */
+    SCHEMA_COUNT("schema_count"),
+
+    /** Number of visible Tables in a Catalog. */
+    TABLE_COUNT("table_count"),
+
+    /** Number of visible Views in a Catalog. */
+    VIEW_COUNT("view_count"),
+
+    /** Number of visible Functions in a Catalog. */
+    FUNCTION_COUNT("function_count"),
+
+    /** Number of visible Filesets in a Catalog. */
+    FILESET_COUNT("fileset_count"),
+
+    /** Number of visible Models in a Catalog. */
+    MODEL_COUNT("model_count"),
+
+    /** Number of visible Topics in a Catalog. */
+    TOPIC_COUNT("topic_count"),
+
+    /**
+     * Number of distinct active Tags associated with a Catalog or descendants other than Columns.
+     */
+    ASSOCIATED_TAG_COUNT("associated_tag_count"),
+
+    /** Number of distinct active Policies associated with a Catalog or supported descendants. */
+    ASSOCIATED_POLICY_COUNT("associated_policy_count");
 
     private final String name;
 
@@ -340,6 +371,34 @@ public class MetricDataService {
   }
 
   /**
+   * Lists distinct active Tag association counts grouped by Catalog ID.
+   *
+   * @param metalakeId Metalake ID
+   * @return association counts indexed by Catalog ID
+   */
+  public Map<Long, Long> listAssociatedTagCountsByCatalogId(long metalakeId) {
+    return toCatalogAssociationCounts(
+        SessionUtils.getWithoutCommit(
+            MetricDataMapper.class,
+            mapper -> mapper.listAssociatedTagCountsByCatalogId(metalakeId)));
+  }
+
+  /**
+   * Lists distinct active Policy association counts grouped by Catalog ID.
+   *
+   * <p>Disabled Policies are included.
+   *
+   * @param metalakeId Metalake ID
+   * @return association counts indexed by Catalog ID
+   */
+  public Map<Long, Long> listAssociatedPolicyCountsByCatalogId(long metalakeId) {
+    return toCatalogAssociationCounts(
+        SessionUtils.getWithoutCommit(
+            MetricDataMapper.class,
+            mapper -> mapper.listAssociatedPolicyCountsByCatalogId(metalakeId)));
+  }
+
+  /**
    * Lists metadata object IDs with at least one current, enabled policy relation.
    *
    * @param metalakeId metalake ID
@@ -357,6 +416,15 @@ public class MetricDataService {
     } catch (NoSuchEntityException e) {
       throw new NoSuchMetalakeException(e, "Metalake not found: %s", metalakeName);
     }
+  }
+
+  private static Map<Long, Long> toCatalogAssociationCounts(
+      List<CatalogAssociationCountPO> counts) {
+    return counts.stream()
+        .collect(
+            Collectors.toMap(
+                CatalogAssociationCountPO::getCatalogId,
+                CatalogAssociationCountPO::getAssociatedCount));
   }
 
   private long resolveEffectiveUserId(String metalakeName, String userName) {

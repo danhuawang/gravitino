@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.metrics;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,8 @@ public class MetalakeSnapshot {
   private final Set<Long> enabledPolicyObjectIds;
   private final long policyCount;
   private final long disabledPolicyCount;
+  private final Map<Long, Long> associatedTagCountsByCatalogId;
+  private final Map<Long, Long> associatedPolicyCountsByCatalogId;
   private final Set<String> failedCatalogNames;
   private final Map<String, Catalog.Type> catalogTypes;
   private final Map<String, String> catalogProviders;
@@ -71,6 +74,9 @@ public class MetalakeSnapshot {
    * @param enabledPolicyObjectIds IDs with at least one direct enabled policy
    * @param policyCount number of current policies in the metalake
    * @param disabledPolicyCount number of current policies whose current version is disabled
+   * @param associatedTagCountsByCatalogId distinct active Tag counts indexed by Catalog ID
+   * @param associatedPolicyCountsByCatalogId distinct active Policy counts indexed by Catalog ID;
+   *     disabled Policies are included
    * @param failedCatalogNames enabled catalogs whose connector collection failed
    * @param catalogTypes enabled catalog types indexed by catalog name
    * @param catalogProviders enabled catalog provider short names indexed by catalog name
@@ -96,6 +102,8 @@ public class MetalakeSnapshot {
       Set<Long> enabledPolicyObjectIds,
       long policyCount,
       long disabledPolicyCount,
+      Map<Long, Long> associatedTagCountsByCatalogId,
+      Map<Long, Long> associatedPolicyCountsByCatalogId,
       Set<String> failedCatalogNames,
       Map<String, Catalog.Type> catalogTypes,
       Map<String, String> catalogProviders,
@@ -117,6 +125,14 @@ public class MetalakeSnapshot {
     this.enabledPolicyObjectIds = enabledPolicyObjectIds;
     this.policyCount = policyCount;
     this.disabledPolicyCount = disabledPolicyCount;
+    this.associatedTagCountsByCatalogId =
+        associatedTagCountsByCatalogId == null
+            ? Collections.emptyMap()
+            : associatedTagCountsByCatalogId;
+    this.associatedPolicyCountsByCatalogId =
+        associatedPolicyCountsByCatalogId == null
+            ? Collections.emptyMap()
+            : associatedPolicyCountsByCatalogId;
     this.failedCatalogNames = failedCatalogNames;
     this.catalogTypes = catalogTypes;
     this.catalogProviders = catalogProviders;

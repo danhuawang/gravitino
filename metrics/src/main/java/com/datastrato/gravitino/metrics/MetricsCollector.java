@@ -706,6 +706,10 @@ public class MetricsCollector implements Closeable {
     Set<Long> taggedObjectIds = getTaggedObjectIds(metalake, assetNodeById);
     Set<Long> enabledPolicyObjectIds =
         metricDataService.listEnabledPolicyMetadataObjectIdsByMetalakeId(metalake.id());
+    Map<Long, Long> associatedTagCountsByCatalogId =
+        metricDataService.listAssociatedTagCountsByCatalogId(metalake.id());
+    Map<Long, Long> associatedPolicyCountsByCatalogId =
+        metricDataService.listAssociatedPolicyCountsByCatalogId(metalake.id());
     List<PolicyEntity> policies =
         store.list(
             NamespaceUtil.ofPolicy(metalake.name()), PolicyEntity.class, Entity.EntityType.POLICY);
@@ -729,6 +733,8 @@ public class MetricsCollector implements Closeable {
         .enabledPolicyObjectIds(enabledPolicyObjectIds)
         .policyCount(policies.size())
         .disabledPolicyCount(disabledPolicyCount)
+        .associatedTagCountsByCatalogId(associatedTagCountsByCatalogId)
+        .associatedPolicyCountsByCatalogId(associatedPolicyCountsByCatalogId)
         .failedCatalogNames(failedCatalogNames)
         .catalogTypes(catalogTypes)
         .catalogProviders(catalogProviders)

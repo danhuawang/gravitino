@@ -11,24 +11,81 @@ import static com.datastrato.gravitino.metrics.storage.relational.mapper.MetricD
 import static com.datastrato.gravitino.metrics.storage.relational.mapper.MetricDataMapper.METRICS_TABLE_NAME;
 
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
+import com.google.common.collect.ImmutableList;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import org.apache.gravitino.storage.relational.mapper.CatalogMetaMapper;
+import org.apache.gravitino.storage.relational.mapper.FilesetMetaMapper;
+import org.apache.gravitino.storage.relational.mapper.FunctionMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.GroupMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
+import org.apache.gravitino.storage.relational.mapper.ModelMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.PolicyMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.PolicyMetadataObjectRelMapper;
 import org.apache.gravitino.storage.relational.mapper.PolicyVersionMapper;
+import org.apache.gravitino.storage.relational.mapper.SchemaMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.SecurableObjectMapper;
+import org.apache.gravitino.storage.relational.mapper.TableMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.TagMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.TagMetadataObjectRelMapper;
+import org.apache.gravitino.storage.relational.mapper.TopicMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.UserMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.UserRoleRelMapper;
+import org.apache.gravitino.storage.relational.mapper.ViewMetaMapper;
 import org.apache.ibatis.annotations.Param;
 
 public class MetricDataBaseSQLProvider {
+
+  private static final CatalogAssociationTarget CATALOG_TARGET =
+      new CatalogAssociationTarget(CatalogMetaMapper.TABLE_NAME, "catalog_id", "CATALOG");
+  private static final CatalogAssociationTarget SCHEMA_TARGET =
+      new CatalogAssociationTarget(SchemaMetaMapper.TABLE_NAME, "schema_id", "SCHEMA");
+  private static final CatalogAssociationTarget TOPIC_TARGET =
+      new CatalogAssociationTarget(TopicMetaMapper.TABLE_NAME, "topic_id", "TOPIC");
+  private static final CatalogAssociationTarget TABLE_TARGET =
+      new CatalogAssociationTarget(TableMetaMapper.TABLE_NAME, "table_id", "TABLE");
+  private static final CatalogAssociationTarget FILESET_TARGET =
+      new CatalogAssociationTarget(FilesetMetaMapper.META_TABLE_NAME, "fileset_id", "FILESET");
+  private static final CatalogAssociationTarget MODEL_TARGET =
+      new CatalogAssociationTarget(ModelMetaMapper.TABLE_NAME, "model_id", "MODEL");
+  private static final CatalogAssociationTarget VIEW_TARGET =
+      new CatalogAssociationTarget(ViewMetaMapper.TABLE_NAME, "view_id", "VIEW");
+  private static final CatalogAssociationTarget FUNCTION_TARGET =
+      new CatalogAssociationTarget(FunctionMetaMapper.TABLE_NAME, "function_id", "FUNCTION");
+
+  private static final List<CatalogAssociationTarget> POLICY_ASSOCIATION_TARGETS =
+      ImmutableList.of(
+          CATALOG_TARGET, SCHEMA_TARGET, TOPIC_TARGET, TABLE_TARGET, FILESET_TARGET, MODEL_TARGET);
+
+  private static final List<CatalogAssociationTarget> TAG_ASSOCIATION_TARGETS =
+      ImmutableList.<CatalogAssociationTarget>builder()
+          .addAll(POLICY_ASSOCIATION_TARGETS)
+          .add(VIEW_TARGET, FUNCTION_TARGET)
+          .build();
+
+  private static final String ASSOCIATED_TAG_COUNTS_BY_CATALOG_QUERY =
+      catalogAssociationCountQuery(
+          buildCatalogAssociationUnion(
+              TagMetadataObjectRelMapper.TAG_METADATA_OBJECT_RELATION_TABLE_NAME,
+              "tag_id",
+              TAG_ASSOCIATION_TARGETS),
+          TagMetaMapper.TAG_TABLE_NAME,
+          "tag_id",
+          null);
+
+  private static final String ASSOCIATED_POLICY_COUNTS_BY_CATALOG_QUERY =
+      catalogAssociationCountQuery(
+          buildCatalogAssociationUnion(
+              PolicyMetadataObjectRelMapper.POLICY_METADATA_OBJECT_RELATION_TABLE_NAME,
+              "policy_id",
+              POLICY_ASSOCIATION_TARGETS),
+          PolicyMetaMapper.POLICY_META_TABLE_NAME,
+          "policy_id",
+          PolicyVersionMapper.POLICY_VERSION_TABLE_NAME);
 
   public String getMetricPOsByUserIdMetricNamesAndTimestamp(
       @Param("metalakeId") long metalakeId,
@@ -181,6 +238,27 @@ public class MetricDataBaseSQLProvider {
         + TagMetadataObjectRelMapper.TAG_METADATA_OBJECT_RELATION_TABLE_NAME
         + " trm ON tm.tag_id = trm.tag_id"
         + " WHERE tm.metalake_id = #{metalakeId} AND tm.deleted_at = 0 AND trm.deleted_at = 0";
+  }
+
+  /**
+   * Builds the query for distinct active Tag association counts grouped by Catalog.
+   *
+   * @return Tag association count query
+   */
+  public String listAssociatedTagCountsByCatalogId() {
+    return ASSOCIATED_TAG_COUNTS_BY_CATALOG_QUERY;
+  }
+
+  /**
+   * Builds the query for distinct active Policy association counts grouped by Catalog.
+   *
+   * <p>Disabled Policies are intentionally included because deleting a Catalog removes their active
+   * object associations too.
+   *
+   * @return Policy association count query
+   */
+  public String listAssociatedPolicyCountsByCatalogId() {
+    return ASSOCIATED_POLICY_COUNTS_BY_CATALOG_QUERY;
   }
 
   /**
@@ -369,6 +447,64 @@ public class MetricDataBaseSQLProvider {
         + " WHERE deleted_at = 0)";
   }
 
+  public String cleanMetricsByTimestamp(@Param("oldestTimestamp") Timestamp oldestTimestamp) {
+    return "DELETE FROM "
+        + METRICS_TABLE_NAME
+        + " WHERE created_time < #{oldestTimestamp, jdbcType=TIMESTAMP}";
+  }
+
+  private static String buildCatalogAssociationUnion(
+      String relationTable, String associationIdColumn, List<CatalogAssociationTarget> targets) {
+    return targets.stream()
+        .map(target -> catalogAssociationSelect(relationTable, associationIdColumn, target))
+        .collect(Collectors.joining(" UNION ALL "));
+  }
+
+  private static String catalogAssociationSelect(
+      String relationTable, String associationIdColumn, CatalogAssociationTarget target) {
+    return "SELECT obj.catalog_id AS catalogId, rel."
+        + associationIdColumn
+        + " AS associationId FROM "
+        + relationTable
+        + " rel INNER JOIN "
+        + target.objectTable
+        + " obj ON rel.metadata_object_id = obj."
+        + target.objectIdColumn
+        + " AND rel.metadata_object_type = '"
+        + target.objectType
+        + "' WHERE rel.deleted_at = 0 AND obj.deleted_at = 0"
+        + " AND obj.metalake_id = #{metalakeId}";
+  }
+
+  private static String catalogAssociationCountQuery(
+      String associations,
+      String metadataTable,
+      String associationIdColumn,
+      @Nullable String currentVersionTable) {
+    String currentVersionJoin =
+        currentVersionTable == null
+            ? ""
+            : " INNER JOIN "
+                + currentVersionTable
+                + " pvi ON metadata."
+                + associationIdColumn
+                + " = pvi."
+                + associationIdColumn
+                + " AND metadata.current_version = pvi.version";
+    String currentVersionCondition = currentVersionTable == null ? "" : " AND pvi.deleted_at = 0";
+    return "SELECT associations.catalogId AS catalogId,"
+        + " COUNT(DISTINCT associations.associationId) AS associatedCount FROM ("
+        + associations
+        + ") associations INNER JOIN "
+        + metadataTable
+        + " metadata ON associations.associationId = metadata."
+        + associationIdColumn
+        + currentVersionJoin
+        + " WHERE metadata.metalake_id = #{metalakeId} AND metadata.deleted_at = 0"
+        + currentVersionCondition
+        + " GROUP BY associations.catalogId";
+  }
+
   private String batchInsertMetrics(String tableName, String timestampColumn) {
     return "<script>"
         + "INSERT INTO "
@@ -407,9 +543,15 @@ public class MetricDataBaseSQLProvider {
         + " WHERE deleted_at = 0))";
   }
 
-  public String cleanMetricsByTimestamp(@Param("oldestTimestamp") Timestamp oldestTimestamp) {
-    return "DELETE FROM "
-        + METRICS_TABLE_NAME
-        + " WHERE created_time < #{oldestTimestamp, jdbcType=TIMESTAMP}";
+  private static class CatalogAssociationTarget {
+    private final String objectTable;
+    private final String objectIdColumn;
+    private final String objectType;
+
+    private CatalogAssociationTarget(String objectTable, String objectIdColumn, String objectType) {
+      this.objectTable = objectTable;
+      this.objectIdColumn = objectIdColumn;
+      this.objectType = objectType;
+    }
   }
 }

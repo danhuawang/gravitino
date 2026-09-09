@@ -15,21 +15,30 @@ final class DashboardMetricNames {
 
   private DashboardMetricNames() {}
 
+  static String forCatalog(String catalogName, String metricName) {
+    validateComponent("catalog name", catalogName);
+    validateComponent("metric name", metricName);
+
+    String name = String.join(SEPARATOR, BY_CATALOG_SCOPE, catalogName, metricName);
+    validateLength(name);
+    return name;
+  }
+
   static String forCatalog(String catalogName, String provider, String metricName) {
     validateComponent("catalog name", catalogName);
     validateComponent("provider", provider);
     validateComponent("metric name", metricName);
 
     String name = String.join(SEPARATOR, BY_CATALOG_SCOPE, catalogName, provider, metricName);
-    Preconditions.checkArgument(
-        name.length() <= MAX_METRIC_NAME_LENGTH,
-        "Dashboard metric name exceeds the %s-character storage limit: %s",
-        MAX_METRIC_NAME_LENGTH,
-        name);
+    validateLength(name);
     return name;
   }
 
-  static CatalogMetric parseCatalog(String name) {
+  /**
+   * Parses a four-part Catalog asset metric name, for example {@code
+   * by_catalog::sales::jdbc-postgresql::asset_count}.
+   */
+  static CatalogMetric parseCatalogAsset(String name) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "Dashboard metric name is required");
     Preconditions.checkArgument(
         name.length() <= MAX_METRIC_NAME_LENGTH,
@@ -56,6 +65,14 @@ final class DashboardMetricNames {
         componentName,
         SEPARATOR,
         value);
+  }
+
+  private static void validateLength(String name) {
+    Preconditions.checkArgument(
+        name.length() <= MAX_METRIC_NAME_LENGTH,
+        "Dashboard metric name exceeds the %s-character storage limit: %s",
+        MAX_METRIC_NAME_LENGTH,
+        name);
   }
 
   static final class CatalogMetric {

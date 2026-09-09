@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.metrics.storage.relational.mapper;
 
+import com.datastrato.gravitino.metrics.storage.relational.CatalogAssociationCountPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.datastrato.gravitino.metrics.storage.relational.OwnerNameRelPO;
@@ -91,6 +92,30 @@ public interface MetricDataMapper {
       type = MetricDataSQLProviderFactory.class,
       method = "listTagNameMetadataObjectRelsByMetalakeId")
   List<TagNameMetadataObjectRelPO> listTagNameMetadataObjectRelsByMetalakeId(
+      @Param("metalakeId") long metalakeId);
+
+  /**
+   * Lists distinct active Tag association counts grouped by Catalog.
+   *
+   * @param metalakeId Metalake ID
+   * @return association counts grouped by Catalog ID
+   */
+  @SelectProvider(
+      type = MetricDataSQLProviderFactory.class,
+      method = "listAssociatedTagCountsByCatalogId")
+  List<CatalogAssociationCountPO> listAssociatedTagCountsByCatalogId(
+      @Param("metalakeId") long metalakeId);
+
+  /**
+   * Lists distinct active Policy association counts grouped by Catalog.
+   *
+   * @param metalakeId Metalake ID
+   * @return association counts grouped by Catalog ID
+   */
+  @SelectProvider(
+      type = MetricDataSQLProviderFactory.class,
+      method = "listAssociatedPolicyCountsByCatalogId")
+  List<CatalogAssociationCountPO> listAssociatedPolicyCountsByCatalogId(
       @Param("metalakeId") long metalakeId);
 
   /**

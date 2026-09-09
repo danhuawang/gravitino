@@ -107,6 +107,24 @@ public class MetricDataSQLProviderFactory {
   }
 
   /**
+   * Returns the query for distinct active Tag association counts grouped by Catalog.
+   *
+   * @return Tag association count query
+   */
+  public static String listAssociatedTagCountsByCatalogId() {
+    return getProvider().listAssociatedTagCountsByCatalogId();
+  }
+
+  /**
+   * Returns the query for distinct active Policy association counts grouped by Catalog.
+   *
+   * @return Policy association count query
+   */
+  public static String listAssociatedPolicyCountsByCatalogId() {
+    return getProvider().listAssociatedPolicyCountsByCatalogId();
+  }
+
+  /**
    * Returns the query for metadata objects covered by current, enabled policies.
    *
    * @param metalakeId metalake ID

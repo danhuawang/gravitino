@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.metrics.storage.relational.mapper.provider;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.metrics.storage.relational.mapper.provider.base.MetricDataBaseSQLProvider;
@@ -55,5 +56,24 @@ class TestMetricDataSQLProviders {
     assertTrue(query.contains("pm.deleted_at = 0"));
     assertTrue(query.contains("pvi.deleted_at = 0"));
     assertTrue(query.contains("pvi.enabled = TRUE"));
+  }
+
+  @Test
+  void testCatalogAssociationQueriesDeduplicateAndCoverSupportedObjects() {
+    MetricDataBaseSQLProvider provider = new MetricDataBaseSQLProvider();
+    String tagQuery = provider.listAssociatedTagCountsByCatalogId();
+    String policyQuery = provider.listAssociatedPolicyCountsByCatalogId();
+
+    assertTrue(tagQuery.contains("COUNT(DISTINCT associations.associationId)"));
+    assertTrue(tagQuery.contains("metadata_object_type = 'CATALOG'"));
+    assertFalse(tagQuery.contains("metadata_object_type = 'COLUMN'"));
+    assertTrue(tagQuery.contains("metadata_object_type = 'FUNCTION'"));
+    assertTrue(policyQuery.contains("COUNT(DISTINCT associations.associationId)"));
+    assertTrue(policyQuery.contains("metadata_object_type = 'CATALOG'"));
+    assertTrue(policyQuery.contains("metadata_object_type = 'MODEL'"));
+    assertTrue(policyQuery.contains("INNER JOIN policy_meta metadata"));
+    assertTrue(policyQuery.contains("metadata.current_version = pvi.version"));
+    assertTrue(policyQuery.contains("pvi.deleted_at = 0"));
+    assertFalse(policyQuery.contains("enabled = TRUE"));
   }
 }

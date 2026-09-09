@@ -151,6 +151,10 @@ class TestMetricsCollector {
     mockListFunctionsFromStore();
     when(metricDataService.listEnabledPolicyMetadataObjectIdsByMetalakeId(mockId))
         .thenReturn(Collections.emptySet());
+    when(metricDataService.listAssociatedTagCountsByCatalogId(mockId))
+        .thenReturn(ImmutableMap.of(mockId, 2L));
+    when(metricDataService.listAssociatedPolicyCountsByCatalogId(mockId))
+        .thenReturn(ImmutableMap.of(mockId, 1L));
     PolicyEntity enabledPolicy1 = mock(PolicyEntity.class);
     PolicyEntity enabledPolicy2 = mock(PolicyEntity.class);
     PolicyEntity disabledPolicy = mock(PolicyEntity.class);
@@ -198,6 +202,8 @@ class TestMetricsCollector {
       assertEquals(2, snapshot.getSchemaNodes().iterator().next().getChildren().size());
       assertEquals(3, snapshot.getPolicyCount());
       assertEquals(1, snapshot.getDisabledPolicyCount());
+      assertEquals(2L, snapshot.getAssociatedTagCountsByCatalogId().get(mockId));
+      assertEquals(1L, snapshot.getAssociatedPolicyCountsByCatalogId().get(mockId));
     }
   }
 

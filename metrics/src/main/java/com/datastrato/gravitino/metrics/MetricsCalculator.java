@@ -6,12 +6,14 @@ package com.datastrato.gravitino.metrics;
 import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
+import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -52,6 +54,16 @@ public class MetricsCalculator {
           MetricDataService.Metric.TAGGED_ASSET_COUNT,
           MetricDataService.Metric.OWNED_ASSET_COUNT,
           MetricDataService.Metric.POLICY_COVERED_ASSET_COUNT);
+  private static final Map<MetadataObject.Type, MetricDataService.Metric>
+      CATALOG_OBJECT_COUNT_METRICS =
+          ImmutableMap.<MetadataObject.Type, MetricDataService.Metric>builder()
+              .put(MetadataObject.Type.TABLE, MetricDataService.Metric.TABLE_COUNT)
+              .put(MetadataObject.Type.VIEW, MetricDataService.Metric.VIEW_COUNT)
+              .put(MetadataObject.Type.FUNCTION, MetricDataService.Metric.FUNCTION_COUNT)
+              .put(MetadataObject.Type.FILESET, MetricDataService.Metric.FILESET_COUNT)
+              .put(MetadataObject.Type.TOPIC, MetricDataService.Metric.TOPIC_COUNT)
+              .put(MetadataObject.Type.MODEL, MetricDataService.Metric.MODEL_COUNT)
+              .build();
 
   private final MetalakeSnapshot metalakeSnapshot;
   private final String metalakeName;
@@ -278,6 +290,16 @@ public class MetricsCalculator {
 
     Map<AssetNode, Boolean> taggedCache = new HashMap<>();
     Map<AssetNode, Boolean> policyCache = new HashMap<>();
+    Map<MetadataObject.Type, Map<String, Long>> visibleCountsByType =
+        new EnumMap<>(MetadataObject.Type.class);
+    visibleCountsByType.put(
+        MetadataObject.Type.SCHEMA, countByCatalog(directCountVisibleSchemaNodes));
+    visibleCountsByType.put(MetadataObject.Type.TABLE, countByCatalog(visibleTableNodes));
+    visibleCountsByType.put(MetadataObject.Type.VIEW, countByCatalog(visibleViewNodes));
+    visibleCountsByType.put(MetadataObject.Type.FUNCTION, countByCatalog(visibleFunctionNodes));
+    visibleCountsByType.put(MetadataObject.Type.FILESET, countByCatalog(visibleFilesetNodes));
+    visibleCountsByType.put(MetadataObject.Type.TOPIC, countByCatalog(visibleTopicNodes));
+    visibleCountsByType.put(MetadataObject.Type.MODEL, countByCatalog(visibleModelNodes));
     List<MetricPO> metrics = new ArrayList<>();
 
     addAggregateMetrics(
@@ -299,15 +321,17 @@ public class MetricsCalculator {
               Function<MetricDataService.Metric, String> metricNameBuilder =
                   metric ->
                       DashboardMetricNames.forCatalog(catalogName, provider, metric.getName());
-              if (failedVisibleCatalogNames.contains(catalogName)) {
+              boolean collectionFailed = failedVisibleCatalogNames.contains(catalogName);
+              if (collectionFailed) {
                 addUnavailableMetrics(metrics, metricNameBuilder);
-                return;
+              } else {
+                Set<AssetNode> catalogAssets =
+                    assetsByCatalog.getOrDefault(catalogName, Collections.emptySet());
+                addCompleteMetrics(
+                    metrics, metricNameBuilder, catalogAssets, taggedCache, policyCache);
               }
 
-              Set<AssetNode> catalogAssets =
-                  assetsByCatalog.getOrDefault(catalogName, Collections.emptySet());
-              addCompleteMetrics(
-                  metrics, metricNameBuilder, catalogAssets, taggedCache, policyCache);
+              addCatalogCountMetrics(metrics, catalogNode, collectionFailed, visibleCountsByType);
             });
 
     for (MetadataObject.Type assetType : ASSET_TYPES) {
@@ -395,11 +419,97 @@ public class MetricsCalculator {
                         null)));
   }
 
+  private void addCatalogCountMetrics(
+      List<MetricPO> metrics,
+      AssetNode catalogNode,
+      boolean collectionFailed,
+      Map<MetadataObject.Type, Map<String, Long>> visibleCountsByType) {
+    String catalogName = catalogNode.getName();
+
+    addCatalogObjectCountMetric(
+        metrics,
+        catalogName,
+        MetadataObject.Type.SCHEMA,
+        MetricDataService.Metric.SCHEMA_COUNT,
+        collectionFailed,
+        visibleCountsByType);
+
+    for (Map.Entry<MetadataObject.Type, MetricDataService.Metric> entry :
+        CATALOG_OBJECT_COUNT_METRICS.entrySet()) {
+      if (catalogSupports(catalogName, entry.getKey())) {
+        addCatalogObjectCountMetric(
+            metrics,
+            catalogName,
+            entry.getKey(),
+            entry.getValue(),
+            collectionFailed,
+            visibleCountsByType);
+      }
+    }
+
+    addCatalogCountMetric(
+        metrics,
+        catalogName,
+        MetricDataService.Metric.ASSOCIATED_TAG_COUNT,
+        metalakeSnapshot.getAssociatedTagCountsByCatalogId().getOrDefault(catalogNode.getId(), 0L),
+        MetricState.COMPLETE,
+        null);
+    addCatalogCountMetric(
+        metrics,
+        catalogName,
+        MetricDataService.Metric.ASSOCIATED_POLICY_COUNT,
+        metalakeSnapshot
+            .getAssociatedPolicyCountsByCatalogId()
+            .getOrDefault(catalogNode.getId(), 0L),
+        MetricState.COMPLETE,
+        null);
+  }
+
+  private void addCatalogObjectCountMetric(
+      List<MetricPO> metrics,
+      String catalogName,
+      MetadataObject.Type objectType,
+      MetricDataService.Metric metric,
+      boolean collectionFailed,
+      Map<MetadataObject.Type, Map<String, Long>> visibleCountsByType) {
+    if (collectionFailed) {
+      addCatalogCountMetric(
+          metrics, catalogName, metric, null, MetricState.UNAVAILABLE, UNAVAILABLE_MESSAGE);
+      return;
+    }
+
+    long count =
+        visibleCountsByType
+            .getOrDefault(objectType, Collections.emptyMap())
+            .getOrDefault(catalogName, 0L);
+    addCatalogCountMetric(metrics, catalogName, metric, count, MetricState.COMPLETE, null);
+  }
+
+  private void addCatalogCountMetric(
+      List<MetricPO> metrics,
+      String catalogName,
+      MetricDataService.Metric metric,
+      @Nullable Long value,
+      MetricState state,
+      @Nullable String message) {
+    metrics.add(
+        createMetricPO(
+            DashboardMetricNames.forCatalog(catalogName, metric.getName()),
+            value == null ? null : value.doubleValue(),
+            state,
+            message));
+  }
+
   private static void countDirectChild(
       Map<NameIdentifier, Long> countByParent, @Nullable NameIdentifier parentIdent) {
     if (parentIdent != null) {
       countByParent.merge(parentIdent, 1L, Long::sum);
     }
+  }
+
+  private static Map<String, Long> countByCatalog(Set<AssetNode> nodes) {
+    return nodes.stream()
+        .collect(Collectors.groupingBy(MetricsCalculator::catalogName, Collectors.counting()));
   }
 
   private void addAggregateMetrics(

@@ -65,6 +65,7 @@ class TestMetricsCalculator {
     builder.policy(relational);
     builder.policy(modelAsset);
     builder.policyCounts(3, 1);
+    builder.associatedCounts(relational, 2, 1);
 
     Map<String, MetricPO> metrics = calculate(builder.build());
 
@@ -86,6 +87,26 @@ class TestMetricsCalculator {
         metrics, "by_catalog::fileset::fileset::asset_count", 1.0, MetricState.COMPLETE, null);
     assertMetric(
         metrics, "by_catalog::model::acme-model::asset_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::relational::schema_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::relational::table_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::relational::view_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics, "by_catalog::relational::function_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics, "by_catalog::relational::associated_tag_count", 2.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics,
+        "by_catalog::relational::associated_policy_count",
+        1.0,
+        MetricState.COMPLETE,
+        null);
+    assertMetric(metrics, "by_catalog::messaging::schema_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::messaging::topic_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::messaging::function_count", 0.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::fileset::fileset_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::fileset::function_count", 0.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::model::model_count", 1.0, MetricState.COMPLETE, null);
+    assertMetric(metrics, "by_catalog::model::function_count", 0.0, MetricState.COMPLETE, null);
     assertMetric(
         metrics, "by_asset_type::VIEW::owned_asset_count", 1.0, MetricState.COMPLETE, null);
     assertMetric(
@@ -110,6 +131,9 @@ class TestMetricsCalculator {
         null);
     assertFalse(metrics.containsKey("by_catalog::relational::asset_count"));
     assertFalse(metrics.containsKey("by_catalog::relational::jdbc-postgresql::policy_count"));
+    assertFalse(metrics.containsKey("by_catalog::relational::fileset_count"));
+    assertFalse(metrics.containsKey("by_catalog::fileset::table_count"));
+    assertFalse(metrics.containsKey("by_catalog::messaging::model_count"));
     assertFalse(metrics.containsKey("by_asset_type::TABLE::disabled_policy_count"));
     assertMetric(
         metrics,
@@ -123,7 +147,25 @@ class TestMetricsCalculator {
         3.0,
         MetricState.COMPLETE,
         null);
-    assertEquals(54, metrics.size());
+    assertEquals(75, metrics.size());
+  }
+
+  @Test
+  void testUnsupportedCatalogPublishesCollectedSchemaCount() {
+    SnapshotBuilder builder = new SnapshotBuilder();
+    AssetNode catalog =
+        builder.catalog(501L, "unsupported", Catalog.Type.UNSUPPORTED, "test", false);
+    builder.schema(502L, "schema", catalog);
+
+    Map<String, MetricPO> metrics = calculate(builder.build());
+
+    assertMetric(metrics, "by_catalog::unsupported::schema_count", 1.0, MetricState.COMPLETE, null);
+    assertFalse(metrics.containsKey("by_catalog::unsupported::table_count"));
+    assertFalse(metrics.containsKey("by_catalog::unsupported::view_count"));
+    assertFalse(metrics.containsKey("by_catalog::unsupported::function_count"));
+    assertFalse(metrics.containsKey("by_catalog::unsupported::fileset_count"));
+    assertFalse(metrics.containsKey("by_catalog::unsupported::model_count"));
+    assertFalse(metrics.containsKey("by_catalog::unsupported::topic_count"));
   }
 
   @Test
@@ -133,7 +175,9 @@ class TestMetricsCalculator {
         builder.catalog(101L, "healthy", Catalog.Type.RELATIONAL, "jdbc-postgresql", false);
     AssetNode schema = builder.schema(102L, "schema", healthy);
     builder.asset(103L, "table", MetadataObject.Type.TABLE, schema);
-    builder.catalog(201L, "failed", Catalog.Type.RELATIONAL, "vendor-custom", true);
+    AssetNode failed =
+        builder.catalog(201L, "failed", Catalog.Type.RELATIONAL, "vendor-custom", true);
+    builder.associatedCounts(failed, 3, 2);
 
     Map<String, MetricPO> metrics = calculate(builder.build());
 
@@ -149,6 +193,34 @@ class TestMetricsCalculator {
         null,
         MetricState.UNAVAILABLE,
         UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics,
+        "by_catalog::failed::schema_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics,
+        "by_catalog::failed::table_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics,
+        "by_catalog::failed::view_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics,
+        "by_catalog::failed::function_count",
+        null,
+        MetricState.UNAVAILABLE,
+        UNAVAILABLE_MESSAGE);
+    assertMetric(
+        metrics, "by_catalog::failed::associated_tag_count", 3.0, MetricState.COMPLETE, null);
+    assertMetric(
+        metrics, "by_catalog::failed::associated_policy_count", 2.0, MetricState.COMPLETE, null);
     assertMetric(
         metrics,
         "asset_count",
@@ -218,6 +290,7 @@ class TestMetricsCalculator {
         0.0,
         MetricState.COMPLETE,
         null);
+    assertMetric(metrics, "by_catalog::catalog::schema_count", 3.0, MetricState.COMPLETE, null);
   }
 
   @Test
@@ -235,6 +308,7 @@ class TestMetricsCalculator {
         MetricState.UNAVAILABLE,
         UNAVAILABLE_MESSAGE);
     assertMetric(metrics, "by_asset_type::VIEW::asset_count", 0.0, MetricState.COMPLETE, null);
+    assertFalse(metrics.containsKey("by_catalog::failed::view_count"));
   }
 
   @Test
@@ -422,6 +496,8 @@ class TestMetricsCalculator {
     private final Map<String, Catalog.Type> catalogTypes = new HashMap<>();
     private final Map<String, String> catalogProviders = new HashMap<>();
     private final Map<String, Boolean> viewListingSupportByCatalog = new HashMap<>();
+    private final Map<Long, Long> associatedTagCountsByCatalogId = new HashMap<>();
+    private final Map<Long, Long> associatedPolicyCountsByCatalogId = new HashMap<>();
     private long policyCount;
     private long disabledPolicyCount;
 
@@ -438,6 +514,9 @@ class TestMetricsCalculator {
       catalogs.add(catalog);
       catalogTypes.put(name, type);
       catalogProviders.put(name, provider);
+      if (type == Catalog.Type.RELATIONAL && !collectionFailed) {
+        viewListingSupportByCatalog.put(name, true);
+      }
       if (collectionFailed) {
         failedCatalogs.add(name);
       }
@@ -514,6 +593,11 @@ class TestMetricsCalculator {
       disabledPolicyCount = disabledCount;
     }
 
+    private void associatedCounts(AssetNode catalog, long tagCount, long policyCount) {
+      associatedTagCountsByCatalogId.put(catalog.getId(), tagCount);
+      associatedPolicyCountsByCatalogId.put(catalog.getId(), policyCount);
+    }
+
     private MetalakeSnapshot build() {
       return MetalakeSnapshot.builder()
           .assetTreeRoot(root)
@@ -533,6 +617,8 @@ class TestMetricsCalculator {
           .enabledPolicyObjectIds(policyObjectIds)
           .policyCount(policyCount)
           .disabledPolicyCount(disabledPolicyCount)
+          .associatedTagCountsByCatalogId(associatedTagCountsByCatalogId)
+          .associatedPolicyCountsByCatalogId(associatedPolicyCountsByCatalogId)
           .failedCatalogNames(failedCatalogs)
           .catalogTypes(catalogTypes)
           .catalogProviders(catalogProviders)

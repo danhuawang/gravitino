@@ -23,8 +23,11 @@ paths:
             - Global: `<metric>`, where `metric` is `asset_count`, `tagged_asset_count`, `owned_asset_count`, `policy_covered_asset_count`, `policy_count`, or `disabled_policy_count`.
             - By asset type: `by_asset_type::<assetType>::<assetMetric>`, where `assetType` is `TABLE`, `VIEW`, `FUNCTION`, `TOPIC`, `FILESET`, or `MODEL` and `assetMetric` is one of the four asset metrics.
             - By catalog: `by_catalog::<catalogName>::<provider>::<assetMetric>`, for example `by_catalog::sales::jdbc-postgresql::asset_count`.
+            - Catalog counts: `by_catalog::<catalogName>::<catalogMetric>`, where `catalogMetric` is `schema_count`, `table_count`, `view_count`, `function_count`, `fileset_count`, `model_count`, `topic_count`, `associated_tag_count`, or `associated_policy_count`.
 
             The four asset metrics are `asset_count`, `tagged_asset_count`, `owned_asset_count`, and `policy_covered_asset_count`. The per-catalog `provider` is the catalog provider short name returned by the Catalog API, including installed custom providers.
+
+            Catalog object-count metrics are returned only when the Catalog supports the corresponding object type. A supported object type with no objects returns zero; an unsupported object type has no metric entry. `associated_tag_count` and `associated_policy_count` count distinct, current Tag or Policy IDs with an active direct association to the Catalog or one of its supported descendants other than Columns. Inherited occurrences are not counted again, Column Tag associations are excluded, and disabled Policies are included.
           required: false
           schema:
             type: string
@@ -85,7 +88,7 @@ components:
         name:
           type: string
           description: |
-            The metric name. Per-catalog names use `by_catalog::<catalogName>::<provider>::<assetMetric>`, where `provider` is the provider short name returned by the Catalog API. Example: `by_catalog::sales::jdbc-postgresql::asset_count`.
+            The metric name. Per-catalog asset metric names use `by_catalog::<catalogName>::<provider>::<assetMetric>`, where `provider` is the provider short name returned by the Catalog API. Catalog count metric names use `by_catalog::<catalogName>::<catalogMetric>`. Examples: `by_catalog::sales::jdbc-postgresql::asset_count` and `by_catalog::sales::table_count`.
         values:
           type: array
           description: The metric values. An unavailable data point is represented by null.

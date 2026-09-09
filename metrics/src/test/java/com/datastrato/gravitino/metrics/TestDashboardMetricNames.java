@@ -13,11 +13,13 @@ import org.junit.jupiter.api.Test;
 class TestDashboardMetricNames {
 
   @Test
-  void testBuildAndParseCatalogMetricName() {
+  void testBuildAndParseCatalogMetricNames() {
     String name = DashboardMetricNames.forCatalog("sales", "jdbc-postgresql", "asset_count");
+    String catalogCountName = DashboardMetricNames.forCatalog("sales", "schema_count");
 
     assertEquals("by_catalog::sales::jdbc-postgresql::asset_count", name);
-    DashboardMetricNames.CatalogMetric parsed = DashboardMetricNames.parseCatalog(name);
+    assertEquals("by_catalog::sales::schema_count", catalogCountName);
+    DashboardMetricNames.CatalogMetric parsed = DashboardMetricNames.parseCatalogAsset(name);
     assertEquals("sales", parsed.catalogName());
     assertEquals("jdbc-postgresql", parsed.provider());
     assertEquals("asset_count", parsed.metricName());
@@ -36,7 +38,14 @@ class TestDashboardMetricNames {
         () -> DashboardMetricNames.forCatalog("sales", "hive", "asset::count"));
     assertThrows(
         IllegalArgumentException.class,
-        () -> DashboardMetricNames.parseCatalog("by_catalog::sales::asset_count"));
+        () -> DashboardMetricNames.forCatalog("sales", "schema::count"));
+  }
+
+  @Test
+  void testCatalogAssetParserRejectsCatalogCountName() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> DashboardMetricNames.parseCatalogAsset("by_catalog::sales::schema_count"));
   }
 
   @Test
