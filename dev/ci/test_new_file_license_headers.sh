@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2026 Datastrato Pvt Ltd.
+# Copyright 2026 Datastrato Inc.
 
 # Applies one change as an uncommitted patch to isolated worktrees, then verifies that
 # checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader uses each tracking branch's remote upstream without CI input or a

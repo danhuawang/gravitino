@@ -277,6 +277,7 @@ mkdir -p \
 cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/src/Keep.java"
 cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/docs-enterprise/page.md"
 cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/dev/headers/test/fixtures/old.java.input"
+cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/dev/ci/test_enterprise_license_headers.sh"
 cp "${FIXTURES}/existing-2024.java.input" "${scan_root}/dev/ci/test_new_file_license_headers.sh"
 cp "${FIXTURES}/existing-2024.java.input" \
   "${scan_root}/buildSrc/src/test/java/org/apache/gravitino/license/TestLicenseHeaderClassifier.java"
@@ -292,6 +293,8 @@ assert_unchanged "${scan_root}/dev/headers/test/fixtures/old.java.input" \
 assert_unchanged \
   "${scan_root}/buildSrc/src/test/java/org/apache/gravitino/license/TestLicenseHeaderClassifier.java" \
   "${FIXTURES}/existing-2024.java.input" "--scan skips classifier test strings"
+assert_unchanged "${scan_root}/dev/ci/test_enterprise_license_headers.sh" \
+  "${FIXTURES}/existing-2024.java.input" "--scan skips live-task CI header strings"
 assert_unchanged "${scan_root}/dev/ci/test_new_file_license_headers.sh" \
   "${FIXTURES}/existing-2024.java.input" "--scan skips new-file CI header strings"
 grep -q 'Rewrote 1 file(s); skipped 0' "${WORKDIR}/scan.out" \

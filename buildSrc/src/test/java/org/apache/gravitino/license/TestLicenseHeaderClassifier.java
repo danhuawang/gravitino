@@ -1,5 +1,5 @@
 /*
- * Copyright 2026 Datastrato Pvt Ltd.
+ * Copyright 2026 Datastrato Inc.
  */
 package org.apache.gravitino.license;
 
@@ -52,6 +52,13 @@ class TestLicenseHeaderClassifier {
     assertFalse(LicenseHeaderClassifier.shouldCheckHeader("README.md"));
     assertFalse(LicenseHeaderClassifier.shouldCheckHeader("package.json"));
     assertFalse(LicenseHeaderClassifier.shouldCheckHeader("guide.txt"));
+  }
+
+  @Test
+  void enterpriseOnlyCheckAlsoAcceptsMarkdown() {
+    assertTrue(LicenseHeaderClassifier.shouldCheckEnterpriseOnlyHeader("Foo.java"));
+    assertTrue(LicenseHeaderClassifier.shouldCheckEnterpriseOnlyHeader("README.md"));
+    assertFalse(LicenseHeaderClassifier.shouldCheckEnterpriseOnlyHeader("package.json"));
   }
 
   @Test

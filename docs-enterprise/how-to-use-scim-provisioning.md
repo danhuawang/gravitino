@@ -2,7 +2,7 @@
 title: How to use SCIM provisioning
 slug: /how-to-use-scim-provisioning
 keyword: security authentication scim provisioning
-license: "Copyright 2026 Datastrato Pvt Ltd."
+license: "Copyright 2026 Datastrato Inc."
 ---
 
 ## Introduction

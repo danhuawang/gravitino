@@ -18,12 +18,12 @@
 #   4. Leave quoted copyright / Apache strings in the body alone.
 #   5. Leave copyright text after the first 20 lines alone.
 #   6. Skip ASF, SPDX, already-Inc., and headerless files.
-#   7. --scan skips docs-enterprise, stamper fixtures, and classifier tests.
+#   7. --scan skips docs-enterprise, stamper fixtures, and classifier/live-task tests.
 #   8. Refuse to run with no files unless --scan is set. Do not mix --scan with files.
 #
 # Only the leading HEADER_LINE_COUNT lines are considered. --scan walks the
 # repo for "Datastrato Pvt Ltd" and skips docs-enterprise, stamper fixtures,
-# and classifier test strings.
+# and classifier/live-task test strings.
 
 """Rewrite existing Datastrato headers to ``Copyright YEAR Datastrato Inc.``."""
 
@@ -52,6 +52,7 @@ SCAN_SKIP_DIRECTORIES = (
 )
 SKIP_FILES = {
     "buildSrc/src/test/java/org/apache/gravitino/license/TestLicenseHeaderClassifier.java",
+    "dev/ci/test_enterprise_license_headers.sh",
     "dev/ci/test_new_file_license_headers.sh",
 }
 

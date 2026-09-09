@@ -12,7 +12,7 @@
  * Not: the added-file check (Pvt Ltd still allowed there).
  *
  * From: shared-paths.gradle.kts (enterpriseFilePatterns, generatedFilePatterns);
- *       LicenseHeaderClassifier (shouldCheckHeader, readHeader,
+ *       LicenseHeaderClassifier (shouldCheckEnterpriseOnlyHeader, readHeader,
  *       enterpriseOnlyHeaderViolationReason).
  */
 
@@ -53,7 +53,7 @@ fun enterpriseFiles(): List<String> =
     enterpriseFilePatterns.forEach { include(it) }
     generatedFilePatterns.forEach { exclude(it) }
   }.files
-    .filter { it.isFile && LicenseHeaderClassifier.shouldCheckHeader(it.name) }
+    .filter { it.isFile && LicenseHeaderClassifier.shouldCheckEnterpriseOnlyHeader(it.name) }
     .map { repoRelativePath(it) }
     .filter { it !in enterpriseFilesExcludedFromEnterpriseOnlyHeader }
     .sorted()

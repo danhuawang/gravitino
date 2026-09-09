@@ -17,8 +17,9 @@ import java.util.regex.Pattern;
 /**
  * Header classification for the repo licensing policy.
  *
- * <p>Public API, in caller order: {@link #shouldCheckHeader} (name kind), {@link #readHeader}
- * (I/O), then the two job predicates, then the header facts.
+ * <p>Public API, in caller order: {@link #shouldCheckHeader} and {@link
+ * #shouldCheckEnterpriseOnlyHeader} (name kind), {@link #readHeader} (I/O), then the two job
+ * predicates, then the header facts.
  *
  * <p>{@link #enterpriseOnlyHeaderViolationReason(String)} is the Inc. job: copyright-only {@code
  * Copyright YYYY Datastrato Inc.}. {@code Pvt Ltd}, the grant line, and a missing Inc. copyright
@@ -99,6 +100,15 @@ public final class LicenseHeaderClassifier {
     return hasLicenseHeaderExtension(fileName)
         || isLicenseHeaderFileName(fileName)
         || hasLicenseHeaderPrefix(fileName);
+  }
+
+  /**
+   * Whether the enterprise-only job should header-check this basename. Enterprise Markdown carries
+   * its notice in frontmatter or an HTML comment, so it is checked in addition to the source-like
+   * files accepted by {@link #shouldCheckHeader(String)}.
+   */
+  public static boolean shouldCheckEnterpriseOnlyHeader(String fileName) {
+    return shouldCheckHeader(fileName) || fileName.endsWith(".md");
   }
 
   /** Returns the first {@link #HEADER_LINE_COUNT} lines of {@code file}, joined with newlines. */

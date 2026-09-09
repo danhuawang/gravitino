@@ -54,5 +54,5 @@ Critical paths (locked by `dev/headers/test/run.sh`):
 4. Leave quoted copyright / Apache strings in the body alone.
 5. Leave copyright text after the first 20 lines alone.
 6. Skip ASF, SPDX, already-`Inc.`, and headerless files. Do not stamp.
-7. `--scan` skips `docs-enterprise`, stamper fixtures, and classifier tests.
+7. `--scan` skips `docs-enterprise`, stamper fixtures, classifier tests, and live-task tests.
 8. Refuse to run with no files unless `--scan` is set. Do not mix `--scan` with file arguments.
