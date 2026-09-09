@@ -253,8 +253,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
     DatastratoTableDispatcher tableEncryptionDispatcher =
         new IcebergTableEncryptionDispatcher(
             tableOperationDispatcher, catalogManager, policyResolver, keyValidator);
-    return new DatastratoTableHookDispatcher(
-        tableEncryptionDispatcher, ownerDispatcher, catalogManager);
+    return new DatastratoTableHookDispatcher(tableEncryptionDispatcher, ownerDispatcher);
   }
 
   @Override
