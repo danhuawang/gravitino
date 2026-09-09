@@ -1365,7 +1365,12 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   private Map<String, UserEntity> loadUsersByName(String metalake, List<String> userNames) {
     Map<String, UserEntity> usersByName = Maps.newHashMap();
     if (!userNames.isEmpty()) {
-      for (UserEntity user : userMetaService.batchGetUsers(metalake, userNames)) {
+      List<NameIdentifier> identifiers = Lists.newArrayListWithCapacity(userNames.size());
+      for (String userName : userNames) {
+        identifiers.add(AuthorizationUtils.ofUser(metalake, userName));
+      }
+      for (UserEntity user :
+          entityStore.batchGet(identifiers, Entity.EntityType.USER, UserEntity.class)) {
         usersByName.put(user.name(), user);
       }
     }

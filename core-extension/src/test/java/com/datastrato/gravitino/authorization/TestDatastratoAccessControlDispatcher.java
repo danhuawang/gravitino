@@ -306,7 +306,11 @@ public class TestDatastratoAccessControlDispatcher {
             delegate.createRole(
                 METALAKE, "second-batch-role", Collections.emptyMap(), Collections.emptyList()))
         .thenReturn(secondBatchRole);
-    Mockito.when(userMetaService.batchGetUsers(eq(METALAKE), anyList()))
+    Mockito.when(
+            batchEntityStore.batchGet(
+                Mockito.<NameIdentifier>anyList(),
+                eq(Entity.EntityType.USER),
+                eq(UserEntity.class)))
         .thenReturn(Lists.newArrayList(alice));
     Mockito.when(
             batchEntityStore.batchGet(
@@ -324,6 +328,16 @@ public class TestDatastratoAccessControlDispatcher {
         Lists.newArrayList("batch-role", "second-batch-role"),
         Lists.newArrayList("alice", "bob"),
         Lists.newArrayList("analysts", "admins"));
+
+    verify(batchEntityStore)
+        .batchGet(
+            eq(
+                Lists.newArrayList(
+                    NameIdentifier.of(alice.namespace(), "alice"),
+                    NameIdentifier.of(alice.namespace(), "bob"))),
+            eq(Entity.EntityType.USER),
+            eq(UserEntity.class));
+    verify(userMetaService, never()).batchGetUsers(any(), anyList());
 
     ArgumentCaptor<List<RoleEntity>> rolesCaptor = ArgumentCaptor.forClass(List.class);
     ArgumentCaptor<List<UserEntity>> usersCaptor = ArgumentCaptor.forClass(List.class);
