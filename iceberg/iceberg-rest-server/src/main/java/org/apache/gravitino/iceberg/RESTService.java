@@ -151,19 +151,10 @@ public class RESTService implements GravitinoAuxiliaryService {
     IcebergNamespaceOperationDispatcher namespaceOperationDispatcher =
         new IcebergNamespaceOperationExecutor(icebergCatalogWrapperManager, cleanupManager);
 
-<<<<<<< HEAD
-    // Table: HookDispatcher -> EventDispatcher -> EncryptionDispatcher -> OperationExecutor
+    // Table: EventDispatcher -> HookDispatcher -> EncryptionDispatcher -> OperationExecutor
     IcebergTableOperationDispatcher icebergTableOperationDispatcher =
-        new IcebergTableOperationExecutor(icebergCatalogWrapperManager, cleanupManager);
-    IcebergTableOperationDispatcher icebergTableEncryptionDispatcher =
-        new IcebergTableEncryptionDispatcher(icebergTableOperationDispatcher);
-    IcebergTableOperationDispatcher icebergTableEventDispatcher =
-        new IcebergTableEventDispatcher(icebergTableEncryptionDispatcher, eventBus, metalakeName);
-=======
-    // Table: EventDispatcher -> HookDispatcher -> OperationExecutor
-    IcebergTableOperationDispatcher icebergTableOperationDispatcher =
-        new IcebergTableOperationExecutor(icebergCatalogWrapperManager, cleanupManager);
->>>>>>> upstream/branch-1.3
+        new IcebergTableEncryptionDispatcher(
+            new IcebergTableOperationExecutor(icebergCatalogWrapperManager, cleanupManager));
     if (authorizationContext.isAuthorizationEnabled()) {
       icebergTableOperationDispatcher =
           new IcebergTableHookDispatcher(
