@@ -1,0 +1,70 @@
+name: SCIM Service Test Action
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        required: true
+        description: 'Java version'
+        type: string
+
+jobs:
+  scim-service-test:
+    name: JDK${{ inputs.java-version }}
+    runs-on: gcp-arc-runners
+    timeout-minutes: 60
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: "temurin"
+          cache: "gradle"
+          cache-dependency-path: |
+            **/*.gradle*
+            **/gradle-wrapper.properties
+            gradle/libs.versions.toml
+            gradle.properties
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+
+      - name: Check required command
+        run: |
+          dev/ci/check_commands.sh
+
+      - name: Free up disk space
+        run: |
+          dev/ci/util_free_space.sh
+
+      - name: Run scim service tests
+        id: scimServiceTest
+        env:
+          dockerTest: true
+        run: |
+          set -euo pipefail
+
+          ./gradlew :plugins:scim:service:test -PskipDockerTests=true
+
+          for backend in h2 mysql postgresql; do
+            ./gradlew :plugins:scim:integration-test:test \
+              -PjdbcBackend="${backend}" \
+              -PskipDockerTests=false
+          done
+
+      - name: Upload scim service test reports
+        uses: actions/upload-artifact@v7
+        if: ${{ failure() && steps.scimServiceTest.outcome == 'failure' }}
+        with:
+          name: scim-service-test-reports
+          path: |
+            plugins/scim/service/build/reports
+            plugins/scim/service/build/test-results
+            plugins/scim/integration-test/build/reports
+            plugins/scim/integration-test/build/test-results
+            distribution/package/scim-server/libs

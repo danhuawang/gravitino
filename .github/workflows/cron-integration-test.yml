@@ -6,7 +6,8 @@ name: Cron Integration Test
 #
 # Phase-1 suites (cloud-test, service-e2e, gvfs-fuse, web-ui, frontend are excluded):
 #   backend, spark, flink, maintenance, python, trino, trino-enterprise,
-#   access-control, iceberg-rest-trino, search, mcp
+#   access-control, iceberg-rest-trino, search, mcp, scim-service, scim-extension, idp
+#   Alias: scim -> scim-service,scim-extension
 
 run-name: Enterprise IT (${{ inputs.suites || 'all' }}) caller=${{ inputs.caller_run_id || 'manual' }}
 
@@ -63,6 +64,9 @@ jobs:
       iceberg-rest-trino: ${{ steps.parse.outputs.iceberg-rest-trino }}
       search: ${{ steps.parse.outputs.search }}
       mcp: ${{ steps.parse.outputs.mcp }}
+      scim-service: ${{ steps.parse.outputs.scim-service }}
+      scim-extension: ${{ steps.parse.outputs.scim-extension }}
+      idp: ${{ steps.parse.outputs.idp }}
       java-version: ${{ steps.parse.outputs.java-version }}
     steps:
       - name: Parse suite selection
@@ -87,15 +91,28 @@ jobs:
               "iceberg-rest-trino",
               "search",
               "mcp",
+              "scim-service",
+              "scim-extension",
+              "idp",
           ]
+          aliases = {"scim": ["scim-service", "scim-extension"]}
           raw = os.environ["SUITES"].strip().lower()
           if raw in ("all", ""):
               selected = set(known)
           else:
               selected = {item.strip() for item in raw.split(",") if item.strip()}
+              expanded = set()
+              for item in selected:
+                  if item in aliases:
+                      expanded.update(aliases[item])
+                  else:
+                      expanded.add(item)
+              selected = expanded
               unknown = selected - set(known)
               if unknown:
-                  raise SystemExit(f"Unknown suites: {sorted(unknown)}. Known: {known}")
+                  raise SystemExit(
+                      f"Unknown suites: {sorted(unknown)}. Known: {known} aliases: {list(aliases)}"
+                  )
 
           output_path = os.environ["GITHUB_OUTPUT"]
           with open(output_path, "a", encoding="utf-8") as handle:
@@ -222,6 +239,33 @@ jobs:
       java-version: ${{ needs.select-suites.outputs.java-version }}
     secrets: inherit
 
+  scim-service:
+    name: scim-service
+    needs: select-suites
+    if: needs.select-suites.outputs.scim-service == 'true'
+    uses: ./.github/workflows/scim-service-test-action.yml
+    with:
+      java-version: ${{ needs.select-suites.outputs.java-version }}
+    secrets: inherit
+
+  scim-extension:
+    name: scim-extension
+    needs: select-suites
+    if: needs.select-suites.outputs.scim-extension == 'true'
+    uses: ./.github/workflows/scim-extension-test-action.yml
+    with:
+      java-version: ${{ needs.select-suites.outputs.java-version }}
+    secrets: inherit
+
+  idp:
+    name: idp
+    needs: select-suites
+    if: needs.select-suites.outputs.idp == 'true'
+    uses: ./.github/workflows/idp-basic-test-action.yml
+    with:
+      java-version: ${{ needs.select-suites.outputs.java-version }}
+    secrets: inherit
+
   summary:
     name: Integration test summary
     needs:
@@ -237,6 +281,9 @@ jobs:
       - iceberg-rest-trino
       - search
       - mcp
+      - scim-service
+      - scim-extension
+      - idp
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -253,6 +300,9 @@ jobs:
           ICEBERG_REST_TRINO: ${{ needs.iceberg-rest-trino.result }}
           SEARCH: ${{ needs.search.result }}
           MCP: ${{ needs.mcp.result }}
+          SCIM_SERVICE: ${{ needs.scim-service.result }}
+          SCIM_EXTENSION: ${{ needs.scim-extension.result }}
+          IDP: ${{ needs.idp.result }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## Enterprise Integration Test Summary
@@ -277,6 +327,9 @@ jobs:
           | iceberg-rest-trino | ${ICEBERG_REST_TRINO} |
           | search | ${SEARCH} |
           | mcp | ${MCP} |
+          | scim-service | ${SCIM_SERVICE} |
+          | scim-extension | ${SCIM_EXTENSION} |
+          | idp | ${IDP} |
           EOF
 
           failed=0
@@ -284,7 +337,8 @@ jobs:
             failed=1
           fi
           for result in "$BACKEND" "$SPARK" "$FLINK" "$MAINTENANCE" "$PYTHON" "$TRINO" \
-            "$TRINO_ENTERPRISE" "$ACCESS_CONTROL" "$ICEBERG_REST_TRINO" "$SEARCH" "$MCP"
+            "$TRINO_ENTERPRISE" "$ACCESS_CONTROL" "$ICEBERG_REST_TRINO" "$SEARCH" "$MCP" \
+            "$SCIM_SERVICE" "$SCIM_EXTENSION" "$IDP"
           do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               failed=1
