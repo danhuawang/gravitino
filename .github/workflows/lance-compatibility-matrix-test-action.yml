@@ -18,6 +18,9 @@ jobs:
     timeout-minutes: 120
     env:
       LANCE_SPARK_VERSIONS: ${{ inputs.lance_spark_versions }}
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -58,6 +61,9 @@ jobs:
     timeout-minutes: 120
     env:
       LANCE_RAY_VERSIONS: ${{ inputs.lance_ray_versions }}
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
