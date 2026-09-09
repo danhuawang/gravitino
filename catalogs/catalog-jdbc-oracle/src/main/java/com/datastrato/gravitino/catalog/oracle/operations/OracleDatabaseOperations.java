@@ -17,6 +17,7 @@ import java.util.Set;
 import org.apache.gravitino.catalog.jdbc.JdbcSchema;
 import org.apache.gravitino.catalog.jdbc.operation.JdbcDatabaseOperations;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
+import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
 import org.apache.gravitino.meta.AuditInfo;
 
 /** Database (schema/user) operations for Oracle. */
@@ -82,6 +83,17 @@ public class OracleDatabaseOperations extends JdbcDatabaseOperations {
           "syskm",
           "sysrac",
           "vecsys");
+
+  @Override
+  public void create(String databaseName, String comment, Map<String, String> properties)
+      throws SchemaAlreadyExistsException {
+    // Reject the unsupported operation before the superclass validates any create arguments (such
+    // as the comment). Otherwise a create request carrying a comment would fail with a
+    // comment-specific error, hiding the fact that schema creation is unsupported regardless of the
+    // arguments and forcing the caller to retry just to learn the operation was never allowed.
+    throw new UnsupportedOperationException(
+        "Oracle catalog does not support creating schemas (users).");
+  }
 
   @Override
   protected String generateCreateDatabaseSql(

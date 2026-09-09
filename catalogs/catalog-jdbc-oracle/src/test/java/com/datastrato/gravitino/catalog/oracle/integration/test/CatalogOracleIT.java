@@ -289,6 +289,20 @@ public class CatalogOracleIT extends BaseIT {
                     GravitinoITUtils.genRandomName("unsupported"), null, Collections.emptyMap()));
     assertTrue(createException.getMessage().contains("does not support creating schemas"));
 
+    // A create request carrying a comment must still report that the operation is unsupported,
+    // not that the comment is the problem (see issue #1751).
+    RuntimeException createWithCommentException =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                schemas.createSchema(
+                    GravitinoITUtils.genRandomName("unsupported"),
+                    "schema probe",
+                    Collections.emptyMap()));
+    assertTrue(
+        createWithCommentException.getMessage().contains("does not support creating schemas"));
+    assertFalse(createWithCommentException.getMessage().contains("schema comment"));
+
     // And the same holds for DROP SCHEMA — even targeting the existing APP_USER schema.
     assertThrows(RuntimeException.class, () -> schemas.dropSchema(schemaName, false));
 

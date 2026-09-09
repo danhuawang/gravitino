@@ -78,6 +78,20 @@ public class TestOracleDatabaseOperations {
   }
 
   @Test
+  void testCreateSchemaWithCommentReportsUnsupportedOperationNotComment() {
+    // A create request that carries a comment must still report that the operation itself is
+    // unsupported, since Oracle schema creation is refused regardless of the arguments. It must not
+    // report the comment as the obstacle (see issue #1751).
+    UnsupportedOperationException exception =
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> operations.create("probe_schema", "schema probe", Collections.emptyMap()));
+    assertEquals(UNSUPPORTED_CREATE_MSG, exception.getMessage());
+    assertFalse(exception.getMessage().contains("schema comment"));
+    assertFalse(exception.getMessage().contains("schema probe"));
+  }
+
+  @Test
   void testListDatabasesFiltersSystemUsers() throws Exception {
     Statement statement = mock(Statement.class);
     ResultSet resultSet = mock(ResultSet.class);
