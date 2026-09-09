@@ -8,6 +8,29 @@ import lombok.Getter;
 
 public interface Condition {
 
+  /** A free-text term whose position in the boolean expression must be preserved. */
+  class KeywordCondition implements Condition {
+    private final String keyword;
+
+    /**
+     * Creates a free-text condition.
+     *
+     * @param keyword the search term
+     */
+    public KeywordCondition(String keyword) {
+      this.keyword = keyword;
+    }
+
+    /**
+     * Returns the search term.
+     *
+     * @return the search term
+     */
+    public String getKeyword() {
+      return keyword;
+    }
+  }
+
   class TermCondition implements Condition {
     private final String field;
     private final String value;

@@ -177,6 +177,13 @@ GET /api/search/query
 | pageNumber | int    | Yes      | Page number (starting from 0) | `0`     |
 | pageSize   | int    | Yes      | Number of results per page    | `10`    |
 
+Free-text terms separated by whitespace use `AND`: `alpha beta` requires both terms,
+which may match different searchable fields. Use `alpha OR beta` to match either term.
+`AND` takes precedence over `OR`; parentheses control grouping, for example
+`alpha (beta OR entity_name:gamma)`. These rules also apply when combining free text
+with field filters. An empty or whitespace-only query returns all matching metadata
+within the requested metalake and page.
+
 **Example**
 
 ```bash

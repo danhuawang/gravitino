@@ -70,6 +70,7 @@ dependencies {
   testImplementation(libs.mysql.driver)
   testImplementation(libs.testcontainers)
   testImplementation(libs.junit.jupiter.api)
+  testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.mockito.core)
 
   testRuntimeOnly(project(":plugins:idp-basic"))

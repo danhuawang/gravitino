@@ -848,14 +848,45 @@ public class OpenSearchStorage implements SearchStorage {
   }
 
   private static BoolQuery buildBoolQuery(String keyword, Condition filter, EntityType entityType) {
-    if (StringUtils.isBlank(keyword)) {
-      return new BoolQuery.Builder().filter(buildConditionPart(filter)).build();
+    BoolQuery.Builder query = new BoolQuery.Builder();
+    if (StringUtils.isNotBlank(keyword)) {
+      query.must(buildKeywordPart(keyword, entityType));
     }
+    if (filter != null) {
+      query.must(buildSearchCondition(filter, entityType));
+    }
+    return query.build();
+  }
 
-    return new BoolQuery.Builder()
-        .must(buildKeywordPart(keyword, entityType))
-        .filter(buildConditionPart(filter))
-        .build();
+  private static Query buildSearchCondition(Condition condition, EntityType entityType) {
+    if (condition instanceof Condition.KeywordCondition) {
+      return buildKeywordPart(((Condition.KeywordCondition) condition).getKeyword(), entityType);
+    }
+    if (condition instanceof Condition.AndCondition) {
+      BoolQuery.Builder query = new BoolQuery.Builder();
+      ((Condition.AndCondition) condition)
+          .getConditions()
+          .forEach(child -> query.must(buildSearchCondition(child, entityType)));
+      return query.build().toQuery();
+    }
+    if (condition instanceof Condition.OrCondition) {
+      BoolQuery.Builder query = new BoolQuery.Builder().minimumShouldMatch("1");
+      ((Condition.OrCondition) condition)
+          .getConditions()
+          .forEach(child -> query.should(buildSearchCondition(child, entityType)));
+      return query.build().toQuery();
+    }
+    if (condition instanceof Condition.NotCondition) {
+      return Query.of(
+          query ->
+              query.bool(
+                  bool ->
+                      bool.mustNot(
+                          buildSearchCondition(
+                              ((Condition.NotCondition) condition).getCondition(), entityType))));
+    }
+    // Free-text clauses retain their relevance scores; field predicates remain filters.
+    return Query.of(query -> query.bool(bool -> bool.filter(buildConditionPart(condition))));
   }
 
   private static Query buildKeywordPart(String keyword, EntityType entityType) {

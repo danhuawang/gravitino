@@ -87,7 +87,7 @@ public class ConditionBuilderVisitor extends SearchExpressionBaseVisitor<Conditi
   public Condition visitLiteral(LiteralContext ctx) {
     if (ctx.ID() != null) {
       keywords.add(ctx.ID().getText());
-      return null;
+      return new Condition.KeywordCondition(ctx.ID().getText());
     }
 
     return visit(ctx.factor());
@@ -118,10 +118,20 @@ public class ConditionBuilderVisitor extends SearchExpressionBaseVisitor<Conditi
       this.keywords = keywords;
     }
 
+    /**
+     * Returns the complete expression, including free-text terms and field filters.
+     *
+     * @return the expression, or null for an empty query
+     */
     public Condition getCondition() {
       return condition;
     }
 
+    /**
+     * Returns free-text terms in encounter order, without their boolean relationships.
+     *
+     * @return the terms; use {@link #getCondition()} to execute the query
+     */
     public List<String> getKeywords() {
       return keywords;
     }

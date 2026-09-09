@@ -12,6 +12,7 @@ import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchPolicyEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchTableEntityDTO;
 import com.datastrato.gravitino.search.dto.SearchViewEntityDTO;
+import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor;
 import com.datastrato.gravitino.search.po.SearchCatalogEntityPO;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchPolicyEntityPO;
@@ -29,6 +30,7 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
 import org.junit.jupiter.api.Assertions;
@@ -110,6 +112,61 @@ public class TestOpenSearchStorage {
     } catch (Exception e) {
       throw new RuntimeException("Failed to initialize index template", e);
     }
+  }
+
+  @Test
+  void testBooleanKeywords() {
+    String metalake = "booleankeywords";
+    for (String name : List.of("alpha", "beta", "both", "neither")) {
+      storage.write(
+          List.of(
+              SearchTableEntityPO.SearchTableEntityPOBuilder.builder()
+                  .withColumns(
+                      List.of(
+                          SearchTableEntityPO.SearchColumn.builder().withColumnName("id").build()))
+                  .withEntityId(name.hashCode())
+                  .withEntityType(Entity.EntityType.TABLE)
+                  .withEntityName(name)
+                  .withFullQualifiedName(name)
+                  .withCatalogName("xyz")
+                  .withMetalake(metalake)
+                  .withInUse(true)
+                  .withEntityComment(name.equals("both") ? "alpha beta" : "")
+                  .withEntityProperties(List.of(new SearchEntityPO.PropertyPO("jdbc_url", "xyz")))
+                  .build()),
+          true);
+    }
+    for (String query :
+        List.of("alpha beta", "alpha  beta", "alpha\tbeta", "alpha\nbeta", "alpha AND beta")) {
+      assertBooleanNames(metalake, query, "both");
+    }
+    assertBooleanNames(metalake, "alpha OR beta", "alpha", "beta", "both");
+    assertBooleanNames(metalake, "alpha (beta OR entity_name:alpha)", "alpha", "both");
+    assertBooleanNames(metalake, "alpha OR beta entity_name:beta", "alpha", "beta", "both");
+    assertBooleanNames(metalake, "alpha -entity_name:both", "alpha");
+    // Each term may match a different field; a shared property must not bypass the other term.
+    assertBooleanNames(metalake, "alpha xyz", "alpha", "both");
+    assertBooleanNames(metalake, "a b", "alpha", "beta", "both");
+    assertBooleanNames(metalake, "zznever wwnever");
+    assertBooleanNames(metalake, " ", "alpha", "beta", "both", "neither");
+  }
+
+  private void assertBooleanNames(String metalake, String query, String... expected) {
+    List<SearchEntitiesDTO> results =
+        storage.search(
+            metalake,
+            null,
+            ConditionBuilderVisitor.buildQueryCondition(query).getCondition(),
+            List.of(),
+            100,
+            0);
+    Assertions.assertEquals(
+        Set.of(expected),
+        results.stream()
+            .flatMap(group -> group.getEntities().stream())
+            .map(SearchEntityDTO::getEntityName)
+            .collect(Collectors.toSet()),
+        query);
   }
 
   @Test

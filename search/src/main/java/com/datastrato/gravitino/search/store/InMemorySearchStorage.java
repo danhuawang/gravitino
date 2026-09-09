@@ -207,6 +207,15 @@ public class InMemorySearchStorage implements SearchStorage {
       return entity -> true;
     }
 
+    if (condition instanceof Condition.KeywordCondition) {
+      String keyword = ((Condition.KeywordCondition) condition).getKeyword();
+      return entity -> matchesKeyword(entity, keyword);
+    }
+
+    if (condition instanceof Condition.NotCondition) {
+      return buildFilter(((Condition.NotCondition) condition).getCondition()).negate();
+    }
+
     if (condition instanceof Condition.AndCondition) {
       List<Condition> conditions = ((Condition.AndCondition) condition).getConditions();
       return conditions.stream()

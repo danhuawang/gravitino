@@ -24,7 +24,6 @@ import com.datastrato.gravitino.search.store.WriteContext;
 import com.datastrato.gravitino.search.store.opensearch.OpenSearchStorage;
 import com.datastrato.gravitino.search.utils.PermissionProjectionCache;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -492,15 +491,13 @@ public class SearchService implements Closeable {
       throw new NoSuchMetalakeException("The metalake '%s' does not exist.", metalake);
     }
 
-    String keyword = null;
     Condition condition = null;
     if (StringUtils.isNotBlank(query)) {
       QueryCondition queryCondition = ConditionBuilderVisitor.buildQueryCondition(query);
-      keyword = Joiner.on(" ").skipNulls().join(queryCondition.getKeywords());
       condition = queryCondition.getCondition();
     }
 
-    return storage.search(metalake, keyword, condition, ImmutableList.of(), pageSize, pageNumber);
+    return storage.search(metalake, null, condition, ImmutableList.of(), pageSize, pageNumber);
   }
 
   public List<SearchEntitiesDTO> query(
