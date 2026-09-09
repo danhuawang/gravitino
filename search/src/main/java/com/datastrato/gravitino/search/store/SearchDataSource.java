@@ -12,7 +12,17 @@ import org.apache.gravitino.Entity;
  * * Interface for a data source that provides search entities. Implementations of this interface
  * should provide a way to retrieve a batch of search entities.
  */
-public interface SearchDataSource {
+public interface SearchDataSource extends AutoCloseable {
+  /** Releases any backend cursor retained by this data source. */
+  @Override
+  default void close() {}
+
+  /**
+   * Abandons the entity type of the most recent batch, so the next {@link #nextBatch()} continues
+   * with another type. Implementations that hold a backend cursor release it here.
+   */
+  default void skipCurrentEntityType() {}
+
   /**
    * Retrieves the next batch of search entities.
    *

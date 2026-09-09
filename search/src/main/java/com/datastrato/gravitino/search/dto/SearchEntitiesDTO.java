@@ -22,6 +22,18 @@ public class SearchEntitiesDTO {
 
   private final List<? extends SearchEntityDTO> entities;
 
+  /**
+   * Whether {@link #totalSize} stopped at the authorization scan limit. When {@code true} the
+   * metalake holds more matches of this type than a single query authorizes, so {@code totalSize}
+   * is a lower bound rather than the exact number of visible matches.
+   */
+  private final boolean totalSizeTruncated;
+
+  public SearchEntitiesDTO(
+      int totalSize, EntityType type, List<? extends SearchEntityDTO> entities) {
+    this(totalSize, type, entities, false);
+  }
+
   public static Builder builder() {
     return new Builder();
   }
@@ -30,6 +42,7 @@ public class SearchEntitiesDTO {
     private int totalSize;
     private EntityType type;
     private List<? extends SearchEntityDTO> entities;
+    private boolean totalSizeTruncated;
 
     public Builder withTotalSize(int totalSize) {
       this.totalSize = totalSize;
@@ -46,11 +59,16 @@ public class SearchEntitiesDTO {
       return this;
     }
 
+    public Builder withTotalSizeTruncated(boolean totalSizeTruncated) {
+      this.totalSizeTruncated = totalSizeTruncated;
+      return this;
+    }
+
     public SearchEntitiesDTO build() {
       Preconditions.checkArgument(totalSize >= 0, "Total size must be non-negative");
       Preconditions.checkArgument(type != null, "Type must not be null");
       Preconditions.checkArgument(entities != null, "Entities must not be null");
-      return new SearchEntitiesDTO(totalSize, type, entities);
+      return new SearchEntitiesDTO(totalSize, type, entities, totalSizeTruncated);
     }
 
     public static SearchEntitiesDTO getSearchEntitiesDTOByType(

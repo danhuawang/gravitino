@@ -20,6 +20,8 @@ public class SearchConfig extends Config {
       "gravitino.datastrato.search.maxBackoffMs";
   public static final String GRAVITINO_SEARCH_SYNC_BATCH_SIZE =
       "gravitino.datastrato.search.syncBatchSize";
+  public static final String GRAVITINO_SEARCH_MAX_AUTHORIZATION_SCAN_SIZE =
+      "gravitino.datastrato.search.maxAuthorizationScanSize";
 
   // In memory implementation in this PR is only for testing purpose.
   public static final String GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY = "memory";
@@ -29,6 +31,7 @@ public class SearchConfig extends Config {
   public static final int DEFAULT_MAX_BACKGROUND_THREAD = 10;
   public static final int DEFAULT_SYNC_BATCH_SIZE = 100;
   public static final int DEFAULT_MAX_BACK_OFF_MS = 100;
+  public static final int DEFAULT_MAX_AUTHORIZATION_SCAN_SIZE = 10000;
 
   public static final ConfigEntry<String> ENTITY_GRAVITINO_SEARCH_STORAGE_IMPL =
       new ConfigBuilder(GRAVITINO_SEARCH_STORAGE_IMPL)
@@ -63,6 +66,17 @@ public class SearchConfig extends Config {
           .intConf()
           .createWithDefault(DEFAULT_SYNC_BATCH_SIZE);
 
+  public static final ConfigEntry<Integer> ENTITY_GRAVITINO_SEARCH_MAX_AUTHORIZATION_SCAN_SIZE =
+      new ConfigBuilder(GRAVITINO_SEARCH_MAX_AUTHORIZATION_SCAN_SIZE)
+          .doc(
+              "The maximum number of indexed entries of one entity type that a single search "
+                  + "query authorizes. Matches beyond this limit are neither returned nor counted, "
+                  + "and the reported total size is marked as truncated")
+          .version(ConfigConstants.VERSION_1_3_0)
+          .intConf()
+          .checkValue(v -> v > 0, "The maximum authorization scan size must be greater than 0")
+          .createWithDefault(DEFAULT_MAX_AUTHORIZATION_SCAN_SIZE);
+
   public SearchConfig(Map<String, String> properties) {
     super(false);
     loadFromMap(properties, k -> true);
@@ -86,5 +100,9 @@ public class SearchConfig extends Config {
 
   public int getSyncBatchSize() {
     return get(ENTITY_GRAVITINO_SEARCH_SYNC_BATCH_SIZE);
+  }
+
+  public int getMaxAuthorizationScanSize() {
+    return get(ENTITY_GRAVITINO_SEARCH_MAX_AUTHORIZATION_SCAN_SIZE);
   }
 }

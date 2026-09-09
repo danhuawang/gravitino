@@ -11,6 +11,7 @@ import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.store.SearchDataSource;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
+import com.google.common.base.Preconditions;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,7 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
 
   private String currentScrollId;
   private Entity.EntityType currentEntityType;
+  private boolean failed;
 
   public OpenSearchQueryDataSource(
       OpenSearchStorage openSearch,
@@ -55,6 +57,7 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
 
   @Override
   public Result nextBatch() {
+    Preconditions.checkState(!failed, "This search cursor failed and cannot be resumed");
     Result result = Result.empty();
     while (result.isEmpty()) {
       if (searchIndices.isEmpty()) {
@@ -69,6 +72,25 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
       result = nextBatch(currentEntityType);
     }
     return result;
+  }
+
+  /** Releases the active scroll, including when authorization or query processing fails. */
+  @Override
+  public void close() {
+    clearScroll();
+    searchIndices.clear();
+    currentEntityType = null;
+  }
+
+  /**
+   * Abandons the entity type currently being scrolled, releasing its scroll and continuing with the
+   * next type on the following {@link #nextBatch()}.
+   */
+  @Override
+  public void skipCurrentEntityType() {
+    clearScroll();
+    searchIndices.remove(currentEntityType);
+    currentEntityType = null;
   }
 
   public Result nextBatch(Entity.EntityType entityType) {
@@ -96,6 +118,14 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
             openSearch.getClient().scroll(scrollRequest, ENTITY_TYPE_TO_CLASS.get(entityType));
       }
 
+      if (response.scrollId() != null) {
+        currentScrollId = response.scrollId();
+      }
+
+      if (currentScrollId == null && !response.hits().hits().isEmpty()) {
+        throw new IllegalStateException("Nonempty search response is missing a scroll ID");
+      }
+
       List<SearchEntityDTO> entities =
           response.hits().hits().stream()
               .map(
@@ -103,9 +133,9 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
                       SearchEntityCodec.INSTANCE.convert(
                           hit.source(), ENTITY_TYPE_TO_CLASS_DTO.get(entityType)))
               .collect(Collectors.toList());
-      currentScrollId = response.scrollId();
 
       if (entities.isEmpty()) {
+        clearScroll();
         searchIndices.remove(currentEntityType);
         currentEntityType = null;
         currentScrollId = null;
@@ -113,7 +143,25 @@ public class OpenSearchQueryDataSource implements SearchDataSource {
       return new Result(entities, currentEntityType);
     } catch (Exception e) {
       LOG.error("Batch search failed", e);
+      // Release the server-side scroll context now; callers that abort on this failure without
+      // closing the data source would otherwise leave it alive until the scroll timeout expires.
+      // The cursor is left terminal: resuming it would restart the scroll of this entity type and
+      // re-emit entities the caller already consumed.
+      failed = true;
+      clearScroll();
       throw new RuntimeException("Batch search query failed", e);
+    }
+  }
+
+  private void clearScroll() {
+    if (currentScrollId != null) {
+      try {
+        openSearch.getClient().clearScroll(request -> request.scrollId(currentScrollId));
+      } catch (Exception e) {
+        LOG.warn("Failed to clear search scroll", e);
+      } finally {
+        currentScrollId = null;
+      }
     }
   }
 }

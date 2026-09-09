@@ -145,24 +145,25 @@ class TagAssociationSearchEntitySource extends ParentEntitySource {
 
   private static List<SearchEntityIdentifier> findEntitiesByTag(
       String metalake, String tagName, SearchStorage storage) {
-    SearchDataSource source =
+    List<SearchEntityIdentifier> identifiers = new ArrayList<>();
+    try (SearchDataSource source =
         storage.search(
             metalake,
             null,
             new Condition.InCondition("tag_name", ImmutableList.of(tagName)),
-            ImmutableList.of());
-
-    List<SearchEntityIdentifier> identifiers = new ArrayList<>();
-    SearchDataSource.Result result = source.nextBatch();
-    while (!result.isEmpty()) {
-      EntityType entityType = result.entityType();
-      for (SearchEntityDTO entity : result.entities()) {
-        // The indexed full qualified name is relative to the metalake, the identifier is not.
-        identifiers.add(
-            SearchEntityIdentifier.of(
-                NameIdentifier.parse(metalake + "." + entity.getFullQualifiedName()), entityType));
+            ImmutableList.of())) {
+      SearchDataSource.Result result = source.nextBatch();
+      while (!result.isEmpty()) {
+        EntityType entityType = result.entityType();
+        for (SearchEntityDTO entity : result.entities()) {
+          // The indexed full qualified name is relative to the metalake, the identifier is not.
+          identifiers.add(
+              SearchEntityIdentifier.of(
+                  NameIdentifier.parse(metalake + "." + entity.getFullQualifiedName()),
+                  entityType));
+        }
+        result = source.nextBatch();
       }
-      result = source.nextBatch();
     }
     return identifiers;
   }

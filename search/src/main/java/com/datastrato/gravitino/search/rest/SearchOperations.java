@@ -8,6 +8,7 @@ import static org.apache.gravitino.MetadataObject.Type.METALAKE;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
+import com.datastrato.gravitino.search.service.SearchService;
 import com.datastrato.gravitino.search.service.SyncTask;
 import java.util.List;
 import javax.annotation.Nullable;
@@ -24,10 +25,18 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.gravitino.Configs;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.authorization.AuthorizationRequestContext;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
+import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.listener.api.event.server.AuthorizationDenialFailureEvent;
 import org.apache.gravitino.server.web.Utils;
+import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +60,7 @@ public class SearchOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
+            checkMaintenancePermission(metalake, "rebuildMetadata");
             // Use sync method to rebuild metadata
             SyncTask task =
                 ExtendedDatastratoGravitinoEnv.getInstance()
@@ -58,6 +68,8 @@ public class SearchOperations {
                     .rebuildMetadata(metalake);
             return Utils.ok(new SyncMetadataResponse(task.getTaskId()));
           });
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
     } catch (Exception e) {
       LOG.error("Failed to rebuild metadata for metalake: {}", metalake, e);
       return Utils.internalError(e.getMessage());
@@ -85,6 +97,7 @@ public class SearchOperations {
       return Utils.doAs(
           httpRequest,
           () -> {
+            checkMaintenancePermission(metalake, "syncMetadataObjects");
             boolean cascade = request.isCascade();
             // If metadataObject is null, it means we are syncing all objects in the metalake; then
             // cascade is always true
@@ -101,6 +114,8 @@ public class SearchOperations {
 
             return Utils.ok(new SyncMetadataResponse(task.getTaskId()));
           });
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
     } catch (Exception e) {
       return Utils.internalError(e.getMessage());
     }
@@ -119,17 +134,31 @@ public class SearchOperations {
       return Utils.illegalArguments("Metalake cannot be null or empty");
     }
 
+    if (pageNumber < 0) {
+      return Utils.illegalArguments(
+          String.format("pageNumber must be greater than or equal to 0: %s", pageNumber));
+    }
+    if (pageSize <= 0) {
+      return Utils.illegalArguments(String.format("pageSize must be greater than 0: %s", pageSize));
+    }
+
     try {
       return Utils.doAs(
           httpRequest,
           () -> {
+            checkQueryMembership(metalake);
+
+            SearchService searchService =
+                ExtendedDatastratoGravitinoEnv.getInstance().getSearchService();
             List<SearchEntitiesDTO> result =
-                ExtendedDatastratoGravitinoEnv.getInstance()
-                    .getSearchService()
-                    .query(metalake, keyword, pageNumber, pageSize);
+                authorizationEnabled()
+                    ? searchService.queryVisible(metalake, keyword, pageNumber, pageSize)
+                    : searchService.query(metalake, keyword, pageNumber, pageSize);
             return Utils.ok(new SearchQueryResponse(result));
           });
 
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
     } catch (IllegalArgumentException e) {
       LOG.warn("Invalid search query for metalake: {}", metalake, e);
       return Utils.illegalArguments(e.getMessage(), e);
@@ -157,13 +186,74 @@ public class SearchOperations {
             if (taskStatus == null) {
               return Utils.illegalArguments("Task not found: " + taskId);
             }
+            // The status carries the metalake and the metadata object of the maintenance task, so
+            // reading it requires the same permission as submitting one.
+            checkMaintenancePermission(taskStatus.getMetalake(), "getTaskStatus");
             return Utils.ok(new TaskStatusResponse(taskStatus));
           });
 
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
     } catch (Exception e) {
       LOG.error("Failed to get task status for taskId: {}", taskId, e);
       return Utils.internalError(e.getMessage());
     }
+  }
+
+  private static boolean authorizationEnabled() {
+    return Boolean.TRUE.equals(
+        GravitinoEnv.getInstance().config().get(Configs.ENABLE_AUTHORIZATION));
+  }
+
+  private void checkQueryMembership(String metalake) {
+    if (!authorizationEnabled()) {
+      return;
+    }
+
+    GravitinoAuthorizer authorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    if (!authorizer.isMetalakeUser(metalake, new AuthorizationRequestContext())) {
+      throw authorizationDenied(
+          metalake,
+          "query",
+          "",
+          String.format(
+              "Current user %s is not a member of the metalake %s, the user must be added to the metalake first",
+              PrincipalUtils.getCurrentUserName(), metalake));
+    }
+  }
+
+  private void checkMaintenancePermission(String metalake, String operation) {
+    if (!authorizationEnabled()) {
+      return;
+    }
+    GravitinoAuthorizer authorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    if (!authorizer.isServiceAdmin()
+        && !authorizer.isOwner(
+            PrincipalUtils.getCurrentPrincipal(),
+            metalake,
+            MetadataObjects.parse(metalake, METALAKE),
+            new AuthorizationRequestContext())) {
+      throw authorizationDenied(
+          metalake,
+          operation,
+          "SERVICE_ADMIN || METALAKE::OWNER",
+          "Only service administrators or the target metalake owner may rebuild or synchronize search metadata");
+    }
+  }
+
+  private ForbiddenException authorizationDenied(
+      String metalake, String operation, String expression, String message) {
+    String user = PrincipalUtils.getCurrentUserName();
+    try {
+      GravitinoEnv.getInstance()
+          .eventBus()
+          .dispatchEvent(
+              new AuthorizationDenialFailureEvent(
+                  user, NameIdentifier.of(metalake), operation, expression));
+    } catch (Exception e) {
+      LOG.error("Failed to dispatch search authorization denial event for user {}", user, e);
+    }
+    return new ForbiddenException("%s", message);
   }
 
   @Nullable

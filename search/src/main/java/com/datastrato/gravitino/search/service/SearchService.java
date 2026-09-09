@@ -15,7 +15,6 @@ import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.parser.Condition;
 import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor;
-import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor.QueryCondition;
 import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.store.InMemorySearchStorage;
 import com.datastrato.gravitino.search.store.SearchDataSource;
@@ -46,6 +45,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
@@ -74,6 +74,7 @@ public class SearchService implements Closeable {
   private final int backoffTime;
   private final int maxSyncMetadataThreadNum;
   private final int entityProcessBatchSize;
+  private final int maxAuthorizationScanSize;
 
   @VisibleForTesting protected final SearchStorage storage;
 
@@ -103,6 +104,7 @@ public class SearchService implements Closeable {
       int maxThreadNum = searchConfig.getMaxBackgroundThread();
       this.maxSyncMetadataThreadNum = maxThreadNum - REMOVE_METADATA_THREAD_NUM;
       this.backoffTime = searchConfig.getMaxBackoffMs();
+      this.maxAuthorizationScanSize = searchConfig.getMaxAuthorizationScanSize();
 
       this.storage = clazz.getDeclaredConstructor().newInstance();
       this.storage.initialize(config);
@@ -466,21 +468,55 @@ public class SearchService implements Closeable {
 
   public void removeMetadataByQuery(String metalake, Condition condition) {
     // TODO we could only fetch entity_id instead of getting all fields.
-    SearchDataSource source = storage.search(metalake, null, condition, ImmutableList.of());
+    try (SearchDataSource source = storage.search(metalake, null, condition, ImmutableList.of())) {
+      SearchDataSource.Result result = source.nextBatch();
+      while (!result.isEmpty()) {
+        Entity.EntityType resultEntityType = result.entityType();
+        List<Long> entityIds =
+            result.entities().stream().map(SearchEntityDTO::getEntityId).collect(toList());
+        storage.delete(metalake, entityIds, resultEntityType);
 
-    SearchDataSource.Result result = source.nextBatch();
-    while (!result.isEmpty()) {
-      Entity.EntityType resultEntityType = result.entityType();
-      List<Long> entityIds =
-          result.entities().stream().map(SearchEntityDTO::getEntityId).collect(toList());
-      storage.delete(metalake, entityIds, resultEntityType);
+        result = source.nextBatch();
+      }
+    }
+  }
 
-      result = source.nextBatch();
+  /**
+   * Searches the current caller's visible metadata, paging and counting only authorized matches.
+   *
+   * @param metalake the metalake whose membership has been checked by the caller
+   * @param query the free-text query and optional filters
+   * @param pageNumber the zero-based page per entity type
+   * @param pageSize the maximum visible results per entity type
+   * @return visible pages and visible totals, which are lower bounds for any entity type whose
+   *     matches exceeded the authorization scan limit
+   */
+  public List<SearchEntitiesDTO> queryVisible(
+      String metalake, String query, int pageNumber, int pageSize) {
+    Condition condition = parseQuery(metalake, query, pageNumber, pageSize);
+    try (SearchDataSource source = storage.search(metalake, null, condition, ImmutableList.of())) {
+      return SearchResultFilter.filter(
+          source,
+          metalake,
+          pageNumber,
+          pageSize,
+          maxAuthorizationScanSize,
+          GravitinoEnv.getInstance().gravitinoAuthorizer());
     }
   }
 
   public List<SearchEntitiesDTO> query(
       String metalake, String query, int pageNumber, int pageSize) {
+    Condition condition = parseQuery(metalake, query, pageNumber, pageSize);
+    return storage.search(metalake, null, condition, ImmutableList.of(), pageSize, pageNumber);
+  }
+
+  /**
+   * Validates the paging arguments, verifies the metalake exists and parses the free-text query
+   * into the complete boolean condition understood by the storage layer.
+   */
+  @Nullable
+  private Condition parseQuery(String metalake, String query, int pageNumber, int pageSize) {
     Preconditions.checkArgument(
         pageNumber >= 0, "pageNumber must be greater than or equal to 0: %s", pageNumber);
     Preconditions.checkArgument(pageSize > 0, "pageSize must be greater than 0: %s", pageSize);
@@ -491,13 +527,9 @@ public class SearchService implements Closeable {
       throw new NoSuchMetalakeException("The metalake '%s' does not exist.", metalake);
     }
 
-    Condition condition = null;
-    if (StringUtils.isNotBlank(query)) {
-      QueryCondition queryCondition = ConditionBuilderVisitor.buildQueryCondition(query);
-      condition = queryCondition.getCondition();
-    }
-
-    return storage.search(metalake, null, condition, ImmutableList.of(), pageSize, pageNumber);
+    return StringUtils.isBlank(query)
+        ? null
+        : ConditionBuilderVisitor.buildQueryCondition(query).getCondition();
   }
 
   public List<SearchEntitiesDTO> query(

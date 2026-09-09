@@ -27,23 +27,25 @@ class RebuildMetadataFinishHandler implements SyncTaskFinishedHandler {
     long transId = task.options.getTransactionId();
     try {
       // Search all entities with update_time greater than txId
-      SearchDataSource source =
+      try (SearchDataSource source =
           task.service.query(
-              metalake, null, Condition.greater("update_time", String.valueOf(transId)), null);
-
-      SearchDataSource.Result result = source.nextBatch();
-      while (!result.isEmpty()) {
-        // Write the data to the new index
-        Entity.EntityType entityType = result.entityType();
-        Class<? extends SearchEntityPO> cl = SearchEntityCodec.ENTITY_TYPE_TO_CLASS.get(entityType);
-        List<SearchEntityPO> allEntities =
-            new ArrayList<>(
-                result.entities().stream()
-                    .map(SearchEntityCodec.INSTANCE::serialize)
-                    .map(e -> SearchEntityCodec.INSTANCE.deserialize(e, cl))
-                    .collect(Collectors.toList()));
-        task.service.write(allEntities, WriteContext.builder().withTransactionId(transId).build());
-        result = source.nextBatch();
+              metalake, null, Condition.greater("update_time", String.valueOf(transId)), null)) {
+        SearchDataSource.Result result = source.nextBatch();
+        while (!result.isEmpty()) {
+          // Write the data to the new index
+          Entity.EntityType entityType = result.entityType();
+          Class<? extends SearchEntityPO> cl =
+              SearchEntityCodec.ENTITY_TYPE_TO_CLASS.get(entityType);
+          List<SearchEntityPO> allEntities =
+              new ArrayList<>(
+                  result.entities().stream()
+                      .map(SearchEntityCodec.INSTANCE::serialize)
+                      .map(e -> SearchEntityCodec.INSTANCE.deserialize(e, cl))
+                      .collect(Collectors.toList()));
+          task.service.write(
+              allEntities, WriteContext.builder().withTransactionId(transId).build());
+          result = source.nextBatch();
+        }
       }
 
       task.service.commit(transId);

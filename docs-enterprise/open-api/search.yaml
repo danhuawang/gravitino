@@ -13,6 +13,17 @@ paths:
         Searches metadata in a metalake. The keyword can contain free text and filters such as
         `catalog_name:catalog`, `entity_type:TABLE`, and `tag_name:tag`. Results are grouped by
         entity type, and pagination is applied independently to each group.
+        When authorization is enabled, the caller must be a member of the requested metalake,
+        including service administrators. Results are filtered using the caller's current entity
+        permissions before pagination. Each group contains only authorized matches, and `totalSize`
+        counts all authorized matches of that type. Computing these totals authorizes the matching
+        index entries in batches, up to a configured per-entity-type limit
+        (`gravitino.datastrato.search.maxAuthorizationScanSize`, 10000 by default). A group whose
+        matches exceed that limit sets `totalSizeTruncated`, and its remaining matches are neither
+        returned nor counted; narrow the query to see them. Such a group is returned even when none
+        of the authorized entries were visible, so an empty group with `totalSizeTruncated` set
+        means "narrow the query", not "nothing matched". Authorization or filtered-query failures
+        return a server error.
       parameters:
         - name: metalake
           in: query
@@ -33,6 +44,7 @@ paths:
           schema:
             type: integer
             format: int32
+            minimum: 0
             default: 0
         - name: pageSize
           in: query
@@ -41,18 +53,36 @@ paths:
           schema:
             type: integer
             format: int32
+            minimum: 1
             default: 10
       responses:
         "200":
-          description: |-
-            Returns matching metadata grouped by entity type. If query processing fails internally,
-            the response contains an empty entity list.
+          description: Returns matching metadata grouped by entity type
           content:
             application/vnd.gravitino.v1+json:
               schema:
                 $ref: "#/components/schemas/SearchQueryResponse"
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "403":
+          description: |-
+            The caller is not a member of the requested metalake. The membership check runs before
+            the metalake is resolved, so a non-member receives this status for an unknown metalake
+            as well and cannot use the endpoint to discover which metalakes exist.
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "404":
+          description: |-
+            The requested metalake does not exist. When authorization is enabled this is returned
+            only to members of the metalake; other callers receive 403.
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5XX":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
   /search/rebuild/metalakes/{metalake}:
     post:
@@ -63,6 +93,8 @@ paths:
       description: |
         Starts an asynchronous rebuild of all search indexes for the specified metalake. Use the
         returned task identifier with the task-status endpoint to monitor the rebuild.
+        When authorization is enabled, only service administrators or the target metalake owner
+        may submit a rebuild. Service administrators need not be members of the metalake.
       parameters:
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       responses:
@@ -74,6 +106,12 @@ paths:
                 $ref: "#/components/schemas/SyncMetadataResponse"
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "403":
+          description: The caller is neither a service administrator nor the target metalake owner
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
         "5XX":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
@@ -88,6 +126,8 @@ paths:
         `metadataType` and `metadataFullName` to synchronize a specific object. Omit both fields,
         or send an empty JSON object, to synchronize all metadata in the metalake. Use the returned
         task identifier with the task-status endpoint to monitor the synchronization.
+        When authorization is enabled, only service administrators or the target metalake owner
+        may submit synchronization. Service administrators need not be members of the metalake.
       parameters:
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       requestBody:
@@ -108,6 +148,12 @@ paths:
                 $ref: "#/components/schemas/SyncMetadataResponse"
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "403":
+          description: The caller is neither a service administrator nor the target metalake owner
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
         "5XX":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
@@ -117,7 +163,11 @@ paths:
         - search
       summary: Get a search task status
       operationId: getSearchTaskStatus
-      description: Returns the current status of an asynchronous search-index task
+      description: |
+        Returns the current status of an asynchronous search-index task. The status names the
+        metalake and the metadata object of the task, so when authorization is enabled reading it
+        requires the same permission as submitting one: a service administrator or the owner of
+        the task's metalake.
       parameters:
         - name: taskId
           in: path
@@ -134,6 +184,12 @@ paths:
                 $ref: "#/components/schemas/TaskStatusResponse"
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "403":
+          description: The caller is neither a service administrator nor the owner of the task's metalake
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
         "5XX":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
@@ -170,7 +226,13 @@ components:
           type: integer
           format: int32
           minimum: 0
-          description: The total number of matches for this entity type before pagination
+          description: The total number of matches for this entity type before pagination; only authorized matches are counted when authorization is enabled
+        totalSizeTruncated:
+          type: boolean
+          default: false
+          description: |-
+            Whether the matches of this entity type reached the authorization scan limit. When true,
+            `totalSize` is a lower bound rather than the exact number of authorized matches.
         type:
           $ref: "#/components/schemas/SearchEntityType"
         entities:

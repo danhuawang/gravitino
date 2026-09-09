@@ -64,6 +64,7 @@ The following table lists all configuration properties related to Data Discovery
 | `gravitino.datastrato.search.maxBackgroundThreads`              | Max sync task threads for background sync | 10         | No       | 0.9.0 |
 | `gravitino.datastrato.search.maxBackoffMs`                      | Max backoff time per batch (ms)           | 100        | No       | 0.9.0 |
 | `gravitino.datastrato.search.syncBatchSize`                     | Number of records per one sync batch      | 100        | No       | 0.9.0 |
+| `gravitino.datastrato.search.maxAuthorizationScanSize`          | Max matches authorized per query and type | 10000      | No       | 1.3.0 |
 | `gravitino.datastrato.search.opensearch.url`                    | OpenSearch endpoint                       | -          | Yes      | 0.9.0 |
 | `gravitino.datastrato.search.opensearch.username`               | OpenSearch username                       | -          | Yes      | 0.9.0 |
 | `gravitino.datastrato.search.opensearch.password`               | OpenSearch password                       | -          | Yes      | 0.9.0 |
@@ -73,6 +74,12 @@ The following table lists all configuration properties related to Data Discovery
 | `gravitino.datastrato.search.opensearch.maxQueryThread`         | Max query threads                         | 10         | No       | 0.9.0 |
 | `gravitino.datastrato.search.opensearch.maxQueryQueueSize`      | Max query queue size                      | 100        | No       | 0.9.0 |
 | `gravitino.datastrato.search.opensearch.backgroundQueryTimeout` | Background query timeout                  | 2m         | No       | 0.9.0 |
+
+`gravitino.datastrato.search.maxAuthorizationScanSize` bounds how much of a
+matching result set a single query authorizes, per entity type. Matches beyond
+the limit are neither returned nor counted: the affected group reports
+`totalSizeTruncated: true`, and its `totalSize` is a lower bound rather than an
+exact count. Narrow the query to get exact totals.
 
 ## Index Mapping
 
