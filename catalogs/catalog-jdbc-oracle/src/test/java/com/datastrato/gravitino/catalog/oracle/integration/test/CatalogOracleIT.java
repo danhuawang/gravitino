@@ -392,9 +392,36 @@ public class CatalogOracleIT extends BaseIT {
     assertTrue(tableCatalog.dropTable(t1));
     assertFalse(oracleService.tableExists("IT_LIST_TBL_1"));
 
-    // Drop + purge both translate to "DROP TABLE ... PURGE" for Oracle.
+    // Purge translates to "DROP TABLE ... PURGE" for Oracle (drop is a plain, recoverable
+    // "DROP TABLE"; see issue #1752).
     assertTrue(tableCatalog.purgeTable(t2));
     assertFalse(oracleService.tableExists("IT_LIST_TBL_2"));
+  }
+
+  @Test
+  void testDropTableIsRecoverableViaFlashback() {
+    // Issue #1752: dropping a table through Gravitino must not PURGE it. With the recyclebin
+    // enabled, the dropped table must remain recoverable via FLASHBACK TABLE ... TO BEFORE DROP,
+    // matching Oracle's own default drop behavior.
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String name = "IT_FLASHBACK_TBL";
+    NameIdentifier ident = NameIdentifier.of(schemaName, name);
+    createTable(name, simpleColumns());
+    assertTrue(oracleService.tableExists(name));
+
+    assertTrue(tableCatalog.dropTable(ident));
+    assertFalse(oracleService.tableExists(name), "Dropped table should not be in ALL_TABLES");
+
+    // A plain (non-PURGE) drop leaves a recyclebin entry, so FLASHBACK recovers the table. This
+    // statement fails if the drop had used PURGE.
+    oracleService.executeQuery(
+        String.format("FLASHBACK TABLE \"%s\" TO BEFORE DROP", name.toUpperCase(Locale.ROOT)));
+    assertTrue(
+        oracleService.tableExists(name), "Table should be recoverable via FLASHBACK after drop");
+
+    // Clean up: remove it for good.
+    assertTrue(tableCatalog.purgeTable(ident));
+    assertFalse(oracleService.tableExists(name));
   }
 
   // ----------------------------------------------------------------------

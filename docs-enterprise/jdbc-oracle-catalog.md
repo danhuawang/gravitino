@@ -116,6 +116,7 @@ Please refer to [Manage Catalogs and Schemas](../docs/manage-catalogs-and-schema
 
 - A Gravitino table corresponds to one Oracle table.
 - Supports creating, loading, listing, and dropping Oracle tables.
+- `dropTable` issues a plain `DROP TABLE` (no `PURGE`), so with the recyclebin enabled the table stays recoverable via `FLASHBACK TABLE ... TO BEFORE DROP`, matching Oracle's default. `purgeTable` issues `DROP TABLE ... PURGE`, which is irreversible.
 - Supports `PRIMARY_KEY` and `UNIQUE_KEY` indexes.
 - Supports column default value, including common Oracle functions like `SYSDATE`, `SYSTIMESTAMP`, `CURRENT_TIMESTAMP`, `CURRENT_DATE`, `SYS_GUID()`.
 - Supports Oracle partitioning: single-level `RANGE`, `LIST`, `HASH` (composite partitions are not supported).

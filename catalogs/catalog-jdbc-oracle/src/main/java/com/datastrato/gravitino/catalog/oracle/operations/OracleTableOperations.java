@@ -227,11 +227,16 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   @Override
   protected String generateDropTableSql(String tableName) {
-    return String.format("DROP TABLE %s PURGE", OracleIdentifierUtil.quote(tableName));
+    // Plain DROP TABLE, without PURGE, so the table enters the recyclebin (when enabled) and stays
+    // recoverable via FLASHBACK TABLE ... TO BEFORE DROP. This matches Oracle's own default drop
+    // behavior; the destructive PURGE variant is reserved for the explicit purge path below.
+    return String.format("DROP TABLE %s", OracleIdentifierUtil.quote(tableName));
   }
 
   @Override
   protected String generatePurgeTableSql(String tableName) {
+    // Purge is the explicit, irreversible drop: it removes the table without leaving a recyclebin
+    // entry, so FLASHBACK cannot recover it.
     return String.format("DROP TABLE %s PURGE", OracleIdentifierUtil.quote(tableName));
   }
 

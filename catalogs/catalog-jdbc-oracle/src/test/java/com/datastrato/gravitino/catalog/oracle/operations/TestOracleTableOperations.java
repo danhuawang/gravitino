@@ -112,6 +112,10 @@ public class TestOracleTableOperations {
       return super.generateDropTableSql(tableName);
     }
 
+    String purgeSqlForTest(String tableName) {
+      return super.generatePurgeTableSql(tableName);
+    }
+
     boolean getAutoIncrementInfoForTest(ResultSet resultSet) throws SQLException {
       return super.getAutoIncrementInfo(resultSet);
     }
@@ -203,7 +207,11 @@ public class TestOracleTableOperations {
     assertTrue(sql.contains("CONSTRAINT \"UK_T1_NAME\" UNIQUE (\"NAME\")"));
     assertTrue(sql.endsWith("TABLESPACE \"USERS\""));
 
-    assertEquals("DROP TABLE \"T1\" PURGE", operations.dropSqlForTest("T1"));
+    // Drop must be recoverable (no PURGE) so the table enters the recyclebin and stays
+    // FLASHBACK-recoverable, matching Oracle's own default (see issue #1752). Only the explicit
+    // purge path uses PURGE.
+    assertEquals("DROP TABLE \"T1\"", operations.dropSqlForTest("T1"));
+    assertEquals("DROP TABLE \"T1\" PURGE", operations.purgeSqlForTest("T1"));
   }
 
   @Test
