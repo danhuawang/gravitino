@@ -6,7 +6,8 @@ name: Cron Integration Test
 #
 # Phase-1 suites (cloud-test, service-e2e, gvfs-fuse, web-ui, frontend are excluded):
 #   backend, spark, flink, maintenance, python, trino, trino-enterprise,
-#   access-control, iceberg-rest-trino, search, mcp, scim-service, scim-extension, idp
+#   access-control, iceberg-rest-trino, search, mcp, scim-service, scim-extension, idp,
+#   trino-multi-version, lance, multi-instance
 #   Alias: scim -> scim-service,scim-extension
 
 run-name: Enterprise IT (${{ inputs.suites || 'all' }}) caller=${{ inputs.caller_run_id || 'manual' }}
@@ -67,6 +68,9 @@ jobs:
       scim-service: ${{ steps.parse.outputs.scim-service }}
       scim-extension: ${{ steps.parse.outputs.scim-extension }}
       idp: ${{ steps.parse.outputs.idp }}
+      trino-multi-version: ${{ steps.parse.outputs.trino-multi-version }}
+      lance: ${{ steps.parse.outputs.lance }}
+      multi-instance: ${{ steps.parse.outputs.multi-instance }}
       java-version: ${{ steps.parse.outputs.java-version }}
     steps:
       - name: Parse suite selection
@@ -94,6 +98,9 @@ jobs:
               "scim-service",
               "scim-extension",
               "idp",
+              "trino-multi-version",
+              "lance",
+              "multi-instance",
           ]
           aliases = {"scim": ["scim-service", "scim-extension"]}
           raw = os.environ["SUITES"].strip().lower()
@@ -266,6 +273,27 @@ jobs:
       java-version: ${{ needs.select-suites.outputs.java-version }}
     secrets: inherit
 
+  trino-multi-version:
+    name: trino-multi-version
+    needs: select-suites
+    if: needs.select-suites.outputs.trino-multi-version == 'true'
+    uses: ./.github/workflows/trino-multi-version-test-action.yml
+    secrets: inherit
+
+  lance:
+    name: lance
+    needs: select-suites
+    if: needs.select-suites.outputs.lance == 'true'
+    uses: ./.github/workflows/lance-compatibility-matrix-test-action.yml
+    secrets: inherit
+
+  multi-instance:
+    name: multi-instance
+    needs: select-suites
+    if: needs.select-suites.outputs.multi-instance == 'true'
+    uses: ./.github/workflows/multi-instance-consistency-test-action.yml
+    secrets: inherit
+
   summary:
     name: Integration test summary
     needs:
@@ -284,6 +312,9 @@ jobs:
       - scim-service
       - scim-extension
       - idp
+      - trino-multi-version
+      - lance
+      - multi-instance
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -303,6 +334,9 @@ jobs:
           SCIM_SERVICE: ${{ needs.scim-service.result }}
           SCIM_EXTENSION: ${{ needs.scim-extension.result }}
           IDP: ${{ needs.idp.result }}
+          TRINO_MULTI_VERSION: ${{ needs.trino-multi-version.result }}
+          LANCE: ${{ needs.lance.result }}
+          MULTI_INSTANCE: ${{ needs.multi-instance.result }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           ## Enterprise Integration Test Summary
@@ -330,6 +364,9 @@ jobs:
           | scim-service | ${SCIM_SERVICE} |
           | scim-extension | ${SCIM_EXTENSION} |
           | idp | ${IDP} |
+          | trino-multi-version | ${TRINO_MULTI_VERSION} |
+          | lance | ${LANCE} |
+          | multi-instance | ${MULTI_INSTANCE} |
           EOF
 
           failed=0
@@ -338,7 +375,8 @@ jobs:
           fi
           for result in "$BACKEND" "$SPARK" "$FLINK" "$MAINTENANCE" "$PYTHON" "$TRINO" \
             "$TRINO_ENTERPRISE" "$ACCESS_CONTROL" "$ICEBERG_REST_TRINO" "$SEARCH" "$MCP" \
-            "$SCIM_SERVICE" "$SCIM_EXTENSION" "$IDP"
+            "$SCIM_SERVICE" "$SCIM_EXTENSION" "$IDP" \
+            "$TRINO_MULTI_VERSION" "$LANCE" "$MULTI_INSTANCE"
           do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               failed=1
