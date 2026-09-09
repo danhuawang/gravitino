@@ -8,7 +8,12 @@ import com.datastrato.gravitino.catalog.sqlserver.converter.SqlServerExceptionCo
 import com.datastrato.gravitino.catalog.sqlserver.converter.SqlServerTypeConverter;
 import com.datastrato.gravitino.catalog.sqlserver.operation.SqlServerSchemaOperations;
 import com.datastrato.gravitino.catalog.sqlserver.operation.SqlServerTableOperations;
+import com.microsoft.sqlserver.jdbc.SQLServerDriver;
+import java.sql.DriverPropertyInfo;
+import java.sql.SQLException;
 import java.util.Map;
+import java.util.Properties;
+import javax.annotation.Nullable;
 import org.apache.gravitino.catalog.jdbc.JdbcCatalog;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcColumnDefaultValueConverter;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcExceptionConverter;
@@ -24,6 +29,12 @@ public class SqlServerCatalog extends JdbcCatalog {
 
   private static final SqlServerTablePropertiesMetadata TABLE_PROPERTIES_META =
       new SqlServerTablePropertiesMetadata();
+
+  /** {@inheritDoc} */
+  @Override
+  public JdbcCatalog withCatalogConf(Map<String, String> conf) {
+    return super.withCatalogConf(resolveJdbcDatabase(conf, SqlServerCatalog::databaseFromUrl));
+  }
 
   @Override
   public String shortName() {
@@ -74,5 +85,20 @@ public class SqlServerCatalog extends JdbcCatalog {
   @Override
   public PropertiesMetadata tablePropertiesMetadata() throws UnsupportedOperationException {
     return TABLE_PROPERTIES_META;
+  }
+
+  @Nullable
+  private static String databaseFromUrl(String url) {
+    try {
+      for (DriverPropertyInfo property :
+          new SQLServerDriver().getPropertyInfo(url, new Properties())) {
+        if ("databaseName".equals(property.name)) {
+          return property.value;
+        }
+      }
+      return null;
+    } catch (SQLException e) {
+      throw new IllegalArgumentException("Cannot resolve jdbc-database from jdbc-url", e);
+    }
   }
 }

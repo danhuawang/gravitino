@@ -35,19 +35,19 @@ Gravitino saves some system information in table comments, like `(From Gravitino
 Any property that isn't defined by Gravitino can pass to SQL Server data source by adding `gravitino.bypass.` prefix as a catalog property. For example, catalog property `gravitino.bypass.maxWaitMillis` will pass `maxWaitMillis` to the data source property.
 You can check the relevant data source configuration in [data source properties](https://commons.apache.org/proper/commons-dbcp/configuration.html).
 
-If you use a JDBC catalog, you must provide `jdbc-url`, `jdbc-driver`, `jdbc-database`, `jdbc-user` and `jdbc-password` to catalog properties.
+If you use a JDBC catalog, you must provide `jdbc-url`, `jdbc-driver`, `jdbc-user` and `jdbc-password` to catalog properties.
 Besides the [common catalog properties](./gravitino-server-config.md#apache-gravitino-catalog-properties-configuration), the SQL Server catalog has the following properties:
 
-| Configuration item      | Description                                                                                                                                         | Default value | Required | Since Version |
-|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------|---------------|
-| `jdbc-url`              | JDBC URL for connecting to the database. For example, `jdbc:sqlserver://localhost:1433;databaseName=mydb;encrypt=true;trustServerCertificate=true`. | (none)        | Yes      | 1.3.0         |
-| `jdbc-driver`           | The driver of the JDBC connection. For example, `com.microsoft.sqlserver.jdbc.SQLServerDriver`.                                                     | (none)        | Yes      | 1.3.0         |
-| `jdbc-database`         | The database of the JDBC connection. Must be consistent with the `databaseName` parameter in `jdbc-url`. For example, `mydb`.                       | (none)        | Yes      | 1.3.0         |
-| `jdbc-user`             | The JDBC user name.                                                                                                                                 | (none)        | Yes      | 1.3.0         |
-| `jdbc-password`         | The JDBC password.                                                                                                                                  | (none)        | Yes      | 1.3.0         |
-| `jdbc.pool.min-size`    | The minimum number of connections in the pool. `2` by default.                                                                                      | `2`           | No       | 1.3.0         |
-| `jdbc.pool.max-size`    | The maximum number of connections in the pool. `10` by default.                                                                                     | `10`          | No       | 1.3.0         |
-| `jdbc.pool.max-wait-ms` | The maximum duration (ms) that the pool will wait for a connection to be returned. `30000` by default.                                              | `30000`       | No       | 1.3.0         |
+| Configuration item      | Description                                                                                                                                         | Default value | Required                       | Since Version |
+|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|---------------|--------------------------------|---------------|
+| `jdbc-url`              | JDBC URL for connecting to the database. For example, `jdbc:sqlserver://localhost:1433;databaseName=mydb;encrypt=true;trustServerCertificate=true`. | (none)        | Yes                            | 1.3.0         |
+| `jdbc-driver`           | The driver of the JDBC connection. For example, `com.microsoft.sqlserver.jdbc.SQLServerDriver`.                                                     | (none)        | Yes                            | 1.3.0         |
+| `jdbc-database`         | The database of the JDBC connection. Derived from `jdbc-url` when omitted. An explicit value must be nonblank and match the URL database.           | (none)        | Only if absent from `jdbc-url` | 1.3.0         |
+| `jdbc-user`             | The JDBC user name.                                                                                                                                 | (none)        | Yes                            | 1.3.0         |
+| `jdbc-password`         | The JDBC password.                                                                                                                                  | (none)        | Yes                            | 1.3.0         |
+| `jdbc.pool.min-size`    | The minimum number of connections in the pool. `2` by default.                                                                                      | `2`           | No                             | 1.3.0         |
+| `jdbc.pool.max-size`    | The maximum number of connections in the pool. `10` by default.                                                                                     | `10`          | No                             | 1.3.0         |
+| `jdbc.pool.max-wait-ms` | The maximum duration (ms) that the pool will wait for a connection to be returned. `30000` by default.                                              | `30000`       | No                             | 1.3.0         |
 
 :::info
 The Microsoft JDBC Driver for SQL Server (`mssql-jdbc:12.8.1.jre11`) is MIT-licensed and is bundled with the catalog module. You do **not** need to manually download the driver.
@@ -56,7 +56,7 @@ In SQL Server, the database corresponds to the Gravitino catalog, and the schema
 :::
 
 :::caution
-You must explicitly specify the database in both `jdbc-url` (as `databaseName` parameter) and `jdbc-database`. An error may occur if the values aren't consistent.
+When `jdbc-database` is omitted, the catalog derives it from `jdbc-url`. Catalog creation fails if neither provides a nonblank database name. When both `jdbc-database` and the URL specify a database, their names must match; catalog creation rejects conflicting values.
 :::
 
 ### JDBC URL and TLS
