@@ -5,6 +5,7 @@ package com.datastrato.gravitino.dto.authorization;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,6 +19,19 @@ import org.apache.gravitino.json.JsonUtils;
 import org.junit.jupiter.api.Test;
 
 public class TestExtendedUserDTO {
+
+  @Test
+  public void testIdentitySourceFromOriginCodeOrNull() {
+    assertNull(IdentitySource.fromOriginCodeOrNull(null));
+    assertEquals(
+        IdentitySource.LOCAL,
+        IdentitySource.fromOriginCodeOrNull(IdentitySource.ORIGIN_CODE_LOCAL));
+    assertEquals(
+        IdentitySource.PROVISIONED,
+        IdentitySource.fromOriginCodeOrNull(IdentitySource.ORIGIN_CODE_PROVISIONED));
+    assertEquals(
+        IdentitySource.JIT, IdentitySource.fromOriginCodeOrNull(IdentitySource.ORIGIN_CODE_JIT));
+  }
 
   @Test
   public void testIdentitySourceFromIdpMembership() {
@@ -61,6 +75,16 @@ public class TestExtendedUserDTO {
         JsonUtils.objectMapper()
             .writeValueAsString(provisioned)
             .contains("\"externalId\":\"51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b\""));
+  }
+
+  @Test
+  public void testFromNullOriginOmitsOriginInJson() throws Exception {
+    ExtendedUserDTO unknown =
+        ExtendedUserDTO.from(user("admin"), null, Collections.emptyList(), true, null);
+
+    assertEquals(null, unknown.origin());
+    String json = JsonUtils.objectMapper().writeValueAsString(unknown);
+    assertFalse(json.contains("\"origin\""));
   }
 
   @Test

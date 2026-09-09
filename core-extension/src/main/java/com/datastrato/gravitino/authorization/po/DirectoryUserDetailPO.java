@@ -9,8 +9,8 @@ import com.google.common.base.Preconditions;
 import javax.annotation.Nullable;
 
 /**
- * Read model for Directory User Overview: identity-store user with optional SCIM {@code
- * externalId}.
+ * Read model for Directory User Overview: identity-store user with optional SCIM {@code externalId}
+ * and {@code audit_info} for Created ({@code createTime}).
  */
 public class DirectoryUserDetailPO {
 
@@ -18,6 +18,7 @@ public class DirectoryUserDetailPO {
   private Boolean enabled;
   private Integer originCode;
   private String externalId;
+  private String auditInfo;
 
   /**
    * @return Username.
@@ -78,6 +79,21 @@ public class DirectoryUserDetailPO {
   }
 
   /**
+   * @return Serialized identity-store {@code audit_info}; may be null.
+   */
+  @Nullable
+  public String getAuditInfo() {
+    return auditInfo;
+  }
+
+  /**
+   * @param auditInfo Serialized {@code audit_info}.
+   */
+  public void setAuditInfo(String auditInfo) {
+    this.auditInfo = auditInfo;
+  }
+
+  /**
    * @return Resolved identity source.
    */
   public IdentitySource origin() {
@@ -104,11 +120,13 @@ public class DirectoryUserDetailPO {
     return Objects.equal(getUserName(), that.getUserName())
         && Objects.equal(getEnabled(), that.getEnabled())
         && Objects.equal(getOriginCode(), that.getOriginCode())
-        && Objects.equal(getExternalId(), that.getExternalId());
+        && Objects.equal(getExternalId(), that.getExternalId())
+        && Objects.equal(getAuditInfo(), that.getAuditInfo());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(getUserName(), getEnabled(), getOriginCode(), getExternalId());
+    return Objects.hashCode(
+        getUserName(), getEnabled(), getOriginCode(), getExternalId(), getAuditInfo());
   }
 }

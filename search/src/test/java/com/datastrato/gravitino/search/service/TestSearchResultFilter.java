@@ -131,6 +131,7 @@ class TestSearchResultFilter {
 
   @Test
   void testIndexedRoleWithoutFullQualifiedNameUsesRoleName() throws Exception {
+    // Role names must not contain '.' (#12977 reserves it as the qualified-name separator).
     RoleEntity role =
         RoleEntity.builder()
             .withId(1L)

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
@@ -303,7 +304,8 @@ public class IdpNameStatusPO {
 
     /**
      * @return Origin code from SQL ({@link IdentitySource#ORIGIN_CODE_LOCAL}, {@link
-     *     IdentitySource#ORIGIN_CODE_PROVISIONED}, or {@link IdentitySource#ORIGIN_CODE_JIT}).
+     *     IdentitySource#ORIGIN_CODE_PROVISIONED}, or {@code null} when neither identity store
+     *     matched).
      */
     public Integer getOriginCode() {
       return originCode;
@@ -317,11 +319,11 @@ public class IdpNameStatusPO {
     }
 
     /**
-     * @return Identity source for the security Users UI.
+     * @return Identity source for the security Users UI, or {@code null} when unknown.
      */
+    @Nullable
     public IdentitySource origin() {
-      return IdentitySource.fromOriginCode(
-          originCode == null ? IdentitySource.ORIGIN_CODE_JIT : originCode);
+      return IdentitySource.fromOriginCodeOrNull(originCode);
     }
 
     /**
@@ -368,7 +370,8 @@ public class IdpNameStatusPO {
 
     /**
      * @return Origin code from SQL ({@link IdentitySource#ORIGIN_CODE_LOCAL}, {@link
-     *     IdentitySource#ORIGIN_CODE_PROVISIONED}, or {@link IdentitySource#ORIGIN_CODE_JIT}).
+     *     IdentitySource#ORIGIN_CODE_PROVISIONED}, or {@code null} when neither identity store
+     *     matched).
      */
     public Integer getOriginCode() {
       return originCode;
@@ -382,11 +385,11 @@ public class IdpNameStatusPO {
     }
 
     /**
-     * @return Identity source for the security Groups table.
+     * @return Identity source for the security Groups table, or {@code null} when unknown.
      */
+    @Nullable
     public IdentitySource origin() {
-      return IdentitySource.fromOriginCode(
-          originCode == null ? IdentitySource.ORIGIN_CODE_JIT : originCode);
+      return IdentitySource.fromOriginCodeOrNull(originCode);
     }
 
     /**

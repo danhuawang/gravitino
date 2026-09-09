@@ -8,6 +8,7 @@ import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
 import com.datastrato.gravitino.authorization.po.DirectoryGroupDetailPO;
 import com.datastrato.gravitino.authorization.po.DirectoryUserDetailPO;
+import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.datastrato.gravitino.dto.authorization.DirectoryGroupDetailDTO;
 import com.datastrato.gravitino.dto.authorization.DirectoryUserDetailDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
@@ -347,7 +348,11 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
     DirectoryUserDetailPO row =
         DatastratoUserMetaService.getInstance().getDirectoryUser(userName, origin);
     return DirectoryUserDetailDTO.of(
-        row.getUserName(), row.enabledOrDefault(), row.origin(), row.getExternalId(), null);
+        row.getUserName(),
+        row.enabledOrDefault(),
+        row.origin(),
+        row.getExternalId(),
+        DatastratoPOConverters.parseCreateTime(row.getAuditInfo()));
   }
 
   /**
@@ -462,7 +467,10 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
     DirectoryGroupDetailPO row =
         DatastratoGroupMetaService.getInstance().getDirectoryGroup(groupName, origin);
     return DirectoryGroupDetailDTO.of(
-        row.getGroupName(), row.memberCountOrZero(), row.origin(), null);
+        row.getGroupName(),
+        row.memberCountOrZero(),
+        row.origin(),
+        DatastratoPOConverters.parseCreateTime(row.getAuditInfo()));
   }
 
   /**
@@ -725,6 +733,27 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
     for (String groupName : distinctGroups) {
       idpUserGroupManager.changeGroupMembership(groupName, distinctUsers, null);
     }
+  }
+
+  /**
+   * Changes a Local IdP user password after verifying {@code oldPassword}.
+   *
+   * <p>Verifies credentials via {@link IdpUserGroupManager#authenticate(String, String)}, then
+   * updates the hash with {@link IdpUserGroupManager#changePassword(String, String)}.
+   *
+   * @param username Local IdP username.
+   * @param oldPassword Current plaintext password.
+   * @param newPassword New plaintext password.
+   * @throws org.apache.gravitino.exceptions.UnauthorizedException If username/oldPassword fail.
+   * @throws org.apache.gravitino.exceptions.NotFoundException If the user does not exist after auth
+   *     (should not happen in normal flow).
+   */
+  public void changeIdpUserPassword(String username, String oldPassword, String newPassword) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(username), "username cannot be blank");
+    Preconditions.checkArgument(StringUtils.isNotBlank(oldPassword), "oldPassword cannot be blank");
+    Preconditions.checkArgument(StringUtils.isNotBlank(newPassword), "newPassword cannot be blank");
+    idpUserGroupManager.authenticate(username, oldPassword);
+    idpUserGroupManager.changePassword(username, newPassword);
   }
 
   /**

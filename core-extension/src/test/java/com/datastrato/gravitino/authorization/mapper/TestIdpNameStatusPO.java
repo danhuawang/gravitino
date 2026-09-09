@@ -99,26 +99,28 @@ public class TestIdpNameStatusPO {
     assertEquals("51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b", dto.externalId());
 
     IdpNameStatusPO.UserWithOrigin local = userRow(3L, "lee.p");
+    local.setOriginCode(IdentitySource.ORIGIN_CODE_LOCAL);
     local.setExternalId("should-be-omitted");
     ExtendedUserDTO localDto = IdpNameStatusPO.toExtendedUser(local, "metalake");
     assertNull(localDto.externalId());
+    assertEquals(IdentitySource.LOCAL, localDto.origin());
   }
 
   @Test
-  public void testToExtendedUserJitDefaultsEnabledAndOmitsExternalId() throws Exception {
-    IdpNameStatusPO.UserWithOrigin jit = userRow(4L, "guest.j");
-    jit.setOriginCode(IdentitySource.ORIGIN_CODE_JIT);
-    jit.setEnabled(null);
-    jit.setExternalId("should-be-omitted-for-jit");
+  public void testToExtendedUserUnknownOriginOmitsOriginAndExternalId() throws Exception {
+    IdpNameStatusPO.UserWithOrigin unknown = userRow(4L, "guest.j");
+    unknown.setOriginCode(null);
+    unknown.setEnabled(null);
+    unknown.setExternalId("should-be-omitted-when-unknown");
 
-    ExtendedUserDTO dto = IdpNameStatusPO.toExtendedUser(jit, "metalake");
+    ExtendedUserDTO dto = IdpNameStatusPO.toExtendedUser(unknown, "metalake");
 
     assertEquals("guest.j", dto.name());
-    assertEquals(IdentitySource.JIT, dto.origin());
+    assertNull(dto.origin());
     assertTrue(dto.enabled());
     assertNull(dto.externalId());
     String json = JsonUtils.objectMapper().writeValueAsString(dto);
-    assertTrue(json.contains("\"origin\":\"JIT\""));
+    assertFalse(json.contains("\"origin\""));
     assertTrue(json.contains("\"enabled\":true"));
     assertFalse(json.contains("externalId"));
   }

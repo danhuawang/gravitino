@@ -130,8 +130,8 @@ paths:
         - `Local` → load from `idp_group_meta` with IdP membership count
         - `Provisioned` → load from `scim_group_meta` excluding IdP names with SCIM membership count
 
-        `memberCount` maps to Members on the Overview. `createTime` is reserved and currently
-        omitted (identity stores do not persist creation time).
+        `memberCount` maps to Members on the Overview. `createTime` maps to Created and comes from
+        identity-store `audit_info.createTime` (`idp_group_meta` / `scim_group_meta`).
 
       responses:
         "200":
@@ -254,10 +254,10 @@ paths:
         Returns OSS group fields plus `origin` and `userCount`. `origin` is:
         - `Local` when the group name exists in `idp_group_meta`
         - `Provisioned` when it exists in `scim_group_meta` (and not IdP)
-        - `JIT` when it exists in neither identity store
+        - omitted (`null`) when it exists in neither identity store (not inferred as `JIT`)
 
         `userCount` is the number of metalake users in the group (Members): Local from IdP
-        membership, Provisioned from SCIM, JIT is `0`.
+        membership, Provisioned from SCIM; otherwise metalake membership count still applies.
 
       responses:
         "200":
@@ -343,10 +343,9 @@ paths:
         Returns OSS group fields plus `origin` and `userCount`. `origin` is:
         - `Local` when the group name exists in `idp_group_meta`
         - `Provisioned` when it exists in `scim_group_meta` (and not IdP)
-        - `JIT` when it exists in neither identity store
+        - omitted (`null`) when it exists in neither identity store (not inferred as `JIT`)
 
-        `userCount` is the number of metalake users in the group (Members on the Overview page):
-        Local from IdP membership, Provisioned from SCIM, JIT is `0`.
+        `userCount` is the number of metalake users in the group (Members on the Overview page).
         `auditInfo.createTime` maps to Added.
 
       responses:
@@ -388,11 +387,10 @@ paths:
 
         Each user includes `origin`, `enabled` (Status), and optional `externalId`:
         - `origin` is `Local` when the username exists in `idp_user_meta`, `Provisioned` when it
-          exists in `scim_user_meta` (and not IdP), otherwise `JIT`
+          exists in `scim_user_meta` (and not IdP), otherwise omitted (`null`)
         - `enabled` comes from `idp_user_meta` or `scim_user_meta`, defaulting to Active when
           neither has a row
-        - `externalId` is set for Provisioned users from `scim_user_meta` and omitted for Local /
-          JIT
+        - `externalId` is set for Provisioned users from `scim_user_meta` and omitted otherwise
 
         Footer member count is the length of the returned `users` array (no separate `userCount`
         field on this response).
@@ -496,7 +494,8 @@ components:
 
         - `Local`: name exists in the built-in IdP (`idp_group_meta`)
         - `Provisioned`: name exists in SCIM (`scim_group_meta`) and not IdP
-        - `JIT`: name exists in metalake `group_meta` but not in IdP or SCIM
+        - `JIT`: reserved for write-time JWT discovery; metalake list/get no longer infer JIT from
+          absence in IdP/SCIM (those rows omit `origin`)
       enum:
         - Local
         - Provisioned
@@ -507,17 +506,21 @@ components:
         - $ref: "../../docs/open-api/groups.yaml#/components/schemas/Group"
         - type: object
           required:
-            - origin
             - userCount
           properties:
             origin:
-              $ref: "#/components/schemas/IdentitySource"
+              type: string
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/IdentitySource"
+              description: >
+                Identity source when known. Omitted when the name matches neither IdP nor SCIM.
             userCount:
               type: integer
               format: int32
               description: >
                 Number of metalake users in the group (Members). Counted from IdP membership for
-                Local, SCIM membership for Provisioned, and `0` for JIT.
+                Local, SCIM membership for Provisioned, and metalake membership otherwise.
 
     IdpNameStatus:
       type: object
@@ -664,8 +667,8 @@ components:
           format: date-time
           nullable: true
           description: >
-            Creation time when available. Currently omitted because identity stores do not persist
-            creation time.
+            Creation time from identity-store `audit_info.createTime` (Created on Overview).
+            Omitted when audit data is unavailable.
 
     DirectoryGroupDetailResponse:
       type: object
@@ -783,6 +786,7 @@ components:
           name: governance
           memberCount: 2
           origin: Provisioned
+          createTime: "2025-09-14T00:00:00Z"
 
     DirectoryGroupUsersResponse:
       value:

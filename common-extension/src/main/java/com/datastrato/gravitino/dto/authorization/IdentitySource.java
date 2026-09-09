@@ -5,15 +5,19 @@ package com.datastrato.gravitino.dto.authorization;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import javax.annotation.Nullable;
 
 /**
  * Source of a metalake user or group identity for the security UI. Serialized as JSON {@code
  * origin}.
  *
  * <p>For Directory Users/Groups lists: {@code Local} from IdP tables, {@code Provisioned} from SCIM
- * tables (Directory lists do not include metalake-only {@code JIT} rows). For metalake security
- * Users/Groups: {@code Local} / {@code Provisioned} / {@code JIT} when present only in metalake
- * tables.
+ * tables (Directory lists do not include metalake-only rows). For metalake security Users/Groups
+ * lists: {@code Local} / {@code Provisioned} when present in the corresponding identity store;
+ * otherwise {@code origin} is omitted ({@code null}) rather than inferred as {@code JIT}.
+ *
+ * <p>{@link #JIT} remains for write-time JWT discovery and explicit responses; list SQL no longer
+ * maps "neither IdP nor SCIM" to JIT.
  */
 public enum IdentitySource {
   /** Present in the built-in IdP. */
@@ -22,7 +26,10 @@ public enum IdentitySource {
   /** Present in SCIM (or otherwise not in the built-in IdP for metalake pages). */
   PROVISIONED("Provisioned"),
 
-  /** Present in metalake tables but not in the corresponding IdP or SCIM identity store. */
+  /**
+   * Reserved for identities first discovered from a JWT claim with no SCIM record. Not inferred by
+   * metalake or Directory list SQL from mere absence in IdP/SCIM.
+   */
   JIT("JIT");
 
   /** SQL / PO origin code for Local. */
@@ -76,7 +83,7 @@ public enum IdentitySource {
   }
 
   /**
-   * Derives identity source from Directory Groups SQL origin codes.
+   * Derives identity source from a non-null Directory / metalake SQL origin code.
    *
    * @param originCode {@link #ORIGIN_CODE_LOCAL}, {@link #ORIGIN_CODE_PROVISIONED}, or {@link
    *     #ORIGIN_CODE_JIT}.
@@ -93,6 +100,20 @@ public enum IdentitySource {
       default:
         throw new IllegalArgumentException("Unknown origin code: " + originCode);
     }
+  }
+
+  /**
+   * Derives identity source from a nullable SQL origin code.
+   *
+   * @param originCode Origin code from SQL, or {@code null} when neither IdP nor SCIM matched.
+   * @return Matching identity source, or {@code null} when {@code originCode} is null.
+   */
+  @Nullable
+  public static IdentitySource fromOriginCodeOrNull(@Nullable Integer originCode) {
+    if (originCode == null) {
+      return null;
+    }
+    return fromOriginCode(originCode);
   }
 
   /**

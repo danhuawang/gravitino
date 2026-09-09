@@ -19,7 +19,8 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
   public void testListGroupsByMetalakeWithOriginIncludesUserCount() {
     String sql = provider.listGroupsByMetalakeWithOrigin("metalake");
     assertTrue(sql.contains("as userCount"));
-    assertTrue(sql.contains("as originCode"));
+    assertTrue(sql.contains("ELSE NULL END as originCode"));
+    assertFalse(sql.contains("ELSE " + IdentitySource.ORIGIN_CODE_JIT));
     assertTrue(sql.contains("idp_user_group_rel"));
     assertTrue(sql.contains("scim_user_group_rel"));
     assertTrue(sql.contains("scim_group_meta"));
@@ -35,7 +36,8 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
   public void testGetGroupByMetalakeWithOriginMatchesListOriginRules() {
     String sql = provider.getGroupByMetalakeWithOrigin("metalake", "governance");
     assertTrue(sql.contains("as userCount"));
-    assertTrue(sql.contains("as originCode"));
+    assertTrue(sql.contains("ELSE NULL END as originCode"));
+    assertFalse(sql.contains("ELSE " + IdentitySource.ORIGIN_CODE_JIT));
     assertTrue(sql.contains("gt.group_name = #{groupName}"));
     assertTrue(sql.contains("GROUP BY gt.group_id"));
     assertTrue(sql.contains("scim_group_meta"));
@@ -118,6 +120,34 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertThrows(
         IllegalArgumentException.class,
         () -> provider.listDirectoryGroupsForUser("jordan.m", IdentitySource.ORIGIN_CODE_JIT));
+  }
+
+  @Test
+  public void testGetDirectoryGroupLocalSelectsAuditInfo() {
+    String sql = provider.getDirectoryGroup("governance", IdentitySource.ORIGIN_CODE_LOCAL);
+    assertTrue(sql.contains("idp_group_meta"));
+    assertTrue(sql.contains("ig.audit_info as auditInfo"));
+    assertTrue(sql.contains("identity.auditInfo as auditInfo"));
+    assertTrue(sql.contains("memberCount"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_LOCAL + " as originCode"));
+    assertFalse(sql.contains("scim_group_meta"));
+  }
+
+  @Test
+  public void testGetDirectoryGroupProvisionedSelectsAuditInfo() {
+    String sql = provider.getDirectoryGroup("platform", IdentitySource.ORIGIN_CODE_PROVISIONED);
+    assertTrue(sql.contains("scim_group_meta"));
+    assertTrue(sql.contains("sg.audit_info as auditInfo"));
+    assertTrue(sql.contains("identity.auditInfo as auditInfo"));
+    assertTrue(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " as originCode"));
+  }
+
+  @Test
+  public void testGetDirectoryGroupRejectsJit() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> provider.getDirectoryGroup("engineers", IdentitySource.ORIGIN_CODE_JIT));
   }
 
   @Test

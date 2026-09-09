@@ -316,7 +316,7 @@ public class DatastratoUserMetaBaseSQLProvider {
    * Lists metalake users with roles, group names, and identity-store origin in one query.
    *
    * <p>{@code origin} is Local when the name exists in {@code idp_user_meta}, Provisioned when it
-   * exists in {@code scim_user_meta} (and not IdP), otherwise JIT.
+   * exists in {@code scim_user_meta} (and not IdP), otherwise {@code null} (not inferred as JIT).
    *
    * @param metalakeName The metalake name.
    * @return MyBatis SQL.
@@ -340,9 +340,7 @@ public class DatastratoUserMetaBaseSQLProvider {
         + SCIM_USER_ALIAS
         + ".user_name IS NOT NULL THEN "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " ELSE "
-        + IdentitySource.ORIGIN_CODE_JIT
-        + " END as originCode"
+        + " ELSE NULL END as originCode"
         + " FROM "
         + USER_TABLE_NAME
         + " ut"
@@ -445,7 +443,7 @@ public class DatastratoUserMetaBaseSQLProvider {
     if (originCode == IdentitySource.ORIGIN_CODE_LOCAL) {
       return "SELECT iu.user_name as userName, iu.enabled as enabled, "
           + IdentitySource.ORIGIN_CODE_LOCAL
-          + " as originCode, NULL as externalId"
+          + " as originCode, NULL as externalId, iu.audit_info as auditInfo"
           + " FROM "
           + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
           + " iu WHERE iu.user_name = #{userName} AND iu.deleted_at = 0";
@@ -455,7 +453,7 @@ public class DatastratoUserMetaBaseSQLProvider {
           + scimUserEnabledAsBoolean()
           + " as enabled, "
           + IdentitySource.ORIGIN_CODE_PROVISIONED
-          + " as originCode, su.external_id as externalId"
+          + " as originCode, su.external_id as externalId, su.audit_info as auditInfo"
           + " FROM "
           + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
           + " su WHERE su.user_name = #{userName} AND su.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
@@ -708,7 +706,10 @@ public class DatastratoUserMetaBaseSQLProvider {
         + (extraFilter == null ? "" : extraFilter);
   }
 
-  /** Local / Provisioned / JIT origin code; uses MAX for GROUP BY role joins. */
+  /**
+   * Local / Provisioned origin code (null when neither identity store matches); uses MAX for GROUP
+   * BY role joins.
+   */
   private String originCodeSelect() {
     return "CASE WHEN MAX(CASE WHEN iu.user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
         + IdentitySource.ORIGIN_CODE_LOCAL
@@ -716,9 +717,7 @@ public class DatastratoUserMetaBaseSQLProvider {
         + SCIM_USER_ALIAS
         + ".user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " ELSE "
-        + IdentitySource.ORIGIN_CODE_JIT
-        + " END as originCode";
+        + " ELSE NULL END as originCode";
   }
 
   /** Identity-store enabled for non-aggregated metalake user SELECTs. */

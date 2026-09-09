@@ -141,13 +141,13 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
     String metalake = "metalake";
     Group local = buildGroup(1L, "contractors", Collections.singletonList("pii_reader"));
     Group provisioned = buildGroup(2L, "governance", Collections.singletonList("Gov Admin"));
-    Group jit = buildGroup(3L, "analysts", Collections.singletonList("Analyst"));
+    Group unknown = buildGroup(3L, "analysts", Collections.singletonList("Analyst"));
     when(accessControlDispatcher.listExtendedGroups(metalake))
         .thenReturn(
             new ExtendedGroupDTO[] {
               ExtendedGroupDTO.from(local, IdentitySource.LOCAL, 12),
               ExtendedGroupDTO.from(provisioned, IdentitySource.PROVISIONED, 8),
-              ExtendedGroupDTO.from(jit, IdentitySource.JIT, 0)
+              ExtendedGroupDTO.from(unknown, null, 0)
             });
 
     Response response =
@@ -167,7 +167,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getGroups()[1].origin());
     Assertions.assertEquals(8, body.getGroups()[1].userCount());
     Assertions.assertEquals("analysts", body.getGroups()[2].name());
-    Assertions.assertEquals(IdentitySource.JIT, body.getGroups()[2].origin());
+    Assertions.assertNull(body.getGroups()[2].origin());
     Assertions.assertEquals(0, body.getGroups()[2].userCount());
   }
 

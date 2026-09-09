@@ -15,7 +15,7 @@ import org.apache.commons.lang3.StringUtils;
  *
  * <p>{@code origin} is {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED}. {@code
  * memberCount} is the identity-store membership count (Members on the Overview). {@code createTime}
- * is reserved; identity stores do not persist creation time yet.
+ * comes from identity-store {@code audit_info.createTime} (Created on Overview).
  */
 public class DirectoryGroupDetailDTO {
 
@@ -66,7 +66,7 @@ public class DirectoryGroupDetailDTO {
   }
 
   /**
-   * @return Creation time when available; currently always {@code null}.
+   * @return Creation time from identity-store {@code audit_info}; {@code null} when unavailable.
    */
   @Nullable
   public Instant createTime() {

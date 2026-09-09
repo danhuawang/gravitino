@@ -10,13 +10,16 @@ import com.datastrato.gravitino.authorization.po.DirectoryGroupPO;
 import com.datastrato.gravitino.authorization.po.DirectoryUserPO;
 import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import com.google.common.base.Preconditions;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.json.JsonUtils;
+import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.storage.relational.utils.POConverters;
 
@@ -24,6 +27,28 @@ import org.apache.gravitino.storage.relational.utils.POConverters;
 public final class DatastratoPOConverters {
 
   private DatastratoPOConverters() {}
+
+  /**
+   * Extracts {@code createTime} from a serialized identity-store {@code audit_info} JSON column.
+   *
+   * <p>Used by Directory User/Group Overview ({@code createTime} maps to Created in the UI). Blank
+   * or unparsable values yield {@code null} so Overview still loads when audit data is missing.
+   *
+   * @param auditInfoJson serialized {@link AuditInfo}, or blank
+   * @return create time when present
+   */
+  @Nullable
+  public static Instant parseCreateTime(@Nullable String auditInfoJson) {
+    if (StringUtils.isBlank(auditInfoJson)) {
+      return null;
+    }
+    try {
+      AuditInfo auditInfo = JsonUtils.anyFieldMapper().readValue(auditInfoJson, AuditInfo.class);
+      return auditInfo == null ? null : auditInfo.createTime();
+    } catch (Exception e) {
+      return null;
+    }
+  }
 
   /**
    * Parses a JSON array column into distinct, sorted names.

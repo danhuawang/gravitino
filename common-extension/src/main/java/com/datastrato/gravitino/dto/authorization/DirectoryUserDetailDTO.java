@@ -15,7 +15,7 @@ import org.apache.commons.lang3.StringUtils;
  *
  * <p>{@code origin} is {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED}. {@code
  * externalId} is set for Provisioned users from {@code scim_user_meta}; Local users omit it. {@code
- * createTime} is reserved; identity stores do not persist creation time yet.
+ * createTime} comes from identity-store {@code audit_info.createTime} (Created on Overview).
  */
 public class DirectoryUserDetailDTO {
 
@@ -84,7 +84,7 @@ public class DirectoryUserDetailDTO {
   }
 
   /**
-   * @return Creation time when available; currently always {@code null}.
+   * @return Creation time from identity-store {@code audit_info}; {@code null} when unavailable.
    */
   @Nullable
   public Instant createTime() {

@@ -3,10 +3,12 @@
  */
 package com.datastrato.gravitino.dto.authorization;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.Collections;
 import java.util.List;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.dto.AuditDTO;
@@ -19,6 +21,8 @@ import org.apache.gravitino.dto.util.DTOConverters;
  */
 public class ExtendedGroupDTO extends GroupDTO {
 
+  @Nullable
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   @JsonProperty("origin")
   private IdentitySource origin;
 
@@ -33,7 +37,7 @@ public class ExtendedGroupDTO extends GroupDTO {
       String name,
       List<String> roles,
       AuditDTO audit,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       int userCount) {
     super(id, name, roles, audit);
     this.origin = origin;
@@ -41,8 +45,10 @@ public class ExtendedGroupDTO extends GroupDTO {
   }
 
   /**
-   * @return {@link IdentitySource} for the security UI ({@code origin} in JSON).
+   * @return {@link IdentitySource} for the security UI ({@code origin} in JSON), or {@code null}
+   *     when unknown.
    */
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }
@@ -70,13 +76,12 @@ public class ExtendedGroupDTO extends GroupDTO {
    * Builds an {@link ExtendedGroupDTO} from a {@link Group}, identity origin, and user count.
    *
    * @param group The metalake group.
-   * @param origin Local / Provisioned / JIT.
+   * @param origin Local / Provisioned / JIT, or {@code null} when unknown.
    * @param userCount Number of metalake users in the group.
    * @return The extended group DTO.
    */
-  public static ExtendedGroupDTO from(Group group, IdentitySource origin, int userCount) {
+  public static ExtendedGroupDTO from(Group group, @Nullable IdentitySource origin, int userCount) {
     Preconditions.checkArgument(group != null, "group cannot be null");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
     Preconditions.checkArgument(StringUtils.isNotBlank(group.name()), "group name cannot be blank");
     Preconditions.checkArgument(userCount >= 0, "userCount cannot be negative");
     List<String> roles = group.roles() == null ? Collections.emptyList() : group.roles();

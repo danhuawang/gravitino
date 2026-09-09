@@ -205,10 +205,11 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("as externalId"));
     assertTrue(sql.contains("external_id"));
     assertTrue(sql.contains("as originCode"));
-    // Local / Provisioned / JIT origin codes.
+    // Local / Provisioned; unknown → NULL (not JIT).
     assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_LOCAL));
     assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_PROVISIONED));
-    assertTrue(sql.contains("ELSE " + IdentitySource.ORIGIN_CODE_JIT));
+    assertTrue(sql.contains("ELSE NULL END as originCode"));
+    assertFalse(sql.contains("ELSE " + IdentitySource.ORIGIN_CODE_JIT));
     assertTrue(
         sql.contains(
             "COALESCE(MAX(CASE WHEN COALESCE(su.enabled, iu.enabled) THEN 1 ELSE 0 END), 1) <> 0"
@@ -230,7 +231,8 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("as enabled"));
     assertTrue(sql.contains("as externalId"));
     assertTrue(sql.contains("external_id"));
-    assertTrue(sql.contains("as originCode"));
+    assertTrue(sql.contains("ELSE NULL END as originCode"));
+    assertFalse(sql.contains("ELSE " + IdentitySource.ORIGIN_CODE_JIT));
     assertFalse(sql.contains("as inBuiltInIdp"));
   }
 
@@ -268,6 +270,33 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertThrows(
         IllegalArgumentException.class,
         () -> provider.listDirectoryUsersForGroup("governance", IdentitySource.ORIGIN_CODE_JIT));
+  }
+
+  @Test
+  public void testGetDirectoryUserLocalSelectsAuditInfo() {
+    String sql = provider.getDirectoryUser("sam.o", IdentitySource.ORIGIN_CODE_LOCAL);
+    assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("iu.audit_info as auditInfo"));
+    assertTrue(sql.contains("iu.user_name = #{userName}"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_LOCAL + " as originCode"));
+    assertFalse(sql.contains("scim_user_meta"));
+  }
+
+  @Test
+  public void testGetDirectoryUserProvisionedSelectsAuditInfo() {
+    String sql = provider.getDirectoryUser("dana.k", IdentitySource.ORIGIN_CODE_PROVISIONED);
+    assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("su.audit_info as auditInfo"));
+    assertTrue(sql.contains("su.external_id as externalId"));
+    assertTrue(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " as originCode"));
+  }
+
+  @Test
+  public void testGetDirectoryUserRejectsJit() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> provider.getDirectoryUser("jordan.m", IdentitySource.ORIGIN_CODE_JIT));
   }
 
   @Test

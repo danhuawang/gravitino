@@ -72,7 +72,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
    * Lists metalake groups with roles and identity-store origin in one query.
    *
    * <p>{@code origin} is Local when the name exists in {@code idp_group_meta}, Provisioned when it
-   * exists in {@code scim_group_meta} (and not IdP), otherwise JIT.
+   * exists in {@code scim_group_meta} (and not IdP), otherwise {@code null} (not inferred as JIT).
    *
    * @param metalakeName The metalake name.
    * @return JOIN SQL.
@@ -269,11 +269,11 @@ public class DatastratoGroupMetaBaseSQLProvider {
       @Param("groupName") String groupName, @Param("originCode") int originCode) {
     if (originCode == IdentitySource.ORIGIN_CODE_LOCAL) {
       return "SELECT identity.groupName as groupName, identity.originCode as originCode,"
-          + " COALESCE(idpMembers.memberCount, 0) as memberCount"
+          + " COALESCE(idpMembers.memberCount, 0) as memberCount, identity.auditInfo as auditInfo"
           + " FROM ("
           + "SELECT ig.group_name as groupName, "
           + IdentitySource.ORIGIN_CODE_LOCAL
-          + " as originCode, ig.group_id as idpGroupId"
+          + " as originCode, ig.group_id as idpGroupId, ig.audit_info as auditInfo"
           + " FROM "
           + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
           + " ig WHERE ig.group_name = #{groupName} AND ig.deleted_at = 0"
@@ -284,11 +284,11 @@ public class DatastratoGroupMetaBaseSQLProvider {
     }
     if (originCode == IdentitySource.ORIGIN_CODE_PROVISIONED) {
       return "SELECT identity.groupName as groupName, identity.originCode as originCode,"
-          + " COALESCE(scimMembers.memberCount, 0) as memberCount"
+          + " COALESCE(scimMembers.memberCount, 0) as memberCount, identity.auditInfo as auditInfo"
           + " FROM ("
           + "SELECT sg.group_name as groupName, "
           + IdentitySource.ORIGIN_CODE_PROVISIONED
-          + " as originCode, sg.group_id as scimGroupId"
+          + " as originCode, sg.group_id as scimGroupId, sg.audit_info as auditInfo"
           + " FROM "
           + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
           + " sg WHERE sg.group_name = #{groupName} AND sg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
@@ -467,9 +467,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + IdentitySource.ORIGIN_CODE_LOCAL
         + " WHEN MAX(CASE WHEN sgm.group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " ELSE "
-        + IdentitySource.ORIGIN_CODE_JIT
-        + " END as originCode"
+        + " ELSE NULL END as originCode"
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + " mt INNER JOIN "
@@ -543,9 +541,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + SCIM_GROUP_ALIAS
         + ".group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " ELSE "
-        + IdentitySource.ORIGIN_CODE_JIT
-        + " END as originCode,"
+        + " ELSE NULL END as originCode,"
         + groupUserCountSelect()
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME

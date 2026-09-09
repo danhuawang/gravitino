@@ -28,6 +28,49 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/security/idp/users/password:
+    put:
+      tags:
+        - users
+      summary: Change a Local IdP user password
+      operationId: changeLocalIdpUserPassword
+      description: |
+        Change a Local (built-in IdP) user password after verifying the current password.
+
+        Request body fields: `username`, `oldPassword`, `newPassword`.
+
+        Authorization: service admin, or the signed-in user matching `username`. The current
+        password must always be correct before the update is applied.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdpPasswordChangeRequest"
+            examples:
+              IdpPasswordChangeRequest:
+                $ref: "#/components/examples/IdpPasswordChangeRequest"
+      responses:
+        "200":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BaseResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "401":
+          description: Unauthorized - Invalid username or old password
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "403":
+          description: Forbidden - Caller is neither service admin nor the target user
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/idp/memberships:
     post:
       tags:
@@ -167,8 +210,8 @@ paths:
         - `Local` → load from `idp_user_meta` (`externalId` omitted)
         - `Provisioned` → load from `scim_user_meta` excluding IdP names (`externalId` when present)
 
-        `enabled` maps to Status (Active / Suspended). `createTime` is reserved and currently
-        omitted (identity stores do not persist creation time).
+        `enabled` maps to Status (Active / Suspended). `createTime` maps to Created and comes from
+        identity-store `audit_info.createTime` (`idp_user_meta` / `scim_user_meta`).
 
       responses:
         "200":
@@ -325,11 +368,11 @@ paths:
         Returns OSS user fields plus `origin` and metalake `groups`. `origin` is:
         - `Local` when the username exists in `idp_user_meta`
         - `Provisioned` when it exists in `scim_user_meta` (and not IdP)
-        - `JIT` when it exists in neither identity store
+        - omitted (`null`) when it exists in neither identity store (not inferred as `JIT`)
 
         `enabled` (Active / Suspended) comes from `idp_user_meta` or `scim_user_meta`, defaulting
         to Active when neither has a row. `externalId` is set for Provisioned users from
-        `scim_user_meta` and omitted for Local / JIT. `groups` lists metalake group names for the
+        `scim_user_meta` and omitted otherwise. `groups` lists metalake group names for the
         Users table.
 
       responses:
@@ -466,11 +509,11 @@ paths:
         Returns OSS user fields plus `origin`. `origin` is:
         - `Local` when the username exists in `idp_user_meta`
         - `Provisioned` when it exists in `scim_user_meta` (and not IdP)
-        - `JIT` when it exists in neither identity store
+        - omitted (`null`) when it exists in neither identity store (not inferred as `JIT`)
 
         `enabled` (Active / Suspended) comes from `idp_user_meta` or `scim_user_meta`, defaulting
         to Active when neither has a row. `externalId` is set for Provisioned users from
-        `scim_user_meta` and omitted for Local / JIT. `auditInfo.createTime` maps to Created on the
+        `scim_user_meta` and omitted otherwise. `auditInfo.createTime` maps to Created on the
         Overview page. `groups` may be empty here; use `listSecurityUserGroups` for membership.
 
       responses:
@@ -513,7 +556,7 @@ paths:
         Each group includes `origin`:
         - `Local` when the group name exists in `idp_group_meta`
         - `Provisioned` when it exists in `scim_group_meta` (and not IdP)
-        - `JIT` when it exists in neither identity store
+        - omitted (`null`) when it exists in neither identity store (not inferred as `JIT`)
 
         Response schema includes `userCount` (Members). This endpoint does not compute membership
         counts; clients may leave Members blank, show `0`, or derive counts elsewhere (for example
@@ -618,8 +661,8 @@ components:
 
         - `Local`: name exists in the built-in IdP (`idp_user_meta` / `idp_group_meta`)
         - `Provisioned`: name exists in SCIM (`scim_user_meta` / `scim_group_meta`) and not IdP
-        - `JIT`: name exists in metalake `user_meta` / `group_meta` but not in IdP or SCIM
-          (metalake security pages only; Directory Users/Groups lists omit JIT)
+        - `JIT`: reserved for write-time JWT discovery; metalake list/get no longer infer JIT from
+          absence in IdP/SCIM (those rows omit `origin`)
       enum:
         - Local
         - Provisioned
@@ -648,6 +691,29 @@ components:
             type: string
             minLength: 1
             maxLength: 128
+
+    IdpPasswordChangeRequest:
+      type: object
+      required:
+        - username
+        - oldPassword
+        - newPassword
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "^[^:]*$"
+          description: Local IdP username whose password will be changed
+        oldPassword:
+          type: string
+          minLength: 1
+          description: Current plaintext password (verified before update)
+        newPassword:
+          type: string
+          minLength: 12
+          maxLength: 64
+          description: New plaintext password (hashed before storage)
 
     IdentityType:
       type: string
@@ -711,12 +777,16 @@ components:
         - $ref: "../../docs/open-api/users.yaml#/components/schemas/User"
         - type: object
           required:
-            - origin
             - groups
             - enabled
           properties:
             origin:
-              $ref: "#/components/schemas/IdentitySource"
+              type: string
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/IdentitySource"
+              description: >
+                Identity source when known. Omitted when the name matches neither IdP nor SCIM.
             groups:
               type: array
               description: >
@@ -732,7 +802,7 @@ components:
             externalId:
               type: string
               nullable: true
-              description: SCIM externalId when Provisioned; omitted for Local and JIT
+              description: SCIM externalId when Provisioned; omitted otherwise
 
     ExtendedUserListResponse:
       type: object
@@ -957,8 +1027,8 @@ components:
           format: date-time
           nullable: true
           description: >
-            Creation time when available. Currently omitted because identity stores do not persist
-            creation time.
+            Creation time from identity-store `audit_info.createTime` (Created on Overview).
+            Omitted when audit data is unavailable.
 
     DirectoryUserDetailResponse:
       type: object
@@ -1044,6 +1114,7 @@ components:
           enabled: true
           origin: Provisioned
           externalId: 51d2e02d-7e1f-49e4-e7cb-7da2050dcb3b
+          createTime: "2025-09-14T00:00:00Z"
 
     DirectoryUserGroupsResponse:
       value:
@@ -1066,3 +1137,9 @@ components:
         groupNames:
           - governance
           - ops
+
+    IdpPasswordChangeRequest:
+      value:
+        username: dana.k
+        oldPassword: "ChangeMe-2026!"
+        newPassword: "ChangeMe-2027!"

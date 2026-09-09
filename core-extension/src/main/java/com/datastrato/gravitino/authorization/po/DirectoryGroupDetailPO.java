@@ -6,13 +6,18 @@ package com.datastrato.gravitino.authorization.po;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
+import javax.annotation.Nullable;
 
-/** Read model for Directory Group Overview: identity-store group with membership count. */
+/**
+ * Read model for Directory Group Overview: identity-store group with membership count and {@code
+ * audit_info} for Created ({@code createTime}).
+ */
 public class DirectoryGroupDetailPO {
 
   private String groupName;
   private Integer originCode;
   private Integer memberCount;
+  private String auditInfo;
 
   /**
    * @return Group name.
@@ -58,6 +63,21 @@ public class DirectoryGroupDetailPO {
   }
 
   /**
+   * @return Serialized identity-store {@code audit_info}; may be null.
+   */
+  @Nullable
+  public String getAuditInfo() {
+    return auditInfo;
+  }
+
+  /**
+   * @param auditInfo Serialized {@code audit_info}.
+   */
+  public void setAuditInfo(String auditInfo) {
+    this.auditInfo = auditInfo;
+  }
+
+  /**
    * @return Resolved identity source.
    */
   public IdentitySource origin() {
@@ -83,11 +103,12 @@ public class DirectoryGroupDetailPO {
     DirectoryGroupDetailPO that = (DirectoryGroupDetailPO) o;
     return Objects.equal(getGroupName(), that.getGroupName())
         && Objects.equal(getOriginCode(), that.getOriginCode())
-        && Objects.equal(getMemberCount(), that.getMemberCount());
+        && Objects.equal(getMemberCount(), that.getMemberCount())
+        && Objects.equal(getAuditInfo(), that.getAuditInfo());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(getGroupName(), getOriginCode(), getMemberCount());
+    return Objects.hashCode(getGroupName(), getOriginCode(), getMemberCount(), getAuditInfo());
   }
 }

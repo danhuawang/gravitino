@@ -23,19 +23,19 @@ public class UserWithGroups implements ExtendedUserDTO.UserWithGroupNames {
   /**
    * @param user The metalake user.
    * @param groups Metalake group names for the user.
-   * @param origin Local / Provisioned / JIT from identity-store presence.
+   * @param origin Local / Provisioned when known; {@code null} when neither identity store matched.
    * @param enabled Identity-store enabled flag.
    * @param externalId SCIM external id when Provisioned; otherwise {@code null}.
    */
   public UserWithGroups(
       User user,
       @Nullable List<String> groups,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       boolean enabled,
       @Nullable String externalId) {
     this.user = Preconditions.checkNotNull(user, "user cannot be null");
     this.groups = groups == null ? Collections.emptyList() : groups;
-    this.origin = Preconditions.checkNotNull(origin, "origin cannot be null");
+    this.origin = origin;
     this.enabled = enabled;
     this.externalId = externalId;
   }
@@ -43,9 +43,9 @@ public class UserWithGroups implements ExtendedUserDTO.UserWithGroupNames {
   /**
    * @param user The metalake user.
    * @param groups Metalake group names for the user.
-   * @param origin Local / Provisioned / JIT from identity-store presence.
+   * @param origin Local / Provisioned when known; {@code null} when neither identity store matched.
    */
-  public UserWithGroups(User user, @Nullable List<String> groups, IdentitySource origin) {
+  public UserWithGroups(User user, @Nullable List<String> groups, @Nullable IdentitySource origin) {
     this(user, groups, origin, true, null);
   }
 
@@ -60,6 +60,7 @@ public class UserWithGroups implements ExtendedUserDTO.UserWithGroupNames {
   }
 
   @Override
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }

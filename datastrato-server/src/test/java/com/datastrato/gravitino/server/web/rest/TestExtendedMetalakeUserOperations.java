@@ -155,7 +155,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
             List.of(
                 new UserWithGroups(buildUser("lee.p"), List.of(), IdentitySource.LOCAL),
                 new UserWithGroups(buildUser("dana.k"), List.of(), IdentitySource.PROVISIONED),
-                new UserWithGroups(buildUser("jordan.m"), List.of(), IdentitySource.JIT)));
+                new UserWithGroups(buildUser("jordan.m"), List.of(), null)));
 
     Response response =
         target("/web/security/metalakes/" + metalake + "/users")
@@ -171,7 +171,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     Assertions.assertEquals(IdentitySource.LOCAL, body.getUsers()[0].origin());
     Assertions.assertEquals("dana.k", body.getUsers()[1].name());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getUsers()[1].origin());
-    Assertions.assertEquals(IdentitySource.JIT, body.getUsers()[2].origin());
+    Assertions.assertNull(body.getUsers()[2].origin());
   }
 
   @Test

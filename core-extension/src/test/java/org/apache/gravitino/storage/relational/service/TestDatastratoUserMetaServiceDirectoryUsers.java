@@ -6,6 +6,7 @@ package org.apache.gravitino.storage.relational.service;
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_MAX_CONNECTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -210,7 +211,7 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(List.of("Contoso"), sam.metalakes());
   }
 
-  /** Verifies metalake Users list origin (Local/Provisioned/JIT). */
+  /** Verifies metalake Users list origin (Local/Provisioned; unknown is null). */
   @Test
   public void testListUsersWithGroupsOrigin() {
     List<UserWithGroups> contoso =
@@ -223,7 +224,7 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
 
     UserWithGroups jordan =
         contoso.stream().filter(u -> u.user().name().equals("jordan.m")).findFirst().orElseThrow();
-    assertEquals(IdentitySource.JIT, jordan.origin());
+    assertNull(jordan.origin());
 
     UserWithGroups sam =
         contoso.stream().filter(u -> u.user().name().equals("sam.o")).findFirst().orElseThrow();

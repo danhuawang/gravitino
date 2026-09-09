@@ -5,6 +5,7 @@ package com.datastrato.gravitino.authorization.po;
 
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Objects;
+import javax.annotation.Nullable;
 import org.apache.gravitino.storage.relational.po.ExtendedUserPO;
 
 /**
@@ -35,7 +36,8 @@ public class UserWithGroupsPO extends ExtendedUserPO {
 
   /**
    * @return Origin code from SQL ({@link IdentitySource#ORIGIN_CODE_LOCAL}, {@link
-   *     IdentitySource#ORIGIN_CODE_PROVISIONED}, or {@link IdentitySource#ORIGIN_CODE_JIT}).
+   *     IdentitySource#ORIGIN_CODE_PROVISIONED}, or {@code null} when neither identity store
+   *     matched).
    */
   public Integer getOriginCode() {
     return originCode;
@@ -49,11 +51,11 @@ public class UserWithGroupsPO extends ExtendedUserPO {
   }
 
   /**
-   * @return Identity source for the security Users table.
+   * @return Identity source for the security Users table, or {@code null} when unknown.
    */
+  @Nullable
   public IdentitySource origin() {
-    return IdentitySource.fromOriginCode(
-        originCode == null ? IdentitySource.ORIGIN_CODE_JIT : originCode);
+    return IdentitySource.fromOriginCodeOrNull(originCode);
   }
 
   /**

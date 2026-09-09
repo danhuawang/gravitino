@@ -36,8 +36,9 @@ public class ExtendedUserDTO extends UserDTO {
     List<String> groups();
 
     /**
-     * @return Local / Provisioned / JIT for the security Users table.
+     * @return Local / Provisioned when known; {@code null} when neither identity store matched.
      */
+    @Nullable
     IdentitySource origin();
 
     /**
@@ -56,6 +57,8 @@ public class ExtendedUserDTO extends UserDTO {
     }
   }
 
+  @Nullable
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   @JsonProperty("origin")
   private IdentitySource origin;
 
@@ -79,7 +82,7 @@ public class ExtendedUserDTO extends UserDTO {
       List<String> roles,
       List<String> groups,
       AuditDTO audit,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       boolean enabled,
       @Nullable String externalId) {
     super(id, name, roles, audit);
@@ -90,8 +93,10 @@ public class ExtendedUserDTO extends UserDTO {
   }
 
   /**
-   * @return {@link IdentitySource} for the security UI ({@code origin} in JSON).
+   * @return {@link IdentitySource} for the security UI ({@code origin} in JSON), or {@code null}
+   *     when unknown.
    */
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }
@@ -111,7 +116,7 @@ public class ExtendedUserDTO extends UserDTO {
   }
 
   /**
-   * @return SCIM external id when Provisioned; {@code null} for Local and JIT.
+   * @return SCIM external id when Provisioned; {@code null} otherwise.
    */
   @Nullable
   public String externalId() {
@@ -147,12 +152,12 @@ public class ExtendedUserDTO extends UserDTO {
    * Builds an {@link ExtendedUserDTO} from a {@link User}, identity origin, and group names.
    *
    * @param user The metalake user.
-   * @param origin Local / Provisioned / JIT.
+   * @param origin Local / Provisioned / JIT, or {@code null} when unknown.
    * @param groups Metalake group names for the user.
    * @return The extended user DTO.
    */
   public static ExtendedUserDTO from(
-      User user, IdentitySource origin, @Nullable List<String> groups) {
+      User user, @Nullable IdentitySource origin, @Nullable List<String> groups) {
     return from(user, origin, groups, true, null);
   }
 
@@ -160,7 +165,7 @@ public class ExtendedUserDTO extends UserDTO {
    * Builds an {@link ExtendedUserDTO} with identity-store Status and optional External ID.
    *
    * @param user The metalake user.
-   * @param origin Local / Provisioned / JIT.
+   * @param origin Local / Provisioned / JIT, or {@code null} when unknown.
    * @param groups Metalake group names for the user.
    * @param enabled Identity-store enabled flag (Active / Suspended).
    * @param externalId SCIM external id when Provisioned; otherwise {@code null}.
@@ -168,12 +173,11 @@ public class ExtendedUserDTO extends UserDTO {
    */
   public static ExtendedUserDTO from(
       User user,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       @Nullable List<String> groups,
       boolean enabled,
       @Nullable String externalId) {
     Preconditions.checkArgument(user != null, "user cannot be null");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
     Preconditions.checkArgument(StringUtils.isNotBlank(user.name()), "user name cannot be blank");
     List<String> roles = user.roles() == null ? Collections.emptyList() : user.roles();
     List<String> groupNames = groups == null ? Collections.emptyList() : groups;
