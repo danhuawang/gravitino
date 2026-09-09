@@ -8,6 +8,8 @@ import static org.apache.gravitino.dto.util.DTOConverters.fromDTOs;
 import static org.apache.gravitino.file.Fileset.LOCATION_NAME_UNKNOWN;
 import static org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants.CAN_ACCESS_METADATA_AND_TAG;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
@@ -29,7 +31,6 @@ import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -64,10 +65,13 @@ import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
 import org.apache.gravitino.dto.model.ModelDTO;
 import org.apache.gravitino.dto.rel.TableDTO;
+import org.apache.gravitino.dto.requests.CatalogCreateRequest;
+import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.file.Fileset;
 import org.apache.gravitino.messaging.Topic;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.model.Model;
 import org.apache.gravitino.rel.Table;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -89,21 +93,6 @@ import org.slf4j.LoggerFactory;
 public class CreationWithTagsOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(CreationWithTagsOperations.class);
-  private static final String JDBC_DRIVER_PROPERTY = "jdbc-driver";
-  private static final Map<String, String> JDBC_DRIVER_CLASS_NAMES =
-      ImmutableMap.<String, String>builder()
-          .put("jdbc-bigquery", "com.simba.googlebigquery.jdbc42.Driver")
-          .put("jdbc-clickhouse", "com.clickhouse.jdbc.ClickHouseDriver")
-          .put("jdbc-doris", "com.mysql.cj.jdbc.Driver")
-          .put("jdbc-hologres", "org.postgresql.Driver")
-          .put("jdbc-maxcompute", "com.aliyun.odps.jdbc.OdpsDriver")
-          .put("jdbc-mysql", "com.mysql.cj.jdbc.Driver")
-          .put("jdbc-oceanbase", "com.mysql.cj.jdbc.Driver")
-          .put("jdbc-oracle", "oracle.jdbc.OracleDriver")
-          .put("jdbc-postgresql", "org.postgresql.Driver")
-          .put("jdbc-sqlserver", "com.microsoft.sqlserver.jdbc.SQLServerDriver")
-          .put("jdbc-starrocks", "com.mysql.cj.jdbc.Driver")
-          .build();
 
   @Context private HttpServletRequest httpRequest;
 
@@ -191,6 +180,63 @@ public class CreationWithTagsOperations {
           () ->
               ExceptionHandlers.handleCatalogException(
                   OperationType.CREATE, request.getName(), metalake, e));
+    }
+  }
+
+  /**
+   * Tests the connection for a not-yet-created catalog, defaulting {@code jdbc-driver} when it can
+   * be derived from the provider (or, for the Iceberg JDBC backend, the {@code uri} scheme) and was
+   * not supplied.
+   *
+   * <p>The open-source {@code catalogs/testConnection} endpoint does not default the driver, so the
+   * enterprise Web UI calls this endpoint instead. Driver defaulting reuses {@link
+   * JdbcDriverProperties}, the same helper used by catalog creation, so all enterprise entry points
+   * stay consistent.
+   *
+   * @param metalake The metalake name.
+   * @param request The catalog creation request describing the connection to test.
+   * @return An HTTP 200 response on success; a connection failure is reported inside the response
+   *     envelope by {@link ExceptionHandlers#handleTestConnectionException}.
+   */
+  @POST
+  @Path("testConnection")
+  @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-test-connection." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @AuthorizationExpression(
+      expression = "METALAKE::CREATE_CATALOG || METALAKE::OWNER",
+      accessMetadataType = MetadataObject.Type.METALAKE)
+  @ResponseMetered(name = "web-test-connection", absolute = true)
+  public Response testConnection(
+      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
+          String metalake,
+      CatalogCreateRequest request) {
+    if (request == null) {
+      // A missing request body never reaches the connection test, so it is rejected with a regular
+      // HTTP 400, matching the open-source endpoint's contract.
+      return Utils.illegalArguments("Request body cannot be null");
+    }
+
+    String catalogName = request.getName();
+    LOG.info("Received test connection request for catalog: {}.{}", metalake, catalogName);
+    try {
+      return Utils.doAs(
+          httpRequest,
+          () -> {
+            request.validate();
+            NameIdentifier ident = NameIdentifierUtil.ofCatalog(metalake, request.getName());
+            Map<String, String> properties =
+                JdbcDriverProperties.withDefaultDriver(
+                    request.getProvider(), request.getProperties());
+            catalogDispatcher.testConnection(
+                ident, request.getType(), request.getProvider(), request.getComment(), properties);
+            LOG.info(
+                "Successfully test connection for catalog: {}.{}", metalake, request.getName());
+            return Utils.ok(new BaseResponse());
+          });
+
+    } catch (Exception e) {
+      LOG.info("Failed to test connection for catalog: {}.{}", metalake, catalogName);
+      return ExceptionHandlers.handleTestConnectionException(e);
     }
   }
 
@@ -617,14 +663,8 @@ public class CreationWithTagsOperations {
 
   private CatalogDTO createCatalog(String metalake, CatalogWithTagsCreateRequest request) {
     NameIdentifier ident = NameIdentifierUtil.ofCatalog(metalake, request.getName());
-    Map<String, String> properties = request.getProperties();
-    String jdbcDriver = JDBC_DRIVER_CLASS_NAMES.get(request.getProvider().toLowerCase(Locale.ROOT));
-    if (jdbcDriver != null) {
-      properties =
-          new HashMap<>(
-              Optional.ofNullable(request.getProperties()).orElse(Collections.emptyMap()));
-      properties.putIfAbsent(JDBC_DRIVER_PROPERTY, jdbcDriver);
-    }
+    Map<String, String> properties =
+        JdbcDriverProperties.withDefaultDriver(request.getProvider(), request.getProperties());
 
     Catalog catalog =
         catalogDispatcher.createCatalog(

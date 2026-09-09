@@ -10,9 +10,11 @@ import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
@@ -61,10 +63,13 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.rel.ColumnDTO;
+import org.apache.gravitino.dto.requests.CatalogCreateRequest;
+import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.CatalogAlreadyExistsException;
+import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.FilesetAlreadyExistsException;
 import org.apache.gravitino.exceptions.ModelAlreadyExistsException;
 import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
@@ -90,6 +95,7 @@ import org.glassfish.jersey.test.TestProperties;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 public class TestCreationWithTagsOperations extends JerseyTest {
@@ -1286,6 +1292,97 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(mockSchema.auditInfo()).thenReturn(mockAudit);
 
     return mockSchema;
+  }
+
+  @Test
+  public void testTestConnectionInjectsJdbcDriverForMysql() throws Exception {
+    reset(catalogDispatcher);
+    CatalogCreateRequest req =
+        new CatalogCreateRequest(
+            "mysql_catalog",
+            Catalog.Type.RELATIONAL,
+            "jdbc-mysql",
+            "comment",
+            ImmutableMap.of("jdbc-url", "jdbc:mysql://localhost:3306/db", "jdbc-user", "root"));
+    doNothing().when(catalogDispatcher).testConnection(any(), any(), any(), any(), any());
+
+    Response resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/testConnection")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+    Assertions.assertEquals(0, resp.readEntity(BaseResponse.class).getCode());
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(catalogDispatcher)
+        .testConnection(
+            any(), eq(Catalog.Type.RELATIONAL), eq("jdbc-mysql"), any(), propsCaptor.capture());
+    Assertions.assertEquals("com.mysql.cj.jdbc.Driver", propsCaptor.getValue().get("jdbc-driver"));
+  }
+
+  @Test
+  public void testTestConnectionInjectsJdbcDriverForIcebergJdbcBackend() throws Exception {
+    reset(catalogDispatcher);
+    CatalogCreateRequest req =
+        new CatalogCreateRequest(
+            "iceberg_catalog",
+            Catalog.Type.RELATIONAL,
+            "lakehouse-iceberg",
+            "comment",
+            ImmutableMap.of(
+                "catalog-backend",
+                "jdbc",
+                "uri",
+                "jdbc:postgresql://host:5432/iceberg",
+                "warehouse",
+                "s3://bucket/"));
+    doNothing().when(catalogDispatcher).testConnection(any(), any(), any(), any(), any());
+
+    Response resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/testConnection")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> propsCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(catalogDispatcher)
+        .testConnection(
+            any(),
+            eq(Catalog.Type.RELATIONAL),
+            eq("lakehouse-iceberg"),
+            any(),
+            propsCaptor.capture());
+    Assertions.assertEquals("org.postgresql.Driver", propsCaptor.getValue().get("jdbc-driver"));
+  }
+
+  @Test
+  public void testTestConnectionReportsConnectionFailure() throws Exception {
+    reset(catalogDispatcher);
+    CatalogCreateRequest req =
+        new CatalogCreateRequest(
+            "mysql_catalog",
+            Catalog.Type.RELATIONAL,
+            "jdbc-mysql",
+            "comment",
+            ImmutableMap.of("jdbc-url", "jdbc:mysql://localhost:3306/db", "jdbc-user", "root"));
+    doThrow(new ConnectionFailedException("connection failed"))
+        .when(catalogDispatcher)
+        .testConnection(any(), any(), any(), any(), any());
+
+    Response resp =
+        target("/web/with-tags/metalakes/metalake1/catalogs/testConnection")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+
+    ErrorResponse errorResponse = resp.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.CONNECTION_FAILED_CODE, errorResponse.getCode());
   }
 
   private static TestCatalog buildCatalog(String metalake, String catalogName) {
