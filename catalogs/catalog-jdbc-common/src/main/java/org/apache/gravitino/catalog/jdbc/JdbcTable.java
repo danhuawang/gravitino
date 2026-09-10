@@ -116,13 +116,9 @@ public class JdbcTable extends BaseTable {
     }
 
     /**
-<<<<<<< HEAD
      * Returns the columns currently set on this builder.
      *
      * @return the columns set on this builder, or {@code null} if none have been set.
-=======
-     * @return The columns currently set on this builder.
->>>>>>> upstream/branch-1.3
      */
     public Column[] columns() {
       return columns;

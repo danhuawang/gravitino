@@ -223,7 +223,6 @@ Gravitino calls Alibaba Cloud STS [AssumeRole](https://www.alibabacloud.com/help
 
 Also set `oss-access-key-id` and `oss-secret-access-key`. Gravitino uses them to call AssumeRole, not to reach data, and they are never sent to the engine.
 
-<<<<<<< HEAD
 | Property                   | Description                                                                                                  | Default value | Required |
 |----------------------------|--------------------------------------------------------------------------------------------------------------|---------------|----------|
 | `oss-access-key-id`        | The static access key ID used to access OSS data.                                                            | (none)        | Yes      |
@@ -232,11 +231,6 @@ Also set `oss-access-key-id` and `oss-secret-access-key`. Gravitino uses them to
 | `oss-region`               | The region of the OSS service, like `oss-cn-hangzhou`, only used when `credential-providers` is `oss-token`. | (none)        | No       |
 | `oss-external-id`          | The OSS external id to generate the token.                                                                   | (none)        | No       |
 | `oss-token-expire-in-secs` | The OSS security token expire time in secs.                                                                  | 3600          | No       |
-=======
-:::note
-`gcs-service-account-file` is used both to vend downscoped tokens and to authenticate Iceberg `GCSFileIO` on the server (Gravitino injects `gcs.oauth2.token` at catalog load because Iceberg has no service-account-file property). Ensure the file is readable by the server process. If the property is unset, FileIO and token vending fall back to Application Default Credentials (for example GCE metadata or `GOOGLE_APPLICATION_CREDENTIALS`).
-:::
->>>>>>> upstream/branch-1.3
 
 #### Trust Policy on the RAM Role
 
@@ -404,6 +398,10 @@ A storage account key grants full access to every container in the storage accou
 Gravitino downscopes its own credentials using GCS [credential access boundaries](https://cloud.google.com/iam/docs/downscoping-short-lived-credentials) and returns a token scoped to the table path.
 
 There is no role to assume. The identity is the service account in `gcs-service-account-file`, or the application default credentials when that is unset. Grant that service account **Storage Object User** (`roles/storage.objectUser`) on the warehouse bucket, or **Storage Object Viewer** for read-only access. Downscoping narrows from those permissions, so the vended token can never exceed what the service account itself holds.
+
+:::note
+`gcs-service-account-file` is used both to vend downscoped tokens and to authenticate Iceberg `GCSFileIO` on the server (Gravitino injects `gcs.oauth2.token` at catalog load because Iceberg has no service-account-file property). Ensure the file is readable by the server process. If the property is unset, FileIO and token vending fall back to Application Default Credentials (for example GCE metadata or `GOOGLE_APPLICATION_CREDENTIALS`).
+:::
 
 | Property                   | Description                              | Default value                       | Required |
 |----------------------------|------------------------------------------|-------------------------------------|----------|

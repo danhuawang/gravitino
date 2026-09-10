@@ -31,11 +31,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.gravitino.credential.CredentialPrivilege;
-<<<<<<< HEAD
-import org.apache.gravitino.credential.CredentialPropertyUtils;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
-=======
->>>>>>> upstream/branch-1.3
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.iceberg.BaseTransaction;
 import org.apache.iceberg.CatalogProperties;
@@ -126,16 +122,10 @@ public class FederatedCatalogWrapper extends CatalogWrapperForREST {
   @Override
   public LoadTableResponse createTable(
       Namespace namespace, CreateTableRequest request, boolean requestCredential) {
-<<<<<<< HEAD
     // This override does not delegate to super.createTable, so the key confirmation applied there
     // is invoked explicitly to keep both create paths behaving the same.
     confirmEncryptionKey(request.properties());
-    // The remote REST catalog vends its own credentials, so the requestCredential flag is not used
-    // here; FileIO-derived client config is extracted by createTableInternal.
-    return createTableInternal(namespace, request);
-=======
     return createTableViaREST(namespace, request, requestCredential);
->>>>>>> upstream/branch-1.3
   }
 
   /**

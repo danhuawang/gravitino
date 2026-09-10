@@ -1183,7 +1183,6 @@ public class TestJobOperations extends JerseyTest {
   }
 
   @Test
-<<<<<<< HEAD
   public void testCancelJobWithMalformedRuntimeJobTemplateDoesNotFail() {
     // By the time toDTO() runs here, jobOperationDispatcher.cancelJob() has already cancelled
     // the job and updated its stored entity - a malformed stored runtime job template must not
@@ -1345,7 +1344,9 @@ public class TestJobOperations extends JerseyTest {
             .orElseThrow(() -> new AssertionError("Malformed job missing from response"));
     Assertions.assertNull(malformedJobDTO.runtimeJobTemplate());
     Assertions.assertEquals(JobHandle.Status.QUEUED, malformedJobDTO.status());
-=======
+  }
+
+  @Test
   public void testCancelJobIsResponseMetered() throws Exception {
     Method cancelJob = JobOperations.class.getMethod("cancelJob", String.class, String.class);
     ResponseMetered metered = cancelJob.getAnnotation(ResponseMetered.class);
@@ -1357,7 +1358,6 @@ public class TestJobOperations extends JerseyTest {
     Assertions.assertNotNull(timed);
     Assertions.assertTrue(timed.name().startsWith("cancel-job."));
     Assertions.assertTrue(timed.absolute());
->>>>>>> upstream/branch-1.3
   }
 
   private String jobTemplatePath() {

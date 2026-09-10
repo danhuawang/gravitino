@@ -29,10 +29,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-<<<<<<< HEAD
 import javax.annotation.Nullable;
-=======
->>>>>>> upstream/branch-1.3
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
@@ -79,14 +76,11 @@ public class IcebergCatalogWrapperManager implements AutoCloseable {
       boolean auxMode,
       String metalakeName) {
     this.configProvider = configProvider;
-<<<<<<< HEAD
     this.auxMode = auxMode;
-=======
     long accessEvictionNanos =
         TimeUnit.MILLISECONDS.toNanos(
             new IcebergConfig(properties)
                 .get(IcebergConfig.ICEBERG_REST_CATALOG_CACHE_EVICTION_INTERVAL));
->>>>>>> upstream/branch-1.3
     this.catalogWrapperCache =
         Caffeine.newBuilder()
             .expireAfter(new CatalogWrapperExpiry(accessEvictionNanos))
@@ -176,21 +170,13 @@ public class IcebergCatalogWrapperManager implements AutoCloseable {
     // instanceof checks. All other backends use the base CatalogWrapperForREST.
     IcebergCatalogBackend backend =
         IcebergCatalogBackend.valueOf(
-<<<<<<< HEAD
-            icebergConfig.get(IcebergConfig.CATALOG_BACKEND).toUpperCase(Locale.ROOT));
-    IcebergEncryptionPolicyEvaluator.KmsKeyValidator kmsKeyValidator =
-        resolveKmsKeyValidator(icebergConfig);
-    CatalogWrapperForREST rest =
-        backend == IcebergCatalogBackend.REST
-            ? new FederatedCatalogWrapper(catalogName, icebergConfig, kmsKeyValidator)
-            : new CatalogWrapperForREST(catalogName, icebergConfig, kmsKeyValidator);
-=======
             enrichedConfig.get(IcebergConfig.CATALOG_BACKEND).toUpperCase(Locale.ROOT));
+    IcebergEncryptionPolicyEvaluator.KmsKeyValidator kmsKeyValidator =
+        resolveKmsKeyValidator(enrichedConfig);
     CatalogWrapperForREST rest =
         backend == IcebergCatalogBackend.REST
-            ? new FederatedCatalogWrapper(catalogName, enrichedConfig)
-            : new CatalogWrapperForREST(catalogName, enrichedConfig);
->>>>>>> upstream/branch-1.3
+            ? new FederatedCatalogWrapper(catalogName, enrichedConfig, kmsKeyValidator)
+            : new CatalogWrapperForREST(catalogName, enrichedConfig, kmsKeyValidator);
     AuthenticationConfig authenticationConfig =
         new AuthenticationConfig(enrichedConfig.getAllConfig());
     if (authenticationConfig.isKerberosAuth() && rest.getCatalog() instanceof SupportsKerberos) {
