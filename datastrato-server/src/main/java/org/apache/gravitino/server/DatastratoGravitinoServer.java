@@ -9,6 +9,7 @@ import com.datastrato.gravitino.catalog.connection.CatalogConnectionTestMetaServ
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.license.rest.LicenseStatusResource;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
+import com.datastrato.gravitino.preview.DataPreviewConfig;
 import java.io.IOException;
 import javax.annotation.Nullable;
 import org.apache.gravitino.Configs;
@@ -72,6 +73,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
   @Override
   public void initialize() {
     super.initialize();
+    ConfigServletConfigEntryRegistrar.register(this, DataPreviewConfig.ENABLED_CONFIG);
 
     boolean enableAuthorization = serverConfig().get(Configs.ENABLE_AUTHORIZATION);
     MetricDataService metricDataService = MetricDataService.getInstance();

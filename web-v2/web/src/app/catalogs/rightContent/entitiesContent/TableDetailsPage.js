@@ -52,7 +52,7 @@ export default function TableDetailsPage({ ...props }) {
   const { catalog, schema, table } = props.namespaces
   const auth = useAppSelector(state => state.auth)
   const { anthEnable, systemConfig } = auth
-  const { 'gravitino.datastrato.custom.preview.enable': previewEnable } = systemConfig || {}
+  const { 'gravitino.datastrato.preview.enabled': previewEnable } = systemConfig || {}
   const searchParams = useSearchParams()
   const currentMetalake = searchParams.get('metalake')
   const catalogType = searchParams.get('catalogType')
