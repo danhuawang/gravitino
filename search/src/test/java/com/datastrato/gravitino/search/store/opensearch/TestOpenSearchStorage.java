@@ -18,6 +18,7 @@ import com.datastrato.gravitino.search.po.SearchEntityPO;
 import com.datastrato.gravitino.search.po.SearchPolicyEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
+import com.datastrato.gravitino.search.store.SearchDataSource;
 import com.datastrato.gravitino.search.store.WriteContext;
 import com.datastrato.gravitino.test.OpenSearchContainer;
 import com.google.common.collect.ImmutableList;
@@ -27,6 +28,7 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,6 +47,88 @@ import org.opensearch.client.opensearch.core.GetResponse;
 public class TestOpenSearchStorage {
   private OpenSearchStorage storage;
   private OpenSearchContainer container;
+
+  /** Verifies job template names and comments against the real OpenSearch mappings. */
+  @Test
+  public void testJobTemplateSearch() {
+    String metalake = "jobtemplatesearch";
+    storage.write(
+        List.of(
+            SearchEntityPO.SearchEntityPOBuilder.builder()
+                .withEntityId(9002)
+                .withEntityType(Entity.EntityType.JOB_TEMPLATE)
+                .withEntityName("builtin-sparkpi")
+                .withFullQualifiedName("builtin-sparkpi")
+                .withEntityComment("current description")
+                .withMetalake(metalake)
+                .withInUse(true)
+                .build(),
+            SearchEntityPO.SearchEntityPOBuilder.builder()
+                .withEntityId(9003)
+                .withEntityType(Entity.EntityType.JOB_TEMPLATE)
+                .withEntityName("other-template")
+                .withFullQualifiedName("other-template")
+                .withEntityComment("current description")
+                .withMetalake("otherjobsearch")
+                .withInUse(true)
+                .build()),
+        WriteContext.DEFAULT);
+    storage.write(
+        List.of(
+            SearchEntityPO.SearchEntityPOBuilder.builder()
+                .withEntityId(9004)
+                .withEntityType(Entity.EntityType.JOB_TEMPLATE)
+                .withEntityName("builtin-other")
+                .withFullQualifiedName("builtin-other")
+                .withEntityComment("unrelated")
+                .withMetalake(metalake)
+                .withInUse(true)
+                .build()),
+        WriteContext.DEFAULT);
+    Map<String, Set<String>> queries =
+        Map.of(
+            "sparkpi", Set.of("builtin-sparkpi"),
+            "builtin-sparkpi", Set.of("builtin-sparkpi"),
+            "n-s", Set.of("builtin-sparkpi"),
+            "-sparkpi", Set.of("builtin-sparkpi"),
+            "BUILTIN-SPARKPI", Set.of("builtin-sparkpi"),
+            "\"builtin-sparkpi\"", Set.of("builtin-sparkpi"),
+            "current description", Set.of("builtin-sparkpi"),
+            "builtin-sparkpi entity_type:job_template", Set.of("builtin-sparkpi"));
+    queries.forEach(
+        (query, expected) -> {
+          List<SearchEntitiesDTO> result =
+              storage.search(
+                  metalake,
+                  null,
+                  ConditionBuilderVisitor.buildQueryCondition(query).getCondition(),
+                  List.of(),
+                  10,
+                  0);
+          Assertions.assertEquals(
+              expected,
+              result.stream()
+                  .flatMap(group -> group.getEntities().stream())
+                  .map(SearchEntityDTO::getEntityName)
+                  .collect(Collectors.toSet()));
+          Assertions.assertEquals(
+              expected.size(), result.stream().mapToInt(SearchEntitiesDTO::getTotalSize).sum());
+        });
+    // Renames replace the same document ID instead of retaining a stale name.
+    storage.write(
+        List.of(
+            SearchEntityPO.SearchEntityPOBuilder.builder()
+                .withEntityId(9002)
+                .withEntityType(Entity.EntityType.JOB_TEMPLATE)
+                .withEntityName("renamed")
+                .withFullQualifiedName("renamed")
+                .withEntityComment("updated")
+                .withMetalake(metalake)
+                .withInUse(true)
+                .build()),
+        WriteContext.DEFAULT);
+    Assertions.assertTrue(storage.search(metalake, "current", null, List.of(), 10, 0).isEmpty());
+  }
 
   @BeforeAll
   public void initTest() throws IllegalAccessException {
@@ -112,6 +196,109 @@ public class TestOpenSearchStorage {
     } catch (Exception e) {
       throw new RuntimeException("Failed to initialize index template", e);
     }
+  }
+
+  @Test
+  void testLiteralHyphensAndQuotes() {
+    String metalake = "literalhyphens";
+    String longName = "x".repeat(300) + "-long-name";
+    String boundaryName = "x".repeat(247) + "-boundary";
+    String unicodeBoundaryName = "\uD83D\uDE00".repeat(128);
+    String unicodeOverLimitName = "\uD83D\uDE00".repeat(129);
+    Assertions.assertEquals(256, unicodeBoundaryName.length());
+    Assertions.assertEquals(258, unicodeOverLimitName.length());
+    List<String> names =
+        List.of(
+            unicodeBoundaryName,
+            unicodeOverLimitName,
+            "UPPER-NAME",
+            "ac-db",
+            "ac_db",
+            "ac db",
+            "ac-zzdb",
+            "ac",
+            "db",
+            "c",
+            "d",
+            "builtin-sparkpi",
+            "builtin-other",
+            "other-sparkpi",
+            "a*b",
+            "aXb",
+            "a?b",
+            "a\"b",
+            "a\\b",
+            longName,
+            boundaryName,
+            "x" + boundaryName);
+    for (int i = 0; i < names.size(); i++) {
+      storage.write(
+          List.of(
+              SearchTableEntityPO.SearchTableEntityPOBuilder.builder()
+                  .withEntityId(10000L + i)
+                  .withEntityType(Entity.EntityType.TABLE)
+                  .withEntityName(names.get(i))
+                  .withEntityComment("comment-only")
+                  .withFullQualifiedName(names.get(i))
+                  .withCatalogName("catalog")
+                  .withMetalake(metalake)
+                  .withColumns(
+                      List.of(
+                          SearchTableEntityPO.SearchColumn.builder().withColumnName("id").build()))
+                  .build()),
+          true);
+    }
+    assertBooleanNames(metalake, "ac", "ac-db", "ac_db", "ac db", "ac-zzdb", "ac");
+    assertBooleanNames(metalake, "c-", "ac-db", "ac-zzdb");
+    assertBooleanNames(metalake, "-d", "ac-db");
+    assertBooleanNames(metalake, "c-d", "ac-db");
+    assertBooleanNames(metalake, "AC-DB", "ac-db");
+    assertBooleanNames(metalake, "upper-name", "UPPER-NAME");
+    assertBooleanNames(metalake, "\".*\"");
+    assertBooleanNames(metalake, "\"a|b\"");
+    assertBooleanNames(metalake, "builtin-sparkpi", "builtin-sparkpi");
+    assertBooleanNames(metalake, "\"ac db\"", "ac db");
+    assertBooleanNames(metalake, "\"a*b\"", "a*b");
+    assertBooleanNames(metalake, "\"a?b\"", "a?b");
+    assertBooleanNames(metalake, longName);
+    assertBooleanNames(metalake, "-long-name");
+    assertBooleanNames(metalake, "-boundary", boundaryName);
+    // OpenSearch ignore_above counts UTF-16 units, not Unicode code points.
+    assertBooleanNames(metalake, "\"\uD83D\uDE00\"", unicodeBoundaryName);
+    assertBooleanNames(metalake, "comment-only");
+
+    var condition = ConditionBuilderVisitor.buildQueryCondition("c-").getCondition();
+    Set<String> pagedNames = new HashSet<>();
+    for (int page = 0; page < 3; page++) {
+      SearchEntitiesDTO group =
+          getSearchEntitiesDTOByType(
+              storage.search(metalake, null, condition, List.of(), 1, page),
+              Entity.EntityType.TABLE);
+      Assertions.assertNotNull(group);
+      Assertions.assertEquals(2, group.getTotalSize());
+      Assertions.assertEquals(page < 2 ? 1 : 0, group.getEntities().size());
+      group.getEntities().forEach(entity -> pagedNames.add(entity.getEntityName()));
+    }
+    Assertions.assertEquals(Set.of("ac-db", "ac-zzdb"), pagedNames);
+    SearchDataSource source = storage.search(metalake, null, condition, List.of());
+    Assertions.assertEquals(
+        pagedNames,
+        source.nextBatch().entities().stream()
+            .map(SearchEntityDTO::getEntityName)
+            .collect(Collectors.toSet()));
+    Assertions.assertTrue(source.nextBatch().isEmpty());
+    Assertions.assertEquals(
+        Set.of("ac-db"),
+        storage.search(metalake, "c-d", null, List.of(), 10, 0).stream()
+            .flatMap(group -> group.getEntities().stream())
+            .map(SearchEntityDTO::getEntityName)
+            .collect(Collectors.toSet()));
+    assertBooleanNames(metalake, "c- -name:ac-zzdb", "ac-db");
+    assertBooleanNames(metalake, "name:ac-db", "ac-db");
+    assertBooleanNames(metalake, "(c-d OR builtin-sparkpi) -name:builtin-sparkpi", "ac-db");
+    assertBooleanNames(metalake, "c-d builtin-sparkpi");
+    assertBooleanNames(metalake, "\"a\\\"b\"", "a\"b");
+    assertBooleanNames(metalake, "\"a\\\\b\"", "a\\b");
   }
 
   @Test

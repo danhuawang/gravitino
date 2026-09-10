@@ -49,6 +49,7 @@ import org.apache.gravitino.exceptions.GravitinoRuntimeException;
 import org.apache.gravitino.function.Function;
 import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.FilesetEntity;
+import org.apache.gravitino.meta.JobTemplateEntity;
 import org.apache.gravitino.meta.ModelEntity;
 import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.meta.SchemaEntity;
@@ -191,6 +192,28 @@ public class EntityConverterUtils {
           e.getMessage());
       return null;
     }
+  }
+
+  /**
+   * Projects a job template without its executable configuration or credentials.
+   *
+   * @param template the template
+   * @param metalake the owning metalake
+   * @return the searchable template
+   */
+  public static SearchEntityPO toJobTemplateSearchEntityPO(
+      JobTemplateEntity template, String metalake) {
+    return SearchEntityPO.SearchEntityPOBuilder.builder()
+        .withEntityId(template.id())
+        .withEntityType(EntityType.JOB_TEMPLATE)
+        .withMetalake(metalake)
+        .withEntityName(template.name())
+        .withFullQualifiedName(template.name())
+        .withEntityComment(template.comment())
+        .withInUse(true)
+        .withSearchAudit(toSearchAudit(template.auditInfo()))
+        .withUpdateTime(System.currentTimeMillis())
+        .build();
   }
 
   public static SearchEntityPO toCatalogSearchEntityPO(

@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
+import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor;
 import com.datastrato.gravitino.search.rest.SearchOperations;
 import com.datastrato.gravitino.search.rest.SearchQueryResponse;
 import com.datastrato.gravitino.search.rest.SynMetadataRequest;
@@ -238,6 +239,22 @@ public class TestSearchOperations extends JerseyTest {
     Assertions.assertEquals(Status.OK.getStatusCode(), resp.getStatus());
     SearchQueryResponse queryResponse = resp.readEntity(SearchQueryResponse.class);
     Assertions.assertTrue(queryResponse.getEntities().isEmpty());
+  }
+
+  @Test
+  void testParserFailuresReturnBadRequest() {
+    for (String input : ImmutableList.of("-", "name:", "a @ b", "(a", "\"unterminated")) {
+      Mockito.doAnswer(
+              call -> {
+                ConditionBuilderVisitor.buildQueryCondition(input);
+                throw new AssertionError("Malformed query was accepted");
+              })
+          .when(searchService)
+          .query("metalake1", input, 0, 10);
+      try (Response response = query("metalake1", input, null, null)) {
+        Assertions.assertEquals(400, response.getStatus(), input);
+      }
+    }
   }
 
   @Test

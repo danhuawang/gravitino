@@ -23,6 +23,7 @@ import org.apache.gravitino.listener.api.event.TagEvent;
 import org.apache.gravitino.listener.api.event.TopicEvent;
 import org.apache.gravitino.listener.api.event.UserEvent;
 import org.apache.gravitino.listener.api.event.function.FunctionEvent;
+import org.apache.gravitino.listener.api.event.job.JobTemplateEvent;
 import org.apache.gravitino.listener.api.event.policy.PolicyEvent;
 import org.apache.gravitino.listener.api.event.view.ViewEvent;
 import org.slf4j.Logger;
@@ -41,6 +42,7 @@ public class DataDiscoveryListener implements EventListenerPlugin {
 
     this.eventHandlers =
         ImmutableMap.<Class, EventHandler>builder()
+            .put(JobTemplateEvent.class, new JobTemplateEventHandler(searchService))
             .put(TableEvent.class, new TableEventHandler(searchService))
             .put(MetalakeEvent.class, new MetalakeEventHandler(searchService))
             .put(ViewEvent.class, new ViewEventHandler(searchService))
@@ -77,7 +79,9 @@ public class DataDiscoveryListener implements EventListenerPlugin {
     try {
 
       EventHandler handler = null;
-      if (event instanceof MetalakeEvent) {
+      if (event instanceof JobTemplateEvent) {
+        handler = eventHandlers.get(JobTemplateEvent.class);
+      } else if (event instanceof MetalakeEvent) {
         handler = eventHandlers.get(MetalakeEvent.class);
       } else if (event instanceof TableEvent) {
         handler = eventHandlers.get(TableEvent.class);

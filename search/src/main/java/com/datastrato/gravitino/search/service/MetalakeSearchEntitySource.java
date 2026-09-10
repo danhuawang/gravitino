@@ -7,12 +7,14 @@ import com.datastrato.gravitino.search.po.SearchEntityPO;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
+import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 
 class MetalakeSearchEntitySource extends ParentEntitySource {
@@ -93,6 +95,17 @@ class MetalakeSearchEntitySource extends ParentEntitySource {
         new PolicySearchEntitySource(
             SearchEntitySource.toSearchEntityIdentifiers(
                 policyIdentifiers, Entity.EntityType.POLICY)));
+    JobOperationDispatcher jobs = GravitinoEnv.getInstance().internalJobOperationDispatcher();
+    String metalake = searchEntityIdentifier.metalake();
+    sources.add(
+        new JobTemplateSearchEntitySource(
+            jobs.listJobTemplates(metalake).stream()
+                .map(
+                    template ->
+                        SearchEntityIdentifier.of(
+                            NameIdentifierUtil.ofJobTemplate(metalake, template.name()),
+                            Entity.EntityType.JOB_TEMPLATE))
+                .collect(Collectors.toList())));
     return sources;
   }
 

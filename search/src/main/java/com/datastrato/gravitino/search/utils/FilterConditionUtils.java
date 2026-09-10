@@ -13,6 +13,7 @@ import com.datastrato.gravitino.search.parser.Condition.RangeCondition;
 import com.datastrato.gravitino.search.parser.Condition.RangeType;
 import com.datastrato.gravitino.search.parser.Condition.TermCondition;
 import com.google.common.collect.ImmutableList;
+import java.util.Locale;
 import java.util.Map;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.NameIdentifier;
@@ -160,13 +161,21 @@ public class FilterConditionUtils {
   }
 
   public static Condition createEntityNameQueryCondition(
-      NameIdentifier nameIdentifier, boolean cascade) {
+      NameIdentifier nameIdentifier, boolean cascade, Entity.EntityType entityType) {
     if (isMetalakeScoped(nameIdentifier)) {
       // Tags, policies and the other entities living directly under a metalake have no
       // catalog/schema hierarchy, so their documents carry no meaningful full qualified name and
       // the index does not map one. They are identified by their name instead. There is nothing
       // below them either, so the cascade flag makes no difference.
-      return new Condition.TermCondition("entity_name.keyword", nameIdentifier.name());
+      //
+      // A name only identifies one of these entities together with its type: a tag, a policy and
+      // a job template may all be called "daily-etl", and they share the metalake's index scope.
+      // Without the type, deleting any one of them would take the others with it.
+      return new Condition.AndCondition(
+          ImmutableList.of(
+              new Condition.TermCondition(
+                  "entity_type", entityType.name().toLowerCase(Locale.ROOT)),
+              new Condition.TermCondition("entity_name.keyword", nameIdentifier.name())));
     }
 
     String metalake = NameIdentifierUtil.getMetalake(nameIdentifier);
@@ -206,8 +215,11 @@ public class FilterConditionUtils {
   }
 
   public static Condition createRemovedEntityCondition(
-      NameIdentifier nameIdentifier, boolean cascade, long lastUpdateTime) {
-    Condition entityCondition = createEntityNameQueryCondition(nameIdentifier, cascade);
+      NameIdentifier nameIdentifier,
+      boolean cascade,
+      long lastUpdateTime,
+      Entity.EntityType entityType) {
+    Condition entityCondition = createEntityNameQueryCondition(nameIdentifier, cascade, entityType);
     return new Condition.AndCondition(
         ImmutableList.of(entityCondition, createUpdateTimeCondition(lastUpdateTime)));
   }

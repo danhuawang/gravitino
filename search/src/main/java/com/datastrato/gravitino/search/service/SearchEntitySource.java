@@ -113,6 +113,8 @@ interface SearchEntitySource {
         return new GroupSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case ROLE:
         return new RoleSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
+      case JOB_TEMPLATE:
+        return new JobTemplateSearchEntitySource(ImmutableList.of(searchEntityIdentifier));
       case POLICY:
         return new PolicySearchEntitySource(ImmutableList.of(searchEntityIdentifier));
 

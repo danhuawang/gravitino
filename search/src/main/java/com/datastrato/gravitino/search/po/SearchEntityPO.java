@@ -202,7 +202,8 @@ public class SearchEntityPO {
     }
 
     private static boolean hasCatalog(EntityType type) {
-      return type != EntityType.TAG
+      return type != EntityType.JOB_TEMPLATE
+          && type != EntityType.TAG
           && type != EntityType.POLICY
           && type != EntityType.USER
           && type != EntityType.GROUP

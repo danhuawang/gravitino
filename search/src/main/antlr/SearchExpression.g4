@@ -17,7 +17,7 @@ term
     ;
 
 literal
-    : ID
+    : atom
     | factor
     ;
 
@@ -26,9 +26,15 @@ factor
     ;
 
 value
-    : ID (COMMA ID)*
+    : atom (COMMA atom)*
     ;
 
+
+atom
+    : ID
+    | MINUS ID
+    | STRING
+    ;
 
 OR      : O R;
 AND     : A N D;
@@ -39,7 +45,9 @@ fragment N: ('n'|'N');
 fragment O: ('o'|'O');
 fragment R: ('r'|'R');
 
-ID: ( [a-zA-Z0-9_] | [\u4e00-\u9fa5] )+ ;
+fragment WORD_CHAR: [a-zA-Z0-9_] | [\u4e00-\u9fa5];
+ID: WORD_CHAR (WORD_CHAR | '-')*;
+STRING: '"' ('\\' ["\\] | ~["\\\r\n])* '"';
 
 
 MINUS   : '-';

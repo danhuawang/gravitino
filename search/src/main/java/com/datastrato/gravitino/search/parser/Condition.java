@@ -11,6 +11,7 @@ public interface Condition {
   /** A free-text term whose position in the boolean expression must be preserved. */
   class KeywordCondition implements Condition {
     private final String keyword;
+    private final boolean literal;
 
     /**
      * Creates a free-text condition.
@@ -18,7 +19,18 @@ public interface Condition {
      * @param keyword the search term
      */
     public KeywordCondition(String keyword) {
+      this(keyword, false);
+    }
+
+    /**
+     * Creates a search term with optional literal substring matching.
+     *
+     * @param keyword the search term
+     * @param literal whether quoting requires preserving the term verbatim
+     */
+    public KeywordCondition(String keyword, boolean literal) {
       this.keyword = keyword;
+      this.literal = literal || keyword.indexOf('-') >= 0;
     }
 
     /**
@@ -28,6 +40,15 @@ public interface Condition {
      */
     public String getKeyword() {
       return keyword;
+    }
+
+    /**
+     * Returns whether punctuation and whitespace must participate in substring matching.
+     *
+     * @return whether this is a literal search term
+     */
+    public boolean isLiteral() {
+      return literal;
     }
   }
 

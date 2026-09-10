@@ -199,6 +199,12 @@ public class SearchService implements Closeable {
 
     Preconditions.checkArgument(metadataObject != null, "The metadata object cannot be null.");
 
+    if (metadataObject.type() == MetadataObject.Type.JOB_TEMPLATE) {
+      // A job template has no descendants. A name-based cascade cleanup could remove unrelated
+      // entities.
+      cascade = false;
+      finishedHandler = null;
+    }
     if (cascade && metadataObject.type() == METALAKE) {
       PermissionProjectionCache.invalidate(metalake);
     }
@@ -312,7 +318,7 @@ public class SearchService implements Closeable {
         () -> {
           try {
             removeMetadataByQuery(
-                metalake, createEntityNameQueryCondition(nameIdentifier, cascade));
+                metalake, createEntityNameQueryCondition(nameIdentifier, cascade, entityType));
           } catch (Exception e) {
             LOG.error("Failed to remove metadata for {}: {}", nameIdentifier, e.getMessage(), e);
           }

@@ -10,11 +10,12 @@ import com.datastrato.gravitino.search.antlr.SearchExpressionParser.LiteralConte
 import com.google.common.collect.Lists;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
-import org.antlr.v4.runtime.tree.ParseTree;
-import org.antlr.v4.runtime.tree.TerminalNode;
+import org.antlr.v4.runtime.RecognitionException;
+import org.antlr.v4.runtime.Recognizer;
 
 public class ConditionBuilderVisitor extends SearchExpressionBaseVisitor<Condition> {
 
@@ -56,7 +57,7 @@ public class ConditionBuilderVisitor extends SearchExpressionBaseVisitor<Conditi
 
   @Override
   public Condition visitTerm(SearchExpressionParser.TermContext ctx) {
-    if (ctx.MINUS() != null) {
+    if (ctx.factor() != null) {
       Condition innerCondition = visit(ctx.factor());
       return new Condition.NotCondition(innerCondition);
     }
@@ -71,42 +72,80 @@ public class ConditionBuilderVisitor extends SearchExpressionBaseVisitor<Conditi
   @Override
   public Condition visitFactor(SearchExpressionParser.FactorContext ctx) {
     String field = ctx.ID().getText();
-    List<TerminalNode> valueNodes = ctx.value().ID();
+    if (field.equals("name")) {
+      field = "entity_name";
+    }
+    List<SearchExpressionParser.AtomContext> valueNodes = ctx.value().atom();
 
     if (valueNodes.size() == 1) {
-      String value = valueNodes.get(0).getText();
+      String value = atomValue(valueNodes.get(0));
       return new Condition.TermCondition(field, value);
     } else {
       List<String> values =
-          valueNodes.stream().map(TerminalNode::getText).collect(Collectors.toList());
+          valueNodes.stream().map(ConditionBuilderVisitor::atomValue).collect(Collectors.toList());
       return new Condition.InCondition(field, values);
     }
   }
 
   @Override
   public Condition visitLiteral(LiteralContext ctx) {
-    if (ctx.ID() != null) {
-      keywords.add(ctx.ID().getText());
-      return new Condition.KeywordCondition(ctx.ID().getText());
+    if (ctx.atom() != null) {
+      String value = atomValue(ctx.atom());
+      keywords.add(value);
+      return new Condition.KeywordCondition(value, ctx.atom().STRING() != null);
     }
 
     return visit(ctx.factor());
   }
 
   public static QueryCondition buildQueryCondition(String expression) {
-    try {
-      CharStream charStream = CharStreams.fromString(expression);
-      SearchExpressionLexer lexer = new SearchExpressionLexer(charStream);
-      CommonTokenStream tokens = new CommonTokenStream(lexer);
-      SearchExpressionParser parser = new SearchExpressionParser(tokens);
-
-      ParseTree tree = parser.query();
-      ConditionBuilderVisitor visitor = new ConditionBuilderVisitor();
-      Condition c = visitor.visit(tree.getChild(0));
-      return new QueryCondition(c, visitor.keywords);
-    } catch (Exception e) {
-      throw new QueryParseException("Parse fail: " + expression, e);
+    if (expression == null || expression.isBlank()) {
+      return new QueryCondition(null, List.of());
     }
+    BaseErrorListener errors =
+        new BaseErrorListener() {
+          @Override
+          public void syntaxError(
+              Recognizer<?, ?> recognizer,
+              Object offendingSymbol,
+              int line,
+              int charPositionInLine,
+              String msg,
+              RecognitionException e) {
+            throw new QueryParseException(
+                "Invalid search query at line " + line + ", column " + (charPositionInLine + 1), e);
+          }
+        };
+    CharStream charStream = CharStreams.fromString(expression);
+    SearchExpressionLexer lexer = new SearchExpressionLexer(charStream);
+    lexer.removeErrorListeners();
+    lexer.addErrorListener(errors);
+    SearchExpressionParser parser = new SearchExpressionParser(new CommonTokenStream(lexer));
+    parser.removeErrorListeners();
+    parser.addErrorListener(errors);
+    SearchExpressionParser.QueryContext tree = parser.query();
+    ConditionBuilderVisitor visitor = new ConditionBuilderVisitor();
+    Condition condition = tree.expression() == null ? null : visitor.visit(tree.expression());
+    return new QueryCondition(condition, visitor.keywords);
+  }
+
+  private static String atomValue(SearchExpressionParser.AtomContext atom) {
+    String text = atom.getText();
+    if (atom.STRING() == null) {
+      return text;
+    }
+    StringBuilder result = new StringBuilder();
+    for (int i = 1; i < text.length() - 1; i++) {
+      char character = text.charAt(i);
+      if (character == '\\') {
+        character = text.charAt(++i);
+      }
+      result.append(character);
+    }
+    if (result.toString().isBlank()) {
+      throw new QueryParseException("Quoted search terms must not be blank", null);
+    }
+    return result.toString();
   }
 
   public static class QueryCondition {
@@ -137,7 +176,7 @@ public class ConditionBuilderVisitor extends SearchExpressionBaseVisitor<Conditi
     }
   }
 
-  static class QueryParseException extends RuntimeException {
+  static class QueryParseException extends IllegalArgumentException {
     public QueryParseException(String message, Throwable cause) {
       super(message, cause);
     }

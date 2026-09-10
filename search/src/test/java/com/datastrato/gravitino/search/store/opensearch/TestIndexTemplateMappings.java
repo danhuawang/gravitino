@@ -26,7 +26,7 @@ class TestIndexTemplateMappings {
   private static final Set<String> V1_ENTITY_TYPES =
       Set.of("catalog", "fileset", "model", "schema", "table", "topic");
   private static final Set<String> NEW_ENTITY_TYPES =
-      Set.of("user", "group", "role", "function", "view", "tag", "policy");
+      Set.of("job_template", "user", "group", "role", "function", "view", "tag", "policy");
 
   @Test
   void testVersionManifests() throws IOException {
@@ -36,6 +36,7 @@ class TestIndexTemplateMappings {
     Assertions.assertEquals(V1_ENTITY_TYPES, entityTypes(v1Templates));
     Assertions.assertEquals(
         Set.of(
+            "job_template",
             "catalog",
             "fileset",
             "model",
@@ -91,6 +92,15 @@ class TestIndexTemplateMappings {
   @Test
   void testNewMappingsContainOnlySearchProjectionFields() throws IOException {
     Map<String, Set<String>> expectedFields = new LinkedHashMap<>();
+    expectedFields.put(
+        "job_template",
+        commonFields(
+            "entity_id",
+            "entity_type",
+            "metalake",
+            "entity_name",
+            "entity_comment",
+            "full_qualified_name"));
     expectedFields.put("user", commonFields("entity_id", "entity_type", "metalake", "entity_name"));
     expectedFields.put(
         "group", commonFields("entity_id", "entity_type", "metalake", "entity_name"));

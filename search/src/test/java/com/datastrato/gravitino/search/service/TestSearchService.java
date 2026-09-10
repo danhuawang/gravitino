@@ -38,12 +38,15 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.catalog.EntityCombinedSchema;
 import org.apache.gravitino.catalog.EntityCombinedTable;
 import org.apache.gravitino.connector.CatalogInfo;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.job.JobOperationDispatcher;
+import org.apache.gravitino.meta.JobTemplateEntity;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Assertions;
@@ -114,6 +117,115 @@ public class TestSearchService {
     gravitinoService.addPoliciesToObject(
         NameIdentifier.of("test_metalake", "test_catalog1", "test_schema1"),
         ImmutableSet.of("test_policy"));
+  }
+
+  @Test
+  void testMetalakeSyncIncludesTemplatesAndTemplateDeletionKeepsSameNameTag() throws Exception {
+    Object previous =
+        FieldUtils.readField(GravitinoEnv.getInstance(), "internalJobOperationDispatcher", true);
+    JobOperationDispatcher dispatcher = Mockito.mock(JobOperationDispatcher.class);
+    JobTemplateEntity template = Mockito.mock(JobTemplateEntity.class);
+    Mockito.when(template.id()).thenReturn(9002L);
+    Mockito.when(template.name()).thenReturn("test_tag");
+    Mockito.when(template.comment()).thenReturn("sparkpi");
+    Mockito.when(dispatcher.listJobTemplates("test_metalake")).thenReturn(List.of(template));
+    Mockito.when(dispatcher.getJobTemplate("test_metalake", "test_tag")).thenReturn(template);
+    inMemorySearchStorage.clear();
+    try {
+      FieldUtils.writeField(
+          GravitinoEnv.getInstance(), "internalJobOperationDispatcher", dispatcher, true);
+      searchService
+          .synchronizeMetadata(NameIdentifier.of("test_metalake"), METALAKE, true)
+          .waitToFinished();
+      List<SearchEntityPO> entities = inMemorySearchStorage.getSearchEntities();
+      Assertions.assertTrue(
+          entities.stream()
+              .anyMatch(entity -> entity.getEntityType() == Entity.EntityType.JOB_TEMPLATE));
+      // Job executions are deliberately not indexed.
+      Assertions.assertFalse(
+          entities.stream().anyMatch(entity -> entity.getEntityType() == Entity.EntityType.JOB));
+      searchService
+          .synchronizeMetadata(
+              NameIdentifierUtil.ofJobTemplate("test_metalake", "test_tag"),
+              Entity.EntityType.JOB_TEMPLATE,
+              true)
+          .waitToFinished();
+      Assertions.assertTrue(
+          inMemorySearchStorage.getSearchEntities().stream()
+              .anyMatch(
+                  entity ->
+                      entity.getEntityType() == TAG && entity.getEntityName().equals("test_tag")));
+      searchService
+          .removeMetadata(
+              NameIdentifierUtil.ofJobTemplate("test_metalake", "test_tag"),
+              Entity.EntityType.JOB_TEMPLATE,
+              false)
+          .get();
+      entities = inMemorySearchStorage.getSearchEntities();
+      Assertions.assertFalse(
+          entities.stream()
+              .anyMatch(entity -> entity.getEntityType() == Entity.EntityType.JOB_TEMPLATE));
+      Assertions.assertTrue(
+          entities.stream()
+              .anyMatch(
+                  entity ->
+                      entity.getEntityType() == TAG && entity.getEntityName().equals("test_tag")));
+    } finally {
+      FieldUtils.writeField(
+          GravitinoEnv.getInstance(), "internalJobOperationDispatcher", previous, true);
+      inMemorySearchStorage.clear();
+    }
+  }
+
+  @Test
+  void testTagDeletionKeepsSameNameJobTemplate() throws Exception {
+    Object previous =
+        FieldUtils.readField(GravitinoEnv.getInstance(), "internalJobOperationDispatcher", true);
+    JobOperationDispatcher dispatcher = Mockito.mock(JobOperationDispatcher.class);
+    JobTemplateEntity template = Mockito.mock(JobTemplateEntity.class);
+    Mockito.when(template.id()).thenReturn(9002L);
+    Mockito.when(template.name()).thenReturn("test_tag");
+    Mockito.when(template.comment()).thenReturn("sparkpi");
+    Mockito.when(dispatcher.listJobs("test_metalake", Optional.empty())).thenReturn(List.of());
+    Mockito.when(dispatcher.listJobTemplates("test_metalake")).thenReturn(List.of(template));
+    Mockito.when(dispatcher.getJobTemplate("test_metalake", "test_tag")).thenReturn(template);
+    inMemorySearchStorage.clear();
+    try {
+      FieldUtils.writeField(
+          GravitinoEnv.getInstance(), "internalJobOperationDispatcher", dispatcher, true);
+      searchService
+          .synchronizeMetadata(NameIdentifier.of("test_metalake"), METALAKE, true)
+          .waitToFinished();
+      Assertions.assertTrue(
+          inMemorySearchStorage.getSearchEntities().stream()
+              .anyMatch(
+                  entity ->
+                      entity.getEntityType() == TAG && entity.getEntityName().equals("test_tag")));
+
+      // A tag and a job template may share a name. Deleting the tag must not take the job
+      // template with it.
+      searchService
+          .removeMetadata(NameIdentifierUtil.ofTag("test_metalake", "test_tag"), TAG, false)
+          .get();
+
+      List<SearchEntityPO> entities = inMemorySearchStorage.getSearchEntities();
+      Assertions.assertFalse(
+          entities.stream()
+              .anyMatch(
+                  entity ->
+                      entity.getEntityType() == TAG && entity.getEntityName().equals("test_tag")));
+      Assertions.assertTrue(
+          entities.stream()
+              .anyMatch(
+                  entity ->
+                      entity.getEntityType() == Entity.EntityType.JOB_TEMPLATE
+                          && entity.getEntityName().equals("test_tag")),
+          "Deleting the tag must leave the job template of the same name in the index");
+    } finally {
+      FieldUtils.writeField(
+          GravitinoEnv.getInstance(), "internalJobOperationDispatcher", previous, true);
+      inMemorySearchStorage.clear();
+    }
   }
 
   @Test
@@ -234,7 +346,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false, CATALOG),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -246,7 +358,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false, SCHEMA),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -258,7 +370,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false, TABLE),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -288,7 +400,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(nameIdentifier, true),
+            createEntityNameQueryCondition(nameIdentifier, true, CATALOG),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -302,7 +414,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(nameIdentifier, true),
+            createEntityNameQueryCondition(nameIdentifier, true, SCHEMA),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -327,7 +439,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false, TABLE),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -340,7 +452,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(nameIdentifier, false),
+            createEntityNameQueryCondition(nameIdentifier, false, SCHEMA),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -350,7 +462,7 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(nameIdentifier, true),
+            createEntityNameQueryCondition(nameIdentifier, true, SCHEMA),
             emptyList(),
             0,
             Integer.MAX_VALUE);
@@ -360,7 +472,8 @@ public class TestSearchService {
         searchService.query(
             metalake,
             null,
-            createEntityNameQueryCondition(NameIdentifier.of(metalake, "test_catalog1"), true),
+            createEntityNameQueryCondition(
+                NameIdentifier.of(metalake, "test_catalog1"), true, CATALOG),
             emptyList(),
             0,
             Integer.MAX_VALUE);

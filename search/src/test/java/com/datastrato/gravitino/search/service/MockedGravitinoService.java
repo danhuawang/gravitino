@@ -49,6 +49,7 @@ import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.exceptions.NoSuchViewException;
 import org.apache.gravitino.function.FunctionDefinition;
 import org.apache.gravitino.function.FunctionType;
+import org.apache.gravitino.job.JobOperationDispatcher;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.ColumnEntity;
@@ -97,6 +98,11 @@ public class MockedGravitinoService {
   public SearchService createMokedSearchService(SearchService service)
       throws IllegalAccessException {
     GravitinoEnv gravitinoEnv = GravitinoEnv.getInstance();
+    FieldUtils.writeField(
+        gravitinoEnv,
+        "internalJobOperationDispatcher",
+        Mockito.mock(JobOperationDispatcher.class),
+        true);
     FieldUtils.writeField(gravitinoEnv, "metalakeDispatcher", mockMetalakeDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "internalCatalogDispatcher", mockCatalogDispatcher(), true);
     FieldUtils.writeField(gravitinoEnv, "internalSchemaDispatcher", mockSchemaDispatcher(), true);

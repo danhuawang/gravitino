@@ -17,6 +17,7 @@ import com.datastrato.gravitino.search.po.SearchTableEntityPO;
 import com.datastrato.gravitino.search.po.SearchTableEntityPO.SearchColumn;
 import com.datastrato.gravitino.search.po.SearchViewEntityPO;
 import com.datastrato.gravitino.search.utils.SearchEntityCodec;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.IOException;
@@ -159,6 +160,10 @@ public class InMemorySearchStorage implements SearchStorage {
       return true;
     }
 
+    if (keyword.indexOf('-') >= 0) {
+      return matchesLiteral(entity, keyword);
+    }
+
     if (contains(entity.getEntityName(), keyword)
         || contains(entity.getEntityComment(), keyword)
         || contains(entity.getFullQualifiedName(), keyword)
@@ -202,14 +207,62 @@ public class InMemorySearchStorage implements SearchStorage {
     }
   }
 
+  private static boolean matchesLiteral(SearchEntityPO entity, String keyword) {
+    JsonNode document = SearchEntityCodec.INSTANCE.objectMapper().valueToTree(entity);
+    for (String field : List.of("entity_name", "policy_names")) {
+      if (literalValueMatches(document.path(field), keyword)) {
+        return true;
+      }
+    }
+    for (String path :
+        List.of(
+            "tags.tag_name",
+            "columns.column_name",
+            "model_versions.aliases",
+            "entity_properties.key",
+            "entity_properties.value")) {
+      String[] parts = path.split("\\.");
+      if (entity.getEntityType() == Entity.EntityType.CATALOG
+          && parts[0].equals("entity_properties")) {
+        continue;
+      }
+      for (JsonNode child : document.path(parts[0])) {
+        if (literalValueMatches(child.path(parts[1]), keyword)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private static boolean literalValueMatches(JsonNode value, String keyword) {
+    if (value.isTextual()) {
+      String text = value.textValue();
+      // OpenSearch evaluates keyword ignore_above using UTF-16 length, not code point count.
+      return text.length() <= 256
+          && text.toLowerCase(Locale.ROOT).contains(keyword.toLowerCase(Locale.ROOT));
+    }
+    if (value.isArray()) {
+      for (JsonNode child : value) {
+        if (literalValueMatches(child, keyword)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   Predicate<SearchEntityPO> buildFilter(Condition condition) {
     if (condition == null) {
       return entity -> true;
     }
 
     if (condition instanceof Condition.KeywordCondition) {
-      String keyword = ((Condition.KeywordCondition) condition).getKeyword();
-      return entity -> matchesKeyword(entity, keyword);
+      Condition.KeywordCondition term = (Condition.KeywordCondition) condition;
+      return entity ->
+          term.isLiteral()
+              ? matchesLiteral(entity, term.getKeyword())
+              : matchesKeyword(entity, term.getKeyword());
     }
 
     if (condition instanceof Condition.NotCondition) {

@@ -53,6 +53,7 @@ public class SearchEntityCodec {
           .put(EntityType.GROUP, SearchEntityPO.class)
           .put(EntityType.FUNCTION, SearchEntityPO.class)
           .put(EntityType.ROLE, SearchEntityPO.class)
+          .put(EntityType.JOB_TEMPLATE, SearchEntityPO.class)
           .build();
 
   public static final Map<EntityType, Class<? extends SearchEntityDTO>> ENTITY_TYPE_TO_CLASS_DTO =
@@ -70,6 +71,7 @@ public class SearchEntityCodec {
           .put(EntityType.GROUP, SearchEntityDTO.class)
           .put(EntityType.FUNCTION, SearchEntityDTO.class)
           .put(EntityType.ROLE, SearchEntityDTO.class)
+          .put(EntityType.JOB_TEMPLATE, SearchEntityDTO.class)
           .build();
 
   private static final Logger LOG = LoggerFactory.getLogger(SearchEntityCodec.class);

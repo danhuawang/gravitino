@@ -124,6 +124,7 @@ public class OpenSearchStorage implements SearchStorage {
 
   protected static final Map<EntityType, String> ENTITY_TYPE_TO_INDEX_SUFFIX =
       ImmutableMap.<EntityType, String>builder()
+          .put(EntityType.JOB_TEMPLATE, "job_template_entity_index")
           .put(EntityType.CATALOG, CATALOG_ENTITY_SUFFIX)
           .put(EntityType.SCHEMA, SCHEMA_ENTITY_INDEX_SUFFIX)
           .put(EntityType.FILESET, FILESET_ENTITY_INDEX_SUFFIX)
@@ -860,7 +861,10 @@ public class OpenSearchStorage implements SearchStorage {
 
   private static Query buildSearchCondition(Condition condition, EntityType entityType) {
     if (condition instanceof Condition.KeywordCondition) {
-      return buildKeywordPart(((Condition.KeywordCondition) condition).getKeyword(), entityType);
+      Condition.KeywordCondition term = (Condition.KeywordCondition) condition;
+      return term.isLiteral()
+          ? buildLiteralQuery(term.getKeyword(), entityType)
+          : buildKeywordPart(term.getKeyword(), entityType);
     }
     if (condition instanceof Condition.AndCondition) {
       BoolQuery.Builder query = new BoolQuery.Builder();
@@ -895,6 +899,10 @@ public class OpenSearchStorage implements SearchStorage {
     List<Query> allQueries = new ArrayList<>();
 
     for (String word : queryWords) {
+      if (word.indexOf('-') >= 0) {
+        allQueries.add(buildLiteralQuery(word, entityType));
+        continue;
+      }
       allQueries.addAll(buildMultiMatchQueries(word));
       allQueries.add(buildTagNestedQuery(word));
 
@@ -913,12 +921,63 @@ public class OpenSearchStorage implements SearchStorage {
       }
 
       // Query word match content in properties.
-      if (entityType != EntityType.CATALOG) {
+      if (entityType != EntityType.CATALOG && entityType != EntityType.JOB_TEMPLATE) {
         allQueries.add(buildPropertiesNestedQuery(word));
       }
     }
 
     return Query.of(q -> q.bool(b -> b.should(allQueries).minimumShouldMatch("1")));
+  }
+
+  private static Query buildLiteralQuery(String term, EntityType entityType) {
+    // Escape user input so wildcard operators are always treated as literal characters.
+    StringBuilder escaped = new StringBuilder("*");
+    for (int i = 0; i < term.length(); i++) {
+      char character = term.charAt(i);
+      if (character == '*' || character == '?' || character == '\\') {
+        escaped.append('\\');
+      }
+      escaped.append(character);
+    }
+    String pattern = escaped.append("*").toString();
+    List<Query> alternatives = new ArrayList<>();
+    alternatives.add(literalField("entity_name", pattern, 4.0f));
+    alternatives.add(literalField("policy_names", pattern, 2.0f));
+    alternatives.add(literalNested("tags", List.of("tag_name"), pattern));
+    if (entityType == EntityType.TABLE || entityType == EntityType.VIEW) {
+      alternatives.add(literalNested("columns", List.of("column_name"), pattern));
+    }
+    if (entityType == EntityType.MODEL) {
+      alternatives.add(literalNested("model_versions", List.of("aliases"), pattern));
+    }
+    if (entityType != EntityType.CATALOG && entityType != EntityType.JOB_TEMPLATE) {
+      alternatives.add(literalNested("entity_properties", List.of("key", "value"), pattern));
+    }
+    return Query.of(q -> q.bool(b -> b.should(alternatives).minimumShouldMatch("1")));
+  }
+
+  private static Query literalField(String field, String pattern, float boost) {
+    return Query.of(
+        q ->
+            q.wildcard(
+                w ->
+                    w.field(field + ".keyword").value(pattern).caseInsensitive(true).boost(boost)));
+  }
+
+  private static Query literalNested(String path, List<String> fields, String pattern) {
+    List<Query> alternatives =
+        fields.stream()
+            .map(field -> literalField(path + "." + field, pattern, 1.0f))
+            .collect(Collectors.toList());
+    return Query.of(
+        q ->
+            q.nested(
+                n ->
+                    n.path(path)
+                        .ignoreUnmapped(true)
+                        .query(
+                            child ->
+                                child.bool(b -> b.should(alternatives).minimumShouldMatch("1")))));
   }
 
   private static List<Query> buildMultiMatchQueries(String word) {
@@ -1073,7 +1132,9 @@ public class OpenSearchStorage implements SearchStorage {
                 "catalog_name",
                 "catalog_name.keyword",
                 "policy_name",
-                "policy_names.keyword"));
+                "policy_names.keyword",
+                "entity_name",
+                "entity_name.keyword"));
     result.add(query);
     return result;
   }

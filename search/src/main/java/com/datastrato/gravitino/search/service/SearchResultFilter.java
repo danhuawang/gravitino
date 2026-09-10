@@ -185,6 +185,8 @@ final class SearchResultFilter {
   @Nullable
   private static String expression(EntityType type) {
     switch (type) {
+      case JOB_TEMPLATE:
+        return AuthorizationExpressionConstants.LOAD_JOB_TEMPLATE_AUTHORIZATION_EXPRESSION;
       case CATALOG:
         return AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION;
       case SCHEMA:

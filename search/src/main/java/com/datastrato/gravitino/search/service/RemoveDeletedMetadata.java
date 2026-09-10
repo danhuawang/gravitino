@@ -34,7 +34,8 @@ class RemoveDeletedMetadata implements SyncTaskFinishedHandler {
           metalake,
           entityType == Entity.EntityType.METALAKE
               ? createUpdateTimeCondition(task.createTime)
-              : createRemovedEntityCondition(nameIdentifier, task.cascade, task.createTime));
+              : createRemovedEntityCondition(
+                  nameIdentifier, task.cascade, task.createTime, entityType));
     } catch (Exception e) {
       LOG.error(
           "Error removing deleted data from storage for task {}: {}",

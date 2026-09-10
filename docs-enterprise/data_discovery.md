@@ -169,6 +169,36 @@ Like the View mapping, the Function mapping does not index the `in_use`, `owner`
 
 Gravitino provides a RESTful API for metadata search. The API supports fuzzy search across multiple fields including name, tags, and description.
 
+### Hyphens and literal search
+
+Unquoted terms may contain hyphens, including at the start: `builtin-sparkpi`, `c-`, `-d`,
+and `c-d` are search terms. A leading `-` followed by a field filter remains negation:
+`-entity_name:ac-db` excludes that exact name. `name` is an alias for `entity_name`.
+
+Terms containing a hyphen use case-insensitive literal substring matching. For example, `c-d`
+matches `ac-db` but not `ac_db`, `ac db`, or a document containing only `c` or `d`.
+Double quotes also request literal matching: `"ac db"` preserves the space and `"-name:ac-db"`
+searches the text instead of applying a filter. Inside quotes, use `\"` for a quote and
+`\\` for a backslash. `*` and `?` in quoted terms are literal characters, not wildcards.
+Field filters use exact values; quote values containing spaces or reserved syntax.
+
+Boolean operators and grouping apply to these terms as usual. `c- -name:ac-zzdb` searches
+for the literal `c-` while excluding the exact name `ac-zzdb`. Empty or whitespace-only
+queries retain the existing match-all behavior. Malformed syntax, including an isolated `-`,
+incomplete filters, unclosed quotes or parentheses, and unsupported unquoted characters,
+returns HTTP 400. Invalid input is not silently repaired or partially executed.
+
+Literal search reuses existing OpenSearch `.keyword` subfields; no template upgrade or index
+rebuild is required. It searches entity names, tag names, column names, model aliases, policy
+names, and non-catalog property keys and values where those subfields exist. Comments and
+content without a `.keyword` subfield are not included in literal search. Existing templates
+set `ignore_above: 256`: a field value longer than 256 characters cannot match a literal
+search, even when the search term is short.
+
+Ordinary terms without hyphens retain the existing full-text behavior. Literal substring
+queries use leading wildcards and require `search.allow_expensive_queries=true` (the default).
+Very short or common fragments can be costly; field filters help narrow such queries.
+
 **Endpoint**
 
 ```http
@@ -215,7 +245,7 @@ curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%2
 curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20catalog_name:test_catalog%20entity_type:TABLE%20tag_name:demo_tag&pageNumber=0&pageSize=10" | jq
 ```
 
-For more advanced search capabilities, you can refer to the syntax of value in filter query parameters location at ${GRAVITINO_SEARCH_MODULE}/src/main/antlr/SearchExpression.g4, which supports logical operators and wildcards.
+For more advanced search capabilities, you can refer to the syntax of value in filter query parameters location at ${GRAVITINO_SEARCH_MODULE}/src/main/antlr/SearchExpression.g4, which supports logical operators, field filters, and quoted literals.
 
 
 **Sample Response**
@@ -429,3 +459,19 @@ health status index ... docs.count ...
 yellow open test_model_entity_index_1754536385698 ... 3 ...
 ...
 ```
+
+### Job template search
+
+Job templates are searchable by name and comment. Hyphenated names such as
+`builtin-sparkpi` are matched as a whole, so searching `builtin-sparkpi` does not
+also return every other template whose name starts with `builtin`. Only the name and
+the comment are indexed, not scripts, arguments, runtime configuration or credentials.
+Search remains scoped to the requested metalake and uses the same load permission as
+the job template API.
+
+Job executions are not searchable. They are transient records identified by a generated
+ID, and carry nothing a caller would search for that the template does not already hold.
+
+Template registration, alteration (including rename) and deletion update the search index.
+Install the updated v2 OpenSearch templates before upgrading, and synchronize or rebuild
+existing metalakes to index existing templates.

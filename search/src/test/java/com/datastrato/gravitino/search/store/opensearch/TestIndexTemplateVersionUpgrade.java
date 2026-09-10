@@ -70,7 +70,8 @@ class TestIndexTemplateVersionUpgrade {
           "function_entity_index",
           "view_entity_index",
           "tag_entity_index",
-          "policy_entity_index");
+          "policy_entity_index",
+          "job_template_entity_index");
 
   private OpenSearchContainer container;
 

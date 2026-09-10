@@ -19,6 +19,55 @@ import org.junit.jupiter.api.Test;
 public class TestQueryParser {
 
   @Test
+  void testHyphensAndQuotedTerms() {
+    for (String query : List.of("builtin-sparkpi", "ac-db", "c-", "-d", "c-d")) {
+      Condition.KeywordCondition term =
+          Assertions.assertInstanceOf(
+              Condition.KeywordCondition.class, buildQueryCondition(query).getCondition());
+      Assertions.assertEquals(query, term.getKeyword());
+      Assertions.assertTrue(term.isLiteral());
+    }
+    assertExpression("ac-db -name:other-db", "AND(kw(ac-db),NOT(entity_name:other-db))");
+    assertExpression("name:-prod", "entity_name:-prod");
+    Assertions.assertEquals(
+        List.of("ac-db", "other-db"),
+        ((InCondition) buildQueryCondition("name:ac-db,other-db").getCondition()).getValues());
+    Condition.KeywordCondition quoted =
+        Assertions.assertInstanceOf(
+            Condition.KeywordCondition.class,
+            buildQueryCondition("\"-name:ac db\"").getCondition());
+    Assertions.assertEquals("-name:ac db", quoted.getKeyword());
+    Assertions.assertTrue(quoted.isLiteral());
+    Assertions.assertNull(buildQueryCondition(null).getCondition());
+    Assertions.assertNull(buildQueryCondition(" \t").getCondition());
+  }
+
+  @Test
+  void testMalformedInputNeverRecoversIntoPartialQuery() {
+    for (String query :
+        List.of(
+            "-",
+            "--d",
+            "name:",
+            "name:a,",
+            "a AND",
+            "OR a",
+            "(a",
+            "a)",
+            "a @ b",
+            "a / b",
+            "\"unterminated",
+            "\"\"",
+            "\"  \"",
+            "\"a\\q\"",
+            "()",
+            "a OR OR b")) {
+      Assertions.assertThrows(
+          IllegalArgumentException.class, () -> buildQueryCondition(query), query);
+    }
+  }
+
+  @Test
   void testComplicatedQuery() {
     assertExpression(
         "field1:value1 lucy lily (field2:value2 OR field3:value3)",

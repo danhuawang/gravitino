@@ -57,6 +57,7 @@ class TestSearchResultFilter {
     List<SearchDataSource.Result> batches = new ArrayList<>();
     for (EntityType type :
         List.of(
+            EntityType.JOB_TEMPLATE,
             EntityType.CATALOG,
             EntityType.SCHEMA,
             EntityType.TABLE,
@@ -75,7 +76,7 @@ class TestSearchResultFilter {
               List.of(entity(type, "visible"), entity(type, "hidden")), type));
     }
     List<SearchEntitiesDTO> result = filter(source(batches), 0, 10, authorizer);
-    assertEquals(13, result.size());
+    assertEquals(14, result.size());
     for (SearchEntitiesDTO group : result) {
       assertEquals(1, group.getTotalSize());
       assertEquals("visible", group.getEntities().get(0).getEntityName());
@@ -89,7 +90,7 @@ class TestSearchResultFilter {
     "FILESET, WRITE_FILESET", "MODEL, USE_MODEL", "TOPIC, CONSUME_TOPIC",
     "TOPIC, PRODUCE_TOPIC", "FUNCTION, EXECUTE_FUNCTION", "FUNCTION, MODIFY_FUNCTION",
     "TAG, APPLY_TAG", "POLICY, APPLY_POLICY", "ROLE, MANAGE_GRANTS",
-    "USER, MANAGE_USERS", "GROUP, MANAGE_GROUPS"
+    "USER, MANAGE_USERS", "GROUP, MANAGE_GROUPS", "JOB_TEMPLATE, USE_JOB_TEMPLATE"
   })
   void testSpecificPrivilegeWithoutOwnership(EntityType type, Privilege.Name privilege)
       throws Exception {
@@ -498,6 +499,7 @@ class TestSearchResultFilter {
   private static SearchEntityDTO entity(EntityType type, String name) {
     String fullName;
     switch (type) {
+      case JOB_TEMPLATE:
       case CATALOG:
       case USER:
       case GROUP:

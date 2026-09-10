@@ -13,6 +13,13 @@ paths:
         Searches metadata in a metalake. The keyword can contain free text and filters such as
         `catalog_name:catalog`, `entity_type:TABLE`, and `tag_name:tag`. Results are grouped by
         entity type, and pagination is applied independently to each group.
+        Terms containing hyphens and double-quoted terms use case-insensitive literal substring
+        matching. For example, `c-d` matches `ac-db` but not `ac_db`. `-name:ac-db` is a negated
+        exact-name filter, while `-d` is a literal term. `name` is an alias for `entity_name`.
+        Invalid query syntax returns 400. Literal search reuses existing keyword subfields without
+        requiring a template upgrade or index rebuild. Fields without a keyword subfield and
+        field values longer than 256 characters are excluded from literal matching. Leading
+        wildcard queries require search.allow_expensive_queries=true.
         When authorization is enabled, the caller must be a member of the requested metalake,
         including service administrators. Results are filtered using the caller's current entity
         permissions before pagination. Each group contains only authorized matches, and `totalSize`
@@ -57,7 +64,7 @@ paths:
             default: 10
       responses:
         "200":
-          description: Returns matching metadata grouped by entity type
+          description: Returns matching metadata grouped by entity type.
           content:
             application/vnd.gravitino.v1+json:
               schema:
@@ -245,6 +252,7 @@ components:
       type: string
       description: The type of a searchable metadata entity
       enum:
+        - job_template
         - catalog
         - schema
         - table
