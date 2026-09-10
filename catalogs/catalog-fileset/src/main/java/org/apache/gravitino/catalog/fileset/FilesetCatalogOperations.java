@@ -116,7 +116,6 @@ import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.metrics.MetricsSystem;
 import org.apache.gravitino.metrics.source.FilesetCatalogMetricsSource;
-import org.apache.gravitino.utils.ClassLoaderResourceCleanerUtils;
 import org.apache.gravitino.utils.ExceptionMessages;
 import org.apache.gravitino.utils.FilesetUtil;
 import org.apache.gravitino.utils.NameIdentifierUtil;
@@ -1031,7 +1030,8 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
     if (metricsSystem != null) {
       metricsSystem.unregister(catalogMetricsSource);
     }
-    ClassLoaderResourceCleanerUtils.closeClassLoaderResource(this.getClass().getClassLoader());
+    // ClassLoader cleanup is owned by ClassLoaderPool on release; do not clean here (pooled
+    // loaders).
   }
 
   private void validateLocationHierarchy(
