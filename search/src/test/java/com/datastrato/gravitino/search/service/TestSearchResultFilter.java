@@ -135,7 +135,7 @@ class TestSearchResultFilter {
     RoleEntity role =
         RoleEntity.builder()
             .withId(1L)
-            .withName("reader.role")
+            .withName("reader_role")
             .withNamespace(NamespaceUtil.ofRole("lake"))
             .withProperties(Map.of())
             .withSecurableObjects(List.of())
@@ -154,12 +154,12 @@ class TestSearchResultFilter {
             call -> {
               MetadataObject object = call.getArgument(2);
               return object.type() == MetadataObject.Type.ROLE
-                  && object.name().equals("reader.role");
+                  && object.name().equals("reader_role");
             });
     List<SearchEntitiesDTO> result = filter(source(batches), 0, 10, authorizer);
     assertEquals(1, result.size());
     assertEquals(1, result.get(0).getTotalSize());
-    assertEquals("reader.role", result.get(0).getEntities().get(0).getEntityName());
+    assertEquals("reader_role", result.get(0).getEntities().get(0).getEntityName());
   }
 
   @Test

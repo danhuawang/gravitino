@@ -107,6 +107,20 @@ public class SqlServerPropertiesConverter extends JdbcPropertiesConverter {
             + "'.");
 
     flinkProperties.put(JdbcPropertiesConstants.FLINK_JDBC_URL, removeDatabaseName(jdbcUrl));
+    // Parent JdbcPropertiesConverter may default Flink 'default-database' from Gravitino
+    // 'jdbc-database'. For SQL Server that is wrong: default-database is a schema (e.g. dbo),
+    // not the JDBC database name. Keep it only when the caller supplied an explicit
+    // flink.bypass.default-database.
+    String explicitDefaultDatabase =
+        gravitinoProperties.get(
+            CatalogPropertiesConverter.FLINK_PROPERTY_PREFIX
+                + JdbcPropertiesConstants.FLINK_JDBC_DEFAULT_DATABASE);
+    if (explicitDefaultDatabase == null) {
+      flinkProperties.remove(JdbcPropertiesConstants.FLINK_JDBC_DEFAULT_DATABASE);
+    } else {
+      flinkProperties.put(
+          JdbcPropertiesConstants.FLINK_JDBC_DEFAULT_DATABASE, explicitDefaultDatabase);
+    }
     Preconditions.checkArgument(
         flinkProperties.containsKey(JdbcPropertiesConstants.FLINK_JDBC_DEFAULT_DATABASE),
         "Cannot create catalog properties: missing '"
