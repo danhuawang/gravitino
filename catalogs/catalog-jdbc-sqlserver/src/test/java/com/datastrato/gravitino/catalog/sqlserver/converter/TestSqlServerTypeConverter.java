@@ -6,8 +6,19 @@ package com.datastrato.gravitino.catalog.sqlserver.converter;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcTypeConverter;
 import org.apache.gravitino.rel.types.Type;
 import org.apache.gravitino.rel.types.Types;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 
 /** Unit tests for SqlServerTypeConverter. */
 public class TestSqlServerTypeConverter {
@@ -101,12 +112,11 @@ public class TestSqlServerTypeConverter {
   }
 
   @Test
-  void testVarcharMaxToExternalType() {
+  void testVarcharMaxToString() {
     JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("varchar");
     bean.setColumnSize(Integer.MAX_VALUE);
     Type result = converter.toGravitino(bean);
-    Assertions.assertInstanceOf(Types.ExternalType.class, result);
-    Assertions.assertEquals("varchar(max)", ((Types.ExternalType) result).catalogString());
+    Assertions.assertEquals(Types.StringType.get(), result);
   }
 
   @Test
@@ -120,6 +130,30 @@ public class TestSqlServerTypeConverter {
   void testNvarcharMaxToGravitino() {
     JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("nvarchar");
     bean.setColumnSize(Integer.MAX_VALUE);
+    Assertions.assertEquals(Types.StringType.get(), converter.toGravitino(bean));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "char,10,char(10)",
+    "varchar,100,varchar(100)",
+    "varchar,2147483647,nvarchar(max)",
+    "nchar,10,char(10)",
+    "nvarchar,100,varchar(100)",
+    "nvarchar,2147483647,nvarchar(max)",
+    "NVARCHAR,4000,varchar(4000)",
+    "NCHAR,4000,char(4000)"
+  })
+  void testCharacterFamilyUsesNativeTypes(String name, int length, String expectedSql) {
+    JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean(name);
+    bean.setColumnSize(length);
+    Assertions.assertEquals(expectedSql, converter.fromGravitino(converter.toGravitino(bean)));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"char", "nchar", "varchar", "nvarchar"})
+  void testMissingCharacterLengthDoesNotInventBoundedLength(String name) {
+    JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean(name);
     Assertions.assertEquals(Types.StringType.get(), converter.toGravitino(bean));
   }
 
@@ -144,14 +178,33 @@ public class TestSqlServerTypeConverter {
 
   // --- ExternalType mapping tests ---
 
-  @Test
-  void testNumericToExternalType() {
-    JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("numeric");
-    bean.setColumnSize(18);
-    bean.setScale(4);
+  @ParameterizedTest
+  @CsvSource({"10,2", "38,0", "18,0", "5,2", "18,4", "38,38"})
+  void testNumericMatchesDecimal(int precision, int scale) {
+    for (String typeName : new String[] {"numeric", "NUMERIC", "decimal"}) {
+      JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean(typeName);
+      bean.setColumnSize(precision);
+      bean.setScale(scale);
+      Type result = converter.toGravitino(bean);
+      Assertions.assertEquals(Types.DecimalType.of(precision, scale), result);
+      Assertions.assertEquals(
+          "decimal(" + precision + "," + scale + ")", converter.fromGravitino(result));
+    }
+  }
+
+  @ParameterizedTest
+  @NullSource
+  @ValueSource(ints = {0, 1, 2, 3, 4, 5, 6, 7})
+  void testDatetimeoffsetUsesFractionalSecondsPrecision(Integer precision) {
+    JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("datetimeoffset");
+    // Display width and scale must not become a two-argument SQL type declaration.
+    bean.setColumnSize(34);
+    bean.setScale(7);
+    bean.setDatetimePrecision(precision);
+    String expected = precision == null ? "datetimeoffset" : "datetimeoffset(" + precision + ")";
     Type result = converter.toGravitino(bean);
-    Assertions.assertInstanceOf(Types.ExternalType.class, result);
-    Assertions.assertEquals("numeric(18,4)", ((Types.ExternalType) result).catalogString());
+    Assertions.assertEquals(Types.ExternalType.of(expected), result);
+    Assertions.assertEquals(expected, converter.fromGravitino(result));
   }
 
   @Test
@@ -169,12 +222,11 @@ public class TestSqlServerTypeConverter {
   }
 
   @Test
-  void testNcharToExternalType() {
+  void testNcharToFixedChar() {
     JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("nchar");
     bean.setColumnSize(10);
     Type result = converter.toGravitino(bean);
-    Assertions.assertInstanceOf(Types.ExternalType.class, result);
-    Assertions.assertEquals("nchar(10)", ((Types.ExternalType) result).catalogString());
+    Assertions.assertEquals(Types.FixedCharType.of(10), result);
   }
 
   @Test
@@ -307,5 +359,41 @@ public class TestSqlServerTypeConverter {
     Assertions.assertThrows(
         IllegalArgumentException.class,
         () -> converter.fromGravitino(Types.ListType.of(Types.IntegerType.get(), false)));
+  }
+
+  @Test
+  void testUnicodeWarningsAreEmittedOncePerTypePerConverter() {
+    LoggerContext context =
+        (LoggerContext) LogManager.getContext(SqlServerTypeConverter.class.getClassLoader(), false);
+    var logger = context.getLogger(SqlServerTypeConverter.class.getName());
+    Appender appender = Mockito.mock(Appender.class);
+    Mockito.when(appender.getName()).thenReturn("unicode-mapping-test");
+    Mockito.when(appender.isStarted()).thenReturn(true);
+    var originalLevel = logger.getLevel();
+    logger.addAppender(appender);
+    logger.setLevel(Level.WARN);
+    try {
+      SqlServerTypeConverter converter = new SqlServerTypeConverter();
+      for (int i = 0; i < 10; i++) {
+        for (String name : new String[] {"nchar", "nvarchar", "char", "varchar"}) {
+          JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean(name);
+          type.setColumnSize(10);
+          converter.toGravitino(type);
+        }
+      }
+      ArgumentCaptor<LogEvent> events = ArgumentCaptor.forClass(LogEvent.class);
+      Mockito.verify(appender, Mockito.times(2)).append(events.capture());
+      Assertions.assertTrue(
+          events.getAllValues().stream()
+              .allMatch(
+                  event ->
+                      event
+                          .getMessage()
+                          .getFormattedMessage()
+                          .contains("source Unicode encoding")));
+    } finally {
+      logger.removeAppender(appender);
+      logger.setLevel(originalLevel);
+    }
   }
 }

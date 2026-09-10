@@ -554,14 +554,20 @@ public abstract class FlinkJdbcSqlServerCatalogIT extends FlinkCommonIT {
         supportDropCascade());
   }
 
+  /** Schema comments are accepted by SQL Server schema creation and ignored by the catalog. */
   @Test
-  public void testSchemaCommentRejected() {
+  public void testSchemaCommentIgnored() {
     doWithCatalog(
         currentCatalog(),
-        catalog ->
-            Assertions.assertThrows(
-                Exception.class,
-                () -> sql("CREATE DATABASE test_schema_comment COMMENT 'comment'")));
+        catalog -> {
+          sql("CREATE DATABASE test_schema_comment COMMENT 'comment'");
+          try {
+            Assertions.assertTrue(catalog.asSchemas().schemaExists("test_schema_comment"));
+            Assertions.assertNull(catalog.asSchemas().loadSchema("test_schema_comment").comment());
+          } finally {
+            sql("DROP DATABASE test_schema_comment");
+          }
+        });
   }
 
   @Test

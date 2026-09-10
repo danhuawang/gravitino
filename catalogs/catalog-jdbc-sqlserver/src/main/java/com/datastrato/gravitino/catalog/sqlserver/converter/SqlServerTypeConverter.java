@@ -3,12 +3,19 @@
  */
 package com.datastrato.gravitino.catalog.sqlserver.converter;
 
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcTypeConverter;
 import org.apache.gravitino.rel.types.Type;
 import org.apache.gravitino.rel.types.Types;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-/** Type converter for SQL Server catalog. Provides strict one-to-one type mappings. */
+/** Type converter for SQL Server catalog. Maps SQL Server types to Gravitino logical types. */
 public class SqlServerTypeConverter extends JdbcTypeConverter {
+
+  private static final Logger LOG = LoggerFactory.getLogger(SqlServerTypeConverter.class);
 
   // SQL Server type name constants
   static final String TINYINT = "tinyint";
@@ -28,9 +35,11 @@ public class SqlServerTypeConverter extends JdbcTypeConverter {
   static final String DATETIME2 = "datetime2";
   static final String TIME_TYPE = "time";
 
+  private final Set<String> warnedUnicodeTypes = ConcurrentHashMap.newKeySet();
+
   @Override
   public Type toGravitino(JdbcTypeBean typeBean) {
-    String typeName = typeBean.getTypeName().toLowerCase();
+    String typeName = typeBean.getTypeName().toLowerCase(Locale.ROOT);
     switch (typeName) {
       case TINYINT:
         return Types.ByteType.get();
@@ -43,6 +52,7 @@ public class SqlServerTypeConverter extends JdbcTypeConverter {
       case BIT:
         return Types.BooleanType.get();
       case DECIMAL:
+      case "numeric":
         return Types.DecimalType.of(typeBean.getColumnSize(), typeBean.getScale());
       case REAL:
         return Types.FloatType.get();
@@ -63,18 +73,20 @@ public class SqlServerTypeConverter extends JdbcTypeConverter {
       case DATETIME:
         return Types.TimestampType.withoutTimeZone(3);
       case CHAR:
-        return Types.FixedCharType.of(typeBean.getColumnSize());
+      case "nchar":
+        warnUnicodeMapping(typeName);
+        return typeBean.getColumnSize() == null
+            ? unknownCharacterLength(typeName)
+            : Types.FixedCharType.of(typeBean.getColumnSize());
       case VARCHAR:
-        // varchar(max) maps to ExternalType
-        if (typeBean.getColumnSize() != null && typeBean.getColumnSize() == Integer.MAX_VALUE) {
-          return Types.ExternalType.of("varchar(max)");
-        }
-        return Types.VarCharType.of(typeBean.getColumnSize());
       case NVARCHAR:
-        if (typeBean.getColumnSize() == null || typeBean.getColumnSize() == Integer.MAX_VALUE) {
+        warnUnicodeMapping(typeName);
+        if (typeBean.getColumnSize() != null && typeBean.getColumnSize() == Integer.MAX_VALUE) {
           return Types.StringType.get();
         }
-        return Types.VarCharType.of(typeBean.getColumnSize());
+        return typeBean.getColumnSize() == null
+            ? unknownCharacterLength(typeName)
+            : Types.VarCharType.of(typeBean.getColumnSize());
       case BINARY:
         return Types.FixedType.of(typeBean.getColumnSize());
       case VARBINARY:
@@ -139,27 +151,28 @@ public class SqlServerTypeConverter extends JdbcTypeConverter {
   }
 
   private String buildExternalTypeName(JdbcTypeBean typeBean) {
-    String typeName = typeBean.getTypeName().toLowerCase();
-    // Types with precision/scale parameters
-    if (hasParameters(typeName)) {
-      if (typeBean.getScale() != null && typeBean.getScale() > 0) {
-        return typeName + "(" + typeBean.getColumnSize() + "," + typeBean.getScale() + ")";
-      }
-      if (typeBean.getColumnSize() != null && typeBean.getColumnSize() > 0) {
-        return typeName + "(" + typeBean.getColumnSize() + ")";
-      }
+    String typeName = typeBean.getTypeName().toLowerCase(Locale.ROOT);
+    if ("datetimeoffset".equals(typeName)) {
+      Integer precision = typeBean.getDatetimePrecision();
+      return precision == null ? typeName : typeName + "(" + precision + ")";
     }
     return typeName;
   }
 
-  private boolean hasParameters(String typeName) {
-    switch (typeName) {
-      case "numeric":
-      case "nchar":
-      case "datetimeoffset":
-        return true;
-      default:
-        return false;
+  private Type unknownCharacterLength(String typeName) {
+    LOG.warn(
+        "Missing length metadata for SQL Server {}; mapping to String without inferring a length",
+        typeName);
+    return Types.StringType.get();
+  }
+
+  private void warnUnicodeMapping(String typeName) {
+    if (("nchar".equals(typeName) || NVARCHAR.equals(typeName))
+        && warnedUnicodeTypes.add(typeName)) {
+      LOG.warn(
+          "Mapping SQL Server {} to a Gravitino character type: source Unicode encoding "
+              + "and collation are not represented and may not be preserved when recreating columns",
+          typeName);
     }
   }
 }

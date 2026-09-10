@@ -13,8 +13,11 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -44,6 +47,7 @@ import org.apache.gravitino.rel.expressions.sorts.SortOrder;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.rel.indexes.Indexes;
+import org.apache.gravitino.rel.types.Decimal;
 import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -240,16 +244,61 @@ public class CatalogSqlServerIT extends BaseIT {
   }
 
   @Test
-  void testSchemaCommentRejection() {
+  void testSchemaCommentIgnored() {
     String testSchemaName = GravitinoITUtils.genRandomName("comment_schema");
-    // SQL Server does not support schema comments; creating with a non-empty comment
-    // should throw UnsupportedOperationException
-    Assertions.assertThrows(
-        UnsupportedOperationException.class,
-        () ->
-            catalog
-                .asSchemas()
-                .createSchema(testSchemaName, "some comment", Collections.emptyMap()));
+    Schema created =
+        catalog.asSchemas().createSchema(testSchemaName, "some comment", Collections.emptyMap());
+    try {
+      Assertions.assertEquals(testSchemaName, created.name());
+      Assertions.assertNull(created.comment());
+      Schema loaded = catalog.asSchemas().loadSchema(testSchemaName);
+      Assertions.assertEquals(testSchemaName, loaded.name());
+      Assertions.assertNull(loaded.comment());
+    } finally {
+      catalog.asSchemas().dropSchema(testSchemaName, false);
+    }
+  }
+
+  @Test
+  void testMixedCaseTableAndNumericColumns() throws SQLException {
+    String tableName = GravitinoITUtils.genRandomName("MixedCaseTbl");
+    try (Connection connection =
+            DriverManager.getConnection(
+                jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE ["
+              + schemaName
+              + "].["
+              + tableName
+              + "] ([Id] INT, [ColName] VARCHAR(50), [DecimalValue] DECIMAL(10,2),"
+              + " [NumericValue] NUMERIC(10,2) DEFAULT ((12.50)), [NumericZeroScale] NUMERIC(38,0))");
+    }
+    TableCatalog tables = catalog.asTableCatalog();
+    NameIdentifier identifier = NameIdentifier.of(schemaName, tableName);
+    try {
+      Assertions.assertTrue(
+          Arrays.stream(tables.listTables(Namespace.of(schemaName)))
+              .anyMatch(name -> name.name().equals(tableName)));
+      Table loaded = tables.loadTable(identifier);
+      Assertions.assertEquals(tableName.toLowerCase(Locale.ROOT), loaded.name());
+      for (String alias :
+          new String[] {tableName.toLowerCase(Locale.ROOT), tableName.toUpperCase(Locale.ROOT)}) {
+        Table same =
+            tables.loadTable(NameIdentifier.of(schemaName.toUpperCase(Locale.ROOT), alias));
+        Assertions.assertEquals(loaded.name(), same.name());
+        Assertions.assertArrayEquals(loaded.columns(), same.columns());
+      }
+      Assertions.assertEquals("Id", loaded.columns()[0].name());
+      Assertions.assertEquals("ColName", loaded.columns()[1].name());
+      Assertions.assertEquals(Types.DecimalType.of(10, 2), loaded.columns()[2].dataType());
+      Assertions.assertEquals(loaded.columns()[2].dataType(), loaded.columns()[3].dataType());
+      Assertions.assertEquals(Types.DecimalType.of(38, 0), loaded.columns()[4].dataType());
+      Assertions.assertEquals(
+          Literals.decimalLiteral(Decimal.of("12.50", 10, 2)), loaded.columns()[3].defaultValue());
+    } finally {
+      tables.dropTable(identifier);
+    }
   }
 
   @Test
@@ -283,7 +332,7 @@ public class CatalogSqlServerIT extends BaseIT {
         new SortOrder[0]);
 
     Table loaded = tableCatalog.loadTable(tableIdent);
-    Assertions.assertEquals(tableName, loaded.name());
+    Assertions.assertEquals(tableName.toLowerCase(Locale.ROOT), loaded.name());
     Assertions.assertEquals(tableComment, loaded.comment());
     Assertions.assertEquals(columns.length, loaded.columns().length);
     for (int i = 0; i < columns.length; i++) {
@@ -650,7 +699,7 @@ public class CatalogSqlServerIT extends BaseIT {
 
   @Test
   void testNvarcharStringTypeMapping() {
-    // Verify nvarchar -> StringType and StringType -> nvarchar one-to-one mapping
+    // String creation emits nvarchar(max), which loads as StringType.
     Column col = Column.of("nvarchar_col", Types.StringType.get(), null, true, false, null);
 
     NameIdentifier tableIdent =
@@ -679,6 +728,59 @@ public class CatalogSqlServerIT extends BaseIT {
       Assertions.assertEquals("nvarchar", rs.getString(1));
     } catch (SQLException e) {
       Assertions.fail("Failed to verify nvarchar type: " + e.getMessage());
+    }
+  }
+
+  @Test
+  void testCharacterFamilyLogicalTypeRoundTrip() throws SQLException {
+    String sourceName = GravitinoITUtils.genRandomName("character_source");
+    String copyName = GravitinoITUtils.genRandomName("character_copy");
+    try (Connection connection =
+            DriverManager.getConnection(
+                jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE ["
+              + schemaName
+              + "].["
+              + sourceName
+              + "] ([c] CHAR(10), [v] VARCHAR(100), [vm] VARCHAR(MAX),"
+              + " [nc] NCHAR(10), [nv] NVARCHAR(100), [nvm] NVARCHAR(MAX))");
+      TableCatalog tables = catalog.asTableCatalog();
+      NameIdentifier source = NameIdentifier.of(schemaName, sourceName);
+      NameIdentifier copy = NameIdentifier.of(schemaName, copyName);
+      try {
+        Table loaded = tables.loadTable(source);
+        tables.createTable(copy, loaded.columns(), null, ImmutableMap.of());
+        for (String name : new String[] {sourceName, copyName}) {
+          try (ResultSet rs =
+              statement.executeQuery(
+                  "SELECT t.name, c.max_length FROM sys.columns c JOIN sys.types t"
+                      + " ON c.user_type_id = t.user_type_id WHERE c.object_id = OBJECT_ID('["
+                      + schemaName
+                      + "].["
+                      + name
+                      + "]') ORDER BY c.column_id")) {
+            String[] types =
+                name.equals(sourceName)
+                    ? new String[] {"char", "varchar", "varchar", "nchar", "nvarchar", "nvarchar"}
+                    : new String[] {"char", "varchar", "nvarchar", "char", "varchar", "nvarchar"};
+            int[] byteLengths =
+                name.equals(sourceName)
+                    ? new int[] {10, 100, -1, 20, 200, -1}
+                    : new int[] {10, 100, -1, 10, 100, -1};
+            for (int i = 0; i < types.length; i++) {
+              Assertions.assertTrue(rs.next());
+              Assertions.assertEquals(types[i], rs.getString(1));
+              Assertions.assertEquals(byteLengths[i], rs.getInt(2));
+            }
+            Assertions.assertFalse(rs.next());
+          }
+        }
+      } finally {
+        tables.dropTable(copy);
+        tables.dropTable(source);
+      }
     }
   }
 
@@ -1053,5 +1155,105 @@ public class CatalogSqlServerIT extends BaseIT {
 
     // Cleanup
     tableCatalog.dropTable(tableIdent);
+  }
+
+  @Test
+  void testNullabilityPreservesNativeCharacterColumnsAndData() throws SQLException {
+    String name = GravitinoITUtils.genRandomName("NativeChars");
+    String qualified = "[" + schemaName + "].[" + name + "]";
+    try (Connection connection =
+            DriverManager.getConnection(
+                jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE "
+              + qualified
+              + " ("
+              + "[Nc] NCHAR(10) COLLATE Chinese_PRC_CI_AS NULL, "
+              + "[Nv] NVARCHAR(100) COLLATE Chinese_PRC_CI_AS NULL, "
+              + "[Vmax] VARCHAR(MAX) COLLATE Latin1_General_100_CI_AS NULL, "
+              + "[Nmax] NVARCHAR(MAX) COLLATE Chinese_PRC_CI_AS NULL)");
+      statement.execute("INSERT INTO " + qualified + " VALUES (N'汉字', N'汉字', 'ascii', N'汉字')");
+      List<String> before = nativeCharacterMetadata(statement, qualified);
+      Assertions.assertEquals(4, before.size());
+      for (boolean nullable : new boolean[] {false, true}) {
+        for (String col : new String[] {"Nc", "Nv", "Vmax", "Nmax"}) {
+          catalog
+              .asTableCatalog()
+              .alterTable(
+                  NameIdentifier.of(schemaName, name),
+                  TableChange.updateColumnNullability(new String[] {col}, nullable));
+        }
+        Assertions.assertEquals(before, nativeCharacterMetadata(statement, qualified));
+        try (ResultSet rs =
+            statement.executeQuery(
+                "SELECT is_nullable FROM sys.columns WHERE object_id = OBJECT_ID('"
+                    + qualified
+                    + "')")) {
+          int count = 0;
+          while (rs.next()) {
+            Assertions.assertEquals(nullable, rs.getBoolean(1));
+            count++;
+          }
+          Assertions.assertEquals(4, count);
+        }
+        try (ResultSet rs = statement.executeQuery("SELECT * FROM " + qualified)) {
+          Assertions.assertTrue(rs.next());
+          Assertions.assertEquals("汉字", rs.getString(1).trim());
+          Assertions.assertEquals("汉字", rs.getString(2));
+          Assertions.assertEquals("ascii", rs.getString(3));
+          Assertions.assertEquals("汉字", rs.getString(4));
+        }
+      }
+    } finally {
+      catalog.asTableCatalog().dropTable(NameIdentifier.of(schemaName, name));
+    }
+  }
+
+  @Test
+  void testCopiedUnicodeDefaultPreservesValue() throws SQLException {
+    String source = GravitinoITUtils.genRandomName("unicode_default_source");
+    String copy = GravitinoITUtils.genRandomName("unicode_default_copy");
+    TableCatalog tables = catalog.asTableCatalog();
+    try (Connection connection =
+            DriverManager.getConnection(
+                jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE ["
+              + schemaName
+              + "].["
+              + source
+              + "] ([value] NVARCHAR(MAX) DEFAULT (N'汉字 café O''Brien'))");
+      Table loaded = tables.loadTable(NameIdentifier.of(schemaName, source));
+      tables.createTable(
+          NameIdentifier.of(schemaName, copy), loaded.columns(), null, Collections.emptyMap());
+      statement.execute("INSERT INTO [" + schemaName + "].[" + copy + "] DEFAULT VALUES");
+      try (ResultSet rs =
+          statement.executeQuery("SELECT [value] FROM [" + schemaName + "].[" + copy + "]")) {
+        Assertions.assertTrue(rs.next());
+        Assertions.assertEquals("汉字 café O'Brien", rs.getString(1));
+      }
+    } finally {
+      tables.dropTable(NameIdentifier.of(schemaName, copy));
+      tables.dropTable(NameIdentifier.of(schemaName, source));
+    }
+  }
+
+  private List<String> nativeCharacterMetadata(Statement statement, String qualified)
+      throws SQLException {
+    List<String> result = new ArrayList<>();
+    try (ResultSet rs =
+        statement.executeQuery(
+            "SELECT t.name, c.max_length, c.collation_name "
+                + "FROM sys.columns c JOIN sys.types t ON c.user_type_id = t.user_type_id "
+                + "WHERE c.object_id = OBJECT_ID('"
+                + qualified
+                + "') ORDER BY c.column_id")) {
+      while (rs.next()) {
+        result.add(rs.getString(1) + ":" + rs.getInt(2) + ":" + rs.getString(3));
+      }
+    }
+    return result;
   }
 }

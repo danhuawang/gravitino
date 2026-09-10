@@ -9,9 +9,13 @@ import static org.apache.gravitino.rel.Column.DEFAULT_VALUE_OF_CURRENT_TIMESTAMP
 import org.apache.gravitino.catalog.jdbc.converter.JdbcTypeConverter;
 import org.apache.gravitino.rel.expressions.Expression;
 import org.apache.gravitino.rel.expressions.literals.Literals;
+import org.apache.gravitino.rel.types.Decimal;
 import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /** Unit tests for SqlServerColumnDefaultValueConverter. */
 public class TestSqlServerColumnDefaultValueConverter {
@@ -53,6 +57,41 @@ public class TestSqlServerColumnDefaultValueConverter {
     type.setColumnSize(50);
     Expression result = converter.toGravitino(type, "('hello')", false, false);
     Assertions.assertEquals(Literals.varcharLiteral(50, "hello"), result);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"10,2,12.50", "38,0,123", "18,0,42", "5,2,0.25"})
+  void testNumericDefaultMatchesDecimal(int precision, int scale, String value) {
+    for (String typeName : new String[] {"decimal", "numeric", "NUMERIC"}) {
+      JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean(typeName);
+      type.setColumnSize(precision);
+      type.setScale(scale);
+      Expression result = converter.toGravitino(type, "((" + value + "))", false, true);
+      Assertions.assertEquals(Literals.decimalLiteral(Decimal.of(value, precision, scale)), result);
+      Assertions.assertEquals(value, converter.fromGravitino(result));
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"nchar", "nvarchar", "varchar"})
+  void testCharacterDefaultMatchesColumnType(String typeName) {
+    JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean(typeName);
+    type.setColumnSize(50);
+    Assertions.assertEquals(
+        Literals.of("O'Brien", new SqlServerTypeConverter().toGravitino(type)),
+        converter.toGravitino(type, "(N'O''Brien')", false, true));
+    Assertions.assertEquals(
+        Literals.of("NULL", new SqlServerTypeConverter().toGravitino(type)),
+        converter.toGravitino(type, "('NULL')", false, true));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"varchar", "nvarchar"})
+  void testMaxCharacterDefaultUsesString(String typeName) {
+    JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean(typeName);
+    type.setColumnSize(Integer.MAX_VALUE);
+    Assertions.assertEquals(
+        Literals.stringLiteral("hello"), converter.toGravitino(type, "('hello')", false, true));
   }
 
   @Test
@@ -162,7 +201,7 @@ public class TestSqlServerColumnDefaultValueConverter {
   @Test
   void testFromGravitinoString() {
     String result = converter.fromGravitino(Literals.stringLiteral("hello"));
-    Assertions.assertEquals("'hello'", result);
+    Assertions.assertEquals("N'hello'", result);
   }
 
   @Test
@@ -185,5 +224,22 @@ public class TestSqlServerColumnDefaultValueConverter {
     type.setColumnSize(10);
     Expression result = converter.toGravitino(type, "('abc')", false, false);
     Assertions.assertEquals(Literals.of("abc", Types.FixedCharType.of(10)), result);
+  }
+
+  @Test
+  void testUnicodeDefaultWriteRoundTrip() {
+    for (String name : new String[] {"nchar", "nvarchar", "varchar"}) {
+      for (int length : new int[] {100, Integer.MAX_VALUE}) {
+        if (name.equals("nchar") && length == Integer.MAX_VALUE) {
+          continue;
+        }
+        JdbcTypeConverter.JdbcTypeBean type = new JdbcTypeConverter.JdbcTypeBean(name);
+        type.setColumnSize(length);
+        Expression literal = converter.toGravitino(type, "(N'汉字 café O''Brien')", false, true);
+        String sql = converter.fromGravitino(literal);
+        Assertions.assertEquals("N'汉字 café O''Brien'", sql);
+        Assertions.assertEquals(literal, converter.toGravitino(type, sql, false, true));
+      }
+    }
   }
 }

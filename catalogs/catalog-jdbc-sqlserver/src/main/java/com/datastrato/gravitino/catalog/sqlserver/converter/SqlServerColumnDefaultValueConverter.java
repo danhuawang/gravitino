@@ -7,6 +7,7 @@ import static org.apache.gravitino.rel.Column.DEFAULT_VALUE_NOT_SET;
 import static org.apache.gravitino.rel.Column.DEFAULT_VALUE_OF_CURRENT_TIMESTAMP;
 
 import com.datastrato.gravitino.catalog.sqlserver.utils.SqlServerUtils;
+import java.util.Locale;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcColumnDefaultValueConverter;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcTypeConverter;
 import org.apache.gravitino.rel.expressions.Expression;
@@ -47,12 +48,12 @@ public class SqlServerColumnDefaultValueConverter extends JdbcColumnDefaultValue
     }
 
     // Check for NULL — SQL Server may store as (NULL) or ('NULL') depending on how
-    // the DEFAULT constraint was created. For string types (char, varchar, nvarchar),
+    // the DEFAULT constraint was created. For string types (char, nchar, varchar, nvarchar),
     // ('NULL') is a valid string literal default, so only treat unquoted NULL as Literals.NULL.
     if (stripped.equalsIgnoreCase(NULL)) {
       return Literals.NULL;
     }
-    String typeName = type.getTypeName().toLowerCase();
+    String typeName = type.getTypeName().toLowerCase(Locale.ROOT);
     if (stripped.equalsIgnoreCase("'NULL'") && !isStringType(typeName)) {
       return Literals.NULL;
     }
@@ -90,14 +91,21 @@ public class SqlServerColumnDefaultValueConverter extends JdbcColumnDefaultValue
       if (literal.dataType() instanceof Type.NumericType) {
         return literal.value().toString();
       }
-      return String.format("'%s'", SqlServerUtils.escapeQuote(literal.value().toString()));
+      String prefix =
+          (literal.dataType() instanceof Types.StringType
+                  || literal.dataType() instanceof Types.VarCharType
+                  || literal.dataType() instanceof Types.FixedCharType)
+              ? "N"
+              : "";
+      return String.format(
+          "%s'%s'", prefix, SqlServerUtils.escapeQuote(literal.value().toString()));
     }
 
     throw new IllegalArgumentException("Not a supported column default value: " + defaultValue);
   }
 
   private Expression parseLiteral(JdbcTypeConverter.JdbcTypeBean type, String value) {
-    String typeName = type.getTypeName().toLowerCase();
+    String typeName = type.getTypeName().toLowerCase(Locale.ROOT);
     switch (typeName) {
       case SqlServerTypeConverter.TINYINT:
         return Literals.byteLiteral(Byte.valueOf(value));
@@ -112,28 +120,30 @@ public class SqlServerColumnDefaultValueConverter extends JdbcColumnDefaultValue
       case SqlServerTypeConverter.FLOAT:
         return Literals.doubleLiteral(Double.valueOf(value));
       case SqlServerTypeConverter.DECIMAL:
+      case "numeric":
         return Literals.decimalLiteral(Decimal.of(value, type.getColumnSize(), type.getScale()));
       case SqlServerTypeConverter.BIT:
         // SQL Server stores bit defaults as 0 or 1
         return Literals.booleanLiteral("1".equals(value));
       case SqlServerTypeConverter.CHAR:
+      case "nchar":
       case JdbcTypeConverter.VARCHAR:
       case SqlServerTypeConverter.NVARCHAR:
         // Strip surrounding single quotes if present
         String strVal = value;
+        if (strVal.startsWith("N'") || strVal.startsWith("n'")) {
+          strVal = strVal.substring(1);
+        }
         if (strVal.startsWith("'") && strVal.endsWith("'")) {
           strVal = strVal.substring(1, strVal.length() - 1);
         }
         // Unescape SQL Server doubled single quotes: '' -> '
         strVal = strVal.replace("''", "'");
-        if (JdbcTypeConverter.VARCHAR.equals(typeName)
-            || (SqlServerTypeConverter.NVARCHAR.equals(typeName)
-                && type.getColumnSize() != null
-                && type.getColumnSize() != Integer.MAX_VALUE)) {
+        if (type.getColumnSize() != null && type.getColumnSize() != Integer.MAX_VALUE) {
+          if (SqlServerTypeConverter.CHAR.equals(typeName) || "nchar".equals(typeName)) {
+            return Literals.of(strVal, Types.FixedCharType.of(type.getColumnSize()));
+          }
           return Literals.varcharLiteral(type.getColumnSize(), strVal);
-        }
-        if (SqlServerTypeConverter.CHAR.equals(typeName)) {
-          return Literals.of(strVal, Types.FixedCharType.of(type.getColumnSize()));
         }
         return Literals.stringLiteral(strVal);
       default:
@@ -143,6 +153,7 @@ public class SqlServerColumnDefaultValueConverter extends JdbcColumnDefaultValue
 
   private static boolean isStringType(String typeName) {
     return SqlServerTypeConverter.CHAR.equals(typeName)
+        || "nchar".equals(typeName)
         || JdbcTypeConverter.VARCHAR.equals(typeName)
         || SqlServerTypeConverter.NVARCHAR.equals(typeName);
   }

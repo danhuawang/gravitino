@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.apache.commons.collections4.MapUtils;
@@ -59,7 +58,9 @@ public class SqlServerSchemaOperations extends JdbcDatabaseOperations {
   public void create(String databaseName, String comment, Map<String, String> properties)
       throws SchemaAlreadyExistsException {
     try {
-      super.create(databaseName, comment, properties);
+      // Schema comments are not persisted by this connector. Accept the optional field
+      // without letting the shared JDBC comment check reject schema creation.
+      super.create(databaseName, null, properties);
     } catch (TableAlreadyExistsException e) {
       // SQL Server returns error code 2714 for both duplicate tables and duplicate schemas.
       // The converter maps 2714 to TableAlreadyExistsException, but in schema context
@@ -149,7 +150,7 @@ public class SqlServerSchemaOperations extends JdbcDatabaseOperations {
       statement.setString(1, schema);
       try (ResultSet resultSet = statement.executeQuery()) {
         while (resultSet.next()) {
-          if (Objects.equals(resultSet.getString(1), schema)) {
+          if (schema.equalsIgnoreCase(resultSet.getString(1))) {
             return true;
           }
         }

@@ -132,19 +132,18 @@ public class TestSqlServerTypeConverterProperty {
     Assertions.assertEquals(expectedType, result);
   }
 
-  /** Verify nchar maps to ExternalType. */
+  /** Verify nchar maps to a native fixed-length character type. */
   static Stream<Arguments> ncharVariants() {
     return Stream.of(Arguments.of(10), Arguments.of(50), Arguments.of(100));
   }
 
   @ParameterizedTest
   @MethodSource("ncharVariants")
-  void testNcharMapsToExternalType(int length) {
+  void testNcharMapsToFixedChar(int length) {
     JdbcTypeConverter.JdbcTypeBean bean = new JdbcTypeConverter.JdbcTypeBean("nchar");
     bean.setColumnSize(length);
     Type result = converter.toGravitino(bean);
-    Assertions.assertInstanceOf(Types.ExternalType.class, result);
-    Assertions.assertEquals("nchar(" + length + ")", ((Types.ExternalType) result).catalogString());
+    Assertions.assertEquals(Types.FixedCharType.of(length), result);
   }
 
   /** Verify StringType always maps back to nvarchar. */

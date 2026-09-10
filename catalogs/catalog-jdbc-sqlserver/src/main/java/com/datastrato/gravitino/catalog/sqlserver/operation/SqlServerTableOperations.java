@@ -14,8 +14,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
@@ -33,6 +33,7 @@ import org.apache.gravitino.catalog.jdbc.converter.JdbcTypeConverter;
 import org.apache.gravitino.catalog.jdbc.operation.DatabaseOperation;
 import org.apache.gravitino.catalog.jdbc.operation.JdbcTableOperations;
 import org.apache.gravitino.catalog.jdbc.operation.RequireDatabaseOperation;
+import org.apache.gravitino.exceptions.NoSuchColumnException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.rel.Column;
@@ -267,32 +268,44 @@ public class SqlServerTableOperations extends JdbcTableOperations
     return result;
   }
 
+  /** {@inheritDoc} */
   @Override
-  protected JdbcTable.Builder getTableBuilder(
-      ResultSet tablesResult, String databaseName, String tableName) throws SQLException {
-    boolean found = false;
-    JdbcTable.Builder builder = null;
-    while (tablesResult.next() && !found) {
-      String tableNameInResult = tablesResult.getString("TABLE_NAME");
-      String tableSchemaInResult = tablesResult.getString("TABLE_SCHEM");
-      if (Objects.equals(tableNameInResult, tableName)
-          && Objects.equals(tableSchemaInResult, databaseName)) {
-        builder = getBasicJdbcTableInfo(tablesResult).withDatabaseName(databaseName);
-        found = true;
+  protected JdbcTable.Builder getTableBuilder(ResultSet tables, String schema, String table)
+      throws SQLException {
+    while (tables.next()) {
+      if (table.equalsIgnoreCase(tables.getString("TABLE_NAME"))
+          && schema.equalsIgnoreCase(tables.getString("TABLE_SCHEM"))) {
+        return getBasicJdbcTableInfo(tables).withDatabaseName(schema);
       }
     }
-    if (!found) {
-      throw new NoSuchTableException("Table %s does not exist in %s.", tableName, databaseName);
-    }
-    return builder;
+    throw new NoSuchTableException("Table %s does not exist in %s.", table, schema);
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  protected JdbcColumn getJdbcColumnFromTable(JdbcTable table, String name) {
+    return (JdbcColumn)
+        Arrays.stream(table.columns())
+            .filter(column -> column.name().equalsIgnoreCase(name))
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new NoSuchColumnException(
+                        "Column %s does not exist in table %s", name, table.name()));
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  protected boolean columnExists(JdbcTable table, String name) {
+    return Arrays.stream(table.columns()).anyMatch(column -> column.name().equalsIgnoreCase(name));
   }
 
   @Override
   protected JdbcColumn.Builder getColumnBuilder(
       ResultSet columnsResult, String databaseName, String tableName) throws SQLException {
     JdbcColumn.Builder builder = null;
-    if (Objects.equals(columnsResult.getString("TABLE_NAME"), tableName)
-        && Objects.equals(columnsResult.getString("TABLE_SCHEM"), databaseName)) {
+    if (tableName.equalsIgnoreCase(columnsResult.getString("TABLE_NAME"))
+        && databaseName.equalsIgnoreCase(columnsResult.getString("TABLE_SCHEM"))) {
       builder = getBasicJdbcColumnInfo(columnsResult);
     }
     return builder;
@@ -432,7 +445,7 @@ public class SqlServerTableOperations extends JdbcTableOperations
           continue;
         }
         String loadedTableName = indexInfo.getString("TABLE_NAME");
-        if (loadedTableName.equals(tableName)
+        if (tableName.equalsIgnoreCase(loadedTableName)
             && !indexInfo.getBoolean("NON_UNIQUE")
             && !primaryIndexNames.contains(indexName)) {
           jdbcIndexBeans.add(
@@ -759,15 +772,79 @@ public class SqlServerTableOperations extends JdbcTableOperations
       throw new UnsupportedOperationException(SQLSERVER_NOT_SUPPORT_NESTED_COLUMN_MSG);
     }
     String col = change.fieldName()[0];
-    JdbcColumn column = getJdbcColumnFromTable(jdbcTable, col);
+    getJdbcColumnFromTable(jdbcTable, col);
     String nullability = change.nullable() ? "NULL" : "NOT NULL";
     return String.format(
         "ALTER TABLE %s.%s ALTER COLUMN %s %s %s;",
         quoteIdentifier(schemaName),
         quoteIdentifier(jdbcTable.name()),
         quoteIdentifier(col),
-        typeConverter.fromGravitino(column.dataType()),
+        nativeColumnType(schemaName, jdbcTable.name(), col),
         nullability);
+  }
+
+  private String nativeColumnType(String schema, String table, String column) {
+    // Logical types intentionally discard encoding. ALTER nullability must retain the physical
+    // type and collation rather than recreating the column from that lossy representation.
+    String sql =
+        "SELECT t.name AS TYPE_NAME, SCHEMA_NAME(t.schema_id) AS TYPE_SCHEMA, "
+            + "t.is_user_defined, c.max_length, c.precision, c.scale, c.collation_name "
+            + "FROM sys.columns c JOIN sys.types t ON c.user_type_id = t.user_type_id "
+            + "WHERE c.object_id = OBJECT_ID(QUOTENAME(?) + N'.' + QUOTENAME(?)) AND c.name = ?";
+    try (Connection connection = getConnection(schema);
+        PreparedStatement statement = connection.prepareStatement(sql)) {
+      statement.setString(1, schema);
+      statement.setString(2, table);
+      statement.setString(3, column);
+      try (ResultSet rs = statement.executeQuery()) {
+        if (!rs.next()) {
+          throw new NoSuchColumnException("Column %s does not exist in table %s", column, table);
+        }
+        String name = rs.getString("TYPE_NAME");
+        String definition = quoteIdentifier(name);
+        if (rs.getBoolean("is_user_defined")) {
+          definition = quoteIdentifier(rs.getString("TYPE_SCHEMA")) + "." + definition;
+        } else {
+          switch (name.toLowerCase(Locale.ROOT)) {
+            case "nchar":
+            case "nvarchar":
+            case "char":
+            case "varchar":
+            case "binary":
+            case "varbinary":
+              int length = rs.getInt("max_length");
+              if (length != -1
+                  && (name.equalsIgnoreCase("nchar") || name.equalsIgnoreCase("nvarchar"))) {
+                length /= 2;
+              }
+              definition += "(" + (length == -1 ? "max" : Integer.toString(length)) + ")";
+              break;
+            case "numeric":
+            case "decimal":
+              definition += "(" + rs.getInt("precision") + "," + rs.getInt("scale") + ")";
+              break;
+            case "time":
+            case "datetime2":
+            case "datetimeoffset":
+              definition += "(" + rs.getInt("scale") + ")";
+              break;
+            case "float":
+              definition += "(" + rs.getInt("precision") + ")";
+              break;
+            default:
+              break;
+          }
+        }
+        String collation = rs.getString("collation_name");
+        if (collation != null) {
+          // SQL Server COLLATE expects the system collation name without identifier quotes.
+          definition += " COLLATE " + collation;
+        }
+        return definition;
+      }
+    } catch (SQLException e) {
+      throw exceptionMapper.toGravitinoException(e);
+    }
   }
 
   private void configureTypeBean(

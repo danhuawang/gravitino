@@ -105,9 +105,9 @@ public class TestSqlServerDefaultValueConverterProperty {
   /** Provides string literals for conversion testing. */
   static Stream<Arguments> stringLiterals() {
     return Stream.of(
-        Arguments.of(Literals.stringLiteral("hello"), "'hello'"),
-        Arguments.of(Literals.stringLiteral(""), "''"),
-        Arguments.of(Literals.stringLiteral("test value"), "'test value'"));
+        Arguments.of(Literals.stringLiteral("hello"), "N'hello'"),
+        Arguments.of(Literals.stringLiteral(""), "N''"),
+        Arguments.of(Literals.stringLiteral("test value"), "N'test value'"));
   }
 
   @ParameterizedTest

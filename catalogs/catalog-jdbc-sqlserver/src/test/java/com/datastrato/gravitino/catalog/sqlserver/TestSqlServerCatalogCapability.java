@@ -3,12 +3,26 @@
  */
 package com.datastrato.gravitino.catalog.sqlserver;
 
+import java.util.Locale;
+import java.util.Optional;
+import org.apache.commons.lang3.reflect.FieldUtils;
+import org.apache.gravitino.Entity;
+import org.apache.gravitino.EntityStore;
+import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.catalog.CapabilityHelpers;
+import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.connector.capability.CapabilityResult;
+import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.server.authorization.MetadataIdConverter;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.Mockito;
 
 /**
  * Unit tests for SqlServerCatalogCapability. Validates identifier name validation and reserved
@@ -128,6 +142,21 @@ public class TestSqlServerCatalogCapability {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"MixedCaseTbl", "camelCase", "UPPERCASE", "lowercase", "ColName"})
+  void testNormalizeNameRetainsCanonicalLowercase(String name) {
+    for (Capability.Scope scope : Capability.Scope.values()) {
+      Assertions.assertEquals(
+          name.toLowerCase(Locale.ROOT),
+          CapabilityHelpers.applyCaseSensitiveOnName(scope, name, capability));
+    }
+  }
+
+  @Test
+  void testNormalizeNullName() {
+    Assertions.assertNull(capability.normalizeName(Capability.Scope.COLUMN, null));
+  }
+
   @Test
   void testMinimumLengthName() {
     CapabilityResult result = capability.specificationOnName(Capability.Scope.TABLE, "a");
@@ -139,5 +168,39 @@ public class TestSqlServerCatalogCapability {
   void testInvalidSpecialChars(String name) {
     CapabilityResult result = capability.specificationOnName(Capability.Scope.TABLE, name);
     Assertions.assertFalse(result.supported());
+  }
+
+  @Test
+  void testCaseAliasesResolveExistingLowercaseAuthorizationIdentity() throws Exception {
+    GravitinoEnv env = GravitinoEnv.getInstance();
+    Object originalManager = FieldUtils.readDeclaredField(env, "catalogManager", true);
+    Object originalStore = FieldUtils.readDeclaredField(env, "entityStore", true);
+    CatalogManager manager = Mockito.mock(CatalogManager.class);
+    EntityStore store = Mockito.mock(EntityStore.class);
+    TableEntity existing = Mockito.mock(TableEntity.class);
+    Mockito.when(existing.id()).thenReturn(42L);
+
+    Mockito.when(
+            manager.doWithCatalog(Mockito.eq(NameIdentifier.of("lake", "catalog")), Mockito.any()))
+        .thenReturn(capability);
+    NameIdentifier canonical = NameIdentifier.of("lake", "catalog", "dbo", "mixedtable");
+    Mockito.when(store.get(canonical, Entity.EntityType.TABLE, TableEntity.class))
+        .thenReturn(existing);
+    try {
+      FieldUtils.writeDeclaredField(env, "catalogManager", manager, true);
+      FieldUtils.writeDeclaredField(env, "entityStore", store, true);
+      for (String name : new String[] {"dbo.mixedtable", "DBO.MixedTable", "dbo.MIXEDTABLE"}) {
+        Assertions.assertEquals(
+            Optional.of(42L),
+            MetadataIdConverter.getID(
+                MetadataObjects.parse("catalog." + name, MetadataObject.Type.TABLE), "lake"));
+      }
+      Mockito.verify(store, Mockito.times(3))
+          .get(canonical, Entity.EntityType.TABLE, TableEntity.class);
+      Mockito.verifyNoMoreInteractions(store);
+    } finally {
+      FieldUtils.writeDeclaredField(env, "catalogManager", originalManager, true);
+      FieldUtils.writeDeclaredField(env, "entityStore", originalStore, true);
+    }
   }
 }
