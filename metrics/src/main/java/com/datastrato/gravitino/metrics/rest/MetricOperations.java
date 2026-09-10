@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.metrics.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
 import com.datastrato.gravitino.metrics.dto.MetricsResponse;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
@@ -22,6 +24,7 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NoSuchUserException;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.apache.logging.log4j.util.Strings;
@@ -44,6 +47,8 @@ public class MetricOperations {
 
   @GET
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-get-metrics." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-get-metrics", absolute = true)
   public Response getMetrics(
       @PathParam("metalake") String metalakeName,
       @QueryParam("metrics") String metrics,

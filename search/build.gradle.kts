@@ -22,6 +22,7 @@ dependencies {
   implementation(project(":core-extension"))
 
   implementation(libs.bundles.jersey)
+  implementation(libs.metrics.jersey2)
   implementation(libs.bundles.log4j)
   implementation(libs.commons.lang3)
   implementation(libs.commons.io)

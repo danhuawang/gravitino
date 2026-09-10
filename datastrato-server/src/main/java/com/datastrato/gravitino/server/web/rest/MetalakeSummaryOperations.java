@@ -68,8 +68,8 @@ public class MetalakeSummaryOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "get-metalake-summary." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "get-metalake-summary", absolute = true)
+  @Timed(name = "web-get-metalake-summary." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-get-metalake-summary", absolute = true)
   @AuthorizationExpression(expression = "METALAKE::OWNER")
   public Response getSummary(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

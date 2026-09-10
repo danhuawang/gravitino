@@ -88,6 +88,8 @@ public class ScimTokenOperations {
   @POST
   @Path("{tokenName}/rotate")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "rotate-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "rotate-scim-token", absolute = true)
   public Response rotateToken(
       @PathParam("tokenName") String tokenName, @Nullable RotateScimTokenRequest request) {
     return ScimRESTUtils.doAs(
@@ -105,6 +107,8 @@ public class ScimTokenOperations {
   @DELETE
   @Path("{tokenName}")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "delete-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "delete-scim-token", absolute = true)
   public Response deleteToken(@PathParam("tokenName") String tokenName) {
     return ScimRESTUtils.doAs(
         httpRequest,

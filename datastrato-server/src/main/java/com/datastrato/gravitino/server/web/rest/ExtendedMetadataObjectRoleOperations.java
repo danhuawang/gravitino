@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.ObjectRolePrivilegeDTO;
@@ -31,6 +33,7 @@ import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.metalake.MetalakeManager;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -64,6 +67,10 @@ public class ExtendedMetadataObjectRoleOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(
+      name = "web-list-object-role-privileges." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "web-list-object-role-privileges", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listObjectRolePrivileges(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

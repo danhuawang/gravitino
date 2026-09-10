@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.dto.responses.ExtendedTagListResponse;
 import com.datastrato.gravitino.dto.tag.ExtendedTagDTO;
 import com.google.common.annotations.VisibleForTesting;
@@ -33,6 +35,7 @@ import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.responses.NameListResponse;
 import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -82,6 +85,8 @@ public class ExtendedTagOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-extended-tags." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-extended-tags", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listTags(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.authorization.GroupLookupInfo;
@@ -18,6 +20,7 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.web.Utils;
@@ -54,6 +57,10 @@ public class ExtendedIdentityOperations {
   @GET
   @Path("users/{username}/groups")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(
+      name = "web-get-identity-user-groups." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "web-get-identity-user-groups", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response getUserGroups(
       @PathParam("username") String username, @QueryParam("type") String type) {
@@ -85,6 +92,8 @@ public class ExtendedIdentityOperations {
   @GET
   @Path("groups/{groupName}")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-get-identity-group-info." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-get-identity-group-info", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response getGroupInfo(
       @PathParam("groupName") String groupName, @QueryParam("type") String type) {

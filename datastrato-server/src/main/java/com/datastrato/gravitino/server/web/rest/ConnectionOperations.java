@@ -5,6 +5,8 @@ package com.datastrato.gravitino.server.web.rest;
 
 import static com.datastrato.gravitino.server.web.rest.MetadataListingHelper.filterByExpression;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestSupportResolver;
@@ -56,6 +58,7 @@ import org.apache.gravitino.credential.CredentialConstants;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.ForbiddenException;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
 import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
@@ -126,6 +129,8 @@ public class ConnectionOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-connections." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-connections", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listConnections(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -189,6 +194,8 @@ public class ConnectionOperations {
   @GET
   @Path("{connection}")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-load-connection." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-load-connection", absolute = true)
   @AuthorizationExpression(
       expression = AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
       accessMetadataType = MetadataObject.Type.CATALOG)

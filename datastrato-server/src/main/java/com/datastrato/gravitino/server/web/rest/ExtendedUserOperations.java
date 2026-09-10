@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
@@ -31,6 +33,7 @@ import javax.ws.rs.core.Response;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.dto.responses.NameListResponse;
 import org.apache.gravitino.exceptions.ForbiddenException;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.GravitinoAuthorizerProvider;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -70,6 +73,8 @@ public class ExtendedUserOperations {
   @GET
   @Path("directory/users")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-directory-users." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-directory-users", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response listDirectoryUsers() {
     try {
@@ -98,6 +103,8 @@ public class ExtendedUserOperations {
   @GET
   @Path("directory/users/{user}")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-get-directory-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-get-directory-user", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response getDirectoryUser(
       @PathParam("user") String user, @QueryParam("origin") String origin) {
@@ -130,6 +137,10 @@ public class ExtendedUserOperations {
   @GET
   @Path("directory/users/{user}/groups")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(
+      name = "web-list-directory-groups-for-user." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "web-list-directory-groups-for-user", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listDirectoryGroupsForUser(
       @PathParam("user") String user, @QueryParam("origin") String origin) {
@@ -160,6 +171,8 @@ public class ExtendedUserOperations {
   @POST
   @Path("directory/users")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-add-directory-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-add-directory-user", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response addDirectoryUser(DirectoryUserAddRequest request) {
     try {
@@ -188,6 +201,8 @@ public class ExtendedUserOperations {
   @POST
   @Path("directory/users/delete")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-delete-directory-users." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-delete-directory-users", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response deleteDirectoryUsers(DirectoryUserDeleteRequest request) {
     try {
@@ -221,6 +236,10 @@ public class ExtendedUserOperations {
   @PUT
   @Path("directory/users/enabled")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(
+      name = "web-batch-update-directory-user-enabled." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "web-batch-update-directory-user-enabled", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response batchUpdateDirectoryUserEnabled(DirectoryUserEnabledBatchUpdateRequest request) {
     try {

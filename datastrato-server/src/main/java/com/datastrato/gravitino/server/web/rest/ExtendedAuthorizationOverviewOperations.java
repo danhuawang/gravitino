@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.authorization.UserEnabledCounts;
@@ -41,6 +43,7 @@ import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.metalake.MetalakeManager;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -100,6 +103,10 @@ public class ExtendedAuthorizationOverviewOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(
+      name = "web-get-authorization-overview." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "web-get-authorization-overview", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response getAuthorizationOverview(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

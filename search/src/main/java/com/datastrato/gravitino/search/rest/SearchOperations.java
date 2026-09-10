@@ -5,6 +5,8 @@ package com.datastrato.gravitino.search.rest;
 
 import static org.apache.gravitino.MetadataObject.Type.METALAKE;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
@@ -35,6 +37,7 @@ import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.listener.api.event.server.AuthorizationDenialFailureEvent;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
@@ -51,6 +54,8 @@ public class SearchOperations {
   @POST
   @Path("/rebuild/metalakes/{metalake}")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "search-rebuild-metadata." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "search-rebuild-metadata", absolute = true)
   public Response rebuildMetadata(@PathParam("metalake") String metalake) {
     if (StringUtils.isBlank(metalake)) {
       return Utils.illegalArguments("Metalake cannot be null or empty");
@@ -79,6 +84,10 @@ public class SearchOperations {
   @POST
   @Path("/sync/metalakes/{metalake}/objects")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(
+      name = "search-sync-metadata-objects." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "search-sync-metadata-objects", absolute = true)
   public Response syncMetadataObjects(
       @PathParam("metalake") String metalake, SynMetadataRequest request) {
     if (StringUtils.isBlank(metalake)) {
@@ -124,6 +133,8 @@ public class SearchOperations {
   @GET
   @Path("/query")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "search-query." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "search-query", absolute = true)
   public Response query(
       @QueryParam("metalake") String metalake,
       @QueryParam("keyword") String keyword,
@@ -174,6 +185,8 @@ public class SearchOperations {
   @GET
   @Path("/task/{taskId}/status")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "search-task-status." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "search-task-status", absolute = true)
   public Response getTaskStatus(@PathParam("taskId") String taskId) {
     try {
       return Utils.doAs(

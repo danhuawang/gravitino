@@ -6,6 +6,8 @@ package com.datastrato.gravitino.server.web.rest;
 import static com.datastrato.gravitino.server.web.rest.MetadataListingHelper.filterByExpression;
 import static org.apache.gravitino.dto.util.DTOConverters.toDTO;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoModelDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoSchemaDispatcher;
@@ -98,6 +100,7 @@ import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
@@ -156,6 +159,8 @@ public class EntityOperations {
 
   @GET
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-entities." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-entities", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listEntities(
       @QueryParam("namespace") Namespace namespace,

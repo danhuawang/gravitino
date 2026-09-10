@@ -62,6 +62,8 @@ public class ExtendedIdpOperations {
   @GET
   @Path("idp/users")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-idp-user-names." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-idp-user-names", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response listIdpUserNames() {
     try {
@@ -81,6 +83,8 @@ public class ExtendedIdpOperations {
   @GET
   @Path("idp/groups")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-idp-group-names." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-idp-group-names", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response listIdpGroupNames() {
     try {
@@ -148,6 +152,8 @@ public class ExtendedIdpOperations {
   @POST
   @Path("idp/memberships")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-add-idp-memberships." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-add-idp-memberships", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response addIdpUserGroupMemberships(IdpMembershipAddRequest request) {
     try {

@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.RoleGroupAssignmentDTO;
@@ -31,6 +33,7 @@ import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.authorization.SecurableObjectDTO;
 import org.apache.gravitino.dto.responses.RoleResponse;
 import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -63,6 +66,8 @@ public class ExtendedRoleOperations {
   @GET
   @Path("users")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-users-by-role." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-users-by-role", absolute = true)
   @AuthorizationExpression(
       expression = AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION)
   public Response listUsersByRole(
@@ -92,6 +97,8 @@ public class ExtendedRoleOperations {
   @GET
   @Path("groups")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-groups-by-role." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-groups-by-role", absolute = true)
   @AuthorizationExpression(
       expression = AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION)
   public Response listGroupsByRole(
@@ -120,6 +127,8 @@ public class ExtendedRoleOperations {
 
   @PUT
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-update-bulk-permissions." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-update-bulk-permissions", absolute = true)
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GRANTS")
   public Response updateBulkPermissions(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

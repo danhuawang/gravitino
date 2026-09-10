@@ -21,6 +21,7 @@ dependencies {
   implementation(libs.jackson.annotations)
   implementation(libs.lombok)
   implementation(libs.metrics.core)
+  implementation(libs.metrics.jersey2)
   implementation(libs.mybatis)
   implementation(libs.jcasbin) {
     exclude(group = "com.fasterxml.jackson.core", module = "jackson-databind")

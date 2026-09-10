@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestType;
@@ -36,6 +38,7 @@ import org.apache.gravitino.credential.config.CredentialConfig;
 import org.apache.gravitino.dto.requests.CatalogUpdateRequest;
 import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
 import org.apache.gravitino.server.web.Utils;
@@ -94,6 +97,10 @@ public class CredentialProviderOperations {
    */
   @POST
   @Path("/{credentialType}/test")
+  @Timed(
+      name = "web-test-credential-provider." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "web-test-credential-provider", absolute = true)
   @AuthorizationExpression(
       expression = "ANY(OWNER, METALAKE, CATALOG)",
       accessMetadataType = MetadataObject.Type.CATALOG)

@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.dto.responses.DataPreviewResponse;
 import com.datastrato.gravitino.preview.DataPreviewSensitiveTableException;
@@ -30,6 +32,7 @@ import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -63,6 +66,8 @@ public class DataPreviewOperations {
   @GET
   @Path("schemas/{schema}/tables/{table}")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-preview-table." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-preview-table", absolute = true)
   @AuthorizationExpression(
       expression = AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION,
       accessMetadataType = MetadataObject.Type.TABLE)

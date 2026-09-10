@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.RoleSummaryDTO;
@@ -39,6 +41,7 @@ import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.metalake.MetalakeManager;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -74,6 +77,8 @@ public class ExtendedPrincipalRoleOperations {
   @GET
   @Path("roles")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-role-summaries." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-role-summaries", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listRoleSummaries(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -122,6 +127,10 @@ public class ExtendedPrincipalRoleOperations {
   @PUT
   @Path("assignments/roles")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(
+      name = "web-assign-roles-to-principals." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "web-assign-roles-to-principals", absolute = true)
   @AuthorizationExpression(
       expression =
           "METALAKE::OWNER || (METALAKE::MANAGE_GRANTS && METALAKE::CREATE_ROLE"

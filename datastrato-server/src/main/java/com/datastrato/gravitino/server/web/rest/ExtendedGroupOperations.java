@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.DirectoryGroupDTO;
@@ -26,6 +28,7 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.dto.responses.NameListResponse;
+import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.web.Utils;
@@ -63,6 +66,8 @@ public class ExtendedGroupOperations {
   @GET
   @Path("directory/groups")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-list-directory-groups." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-list-directory-groups", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response listDirectoryGroups() {
     try {
@@ -87,6 +92,8 @@ public class ExtendedGroupOperations {
   @GET
   @Path("directory/groups/{group}")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-get-directory-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-get-directory-group", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response getDirectoryGroup(
       @PathParam("group") String group, @QueryParam("origin") String origin) {
@@ -114,6 +121,10 @@ public class ExtendedGroupOperations {
   @GET
   @Path("directory/groups/{group}/users")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(
+      name = "web-list-directory-users-for-group." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "web-list-directory-users-for-group", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response listDirectoryUsersForGroup(
       @PathParam("group") String group, @QueryParam("origin") String origin) {
@@ -142,6 +153,8 @@ public class ExtendedGroupOperations {
   @POST
   @Path("directory/groups")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-add-directory-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-add-directory-group", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response addDirectoryGroup(DirectoryGroupAddRequest request) {
     try {
@@ -170,6 +183,8 @@ public class ExtendedGroupOperations {
   @POST
   @Path("directory/groups/delete")
   @Produces("application/vnd.gravitino.v1+json")
+  @Timed(name = "web-delete-directory-groups." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "web-delete-directory-groups", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response deleteDirectoryGroups(DirectoryGroupDeleteRequest request) {
     try {
