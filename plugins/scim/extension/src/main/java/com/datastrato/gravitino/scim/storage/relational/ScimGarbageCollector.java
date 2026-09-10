@@ -8,6 +8,7 @@ import static org.apache.gravitino.Configs.GARBAGE_COLLECTOR_SINGLE_DELETION_LIM
 import static org.apache.gravitino.Configs.STORE_DELETE_AFTER_TIME;
 
 import com.datastrato.gravitino.scim.ScimConfigs;
+import com.datastrato.gravitino.scim.storage.service.JitIdentityMetaService;
 import com.datastrato.gravitino.scim.storage.service.ScimErrorHistoryMetaService;
 import com.datastrato.gravitino.scim.storage.service.ScimGroupMetaService;
 import com.datastrato.gravitino.scim.storage.service.ScimTokenMetaService;
@@ -34,6 +35,8 @@ public final class ScimGarbageCollector implements Closeable {
   private static final ScimGroupMetaService GROUP_META_SERVICE = ScimGroupMetaService.getInstance();
   private static final ScimErrorHistoryMetaService ERROR_HISTORY_META_SERVICE =
       ScimErrorHistoryMetaService.getInstance();
+  private static final JitIdentityMetaService JIT_IDENTITY_META_SERVICE =
+      JitIdentityMetaService.getInstance();
   private static final long EXPIRY_TASK_FREQUENCY_MINUTES = 10;
   private static final long ERROR_HISTORY_CLEAN_INITIAL_DELAY_MINUTES = 5;
   private static final long ERROR_HISTORY_CLEAN_PERIOD_DAYS = 1;
@@ -105,6 +108,18 @@ public final class ScimGarbageCollector implements Closeable {
       purgeLegacyData(
           () ->
               TOKEN_META_SERVICE.deleteTokenMetasByLegacyTimeline(legacyTimeline, deletionLimit()));
+      purgeLegacyData(
+          () ->
+              JIT_IDENTITY_META_SERVICE.deleteMembershipsByLegacyTimeline(
+                  legacyTimeline, deletionLimit()));
+      purgeLegacyData(
+          () ->
+              JIT_IDENTITY_META_SERVICE.deleteUsersByLegacyTimeline(
+                  legacyTimeline, deletionLimit()));
+      purgeLegacyData(
+          () ->
+              JIT_IDENTITY_META_SERVICE.deleteGroupsByLegacyTimeline(
+                  legacyTimeline, deletionLimit()));
     } catch (Exception e) {
       LOG.error("Thread {} failed to collect and clean SCIM legacy garbage.", threadId, e);
     } finally {

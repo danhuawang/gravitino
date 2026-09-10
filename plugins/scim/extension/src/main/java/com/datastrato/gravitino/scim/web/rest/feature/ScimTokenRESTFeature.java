@@ -4,6 +4,7 @@
 
 package com.datastrato.gravitino.scim.web.rest.feature;
 
+import com.datastrato.gravitino.scim.JitIdentityManager;
 import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper;
@@ -48,6 +49,7 @@ public class ScimTokenRESTFeature implements Feature {
 
     ScimTokenManager.getInstance().initialize(config, env.idGenerator());
     ScimUserGroupRelManager.getInstance().initialize(config);
+    JitIdentityManager.getInstance().initialize(env.idGenerator());
 
     context.register(ScimAuthorizationFilter.class);
     context.register(ScimTokenBinder.class);

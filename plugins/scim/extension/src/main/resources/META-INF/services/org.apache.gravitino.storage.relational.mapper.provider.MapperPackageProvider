@@ -6,3 +6,4 @@ com.datastrato.gravitino.scim.storage.mapper.provider.ScimUserGroupRelMapperPack
 com.datastrato.gravitino.scim.storage.mapper.provider.ScimErrorHistoryMapperPackageProvider
 com.datastrato.gravitino.scim.storage.mapper.provider.ScimUserMetaMapperPackageProvider
 com.datastrato.gravitino.scim.storage.mapper.provider.ScimGroupMetaMapperPackageProvider
+com.datastrato.gravitino.scim.storage.mapper.provider.JitIdentityMapperPackageProvider

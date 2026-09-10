@@ -64,6 +64,42 @@ CREATE TABLE IF NOT EXISTS `scim_user_group_rel` (
     KEY `idx_sugr_gid` (`group_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'scim user group relation';
 
+CREATE TABLE IF NOT EXISTS `jit_user_meta` (
+    `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'jit user id',
+    `user_name` VARCHAR(128) NOT NULL COMMENT 'jit username',
+    `audit_info` MEDIUMTEXT NOT NULL COMMENT 'jit user audit info',
+    `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'jit user current version',
+    `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'jit user last version',
+    `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'jit user deleted at',
+    PRIMARY KEY (`user_id`),
+    UNIQUE KEY `uk_jun_del` (`user_name`, `deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'jit user metadata';
+
+CREATE TABLE IF NOT EXISTS `jit_group_meta` (
+    `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'jit group id',
+    `group_name` VARCHAR(128) NOT NULL COMMENT 'jit group name',
+    `audit_info` MEDIUMTEXT NOT NULL COMMENT 'jit group audit info',
+    `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'jit group current version',
+    `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'jit group last version',
+    `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'jit group deleted at',
+    PRIMARY KEY (`group_id`),
+    UNIQUE KEY `uk_jgn_del` (`group_name`, `deleted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'jit group metadata';
+
+CREATE TABLE IF NOT EXISTS `jit_user_group_rel` (
+    `id` BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT 'auto increment id',
+    `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'jit user id',
+    `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'jit group id',
+    `audit_info` MEDIUMTEXT NOT NULL COMMENT 'relation audit info',
+    `current_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'relation current version',
+    `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'relation last version',
+    `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'relation deleted at',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_jugr_ui_gi_del` (`user_id`, `group_id`, `deleted_at`),
+    KEY `idx_jugr_uid` (`user_id`),
+    KEY `idx_jugr_gid` (`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'jit user group relation';
+
 CREATE TABLE IF NOT EXISTS `scim_error_history` (
     `error_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'error history id',
     `http_method` VARCHAR(16) NOT NULL COMMENT 'HTTP method',

@@ -10,11 +10,15 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.datastrato.gravitino.scim.ScimConfigs;
 import com.datastrato.gravitino.scim.storage.mapper.AbstractScimMetaStorageTest;
+import com.datastrato.gravitino.scim.storage.mapper.JitIdentityMapper;
 import com.datastrato.gravitino.scim.storage.mapper.ScimErrorHistoryMapper;
 import com.datastrato.gravitino.scim.storage.mapper.ScimGroupMetaMapper;
 import com.datastrato.gravitino.scim.storage.mapper.ScimTokenMetaMapper;
 import com.datastrato.gravitino.scim.storage.mapper.ScimUserGroupRelMapper;
 import com.datastrato.gravitino.scim.storage.mapper.ScimUserMetaMapper;
+import com.datastrato.gravitino.scim.storage.po.JitGroupPO;
+import com.datastrato.gravitino.scim.storage.po.JitUserGroupRelPO;
+import com.datastrato.gravitino.scim.storage.po.JitUserPO;
 import com.datastrato.gravitino.scim.storage.po.ScimErrorHistoryPO;
 import com.datastrato.gravitino.scim.storage.po.ScimGroupMetaPO;
 import com.datastrato.gravitino.scim.storage.po.ScimTokenMetaPO;
@@ -102,6 +106,63 @@ class TestScimGarbageCollector extends AbstractScimMetaStorageTest {
 
     reopenSession();
     assertEquals(1, scimUserGroupRelMapper().selectMembersByGroupId(GROUP_ID).size());
+  }
+
+  @ParameterizedTest
+  @MethodSource("storageProvider")
+  void testCollectAndCleanJitMetadata(String type) throws Exception {
+    init(type);
+    long deletedAt = System.currentTimeMillis() - 700_000L;
+    JitIdentityMapper mapper = sharedSession.getMapper(JitIdentityMapper.class);
+    mapper.insertUser(
+        JitUserPO.builder()
+            .withUserId(300L)
+            .withUserName("jit-alice")
+            .withAuditInfo("{}")
+            .withCurrentVersion(1L)
+            .withLastVersion(1L)
+            .withDeletedAt(0L)
+            .build());
+    mapper.insertGroups(
+        List.of(
+            JitGroupPO.builder()
+                .withGroupId(400L)
+                .withGroupName("jit-engineers")
+                .withAuditInfo("{}")
+                .withCurrentVersion(1L)
+                .withLastVersion(1L)
+                .withDeletedAt(0L)
+                .build()));
+    mapper.insertMemberships(
+        List.of(
+            JitUserGroupRelPO.builder()
+                .withId(500L)
+                .withUserId(300L)
+                .withGroupId(400L)
+                .withAuditInfo("{}")
+                .withCurrentVersion(1L)
+                .withLastVersion(1L)
+                .withDeletedAt(0L)
+                .build()));
+    mapper.softDeleteMembershipsByUserName("jit-alice", deletedAt);
+    mapper.softDeleteUserByName("jit-alice", deletedAt);
+    mapper.softDeleteGroupsByNames(List.of("jit-engineers"), deletedAt);
+
+    getConfig().set(STORE_DELETE_AFTER_TIME, 600_000L);
+    closeSession();
+
+    ScimGarbageCollector garbageCollector = new ScimGarbageCollector(getConfig());
+    try {
+      garbageCollector.collectAndClean();
+    } finally {
+      garbageCollector.close();
+    }
+
+    reopenSession();
+    mapper = sharedSession.getMapper(JitIdentityMapper.class);
+    assertEquals(0, mapper.deleteMembershipsByLegacyTimeline(Long.MAX_VALUE, 10));
+    assertEquals(0, mapper.deleteUsersByLegacyTimeline(Long.MAX_VALUE, 10));
+    assertEquals(0, mapper.deleteGroupsByLegacyTimeline(Long.MAX_VALUE, 10));
   }
 
   @ParameterizedTest

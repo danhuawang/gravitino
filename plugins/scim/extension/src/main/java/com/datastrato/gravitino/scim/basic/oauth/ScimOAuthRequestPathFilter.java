@@ -17,11 +17,10 @@ import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Captures the request path before OAuth servlet authentication runs and parses metalake scope from
- * it.
+ * Captures OAuth request context before servlet authentication runs.
  *
- * <p>Registered via {@code gravitino.server.webserver.customFilters}. The captured path is read by
- * {@link ScimOAuthPrincipalMapper#map(String)} on the same request thread.
+ * <p>The bearer token is exposed only on the request thread. {@link ScimOAuthPrincipalMapper} reads
+ * its claims after the configured OAuth validator has validated that same token.
  */
 public class ScimOAuthRequestPathFilter implements Filter {
 
@@ -29,8 +28,10 @@ public class ScimOAuthRequestPathFilter implements Filter {
   public static final String FILTER_CLASS_NAME = ScimOAuthRequestPathFilter.class.getName();
 
   private static final String METALAKES_PREFIX = "/api/metalakes/";
+  private static final String BEARER_PREFIX = "Bearer ";
 
   private static final ThreadLocal<String> CURRENT_REQUEST_PATH = new ThreadLocal<>();
+  private static final ThreadLocal<String> CURRENT_BEARER_TOKEN = new ThreadLocal<>();
 
   @Override
   public void init(FilterConfig filterConfig) {}
@@ -43,7 +44,7 @@ public class ScimOAuthRequestPathFilter implements Filter {
       return;
     }
     try {
-      bind(httpRequest.getRequestURI());
+      bind(httpRequest.getRequestURI(), httpRequest.getHeader("Authorization"));
       chain.doFilter(request, response);
     } finally {
       clear();
@@ -54,11 +55,25 @@ public class ScimOAuthRequestPathFilter implements Filter {
   public void destroy() {}
 
   static void bind(String requestPath) {
+    bind(requestPath, null);
+  }
+
+  static void bind(String requestPath, @Nullable String authorizationHeader) {
     CURRENT_REQUEST_PATH.set(requestPath);
+    String token = bearerToken(authorizationHeader);
+    if (token != null) {
+      CURRENT_BEARER_TOKEN.set(token);
+    } else {
+      CURRENT_BEARER_TOKEN.remove();
+    }
   }
 
   static Optional<String> currentRequestPath() {
     return Optional.ofNullable(CURRENT_REQUEST_PATH.get());
+  }
+
+  static Optional<String> currentBearerToken() {
+    return Optional.ofNullable(CURRENT_BEARER_TOKEN.get());
   }
 
   static Optional<String> currentMetalakeName() {
@@ -67,6 +82,7 @@ public class ScimOAuthRequestPathFilter implements Filter {
 
   static void clear() {
     CURRENT_REQUEST_PATH.remove();
+    CURRENT_BEARER_TOKEN.remove();
   }
 
   /**
@@ -89,5 +105,14 @@ public class ScimOAuthRequestPathFilter implements Filter {
     }
     int slashIndex = metalakeSegment.indexOf('/');
     return Optional.of(slashIndex < 0 ? metalakeSegment : metalakeSegment.substring(0, slashIndex));
+  }
+
+  @Nullable
+  private static String bearerToken(@Nullable String authorizationHeader) {
+    if (StringUtils.isBlank(authorizationHeader)
+        || !authorizationHeader.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
+      return null;
+    }
+    return StringUtils.trimToNull(authorizationHeader.substring(BEARER_PREFIX.length()));
   }
 }

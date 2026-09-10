@@ -7,9 +7,15 @@ package com.datastrato.gravitino.scim.basic.oauth;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 class TestScimOAuthRequestPathFilter {
+
+  @AfterEach
+  void tearDown() {
+    ScimOAuthRequestPathFilter.clear();
+  }
 
   @Test
   void testParseFromCatalog() {
@@ -29,5 +35,20 @@ class TestScimOAuthRequestPathFilter {
   void testParseNonMetalake() {
     assertTrue(ScimOAuthRequestPathFilter.parseMetalakeName("/api/version").isEmpty());
     assertTrue(ScimOAuthRequestPathFilter.parseMetalakeName(null).isEmpty());
+  }
+
+  @Test
+  void testBearerTokenLifecycle() {
+    ScimOAuthRequestPathFilter.bind("/api/version", "bearer token-value");
+    assertEquals("token-value", ScimOAuthRequestPathFilter.currentBearerToken().orElseThrow());
+
+    ScimOAuthRequestPathFilter.clear();
+    assertTrue(ScimOAuthRequestPathFilter.currentBearerToken().isEmpty());
+  }
+
+  @Test
+  void testRejectsNonBearerAuthorization() {
+    ScimOAuthRequestPathFilter.bind("/api/version", "Basic credentials");
+    assertTrue(ScimOAuthRequestPathFilter.currentBearerToken().isEmpty());
   }
 }

@@ -22,6 +22,7 @@ dependencies {
   implementation(libs.jackson.annotations)
   implementation(libs.jackson.databind)
   implementation(libs.metrics.jersey2)
+  implementation(libs.nimbus.jose.jwt)
   implementation(libs.mybatis)
   implementation(libs.servlet)
 
