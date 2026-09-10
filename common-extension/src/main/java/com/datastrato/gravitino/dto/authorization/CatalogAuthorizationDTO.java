@@ -5,10 +5,12 @@ package com.datastrato.gravitino.dto.authorization;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
+import javax.annotation.Nullable;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.gravitino.Catalog;
 
 /** Authorization information grouped by catalog. */
 @Getter
@@ -18,6 +20,14 @@ public class CatalogAuthorizationDTO {
 
   @JsonProperty("catalog")
   private String catalog;
+
+  @Nullable
+  @JsonProperty("catalogProvider")
+  private String catalogProvider;
+
+  @Nullable
+  @JsonProperty("catalogType")
+  private Catalog.Type catalogType;
 
   @JsonProperty("objects")
   private ObjectAuthorizationDTO[] objects;
@@ -47,6 +57,8 @@ public class CatalogAuthorizationDTO {
    * Creates a catalog authorization DTO.
    *
    * @param catalog The catalog name.
+   * @param catalogProvider The catalog provider, or null if the catalog no longer exists.
+   * @param catalogType The catalog type, or null if the catalog no longer exists.
    * @param objects The objects with explicit role privileges in the catalog.
    * @param roles The roles covering the objects.
    * @param users The users associated with the catalog through the roles.
@@ -56,6 +68,8 @@ public class CatalogAuthorizationDTO {
    */
   public CatalogAuthorizationDTO(
       String catalog,
+      @Nullable String catalogProvider,
+      @Nullable Catalog.Type catalogType,
       ObjectAuthorizationDTO[] objects,
       String[] roles,
       String[] users,
@@ -69,6 +83,8 @@ public class CatalogAuthorizationDTO {
     Preconditions.checkArgument(
         privilegedPrincipalCount >= 0, "privileged principal count cannot be negative");
     this.catalog = catalog;
+    this.catalogProvider = catalogProvider;
+    this.catalogType = catalogType;
     this.objects = objects;
     this.roles = roles;
     this.users = users;

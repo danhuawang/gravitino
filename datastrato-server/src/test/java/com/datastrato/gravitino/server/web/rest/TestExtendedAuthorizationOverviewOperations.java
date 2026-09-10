@@ -10,6 +10,7 @@ import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
@@ -33,16 +34,19 @@ import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.reflect.FieldUtils;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
 import org.apache.gravitino.authorization.User;
+import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
@@ -69,6 +73,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
 
   private static final DatastratoAccessControlDispatcher accessControlDispatcher =
       mock(DatastratoAccessControlDispatcher.class);
+  private static final CatalogDispatcher catalogDispatcher = mock(CatalogDispatcher.class);
   private static final EntityStore entityStore = mock(EntityStore.class);
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
@@ -90,6 +95,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "entityStore", entityStore, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
     FieldUtils.writeField(
         GravitinoEnv.getInstance(), "accessControlDispatcher", accessControlDispatcher, true);
     FieldUtils.writeField(
@@ -101,7 +107,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
 
   @BeforeEach
   public void resetMocks() throws IOException {
-    Mockito.reset(accessControlDispatcher, entityStore);
+    Mockito.reset(accessControlDispatcher, catalogDispatcher, entityStore);
     mockInUseMetalake();
   }
 
@@ -162,6 +168,10 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         .thenReturn(new UserEnabledCounts(2, 1, 1));
     when(accessControlDispatcher.listExtendedGroups("metalake1"))
         .thenReturn(new ExtendedGroupDTO[] {group1, emptyGroup});
+    Catalog catalogInfo1 = mockCatalog("catalog1", "lakehouse-iceberg", Catalog.Type.RELATIONAL);
+    Catalog catalogInfo2 = mockCatalog("catalog2", "hadoop", Catalog.Type.FILESET);
+    when(catalogDispatcher.listCatalogsInfo(Namespace.of("metalake1")))
+        .thenReturn(new Catalog[] {catalogInfo1, catalogInfo2});
 
     Response response =
         target("/web/security/metalakes/metalake1/authorization/overview")
@@ -188,6 +198,8 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     Assertions.assertEquals(2, catalogs.length);
     assertCatalog1(catalogs[0]);
     Assertions.assertEquals("catalog2", catalogs[1].getCatalog());
+    Assertions.assertEquals("hadoop", catalogs[1].getCatalogProvider());
+    Assertions.assertEquals(Catalog.Type.FILESET, catalogs[1].getCatalogType());
     Assertions.assertArrayEquals(new String[] {"role1"}, catalogs[1].getRoles());
     Assertions.assertArrayEquals(new String[] {"user1", "user2"}, catalogs[1].getUsers());
     Assertions.assertEquals(2, catalogs[1].getMemberCount());
@@ -210,6 +222,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     Assertions.assertEquals("role3", roles[2].getRole());
     Assertions.assertFalse(roles[2].isAssigned());
     Assertions.assertEquals(0, roles[2].getMemberCount());
+    verify(catalogDispatcher).listCatalogsInfo(Namespace.of("metalake1"));
   }
 
   @Test
@@ -242,6 +255,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     Assertions.assertEquals(0, summary.getEmptyGroupCount());
     Assertions.assertEquals(0, summary.getRoleCount());
     Assertions.assertEquals(0, summary.getUnassignedRoleCount());
+    verify(catalogDispatcher, Mockito.never()).listCatalogsInfo(any());
   }
 
   @Test
@@ -281,6 +295,8 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
 
   private void assertCatalog1(CatalogAuthorizationDTO catalog) {
     Assertions.assertEquals("catalog1", catalog.getCatalog());
+    Assertions.assertEquals("lakehouse-iceberg", catalog.getCatalogProvider());
+    Assertions.assertEquals(Catalog.Type.RELATIONAL, catalog.getCatalogType());
     Assertions.assertArrayEquals(new String[] {"role1", "role2"}, catalog.getRoles());
     Assertions.assertArrayEquals(new String[] {"user1", "user2"}, catalog.getUsers());
     Assertions.assertArrayEquals(new String[] {"group1"}, catalog.getGroups());
@@ -332,5 +348,13 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         .thenReturn(
             AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build());
     return ExtendedGroupDTO.from(group, true, userCount);
+  }
+
+  private Catalog mockCatalog(String name, String provider, Catalog.Type type) {
+    Catalog catalog = mock(Catalog.class);
+    when(catalog.name()).thenReturn(name);
+    when(catalog.provider()).thenReturn(provider);
+    when(catalog.type()).thenReturn(type);
+    return catalog;
   }
 }

@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -24,12 +25,17 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.User;
+import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.metalake.MetalakeManager;
@@ -50,6 +56,7 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 public class ExtendedMetadataObjectRoleOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
+  private final CatalogDispatcher catalogDispatcher;
 
   @Context private HttpServletRequest httpRequest;
 
@@ -57,6 +64,7 @@ public class ExtendedMetadataObjectRoleOperations {
   public ExtendedMetadataObjectRoleOperations() {
     this.accessControlDispatcher =
         ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
+    this.catalogDispatcher = GravitinoEnv.getInstance().catalogDispatcher();
   }
 
   /**
@@ -105,16 +113,23 @@ public class ExtendedMetadataObjectRoleOperations {
                             objectRolePrivileges,
                             role,
                             assignmentCounts.getOrDefault(role.name(), 0)));
+            Map<String, Catalog> catalogsByName =
+                objectRolePrivileges.isEmpty()
+                    ? Collections.emptyMap()
+                    : loadCatalogsByName(metalake);
 
             ObjectRolePrivilegeDTO[] objectRolePrivilegeDTOs =
                 objectRolePrivileges.entrySet().stream()
                     .map(
-                        entry ->
-                            ObjectRolePrivilegeDTO.builder()
-                                .withMetadataObject(DTOConverters.toDTO(entry.getKey()))
-                                .withRolePrivileges(
-                                    entry.getValue().toArray(new RolePrivilegeDTO[0]))
-                                .build())
+                        entry -> {
+                          Catalog catalog = findCatalog(entry.getKey(), catalogsByName);
+                          return ObjectRolePrivilegeDTO.builder()
+                              .withMetadataObject(DTOConverters.toDTO(entry.getKey()))
+                              .withCatalogProvider(catalog == null ? null : catalog.provider())
+                              .withCatalogType(catalog == null ? null : catalog.type())
+                              .withRolePrivileges(entry.getValue().toArray(new RolePrivilegeDTO[0]))
+                              .build();
+                        })
                     .toArray(ObjectRolePrivilegeDTO[]::new);
 
             return Utils.ok(
@@ -156,6 +171,22 @@ public class ExtendedMetadataObjectRoleOperations {
         .withCreateTime(role.auditInfo().createTime())
         .withAssignCount(assignCount)
         .build();
+  }
+
+  private Map<String, Catalog> loadCatalogsByName(String metalake) {
+    Map<String, Catalog> catalogsByName = new LinkedHashMap<>();
+    Arrays.stream(catalogDispatcher.listCatalogsInfo(Namespace.of(metalake)))
+        .forEach(catalog -> catalogsByName.put(catalog.name(), catalog));
+    return catalogsByName;
+  }
+
+  @Nullable
+  private Catalog findCatalog(MetadataObject metadataObject, Map<String, Catalog> catalogsByName) {
+    MetadataObject current = metadataObject;
+    while (current != null && current.type() != MetadataObject.Type.CATALOG) {
+      current = MetadataObjects.parent(current);
+    }
+    return current == null ? null : catalogsByName.get(current.name());
   }
 
   private Map<String, Integer> initializeAssignmentCounts(Role[] roles) {

@@ -16,7 +16,8 @@ paths:
       description: |
         Lists metadata objects under a metalake that have role privilege bindings,
         together with each object's associated roles and privileges. Each role also
-        includes its creation time and direct user-plus-group assignment count.
+        includes its creation time and direct user-plus-group assignment count. Objects
+        belonging to a catalog include that catalog's provider and type.
       responses:
         "200":
           description: Returns metadata objects grouped with their role privileges
@@ -90,7 +91,7 @@ paths:
       description: |
         Returns summary card counts, metadata objects grouped by catalog, users and
         groups associated through roles, privileged principal share, and all visible
-        roles with their direct members.
+        roles with their direct members. Each catalog includes its provider and type.
 
         Summary includes active/suspended users, empty groups, and unassigned roles.
 
@@ -182,10 +183,25 @@ components:
       type: object
       required:
         - metadataObject
+        - catalogProvider
+        - catalogType
         - rolePrivileges
       properties:
         metadataObject:
           $ref: "#/components/schemas/MetadataObject"
+        catalogProvider:
+          type: string
+          nullable: true
+          description: The provider of the containing catalog, or null for objects outside a catalog
+        catalogType:
+          type: string
+          nullable: true
+          description: The type of the containing catalog, or null for objects outside a catalog
+          enum:
+            - relational
+            - fileset
+            - messaging
+            - model
         rolePrivileges:
           type: array
           description: The role privileges associated with the metadata object
@@ -277,6 +293,8 @@ components:
       type: object
       required:
         - catalog
+        - catalogProvider
+        - catalogType
         - objects
         - roles
         - users
@@ -288,6 +306,19 @@ components:
         catalog:
           type: string
           description: The catalog name
+        catalogProvider:
+          type: string
+          nullable: true
+          description: The catalog provider, or null if the catalog no longer exists
+        catalogType:
+          type: string
+          nullable: true
+          description: The catalog type, or null if the catalog no longer exists
+          enum:
+            - relational
+            - fileset
+            - messaging
+            - model
         objects:
           type: array
           items:
@@ -573,6 +604,8 @@ components:
               "fullName": "catalog1.schema1.table1",
               "type": "TABLE"
             },
+            "catalogProvider": "lakehouse-iceberg",
+            "catalogType": "relational",
             "rolePrivileges": [
               {
                 "role": "role1",

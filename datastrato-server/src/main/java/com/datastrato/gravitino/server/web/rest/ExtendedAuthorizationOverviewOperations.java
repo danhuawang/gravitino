@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -33,13 +34,17 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.User;
+import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.dto.authorization.PrivilegeDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.metalake.MetalakeManager;
@@ -86,6 +91,7 @@ public class ExtendedAuthorizationOverviewOperations {
               Privilege.Name.MODIFY_FUNCTION));
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
+  private final CatalogDispatcher catalogDispatcher;
 
   @Context private HttpServletRequest httpRequest;
 
@@ -93,6 +99,7 @@ public class ExtendedAuthorizationOverviewOperations {
   public ExtendedAuthorizationOverviewOperations() {
     this.accessControlDispatcher =
         ExtendedDatastratoGravitinoEnv.getInstance().accessControlDispatcher();
+    this.catalogDispatcher = GravitinoEnv.getInstance().catalogDispatcher();
   }
 
   /**
@@ -143,9 +150,17 @@ public class ExtendedAuthorizationOverviewOperations {
                           .forEach(object -> collectRoleObject(catalogs, roleAccumulator, object));
                     });
 
+            Map<String, Catalog> catalogsByName =
+                catalogs.isEmpty() ? Collections.emptyMap() : loadCatalogsByName(metalake);
             CatalogAuthorizationDTO[] catalogDTOs =
                 catalogs.values().stream()
-                    .map(catalog -> buildCatalogDTO(catalog, usersByRole, groupsByRole))
+                    .map(
+                        catalog ->
+                            buildCatalogDTO(
+                                catalog,
+                                catalogsByName.get(catalog.name),
+                                usersByRole,
+                                groupsByRole))
                     .toArray(CatalogAuthorizationDTO[]::new);
             RoleMembershipDTO[] roleDTOs =
                 roleAccumulators.values().stream()
@@ -315,6 +330,7 @@ public class ExtendedAuthorizationOverviewOperations {
 
   private CatalogAuthorizationDTO buildCatalogDTO(
       CatalogAccumulator catalog,
+      @Nullable Catalog catalogInfo,
       Map<String, Set<String>> usersByRole,
       Map<String, Set<String>> groupsByRole) {
     Set<String> users = new LinkedHashSet<>();
@@ -335,11 +351,20 @@ public class ExtendedAuthorizationOverviewOperations {
 
     return new CatalogAuthorizationDTO(
         catalog.name,
+        catalogInfo == null ? null : catalogInfo.provider(),
+        catalogInfo == null ? null : catalogInfo.type(),
         objects.toArray(new ObjectAuthorizationDTO[0]),
         catalog.roles.toArray(new String[0]),
         users.toArray(new String[0]),
         groups.toArray(new String[0]),
         privilegedPrincipalCount(catalog, usersByRole, groupsByRole));
+  }
+
+  private Map<String, Catalog> loadCatalogsByName(String metalake) {
+    Map<String, Catalog> catalogsByName = new LinkedHashMap<>();
+    Arrays.stream(catalogDispatcher.listCatalogsInfo(Namespace.of(metalake)))
+        .forEach(catalog -> catalogsByName.put(catalog.name(), catalog));
+    return catalogsByName;
   }
 
   private int privilegedPrincipalCount(

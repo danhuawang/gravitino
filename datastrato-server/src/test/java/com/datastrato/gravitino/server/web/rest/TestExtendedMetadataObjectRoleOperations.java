@@ -31,16 +31,19 @@ import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.reflect.FieldUtils;
+import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
 import org.apache.gravitino.authorization.User;
+import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
@@ -67,6 +70,7 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
 
   private static final DatastratoAccessControlDispatcher accessControlDispatcher =
       mock(DatastratoAccessControlDispatcher.class);
+  private static final CatalogDispatcher catalogDispatcher = mock(CatalogDispatcher.class);
   private static final EntityStore entityStore = mock(EntityStore.class);
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
@@ -88,6 +92,7 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
     FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "lockManager", new LockManager(config), true);
     FieldUtils.writeField(GravitinoEnv.getInstance(), "entityStore", entityStore, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "catalogDispatcher", catalogDispatcher, true);
     FieldUtils.writeField(
         ExtendedDatastratoGravitinoEnv.getInstance(),
         "accessControlDispatcher",
@@ -97,7 +102,7 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
 
   @BeforeEach
   public void resetMocks() throws IOException {
-    Mockito.reset(accessControlDispatcher, entityStore);
+    Mockito.reset(accessControlDispatcher, catalogDispatcher, entityStore);
     mockInUseMetalake();
   }
 
@@ -148,6 +153,12 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
     Group analysts = mockGroup("analysts", Lists.newArrayList("role1"));
     when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[] {alice});
     when(accessControlDispatcher.listGroups("metalake1")).thenReturn(new Group[] {analysts});
+    Catalog catalogInfo = mock(Catalog.class);
+    when(catalogInfo.name()).thenReturn("catalog1");
+    when(catalogInfo.provider()).thenReturn("lakehouse-iceberg");
+    when(catalogInfo.type()).thenReturn(Catalog.Type.RELATIONAL);
+    when(catalogDispatcher.listCatalogsInfo(Namespace.of("metalake1")))
+        .thenReturn(new Catalog[] {catalogInfo});
 
     Response resp =
         target("/web/security/metalakes/metalake1/objects/roles")
@@ -167,6 +178,8 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
 
     Assertions.assertEquals(
         "catalog1.schema1.table1", objectRolePrivileges[0].metadataObject().fullName());
+    Assertions.assertEquals("lakehouse-iceberg", objectRolePrivileges[0].catalogProvider());
+    Assertions.assertEquals(Catalog.Type.RELATIONAL, objectRolePrivileges[0].catalogType());
     Assertions.assertEquals(2, objectRolePrivileges[0].rolePrivileges().size());
     assertRolePrivilege(
         objectRolePrivileges[0].rolePrivileges().get(0), "role1", "SELECT_TABLE", "ALLOW", 2);
@@ -175,6 +188,8 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
 
     Assertions.assertEquals(
         "catalog1.schema1.table2", objectRolePrivileges[1].metadataObject().fullName());
+    Assertions.assertEquals("lakehouse-iceberg", objectRolePrivileges[1].catalogProvider());
+    Assertions.assertEquals(Catalog.Type.RELATIONAL, objectRolePrivileges[1].catalogType());
     Assertions.assertEquals(1, objectRolePrivileges[1].rolePrivileges().size());
     assertRolePrivilege(
         objectRolePrivileges[1].rolePrivileges().get(0), "role1", "CREATE_TABLE", "ALLOW", 2);
@@ -199,6 +214,7 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
         resp.readEntity(ObjectRolePrivilegeListResponse.class);
     Assertions.assertEquals(0, listResponse.getCode());
     Assertions.assertEquals(0, listResponse.getObjectRolePrivileges().length);
+    verify(catalogDispatcher, never()).listCatalogsInfo(any());
   }
 
   @Test
