@@ -49,12 +49,16 @@ jobs:
   IcebergRestTrinoIT:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
+<<<<<<< HEAD
     runs-on: gcp-arc-runners
     timeout-minutes: 90
+=======
+>>>>>>> upstream/branch-1.3
     strategy:
       matrix:
         architecture: [linux/amd64]
         java-version: [ 17 ]
+<<<<<<< HEAD
     env:
       PLATFORM: ${{ matrix.architecture }}
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
@@ -104,3 +108,9 @@ jobs:
             iceberg/iceberg-rest-trino-it/build/reports
             distribution/package/logs/*.out
             distribution/package/logs/*.log
+=======
+    uses: ./.github/workflows/iceberg-rest-trino-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+>>>>>>> upstream/branch-1.3

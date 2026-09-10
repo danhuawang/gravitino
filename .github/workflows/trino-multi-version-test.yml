@@ -5,6 +5,7 @@ on:
 
 jobs:
   TrinoMultiVersionIT:
+<<<<<<< HEAD
     runs-on: gcp-arc-runners
     timeout-minutes: 240
     env:
@@ -107,3 +108,6 @@ jobs:
             distribution/package/logs/gravitino-server.out
             distribution/package/logs/gravitino-server.log
             catalogs/**/*.log
+=======
+    uses: ./.github/workflows/trino-multi-version-test-action.yml
+>>>>>>> upstream/branch-1.3

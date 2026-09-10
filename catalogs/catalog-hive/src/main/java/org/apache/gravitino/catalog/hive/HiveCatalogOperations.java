@@ -88,6 +88,11 @@ import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.rel.types.Type;
+<<<<<<< HEAD
+=======
+import org.apache.gravitino.utils.ClassLoaderResourceCleanerUtils;
+import org.apache.gravitino.utils.ExceptionMessages;
+>>>>>>> upstream/branch-1.3
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -491,7 +496,7 @@ public class HiveCatalogOperations
       return new HiveTableHandle(table, clientPool);
 
     } catch (InterruptedException e) {
-      throw new RuntimeException(
+      throw ExceptionMessages.wrap(
           "Failed to load Hive table " + tableIdent.name() + " from Hive metastore", e);
     }
   }
@@ -739,9 +744,18 @@ public class HiveCatalogOperations
               targetDatabaseName);
 
       HiveTable finalUpdatedTable = updatedTable;
+      // For property-only or comment-only changes, skip the metastore statistics recomputation so
+      // it does not access the table's storage location. This keeps such lightweight alters from
+      // hanging when the underlying filesystem (e.g. HDFS NameNode) is slow or unavailable.
+      boolean skipStatsUpdate = canSkipStatsUpdate(changes);
       clientPool.run(
           c -> {
-            c.alterTable(catalogName, schemaIdent.name(), tableIdent.name(), finalUpdatedTable);
+            c.alterTable(
+                catalogName,
+                schemaIdent.name(),
+                tableIdent.name(),
+                finalUpdatedTable,
+                skipStatsUpdate);
             return null;
           });
 
@@ -763,6 +777,29 @@ public class HiveCatalogOperations
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  /**
+   * Determines whether the metastore statistics recomputation can be skipped for the given table
+   * changes. Statistics are tied to the table data, so recomputation is only meaningful when the
+   * data layout may change. Property-only and comment-only alters never touch the data, so they can
+   * safely skip the recomputation (and the storage-location access it triggers). Any column change
+   * or rename falls back to the default behavior.
+   *
+   * @param changes The table changes to be applied.
+   * @return {@code true} if every change is a property or comment change; {@code false} otherwise.
+   */
+  @VisibleForTesting
+  static boolean canSkipStatsUpdate(TableChange[] changes) {
+    if (changes == null || changes.length == 0) {
+      return false;
+    }
+    return Arrays.stream(changes)
+        .allMatch(
+            change ->
+                change instanceof TableChange.SetProperty
+                    || change instanceof TableChange.RemoveProperty
+                    || change instanceof TableChange.UpdateComment);
   }
 
   private HiveTable buildAlteredHiveTable(

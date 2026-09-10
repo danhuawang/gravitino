@@ -20,6 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+<<<<<<< HEAD
   lance-spark-matrix:
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -104,3 +105,10 @@ jobs:
             integration-test/build/integration-test.log
             distribution/package/logs/gravitino-server.out
             distribution/package/logs/gravitino-server.log
+=======
+  lance-matrix:
+    uses: ./.github/workflows/lance-compatibility-matrix-test-action.yml
+    with:
+      lance_spark_versions: ${{ github.event.inputs.lance_spark_versions || '0.2.0,0.4.0,0.5.1' }}
+      lance_ray_versions: ${{ github.event.inputs.lance_ray_versions || '0.4.2,0.3.0' }}
+>>>>>>> upstream/branch-1.3

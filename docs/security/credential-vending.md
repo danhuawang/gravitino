@@ -223,6 +223,7 @@ Gravitino calls Alibaba Cloud STS [AssumeRole](https://www.alibabacloud.com/help
 
 Also set `oss-access-key-id` and `oss-secret-access-key`. Gravitino uses them to call AssumeRole, not to reach data, and they are never sent to the engine.
 
+<<<<<<< HEAD
 | Property                   | Description                                                                                                  | Default value | Required |
 |----------------------------|--------------------------------------------------------------------------------------------------------------|---------------|----------|
 | `oss-access-key-id`        | The static access key ID used to access OSS data.                                                            | (none)        | Yes      |
@@ -231,6 +232,11 @@ Also set `oss-access-key-id` and `oss-secret-access-key`. Gravitino uses them to
 | `oss-region`               | The region of the OSS service, like `oss-cn-hangzhou`, only used when `credential-providers` is `oss-token`. | (none)        | No       |
 | `oss-external-id`          | The OSS external id to generate the token.                                                                   | (none)        | No       |
 | `oss-token-expire-in-secs` | The OSS security token expire time in secs.                                                                  | 3600          | No       |
+=======
+:::note
+`gcs-service-account-file` is used both to vend downscoped tokens and to authenticate Iceberg `GCSFileIO` on the server (Gravitino injects `gcs.oauth2.token` at catalog load because Iceberg has no service-account-file property). Ensure the file is readable by the server process. If the property is unset, FileIO and token vending fall back to Application Default Credentials (for example GCE metadata or `GOOGLE_APPLICATION_CREDENTIALS`).
+:::
+>>>>>>> upstream/branch-1.3
 
 #### Trust Policy on the RAM Role
 

@@ -28,9 +28,12 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.codahale.metrics.annotation.ResponseMetered;
+import com.codahale.metrics.annotation.Timed;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -1180,6 +1183,7 @@ public class TestJobOperations extends JerseyTest {
   }
 
   @Test
+<<<<<<< HEAD
   public void testCancelJobWithMalformedRuntimeJobTemplateDoesNotFail() {
     // By the time toDTO() runs here, jobOperationDispatcher.cancelJob() has already cancelled
     // the job and updated its stored entity - a malformed stored runtime job template must not
@@ -1341,6 +1345,19 @@ public class TestJobOperations extends JerseyTest {
             .orElseThrow(() -> new AssertionError("Malformed job missing from response"));
     Assertions.assertNull(malformedJobDTO.runtimeJobTemplate());
     Assertions.assertEquals(JobHandle.Status.QUEUED, malformedJobDTO.status());
+=======
+  public void testCancelJobIsResponseMetered() throws Exception {
+    Method cancelJob = JobOperations.class.getMethod("cancelJob", String.class, String.class);
+    ResponseMetered metered = cancelJob.getAnnotation(ResponseMetered.class);
+    Assertions.assertNotNull(metered);
+    Assertions.assertEquals("cancel-job", metered.name());
+    Assertions.assertTrue(metered.absolute());
+
+    Timed timed = cancelJob.getAnnotation(Timed.class);
+    Assertions.assertNotNull(timed);
+    Assertions.assertTrue(timed.name().startsWith("cancel-job."));
+    Assertions.assertTrue(timed.absolute());
+>>>>>>> upstream/branch-1.3
   }
 
   private String jobTemplatePath() {

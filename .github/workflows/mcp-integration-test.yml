@@ -43,6 +43,7 @@ jobs:
           filters: |
             mcp_server_changes:
               - 'mcp-server/**'
+<<<<<<< HEAD
 
   mcp-authz-integration-test:
     runs-on: gcp-arc-runners
@@ -82,3 +83,17 @@ jobs:
             mcp-server/gravitino-mcp-audit.log
             mcp-server/gravitino-mcp.log
           if-no-files-found: ignore
+=======
+              - 'server/**'
+              - 'core/src/main/java/org/apache/gravitino/authorization/**'
+              - 'server-common/src/main/java/org/apache/gravitino/server/authentication/**'
+              - '.github/workflows/mcp-integration-test.yml'
+              - '.github/workflows/mcp-integration-test-action.yml'
+
+  mcp-authz-integration-test:
+    needs: changes
+    if: needs.changes.outputs.mcp_or_authz_changes == 'true'
+    uses: ./.github/workflows/mcp-integration-test-action.yml
+    with:
+      java-version: '17'
+>>>>>>> upstream/branch-1.3

@@ -39,6 +39,7 @@ import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -115,6 +116,11 @@ import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.metrics.MetricsSystem;
 import org.apache.gravitino.metrics.source.FilesetCatalogMetricsSource;
+<<<<<<< HEAD
+=======
+import org.apache.gravitino.utils.ClassLoaderResourceCleanerUtils;
+import org.apache.gravitino.utils.ExceptionMessages;
+>>>>>>> upstream/branch-1.3
 import org.apache.gravitino.utils.FilesetUtil;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.apache.gravitino.utils.NamespaceUtil;
@@ -346,7 +352,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
           .map(f -> NameIdentifier.of(namespace, f.name()))
           .toArray(NameIdentifier[]::new);
     } catch (IOException e) {
-      throw new RuntimeException("Failed to list filesets under namespace " + namespace, e);
+      throw ExceptionMessages.wrap("Failed to list filesets under namespace " + namespace, e);
     }
   }
 
@@ -368,7 +374,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
     } catch (NoSuchEntityException exception) {
       throw new NoSuchFilesetException(exception, FILESET_DOES_NOT_EXIST_MSG, ident);
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to load fileset %s" + ident, ioe);
+      throw ExceptionMessages.wrap("Failed to load fileset %s" + ident, ioe);
     }
   }
 
@@ -415,7 +421,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
           .toArray(FileInfo[]::new);
 
     } catch (IOException e) {
-      throw new RuntimeException("Failed to list files in fileset" + filesetIdent, e);
+      throw ExceptionMessages.wrap("Failed to list files in fileset" + filesetIdent, e);
     }
   }
 
@@ -443,7 +449,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
         throw new FilesetAlreadyExistsException("Fileset %s already exists", ident);
       }
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to check if fileset " + ident + " exists", ioe);
+      throw ExceptionMessages.wrap("Failed to check if fileset " + ident + " exists", ioe);
     }
 
     SchemaEntity schemaEntity;
@@ -453,7 +459,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
     } catch (NoSuchEntityException exception) {
       throw new NoSuchSchemaException(exception, SCHEMA_DOES_NOT_EXIST_MSG, schemaIdent);
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to load schema " + schemaIdent, ioe);
+      throw ExceptionMessages.wrap("Failed to load schema " + schemaIdent, ioe);
     }
 
     // For external fileset, the storageLocation must be set.
@@ -556,7 +562,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
         }
 
       } catch (IOException ioe) {
-        throw new RuntimeException("Failed to create fileset " + ident, ioe);
+        throw ExceptionMessages.wrap("Failed to create fileset " + ident, ioe);
       }
     }
 
@@ -590,7 +596,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
     try {
       store.put(filesetEntity, true /* overwrite */);
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to create fileset " + ident, ioe);
+      throw ExceptionMessages.wrap("Failed to create fileset " + ident, ioe);
     }
 
     return FilesetImpl.builder()
@@ -653,7 +659,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
         throw new NoSuchFilesetException(FILESET_DOES_NOT_EXIST_MSG, ident);
       }
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to load fileset " + ident, ioe);
+      throw ExceptionMessages.wrap("Failed to load fileset " + ident, ioe);
     }
 
     try {
@@ -673,12 +679,12 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
           .withAuditInfo(updatedFilesetEntity.auditInfo())
           .build();
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to update fileset " + ident, ioe);
+      throw ExceptionMessages.wrap("Failed to update fileset " + ident, ioe);
     } catch (NoSuchEntityException nsee) {
       throw new NoSuchFilesetException(nsee, FILESET_DOES_NOT_EXIST_MSG, ident);
     } catch (AlreadyExistsException aee) {
       // This is happened when renaming a fileset to an existing fileset name.
-      throw new RuntimeException(
+      throw ExceptionMessages.wrap(
           "Fileset with the same name " + ident.name() + " already exists", aee);
     }
   }
@@ -734,8 +740,10 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
     } catch (NoSuchEntityException ne) {
       LOG.warn("Fileset {} does not exist", ident);
       return false;
+    } catch (UncheckedIOException uioe) {
+      throw ExceptionMessages.wrap("Failed to delete fileset " + ident, uioe.getCause());
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to delete fileset " + ident, ioe);
+      throw ExceptionMessages.wrap("Failed to delete fileset " + ident, ioe);
     }
   }
 
@@ -759,7 +767,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
         throw new SchemaAlreadyExistsException("Schema %s already exists", ident);
       }
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to check if schema " + ident + " exists", ioe);
+      throw ExceptionMessages.wrap("Failed to check if schema " + ident + " exists", ioe);
     }
 
     Map<String, Path> schemaPaths = getAndCheckSchemaPaths(ident.name(), properties);
@@ -803,7 +811,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
               }
 
             } catch (IOException ioe) {
-              throw new RuntimeException(
+              throw ExceptionMessages.wrap(
                   "Failed to create schema " + ident + " location " + schemaPath, ioe);
             }
           }
@@ -820,7 +828,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
         throw new NoSuchSchemaException(SCHEMA_DOES_NOT_EXIST_MSG, ident);
       }
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to check if schema " + ident + " exists", ioe);
+      throw ExceptionMessages.wrap("Failed to check if schema " + ident + " exists", ioe);
     }
 
     // note: we need to invalidate the related fileset cache when the schema rename change is
@@ -957,7 +965,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
       LOG.warn("Schema {} does not exist", ident);
       return false;
     } catch (IOException ioe) {
-      throw new RuntimeException("Failed to delete schema " + ident + " location", ioe);
+      throw ExceptionMessages.wrap("Failed to delete schema " + ident + " location", ioe);
     }
   }
 
@@ -1115,7 +1123,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
                           + locationName);
                 }
               } catch (IOException e) {
-                throw new RuntimeException(
+                throw ExceptionMessages.wrap(
                     "Failed to check if fileset catalog location exists: " + v, e);
               }
             }
@@ -1447,7 +1455,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
           "Interrupted when getting FileSystem for path: {}, possibly the server is"
               + " shutting down or catalog is been dropped",
           path);
-      throw new RuntimeException("Interrupted when getting FileSystem for path: " + path, e);
+      throw ExceptionMessages.wrap("Interrupted when getting FileSystem for path: " + path, e);
     } catch (ExecutionException e) {
       Throwable cause = e.getCause();
       if (cause instanceof IOException) {

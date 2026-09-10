@@ -37,6 +37,7 @@ jobs:
               - gradle.properties
               - settings.gradle.kts
               - .github/workflows/idp-basic-test.yml
+              - .github/workflows/idp-basic-test-action.yml
       - name: Detect idp-basic module
         id: module
         run: |
@@ -52,6 +53,7 @@ jobs:
   idp-basic-test:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true' && needs.changes.outputs.module_exists == 'true'
+<<<<<<< HEAD
     runs-on: gcp-arc-runners
     timeout-minutes: 60
     env:
@@ -121,3 +123,8 @@ jobs:
             distribution/package-all/logs/gravitino-server.log
             distribution/package/logs/gravitino-server.out
             distribution/package/logs/gravitino-server.log
+=======
+    uses: ./.github/workflows/idp-basic-test-action.yml
+    with:
+      java-version: '17'
+>>>>>>> upstream/branch-1.3

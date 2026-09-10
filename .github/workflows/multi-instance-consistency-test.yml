@@ -20,6 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+<<<<<<< HEAD
   changes:
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci')
@@ -164,3 +165,7 @@ jobs:
             distribution/package-b/logs/
             distribution/package/conf/gravitino.conf
             distribution/package-b/conf/gravitino.conf
+=======
+  multi-instance-consistency:
+    uses: ./.github/workflows/multi-instance-consistency-test-action.yml
+>>>>>>> upstream/branch-1.3

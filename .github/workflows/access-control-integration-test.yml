@@ -58,13 +58,16 @@ jobs:
   access-control-IT:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
+<<<<<<< HEAD
     runs-on: gcp-arc-runners
     timeout-minutes: 90
+=======
+>>>>>>> upstream/branch-1.3
     strategy:
       matrix:
-        # Integration test for AMD64 architecture
         architecture: [linux/amd64]
         java-version: [ 17 ]
+<<<<<<< HEAD
 
     env:
       PLATFORM: ${{ matrix.architecture }}
@@ -120,3 +123,9 @@ jobs:
             build/reports
             distribution/package/logs/gravitino-server.out
             distribution/package/logs/gravitino-server.log
+=======
+    uses: ./.github/workflows/access-control-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+>>>>>>> upstream/branch-1.3

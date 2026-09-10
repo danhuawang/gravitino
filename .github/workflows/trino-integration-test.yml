@@ -58,12 +58,16 @@ jobs:
   TrinoIT:
     needs: changes
     if: needs.changes.outputs.source_changes == 'true'
+<<<<<<< HEAD
     runs-on: gcp-arc-runners
     timeout-minutes: 60
+=======
+>>>>>>> upstream/branch-1.3
     strategy:
       matrix:
         architecture: [linux/amd64]
         java-version: [ 17 ]
+<<<<<<< HEAD
     env:
       PLATFORM: ${{ matrix.architecture }}
       LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
@@ -135,3 +139,9 @@ jobs:
             distribution/package/logs/gravitino-server.log
             catalogs/**/*.log
             catalogs/**/*.tar
+=======
+    uses: ./.github/workflows/trino-integration-test-action.yml
+    with:
+      architecture: ${{ matrix.architecture }}
+      java-version: ${{ matrix.java-version }}
+>>>>>>> upstream/branch-1.3
