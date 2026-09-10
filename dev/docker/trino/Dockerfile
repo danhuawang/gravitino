@@ -147,9 +147,11 @@ RUN chmod +x /usr/lib/trino/bin/run-trino /usr/lib/trino/bin/health-check
 # --- Copy jvmkill (OOM protection) ---
 COPY --chown=1000:0 --from=jvmkill /libjvmkill.so /usr/lib/trino/bin/libjvmkill.so
 
-# --- Copy Gravitino connector and JDBC drivers ---
-# Pre-built by trino-dependency.sh before docker build
-COPY --chown=1000:0 packages/gravitino-trino-connector /usr/lib/trino/plugin/gravitino
+# --- Copy JDBC drivers for Trino's Iceberg connector (JDBC catalog backend) ---
+# Pre-built by trino-dependency.sh before docker build.
+# NOTE: The Gravitino Trino connector is NOT bundled here. It is injected at
+# runtime into /usr/lib/trino/plugin/gravitino by the standalone
+# `gravitino-trino-connector` image (see dev/docker/trino-connectors).
 COPY --chown=1000:0 packages/gravitino-trino-connector/mysql-connector-java-8.0.27.jar /usr/lib/trino/plugin/iceberg/
 COPY --chown=1000:0 packages/gravitino-trino-connector/postgresql-42.7.11.jar /usr/lib/trino/plugin/iceberg/
 
