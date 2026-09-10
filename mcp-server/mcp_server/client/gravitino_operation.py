@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 from mcp_server.client.catalog_operation import CatalogOperation
 from mcp_server.client.fileset_operation import FilesetOperation
 from mcp_server.client.job_operation import JobOperation
+from mcp_server.client.metalake_operation import MetalakeOperation
 from mcp_server.client.model_operation import ModelOperation
 from mcp_server.client.policy_operation import PolicyOperation
 from mcp_server.client.schema_operation import SchemaOperation
@@ -130,5 +131,15 @@ class GravitinoOperation(ABC):
 
         Returns:
             StatisticOperation: Interface for performing statistic-level operations
+        """
+        pass
+
+    @abstractmethod
+    def as_metalake_operation(self) -> MetalakeOperation:
+        """
+        Access the metalake operation interface of this Gravitino operation.
+
+        Returns:
+            MetalakeOperation: Interface for metalake-level operations
         """
         pass

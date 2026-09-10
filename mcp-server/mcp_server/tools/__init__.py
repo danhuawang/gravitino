@@ -21,6 +21,7 @@ from mcp_server.tools.catalog import load_catalog_tools
 from mcp_server.tools.fileset import load_fileset_tools
 from mcp_server.tools.job import load_job_tool
 from mcp_server.tools.metadata import load_metadata_tool
+from mcp_server.tools.metalake import load_metalake_tools
 from mcp_server.tools.model import load_model_tools
 from mcp_server.tools.policy import load_policy_tools
 from mcp_server.tools.schema import load_schema_tools
@@ -40,5 +41,6 @@ def load_tools(mcp: FastMCP):
     load_fileset_tools(mcp)
     load_tag_tool(mcp)
     load_metadata_tool(mcp)
+    load_metalake_tools(mcp)
     load_statistic_tools(mcp)
     load_policy_tools(mcp)
