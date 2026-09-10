@@ -5,9 +5,12 @@ on:
 
 jobs:
   TrinoMultiVersionIT:
-    runs-on: ubuntu-latest
+    runs-on: gcp-arc-runners
     timeout-minutes: 240
     env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
       CONNECTOR_DIR: ${{ github.workspace }}/trino-connector
     steps:
       - uses: actions/checkout@v4

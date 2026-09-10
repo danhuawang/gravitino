@@ -14,9 +14,12 @@ on:
 
 jobs:
   lance-spark-matrix:
-    runs-on: ubuntu-latest
+    runs-on: gcp-arc-runners
     timeout-minutes: 120
     env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
       LANCE_SPARK_VERSIONS: ${{ inputs.lance_spark_versions }}
     steps:
       - uses: actions/checkout@v4
@@ -49,9 +52,12 @@ jobs:
             build/reports
 
   lance-ray-matrix:
-    runs-on: ubuntu-latest
+    runs-on: gcp-arc-runners
     timeout-minutes: 120
     env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
       LANCE_RAY_VERSIONS: ${{ inputs.lance_ray_versions }}
     steps:
       - uses: actions/checkout@v4

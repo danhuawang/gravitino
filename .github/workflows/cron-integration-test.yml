@@ -55,26 +55,6 @@ jobs:
     if: github.event_name != 'schedule' || github.repository == 'apache/gravitino'
     runs-on: ubuntu-latest
     outputs:
-<<<<<<< HEAD
-      source_changes: ${{ steps.filter.outputs.source_changes }}
-
-  # Integration test for AMD64 architecture
-  test-amd64-arch:
-    if: github.repository == 'apache/gravitino'
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    strategy:
-      matrix:
-        architecture: [linux/amd64]
-        java-version: [ 17 ]
-        test-mode: [ embedded, deploy ]
-    env:
-      DOCKER_RUN_NAME: hive-amd64
-      PLATFORM: ${{ matrix.architecture }}
-      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
-      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
-      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
-=======
       backend: ${{ steps.parse.outputs.backend }}
       spark: ${{ steps.parse.outputs.spark }}
       flink: ${{ steps.parse.outputs.flink }}
@@ -89,7 +69,6 @@ jobs:
       lance: ${{ steps.parse.outputs.lance }}
       multi-instance: ${{ steps.parse.outputs.multi-instance }}
       java-version: ${{ steps.parse.outputs.java-version }}
->>>>>>> upstream/branch-1.3
     steps:
       - name: Parse suite selection
         id: parse
@@ -150,6 +129,7 @@ jobs:
     name: spark
     needs: select-suites
     if: needs.select-suites.outputs.spark == 'true'
+    secrets: inherit
     uses: ./.github/workflows/spark-integration-test-action.yml
     with:
       architecture: linux/amd64
@@ -161,6 +141,7 @@ jobs:
     name: flink
     needs: select-suites
     if: needs.select-suites.outputs.flink == 'true'
+    secrets: inherit
     uses: ./.github/workflows/flink-integration-test-action.yml
     with:
       architecture: linux/amd64
@@ -170,6 +151,7 @@ jobs:
     name: maintenance
     needs: select-suites
     if: needs.select-suites.outputs.maintenance == 'true'
+    secrets: inherit
     uses: ./.github/workflows/maintenance-integration-test-action.yml
     with:
       architecture: linux/amd64
@@ -179,6 +161,7 @@ jobs:
     name: python
     needs: select-suites
     if: needs.select-suites.outputs.python == 'true'
+    secrets: inherit
     uses: ./.github/workflows/python-integration-test-action.yml
     with:
       architecture: linux/amd64
@@ -188,6 +171,7 @@ jobs:
     name: trino
     needs: select-suites
     if: needs.select-suites.outputs.trino == 'true'
+    secrets: inherit
     uses: ./.github/workflows/trino-integration-test-action.yml
     with:
       architecture: linux/amd64
@@ -197,6 +181,7 @@ jobs:
     name: access-control
     needs: select-suites
     if: needs.select-suites.outputs.access-control == 'true'
+    secrets: inherit
     uses: ./.github/workflows/access-control-integration-test-action.yml
     with:
       architecture: linux/amd64
@@ -206,6 +191,7 @@ jobs:
     name: iceberg-rest-trino
     needs: select-suites
     if: needs.select-suites.outputs.iceberg-rest-trino == 'true'
+    secrets: inherit
     uses: ./.github/workflows/iceberg-rest-trino-integration-test-action.yml
     with:
       architecture: linux/amd64
@@ -215,6 +201,7 @@ jobs:
     name: mcp
     needs: select-suites
     if: needs.select-suites.outputs.mcp == 'true'
+    secrets: inherit
     uses: ./.github/workflows/mcp-integration-test-action.yml
     with:
       java-version: ${{ needs.select-suites.outputs.java-version }}
@@ -223,6 +210,7 @@ jobs:
     name: idp
     needs: select-suites
     if: needs.select-suites.outputs.idp == 'true'
+    secrets: inherit
     uses: ./.github/workflows/idp-basic-test-action.yml
     with:
       java-version: ${{ needs.select-suites.outputs.java-version }}
@@ -231,19 +219,23 @@ jobs:
     name: trino-multi-version
     needs: select-suites
     if: needs.select-suites.outputs.trino-multi-version == 'true'
+    secrets: inherit
     uses: ./.github/workflows/trino-multi-version-test-action.yml
+    secrets: inherit
 
   lance:
     name: lance
     needs: select-suites
     if: needs.select-suites.outputs.lance == 'true'
     uses: ./.github/workflows/lance-compatibility-matrix-test-action.yml
+    secrets: inherit
 
   multi-instance:
     name: multi-instance
     needs: select-suites
     if: needs.select-suites.outputs.multi-instance == 'true'
     uses: ./.github/workflows/multi-instance-consistency-test-action.yml
+    secrets: inherit
 
   summary:
     name: Integration test summary

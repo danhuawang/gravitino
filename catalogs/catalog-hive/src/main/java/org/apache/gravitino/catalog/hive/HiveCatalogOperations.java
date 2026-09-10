@@ -197,6 +197,7 @@ public class HiveCatalogOperations
       clientPool.close();
       clientPool = null;
     }
+    ClassLoaderResourceCleanerUtils.closeClassLoaderResource(this.getClass().getClassLoader());
   }
 
   /**

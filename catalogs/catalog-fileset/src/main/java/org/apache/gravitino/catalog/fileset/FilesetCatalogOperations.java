@@ -1031,6 +1031,7 @@ public class FilesetCatalogOperations extends ManagedSchemaOperations
     if (metricsSystem != null) {
       metricsSystem.unregister(catalogMetricsSource);
     }
+    ClassLoaderResourceCleanerUtils.closeClassLoaderResource(this.getClass().getClassLoader());
   }
 
   private void validateLocationHierarchy(

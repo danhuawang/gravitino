@@ -15,9 +15,12 @@ on:
 jobs:
   access-control-IT:
     name: JDK${{ inputs.java-version }}
-    runs-on: ubuntu-latest
+    runs-on: gcp-arc-runners
     timeout-minutes: 90
     env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
       PLATFORM: ${{ inputs.architecture }}
     steps:
       - uses: actions/checkout@v4
