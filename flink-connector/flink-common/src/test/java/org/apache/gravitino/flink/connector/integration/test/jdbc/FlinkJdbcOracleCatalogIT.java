@@ -460,7 +460,9 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .columns();
           Column[] expected =
               new Column[] {
-                Column.of("USER_ID_NEW", Types.IntegerType.get(), COL_USER_ID),
+                // A Flink INT column is written as Oracle NUMBER(10) and, since #1748, read back as
+                // Decimal(10,0) (the declared precision is preserved instead of a narrower int).
+                Column.of("USER_ID_NEW", Types.DecimalType.of(10, 0), COL_USER_ID),
                 Column.of(COL_ORDER_AMOUNT, Types.DoubleType.get(), COL_ORDER_AMOUNT),
               };
           assertColumns(expected, actual);
@@ -664,7 +666,9 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
             Table table = catalog.asTableCatalog().loadTable(identifier);
             Column[] expected =
                 new Column[] {
-                  Column.of("ID", Types.IntegerType.get(), null),
+                  // A Flink INT column is written as Oracle NUMBER(10) and read back as
+                  // Decimal(10,0) since #1748.
+                  Column.of("ID", Types.DecimalType.of(10, 0), null),
                   // Oracle DATE stores date and time, so it maps to TIMESTAMP(3) here.
                   Column.of("DATE_COL", Types.TimestampType.withoutTimeZone(3), null),
                   Column.of("TS_COL", Types.TimestampType.withoutTimeZone(3), null),
@@ -773,8 +777,12 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .asTableCatalog()
                   .loadTable(NameIdentifier.of(databaseName, tableName.toUpperCase(Locale.ROOT)))
                   .columns();
+          // A Flink INT column is written as Oracle NUMBER(10) and read back as Decimal(10,0)
+          // since #1748.
           Column[] expected =
-              new Column[] {Column.of(COL_ORDER_AMOUNT, Types.IntegerType.get(), COL_ORDER_AMOUNT)};
+              new Column[] {
+                Column.of(COL_ORDER_AMOUNT, Types.DecimalType.of(10, 0), COL_ORDER_AMOUNT)
+              };
           assertColumns(expected, actual);
         },
         true,
@@ -826,10 +834,12 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .asTableCatalog()
                   .loadTable(NameIdentifier.of(databaseName, tableName.toUpperCase(Locale.ROOT)))
                   .columns();
+          // Both columns end up as Flink BIGINT, written as Oracle NUMBER(19) and read back as
+          // Decimal(19,0) since #1748.
           Column[] expected =
               new Column[] {
-                Column.of(COL_USER_ID, Types.LongType.get(), "new comment"),
-                Column.of(COL_ORDER_AMOUNT, Types.LongType.get(), "new comment2")
+                Column.of(COL_USER_ID, Types.DecimalType.of(19, 0), "new comment"),
+                Column.of(COL_ORDER_AMOUNT, Types.DecimalType.of(19, 0), "new comment2")
               };
           assertColumns(expected, actual);
         },
@@ -867,11 +877,13 @@ public abstract class FlinkJdbcOracleCatalogIT extends FlinkCommonIT {
                   .asTableCatalog()
                   .loadTable(NameIdentifier.of(databaseName, tableName.toUpperCase(Locale.ROOT)))
                   .columns();
+          // Flink INT columns are written as Oracle NUMBER(10) and read back as Decimal(10,0)
+          // since #1748.
           Column[] expected =
               new Column[] {
-                Column.of(COL_USER_ID, Types.IntegerType.get(), COL_USER_ID),
-                Column.of(COL_ORDER_AMOUNT, Types.IntegerType.get(), COL_ORDER_AMOUNT),
-                Column.of("NEW_COLUMN_2", Types.IntegerType.get(), null),
+                Column.of(COL_USER_ID, Types.DecimalType.of(10, 0), COL_USER_ID),
+                Column.of(COL_ORDER_AMOUNT, Types.DecimalType.of(10, 0), COL_ORDER_AMOUNT),
+                Column.of("NEW_COLUMN_2", Types.DecimalType.of(10, 0), null),
               };
           assertColumns(expected, actual);
         },

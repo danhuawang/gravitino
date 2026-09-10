@@ -180,13 +180,15 @@ public abstract class SparkJdbcOracleCatalogIT extends SparkCommonIT {
 
   // Unquoted Oracle logical column names are already uppercase, matching the physical Oracle
   // columns, so the expected column names here are uppercase too. Oracle also stores an empty
-  // string comment as null.
+  // string comment as null. An Integer column is written as Oracle NUMBER(10) and, since #1748, is
+  // read back as DecimalType(10,0) (the declared precision is preserved rather than reported as a
+  // narrower integer type), so the expected type here is DecimalType(10,0).
   @Override
   protected List<SparkColumnInfo> getSimpleTableColumn() {
     return Arrays.asList(
-        SparkColumnInfo.of("ID", DataTypes.IntegerType, "id comment"),
+        SparkColumnInfo.of("ID", DataTypes.createDecimalType(10, 0), "id comment"),
         SparkColumnInfo.of("NAME", DataTypes.StringType, null),
-        SparkColumnInfo.of("AGE", DataTypes.IntegerType, null));
+        SparkColumnInfo.of("AGE", DataTypes.createDecimalType(10, 0), null));
   }
 
   @Test

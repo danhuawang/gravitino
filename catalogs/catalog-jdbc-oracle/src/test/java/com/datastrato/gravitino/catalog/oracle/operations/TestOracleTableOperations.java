@@ -59,6 +59,7 @@ import org.apache.gravitino.rel.indexes.Indexes;
 import org.apache.gravitino.rel.partitions.ListPartition;
 import org.apache.gravitino.rel.partitions.Partitions;
 import org.apache.gravitino.rel.partitions.RangePartition;
+import org.apache.gravitino.rel.types.Decimal;
 import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -278,14 +279,16 @@ public class TestOracleTableOperations {
             .withProperties(Map.of())
             .withColumns(
                 new JdbcColumn[] {
+                  // NUMBER(1) reads back as Decimal(1,0); the boolean marker restores FLAG to
+                  // BooleanType, while an unmarked NUMBER(1) column stays Decimal(1,0).
                   JdbcColumn.builder()
                       .withName("FLAG")
-                      .withType(Types.ByteType.get())
+                      .withType(Types.DecimalType.of(1, 0))
                       .withNullable(true)
                       .build(),
                   JdbcColumn.builder()
                       .withName("SOURCE_FLAG")
-                      .withType(Types.ByteType.get())
+                      .withType(Types.DecimalType.of(1, 0))
                       .withNullable(true)
                       .build()
                 });
@@ -293,7 +296,7 @@ public class TestOracleTableOperations {
 
     assertEquals(Types.BooleanType.get(), builder.columns()[0].dataType());
     assertEquals("active flag", builder.columns()[0].comment());
-    assertEquals(Types.ByteType.get(), builder.columns()[1].dataType());
+    assertEquals(Types.DecimalType.of(1, 0), builder.columns()[1].dataType());
     assertEquals("source number flag", builder.columns()[1].comment());
   }
 
@@ -798,6 +801,9 @@ public class TestOracleTableOperations {
     when(colRs.getString("COLUMN_NAME")).thenReturn("ID");
     when(columnTypeStmt.executeQuery()).thenReturn(columnTypeRs);
     when(columnTypeRs.next()).thenReturn(true);
+    // Oracle reports the declared precision/scale here, so the partition column resolves to
+    // Decimal(10,0) and range bounds are evaluated as decimals. (When Oracle reports NUMBER with
+    // no precision, the column resolves to ExternalType and bounds are read as strings instead.)
     when(columnTypeRs.getString("DATA_TYPE")).thenReturn("NUMBER");
     when(columnTypeRs.getObject("DATA_PRECISION", Integer.class)).thenReturn(10);
     when(columnTypeRs.getObject("DATA_SCALE", Integer.class)).thenReturn(0);
@@ -820,18 +826,24 @@ public class TestOracleTableOperations {
     when(connection.createStatement()).thenReturn(rangeBoundStmt);
     when(rangeBoundStmt.executeQuery(anyString())).thenReturn(firstBatchRs, secondBatchRs);
     when(firstBatchRs.next()).thenReturn(true, false);
-    when(firstBatchRs.getInt(anyInt()))
-        .thenAnswer(invocation -> invocation.<Integer>getArgument(0));
+    // NUMBER(10,0) now maps to Decimal(10,0), so range bounds are read as BigDecimal.
+    when(firstBatchRs.getBigDecimal(anyInt()))
+        .thenAnswer(invocation -> BigDecimal.valueOf(invocation.<Integer>getArgument(0)));
     when(secondBatchRs.next()).thenReturn(true, false);
-    when(secondBatchRs.getInt(1)).thenReturn(101);
+    when(secondBatchRs.getBigDecimal(1)).thenReturn(BigDecimal.valueOf(101));
 
     Transform[] transforms = operations.getTablePartitioningForTest(connection, "APP_USER", "T1");
     Transforms.RangeTransform rangeTransform = (Transforms.RangeTransform) transforms[0];
     assertEquals(102, rangeTransform.assignments().length);
-    assertEquals(1, rangeTransform.assignments()[0].upper().value());
-    assertEquals(100, rangeTransform.assignments()[99].upper().value());
-    assertEquals(101, rangeTransform.assignments()[100].upper().value());
-    assertEquals(Types.IntegerType.get(), rangeTransform.assignments()[100].upper().dataType());
+    assertEquals(
+        Decimal.of(BigDecimal.ONE, 10, 0), rangeTransform.assignments()[0].upper().value());
+    assertEquals(
+        Decimal.of(BigDecimal.valueOf(100), 10, 0),
+        rangeTransform.assignments()[99].upper().value());
+    assertEquals(
+        Decimal.of(BigDecimal.valueOf(101), 10, 0),
+        rangeTransform.assignments()[100].upper().value());
+    assertEquals(Types.DecimalType.of(10, 0), rangeTransform.assignments()[100].upper().dataType());
     assertEquals(Literals.NULL, rangeTransform.assignments()[101].upper());
 
     ArgumentCaptor<String> queryCaptor = ArgumentCaptor.forClass(String.class);

@@ -54,20 +54,21 @@ public abstract class SparkCommonIT extends SparkEnvIT {
 
   // To generate test data for write&read table.
   protected static final Map<DataType, String> typeConstant =
-      ImmutableMap.of(
-          DataTypes.IntegerType,
-          "2",
-          DataTypes.StringType,
-          "'gravitino_it_test'",
-          DataTypes.createArrayType(DataTypes.IntegerType),
-          "array(1, 2, 3)",
-          DataTypes.createMapType(DataTypes.StringType, DataTypes.IntegerType),
-          "map('a', 1)",
-          DataTypes.createStructType(
-              Arrays.asList(
-                  DataTypes.createStructField("col1", DataTypes.IntegerType, true),
-                  DataTypes.createStructField("col2", DataTypes.StringType, true))),
-          "struct(1, 'a')");
+      ImmutableMap.<DataType, String>builder()
+          .put(DataTypes.IntegerType, "2")
+          // Oracle reads NUMBER(p,0) back as DecimalType(p,0); provide a test value so read/write
+          // checks work for catalogs that surface a scale-0 decimal column.
+          .put(DataTypes.createDecimalType(10, 0), "2")
+          .put(DataTypes.StringType, "'gravitino_it_test'")
+          .put(DataTypes.createArrayType(DataTypes.IntegerType), "array(1, 2, 3)")
+          .put(DataTypes.createMapType(DataTypes.StringType, DataTypes.IntegerType), "map('a', 1)")
+          .put(
+              DataTypes.createStructType(
+                  Arrays.asList(
+                      DataTypes.createStructField("col1", DataTypes.IntegerType, true),
+                      DataTypes.createStructField("col2", DataTypes.StringType, true))),
+              "struct(1, 'a')")
+          .build();
 
   private static String getInsertWithoutPartitionSql(String tableName, String values) {
     return String.format("INSERT INTO %s VALUES (%s)", tableName, values);

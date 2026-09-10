@@ -137,43 +137,50 @@ See [Case sensitivity](#case-sensitivity) for how table/column names are folded,
 | `Float`            | `BINARY_FLOAT`           |
 | `Double`           | `BINARY_DOUBLE`          |
 | `Boolean`          | `BOOLEAN` on Oracle 23+, otherwise marked `NUMBER(1)` |
-| `String`           | `CLOB`                   |
-| `VarChar(n)`       | `VARCHAR2(n)`            |
-| `FixedChar(n)`     | `CHAR(n)`                |
-| `Timestamp(p)`     | `TIMESTAMP(p)`           |
-| `Timestamp_tz(p)`  | `TIMESTAMP(p) WITH TIME ZONE` |
-| `Binary`           | `BLOB`                   |
+| `String`           | `CLOB`                                                |
+| `VarChar(n)`       | `VARCHAR2(n)`                                         |
+| `FixedChar(n)`     | `CHAR(n)`                                             |
+| `Timestamp(p)`     | `TIMESTAMP(p)`                                        |
+| `Timestamp_tz(p)`  | `TIMESTAMP(p) WITH TIME ZONE`                         |
+| `Date`             | `DATE` (Oracle `DATE` is a date + time to the second) |
+| `Binary`           | `BLOB`                                                |
 
 When loading an Oracle table, Gravitino converts Oracle types back as follows:
 
-| Oracle Type                 | Gravitino Type                                                                                      |
-|-----------------------------|-----------------------------------------------------------------------------------------------------|
-| `NUMBER(p)` (scale = 0)     | `Byte` (p ≤ 3), `Short` (p ≤ 5), `Integer` (p ≤ 10), `Long` (p ≤ 19), otherwise `Decimal(p,0)`      |
-| `NUMBER(p,s)` (scale > 0)   | `Decimal(p,s)`                                                                                      |
-| `NUMBER(p,s)` (scale < 0)   | `ExternalType("NUMBER(p,s)")`                                                                       |
-| `NUMBER` (no p, no s)       | `Decimal(38,0)`; Oracle JDBC reports this as the sentinel precision `0`, scale `-127`                |
-| `BOOLEAN`                   | `Boolean`                                                                                             |
-| `VARCHAR2(n)` / `VARCHAR(n)`| `VarChar(n)` (or `String` when length is unknown)                                                   |
-| `CHAR(n)`                   | `FixedChar(n)`                                                                                      |
-| `CLOB` / `NCLOB`            | `String`                                                                                            |
-| `BLOB` / `RAW` / `LONG RAW` | `Binary`                                                                                            |
-| `BINARY_FLOAT`              | `Float`                                                                                             |
-| `BINARY_DOUBLE` / `FLOAT`   | `Double`                                                                                            |
-| `DATE`                      | `Timestamp` (Oracle's `DATE` includes time to seconds, so it maps to `Timestamp`, not `Date`)       |
-| `TIMESTAMP(p)`              | `Timestamp(p)`                                                                                      |
-| `NCHAR` / `NVARCHAR2`       | `ExternalType("NCHAR(...)")` / `ExternalType("NVARCHAR2(...)")`                                     |
-| Other Oracle types          | `ExternalType(<original type name>)`                                                                |
+| Oracle Type                             | Gravitino Type                                                                                                                                                                                          |
+|-----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `NUMBER(p)` / `NUMBER(p,0)` (scale = 0) | `Decimal(p,0)` (the declared precision is preserved, matching the PostgreSQL connector)                                                                                                                 |
+| `NUMBER(p,s)` (scale > 0)               | `Decimal(p,s)`                                                                                                                                                                                          |
+| `NUMBER(p,s)` (scale < 0)               | `ExternalType("NUMBER(p,s)")`                                                                                                                                                                           |
+| `NUMBER` (no p, no s)                   | `Decimal(38,0)`; Oracle JDBC reports this as the sentinel precision `0`, scale `-127`                                                                                                                   |
+| `BOOLEAN`                               | `Boolean`                                                                                                                                                                                               |
+| `VARCHAR2(n)` / `VARCHAR(n)`            | `VarChar(n)` (or `String` when length is unknown)                                                                                                                                                       |
+| `CHAR(n)`                               | `FixedChar(n)`                                                                                                                                                                                          |
+| `CLOB` / `NCLOB`                        | `String`                                                                                                                                                                                                |
+| `BLOB` / `RAW` / `LONG RAW`             | `Binary`                                                                                                                                                                                                |
+| `BINARY_FLOAT`                          | `Float`                                                                                                                                                                                                 |
+| `BINARY_DOUBLE` / `FLOAT`               | `Double`                                                                                                                                                                                                |
+| `DATE`                                  | `Timestamp(0)` (Oracle's `DATE` carries a time part to the second, so it is reported as a second-precision `Timestamp` that engines can use as a temporal value; write a Gravitino `Date` to recreate an Oracle `DATE`) |
+| `TIMESTAMP(p)`                          | `Timestamp(p)`                                                                                                                                                                                          |
+| `TIMESTAMP(p) WITH TIME ZONE`           | `Timestamp_tz(p)`                                                                                                                                                                                       |
+| `TIMESTAMP(p) WITH LOCAL TIME ZONE`     | `ExternalType("TIMESTAMP(p) WITH LOCAL TIME ZONE")` (cannot be distinguished from `WITH TIME ZONE` by Gravitino, so the original type name is preserved instead of failing the table load)              |
+| `NCHAR` / `NVARCHAR2`                   | `ExternalType("NCHAR(...)")` / `ExternalType("NVARCHAR2(...)")`                                                                                                                                         |
+| Other Oracle types                      | `ExternalType(<original type name>)`                                                                                                                                                                    |
 
 :::info
-Oracle doesn't support Gravitino `Date`, `Time`, `Fixed`, `Struct`, `List`, `Map`, `IntervalDay`, `IntervalYear`, `Union`, `UUID` types.
+Oracle doesn't support Gravitino `Time`, `Fixed`, `Struct`, `List`, `Map`, `IntervalDay`, `IntervalYear`, `Union`, `UUID` types. A Gravitino `Date` is written as Oracle `DATE`.
 Types not listed above are mapped to Gravitino **External Type** to keep the original Oracle type name.
 Oracle `FLOAT` is a subtype of `NUMBER`, not the same as Oracle `BINARY_DOUBLE`. The Oracle catalog maps it to Gravitino `Double` for compatibility, but the Oracle and Gravitino types are not strictly equivalent.
 
-A source `NUMBER(1)` is an integer and maps to `Byte`; it is never inferred to be boolean. On Oracle releases before 23, Gravitino records boolean intent in internal column-comment metadata when it emulates `Boolean` with `NUMBER(1)`, and removes that marker from the comment returned through the API.
+A source `NUMBER(p,0)` maps to `Decimal(p,0)`, preserving the declared precision rather than collapsing to a fixed Java integer width. This reports the source type accurately and avoids reporting a type too narrow for the values the column permits (for example `NUMBER(5,0)` allows values up to 99999, which does not fit in a 16-bit `Short`). As a consequence, a Gravitino integer column created through Gravitino (`Byte`/`Short`/`Integer`/`Long` are written as `NUMBER(3)`/`NUMBER(5)`/`NUMBER(10)`/`NUMBER(19)`) reads back as the corresponding `Decimal(p,0)`, not the original integer type.
+
+A source `NUMBER(1)` is a plain integer and maps to `Decimal(1,0)`; it is never inferred to be boolean. On Oracle releases before 23, Gravitino records boolean intent in internal column-comment metadata when it emulates `Boolean` with `NUMBER(1)`, and removes that marker from the comment returned through the API. Only a column carrying that internal marker is restored to `Boolean` on read.
 :::
 
 :::caution
-Gravitino `Date` cannot be converted to Oracle because Oracle's `DATE` has a time part. If you need the Oracle `DATE` type, use `ExternalType("DATE")` instead.
+An Oracle `DATE` column is read as `Timestamp(0)`, not as an `ExternalType`, so the engine connectors (Trino, Spark, Flink) surface it as a usable temporal value rather than a plain string. Because Oracle's `DATE` carries a time part to the second, `Timestamp(0)` is the closest Gravitino type; it is a faithful but not byte-identical representation.
+
+To recreate an Oracle `DATE` column, write a Gravitino `Date`, which maps to Oracle `DATE`. `ExternalType("DATE")` is also accepted and produces the same Oracle `DATE`. Note that writing a plain `Timestamp` produces `TIMESTAMP(p)`, not `DATE`.
 :::
 
 ### Table column default values

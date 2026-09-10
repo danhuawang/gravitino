@@ -14,11 +14,15 @@ import org.apache.spark.sql.types.TimestampType;
 /**
  * Type converter for the Oracle catalog.
  *
- * <p>Oracle has no pure date type: its {@code DATE} column stores both date and time, so {@link
- * Types.DateType} is rejected by {@code OracleTypeConverter}. Spark's {@link DateType} is mapped to
- * {@code TimestampType.withoutTimeZone(3)} instead, matching how the Trino connector's {@code
- * OracleDataTypeTransformer} handles the same case, so {@code OracleTypeConverter} emits {@code
- * TIMESTAMP(3)} DDL and both engines round-trip the value with the same precision.
+ * <p>Oracle has no pure date type: its {@code DATE} column stores both date and time. Spark's
+ * {@link DateType} is mapped to {@code TimestampType.withoutTimeZone(3)} rather than to {@link
+ * Types.DateType}: writing a Gravitino {@code DateType} would emit bare {@code DATE} DDL, but a
+ * Spark {@code DATE} (date only) written through this path is best represented as a millisecond
+ * {@code TIMESTAMP(3)} so it round-trips with the same precision Spark uses by default, matching
+ * how the Trino connector's {@code OracleDataTypeTransformer} handles the same case. (Note: a
+ * native Oracle {@code DATE} column is read back by {@code OracleTypeConverter} as {@code
+ * Timestamp(0)}; the {@code (3)} here is the write-side symmetry for a Spark {@code DATE}, not the
+ * read-side mapping.)
  *
  * <p>The base {@link org.apache.gravitino.spark.connector.SparkTypeConverter} maps Spark's {@link
  * TimestampType} ("timestamp" in Spark SQL) to the timezone-aware {@link Types.TimestampType},

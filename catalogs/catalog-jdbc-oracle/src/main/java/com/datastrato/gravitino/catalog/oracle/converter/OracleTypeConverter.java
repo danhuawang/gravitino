@@ -70,9 +70,15 @@ public class OracleTypeConverter extends JdbcTypeConverter {
                   "NUMBER(%d,%d)", safeInt(precision, ORACLE_MAX_DECIMAL_PRECISION), scale));
         }
         if (scale != null && scale > 0) {
-          return Types.DecimalType.of(safeInt(precision, ORACLE_MAX_DECIMAL_PRECISION), scale);
+          return Types.DecimalType.of(decimalPrecision(precision), scale);
         }
-        return mapNumberPrecisionToIntegralType(safeInt(precision, ORACLE_MAX_DECIMAL_PRECISION));
+        // NUMBER(p) and NUMBER(p,0) map to Decimal(p,0), preserving the declared precision (as the
+        // PostgreSQL connector does for NUMERIC). Bucketing scale-0 NUMBER into fixed Java integer
+        // widths (byte/short/integer/long) by precision discarded the declared precision and, at
+        // some boundaries, reported a type too narrow for the values the source column permits
+        // (e.g. NUMBER(5,0) allows 99999 but short caps at 32767). Reporting the source accurately
+        // is preferred over round-tripping Gravitino integer type names.
+        return Types.DecimalType.of(decimalPrecision(precision), 0);
       case VARCHAR2:
       case VARCHAR:
         return precision == null ? Types.StringType.get() : Types.VarCharType.of(precision);
@@ -97,7 +103,14 @@ public class OracleTypeConverter extends JdbcTypeConverter {
       case BINARY_FLOAT:
         return Types.FloatType.get();
       case DATE:
-        return Types.TimestampType.withoutTimeZone();
+        // Oracle DATE stores date + time to the second (no fractional seconds), so it is not a
+        // Gravitino Date. Report it as a second-precision Timestamp: this is the closest type the
+        // engine connectors (Spark/Flink/Trino) can actually use as a temporal value, rather than
+        // an ExternalType that they would surface as a plain string. Precision 0 mirrors Oracle
+        // DATE's second granularity. Round-tripping is handled on the write side: a Gravitino
+        // DateType maps back to Oracle DATE (see fromGravitino), which is the reversible path the
+        // caller can use to recreate the source type.
+        return Types.TimestampType.withoutTimeZone(0);
       case BOOLEAN:
         return Types.BooleanType.get();
       default:
@@ -147,8 +160,11 @@ public class OracleTypeConverter extends JdbcTypeConverter {
     } else if (type instanceof Types.ExternalType) {
       return ((Types.ExternalType) type).catalogString();
     } else if (type instanceof Types.DateType) {
-      throw new UnsupportedOperationException(
-          "Oracle canonical DDL does not map Gravitino DateType. Use ExternalType(\"DATE\") when needed.");
+      // Oracle DATE is a date + time (to the second) value, so it is the natural target for a
+      // Gravitino DateType write. Mapping DateType -> DATE (instead of rejecting it) closes the
+      // round trip: an Oracle DATE column is read as Timestamp(0) and can be recreated by writing
+      // back a DateType. ExternalType("DATE") remains supported for callers that prefer it.
+      return DATE;
     }
 
     throw new UnsupportedOperationException(
@@ -156,32 +172,35 @@ public class OracleTypeConverter extends JdbcTypeConverter {
             "Oracle does not support converting Gravitino type %s.", type.simpleString()));
   }
 
-  private static Type mapNumberPrecisionToIntegralType(int precision) {
-    if (precision <= 3) {
-      return Types.ByteType.get();
-    } else if (precision <= 5) {
-      return Types.ShortType.get();
-    } else if (precision <= 10) {
-      return Types.IntegerType.get();
-    } else if (precision <= 19) {
-      return Types.LongType.get();
-    } else {
-      return Types.DecimalType.of(precision, 0);
-    }
-  }
-
   private static int safeInt(Integer value, int defaultValue) {
     return value == null ? defaultValue : value;
   }
 
+  /**
+   * Returns a precision valid for a Gravitino {@link Types.DecimalType} (which requires precision
+   * in [1, 38]). Oracle JDBC can report a non-positive precision for a {@code NUMBER} whose
+   * precision is unknown or unconstrained (e.g. {@code precision = 0} outside the {@code scale =
+   * -127} sentinel path); in that case fall back to the maximum Oracle precision rather than
+   * passing an out-of-range value to {@code DecimalType.of}, which would throw.
+   */
+  private static int decimalPrecision(Integer precision) {
+    if (precision == null || precision <= 0) {
+      return ORACLE_MAX_DECIMAL_PRECISION;
+    }
+    return Math.min(precision, ORACLE_MAX_DECIMAL_PRECISION);
+  }
+
   private static Type toGravitinoTimestampType(String typeName, Integer scale) {
-    // Gravitino TimestampType cannot distinguish "WITH TIME ZONE" from
-    // "WITH LOCAL TIME ZONE", so a round trip would silently change semantics.
-    // Reject LOCAL TIME ZONE explicitly instead of accepting a lossy mapping.
+    // Gravitino TimestampType cannot distinguish "WITH TIME ZONE" from "WITH LOCAL TIME ZONE".
+    // Instead of failing the whole table load on this one column, preserve the exact Oracle type
+    // name as ExternalType. It stays distinguishable from the plain "WITH TIME ZONE" mapping (whose
+    // catalogString differs) and round-trips back to Oracle unchanged.
     if (typeName.contains("WITH LOCAL TIME ZONE")) {
-      throw new UnsupportedOperationException(
-          "Oracle TIMESTAMP WITH LOCAL TIME ZONE is not supported by Gravitino "
-              + "because it cannot be distinguished from TIMESTAMP WITH TIME ZONE.");
+      Integer localTzPrecision = extractTimestampPrecision(typeName, scale);
+      return Types.ExternalType.of(
+          localTzPrecision == null
+              ? TIMESTAMP_WITH_LOCAL_TIME_ZONE
+              : String.format("TIMESTAMP(%d) WITH LOCAL TIME ZONE", localTzPrecision));
     }
     boolean hasTimeZone = typeName.contains("WITH TIME ZONE");
     Integer precision = extractTimestampPrecision(typeName, scale);

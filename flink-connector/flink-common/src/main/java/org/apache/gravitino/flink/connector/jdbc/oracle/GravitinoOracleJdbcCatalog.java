@@ -95,11 +95,14 @@ public class GravitinoOracleJdbcCatalog extends GravitinoJdbcCatalog {
   }
 
   /**
-   * Maps Flink's {@code DATE} type to a Gravitino {@code TIMESTAMP(3)} instead of {@code DATE}.
-   * Oracle has no pure date type: its {@code DATE} column stores both date and time, so the
-   * server-side {@code OracleTypeConverter} rejects Gravitino's {@code DateType}. Precision 3
-   * matches the millisecond precision the Trino connector's {@code OracleDataTypeTransformer} uses
-   * for the same mapping.
+   * Maps Flink's {@code DATE} type to a Gravitino {@code TIMESTAMP(3)} instead of {@code DateType}.
+   * Oracle has no pure date type: its {@code DATE} column stores both date and time. A Flink {@code
+   * DATE} (date only) written through this path is represented as a millisecond {@code
+   * TIMESTAMP(3)} so it round-trips with the millisecond precision Flink uses by default, matching
+   * the precision the Trino connector's {@code OracleDataTypeTransformer} uses for the same
+   * mapping. (Note: a native Oracle {@code DATE} column is read back by {@code OracleTypeConverter}
+   * as {@code Timestamp(0)}; the {@code (3)} here is the write-side symmetry for a Flink {@code
+   * DATE}, not the read-side mapping.)
    */
   @Override
   protected Type toGravitinoType(LogicalType logicalType) {

@@ -379,8 +379,10 @@ public class OracleTableOperations extends JdbcTableOperations {
       String storedComment = columnComments.get(column.name());
       boolean hasBooleanMarker = isEmulatedBooleanComment(storedComment);
       String comment = hasBooleanMarker ? userColumnComment(storedComment) : storedComment;
+      // Emulated booleans are stored as NUMBER(1), which now reads back as Decimal(1,0). Restore
+      // BooleanType only when the marker is present and the loaded type matches that encoding.
       Type dataType =
-          hasBooleanMarker && column.dataType() instanceof Types.ByteType
+          hasBooleanMarker && isEmulatedBooleanColumnType(column.dataType())
               ? Types.BooleanType.get()
               : column.dataType();
       if (!Objects.equals(dataType, column.dataType())
@@ -1044,6 +1046,16 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   private static boolean isEmulatedBooleanComment(String comment) {
     return comment != null && comment.startsWith(BOOLEAN_COMMENT_MARKER);
+  }
+
+  private static boolean isEmulatedBooleanColumnType(Type dataType) {
+    // Emulated booleans are written as NUMBER(1), which OracleTypeConverter reads back as
+    // Decimal(1,0).
+    if (!(dataType instanceof Types.DecimalType)) {
+      return false;
+    }
+    Types.DecimalType decimalType = (Types.DecimalType) dataType;
+    return decimalType.precision() == 1 && decimalType.scale() == 0;
   }
 
   private static String userColumnComment(String storedComment) {

@@ -450,14 +450,13 @@ public class CatalogOracleIT extends BaseIT {
 
     Column[] columns =
         new Column[] {
-          // NUMBER(p, s) precision-driven integral round-trips:
-          // Byte (3), Short (5), Integer (10), Long (19).
+          // Gravitino integer types are written to fixed-precision NUMBER (Byte->NUMBER(3),
+          // Short->NUMBER(5), Integer->NUMBER(10), Long->NUMBER(19)). On read, NUMBER(p,0) is
+          // reported as Decimal(p,0) to preserve the declared precision (matching PostgreSQL),
+          // so these do not round-trip back to the original Gravitino integer type names.
           Column.of("c_byte", Types.ByteType.get(), null, true, false, null),
           Column.of("c_short", Types.ShortType.get(), null, true, false, null),
           Column.of("c_int", Types.IntegerType.get(), null, true, false, null),
-          // Oracle NUMBER(19, 0) can hold values outside Java signed long, but Gravitino writes
-          // LongType as NUMBER(19), so OracleTypeConverter maps precision <= 19 back to LongType
-          // to preserve Gravitino LongType round trips.
           Column.of("c_long", Types.LongType.get(), null, true, false, null),
           Column.of("c_decimal", Types.DecimalType.of(12, 4), null, true, false, null),
           // BINARY_FLOAT / BINARY_DOUBLE are the Oracle-native IEEE-754 types.
@@ -478,11 +477,11 @@ public class CatalogOracleIT extends BaseIT {
         Arrays.stream(loaded.columns())
             .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
 
-    assertEquals(Types.ByteType.get(), loadedByName.get("c_byte").dataType());
-    assertEquals(Types.ShortType.get(), loadedByName.get("c_short").dataType());
-    assertEquals(Types.IntegerType.get(), loadedByName.get("c_int").dataType());
-    // LongType is NUMBER(19) -> LongType on read under the precision <= 19 integral mapping.
-    assertEquals(Types.LongType.get(), loadedByName.get("c_long").dataType());
+    // NUMBER(p,0) is reported as Decimal(p,0), preserving the declared precision.
+    assertEquals(Types.DecimalType.of(3, 0), loadedByName.get("c_byte").dataType());
+    assertEquals(Types.DecimalType.of(5, 0), loadedByName.get("c_short").dataType());
+    assertEquals(Types.DecimalType.of(10, 0), loadedByName.get("c_int").dataType());
+    assertEquals(Types.DecimalType.of(19, 0), loadedByName.get("c_long").dataType());
     assertEquals(Types.DecimalType.of(12, 4), loadedByName.get("c_decimal").dataType());
     assertEquals(Types.FloatType.get(), loadedByName.get("c_float").dataType());
     assertEquals(Types.DoubleType.get(), loadedByName.get("c_double").dataType());
@@ -505,9 +504,49 @@ public class CatalogOracleIT extends BaseIT {
         Arrays.stream(loaded.columns())
             .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
 
-    assertEquals(Types.ByteType.get(), loadedByName.get("flag").dataType());
+    // A source NUMBER(1) declared directly in Oracle (no Gravitino boolean marker) is a plain
+    // integer and is reported as Decimal(1,0), preserving the declared precision.
+    assertEquals(Types.DecimalType.of(1, 0), loadedByName.get("flag").dataType());
     assertEquals(Types.DecimalType.of(38, 0), loadedByName.get("amount").dataType());
     assertEquals(Types.BooleanType.get(), loadedByName.get("enabled").dataType());
+  }
+
+  @Test
+  void testSourceDateReadsAsSecondPrecisionTimestamp() {
+    // A native Oracle DATE column carries a time part to the second, so it is read as a
+    // second-precision Timestamp (not a Gravitino Date and not an ExternalType), which the engines
+    // can use as a temporal value (issue #1747).
+    String name = "IT_SOURCE_DATE";
+    oracleService.executeQuery("CREATE TABLE " + name + " (ID NUMBER(10), D DATE)");
+
+    Table loaded = catalog.asTableCatalog().loadTable(NameIdentifier.of(schemaName, name));
+    Map<String, Column> loadedByName =
+        Arrays.stream(loaded.columns())
+            .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
+
+    assertEquals(Types.TimestampType.withoutTimeZone(0), loadedByName.get("d").dataType());
+  }
+
+  @Test
+  void testSourceTimestampWithLocalTimeZoneReadsAsExternalType() {
+    // A single TIMESTAMP WITH LOCAL TIME ZONE column must no longer fail the whole table load
+    // (issue #1747). It cannot be distinguished from TIMESTAMP WITH TIME ZONE by Gravitino's
+    // TimestampType, so it is preserved as an ExternalType that keeps the exact Oracle type name,
+    // while the rest of the table loads normally.
+    String name = "IT_SOURCE_LTZ";
+    oracleService.executeQuery(
+        "CREATE TABLE " + name + " (ID NUMBER(10), TS_LTZ TIMESTAMP(6) WITH LOCAL TIME ZONE)");
+
+    Table loaded = catalog.asTableCatalog().loadTable(NameIdentifier.of(schemaName, name));
+    Map<String, Column> loadedByName =
+        Arrays.stream(loaded.columns())
+            .collect(Collectors.toMap(c -> c.name().toLowerCase(), c -> c));
+
+    // The whole table loaded, including the id column, rather than failing on the LTZ column.
+    assertEquals(Types.DecimalType.of(10, 0), loadedByName.get("id").dataType());
+    assertEquals(
+        Types.ExternalType.of("TIMESTAMP(6) WITH LOCAL TIME ZONE"),
+        loadedByName.get("ts_ltz").dataType());
   }
 
   // ----------------------------------------------------------------------
@@ -946,7 +985,8 @@ public class CatalogOracleIT extends BaseIT {
     assertEquals(Types.VarCharType.of(64), byName.get("name").dataType());
 
     assertTrue(byName.containsKey("qty"));
-    assertEquals(Types.IntegerType.get(), byName.get("qty").dataType());
+    // qty was added as Integer (NUMBER(10)); on read NUMBER(10,0) is reported as Decimal(10,0).
+    assertEquals(Types.DecimalType.of(10, 0), byName.get("qty").dataType());
     assertEquals(Literals.stringLiteral("0"), byName.get("qty").defaultValue());
 
     assertFalse(byName.containsKey("to_drop"));
