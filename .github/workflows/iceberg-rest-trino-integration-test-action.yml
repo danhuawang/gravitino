@@ -24,7 +24,12 @@ jobs:
       PLATFORM: ${{ inputs.architecture }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      - name: Fetch PR base ref
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --no-tags
       # Installs the primary JDK plus JDK 24 and registers JDK 24 with the Gradle
       # toolchain, which the trino-iceberg-rest module requires.
       - uses: ./.github/actions/setup-java-toolchains

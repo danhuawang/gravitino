@@ -23,6 +23,12 @@ jobs:
       LANCE_SPARK_VERSIONS: ${{ inputs.lance_spark_versions }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch PR base ref
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --no-tags
 
       - uses: actions/setup-java@v4
         with:
