@@ -37,6 +37,7 @@ jobs:
               - gradle.properties
               - settings.gradle.kts
               - .github/workflows/idp-basic-test.yml
+              - .github/workflows/idp-basic-test-action.yml
       - name: Detect idp-basic module
         id: module
         run: |
