@@ -29,6 +29,7 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.PropertiesMetadataHelpers;
 import org.apache.gravitino.connector.CatalogOperations;
 import org.apache.gravitino.connector.HasPropertyMetadata;
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.credential.AzureAccountKeyCredential;
 import org.apache.gravitino.credential.CredentialConstants;
@@ -87,7 +88,7 @@ public class TestIcebergCatalog {
       };
 
   @Test
-  void testCatalogPropertiesHideAzureClientSecret() {
+  void testCatalogPropertiesMaskAzureClientSecret() {
     AuditInfo auditInfo =
         AuditInfo.builder().withCreator("creator").withCreateTime(Instant.now()).build();
     Map<String, String> properties =
@@ -105,8 +106,9 @@ public class TestIcebergCatalog {
     IcebergCatalog catalog =
         new IcebergCatalog().withCatalogConf(properties).withCatalogEntity(entity);
 
-    Assertions.assertFalse(
-        catalog.properties().containsKey(AzureProperties.GRAVITINO_AZURE_CLIENT_SECRET));
+    Assertions.assertEquals(
+        HiddenPropertyMaskUtils.MASKED_VALUE,
+        catalog.properties().get(AzureProperties.GRAVITINO_AZURE_CLIENT_SECRET));
   }
 
   @Test
