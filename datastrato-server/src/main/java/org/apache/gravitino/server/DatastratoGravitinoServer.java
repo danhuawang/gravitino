@@ -22,13 +22,13 @@ import org.slf4j.LoggerFactory;
 public class DatastratoGravitinoServer extends GravitinoServer {
   private static final Logger LOG = LoggerFactory.getLogger(DatastratoGravitinoServer.class);
 
-  private final CatalogManager catalogManager;
+  private final GravitinoEnv gravitinoEnv;
 
   @Nullable private CatalogConnectionTestGarbageCollector connectionTestGarbageCollector;
 
   public DatastratoGravitinoServer(ServerConfig config, GravitinoEnv gravitinoEnv) {
     super(config, gravitinoEnv);
-    this.catalogManager = gravitinoEnv.catalogManager();
+    this.gravitinoEnv = gravitinoEnv;
   }
 
   public static void main(String[] args) {
@@ -77,6 +77,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
   @Override
   public void initialize() {
     super.initialize();
+    CatalogManager catalogManager = gravitinoEnv.catalogManager();
     ConfigServletConfigEntryRegistrar.register(this, DataPreviewConfig.ENABLED_CONFIG);
 
     boolean enableAuthorization = serverConfig().get(Configs.ENABLE_AUTHORIZATION);

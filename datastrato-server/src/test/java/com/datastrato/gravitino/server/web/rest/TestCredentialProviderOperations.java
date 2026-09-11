@@ -60,7 +60,6 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
   private final ConnectionTestStore connectionTestStore = mock(ConnectionTestStore.class);
   private final CatalogDispatcher catalogDispatcher = mock(CatalogDispatcher.class);
-  private final CatalogManager catalogManager = mock(CatalogManager.class);
 
   /** Simulates the overlapping connection root resource registered by the production server. */
   @Path("/web/metalakes/{metalake}/connections")
@@ -109,6 +108,8 @@ public class TestCredentialProviderOperations extends JerseyTest {
   @Override
   @SuppressWarnings("unchecked")
   protected Application configure() {
+    CatalogManager catalogManager = mock(CatalogManager.class);
+
     try {
       forceSet(
           TestProperties.CONTAINER_PORT, String.valueOf(RESTUtils.findAvailablePort(2000, 3000)));
