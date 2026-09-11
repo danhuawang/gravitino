@@ -1,0 +1,70 @@
+name: Python Client Integration Test Action
+
+on:
+  workflow_call:
+    inputs:
+      architecture:
+        required: true
+        description: 'Architecture of the platform'
+        type: string
+      java-version:
+        required: true
+        description: 'Java version'
+        type: string
+
+jobs:
+  PythonIT:
+    name: JDK${{ inputs.java-version }}
+    runs-on: gcp-arc-runners
+    timeout-minutes: 90
+    env:
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
+      PLATFORM: ${{ inputs.architecture }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch PR base ref
+        if: github.event_name == 'pull_request'
+        run: git fetch origin ${{ github.base_ref }} --no-tags
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+
+      - name: Free up disk space
+        run: |
+          dev/ci/util_free_space.sh
+
+      - name: Python Client Integration Test
+        id: integrationTest
+        run: |
+          ./gradlew compileDistribution -PskipWeb=true -x test
+
+          for pythonVersion in "3.10" "3.11" "3.12"
+          do
+            echo "Use Python version ${pythonVersion} to test the Python client."
+            ./gradlew -PpythonVersion=${pythonVersion} -PskipDockerTests=false -PskipWeb=true :clients:client-python:test
+            rm -rf ./distribution/package/data
+          done
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v7
+        if: ${{ failure() && steps.integrationTest.outcome == 'failure' }}
+        with:
+          name: python-integrate-test-reports-${{ inputs.java-version }}
+          path: |
+            build/reports
+            integration-test/build/integration-test.log
+            distribution/package/logs/gravitino-server.out
+            distribution/package/logs/gravitino-server.log
+            catalogs/**/*.log
+            catalogs/**/*.tar

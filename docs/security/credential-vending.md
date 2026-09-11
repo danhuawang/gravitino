@@ -399,6 +399,10 @@ Gravitino downscopes its own credentials using GCS [credential access boundaries
 
 There is no role to assume. The identity is the service account in `gcs-service-account-file`, or the application default credentials when that is unset. Grant that service account **Storage Object User** (`roles/storage.objectUser`) on the warehouse bucket, or **Storage Object Viewer** for read-only access. Downscoping narrows from those permissions, so the vended token can never exceed what the service account itself holds.
 
+:::note
+`gcs-service-account-file` is used both to vend downscoped tokens and to authenticate Iceberg `GCSFileIO` on the server (Gravitino injects `gcs.oauth2.token` at catalog load because Iceberg has no service-account-file property). Ensure the file is readable by the server process. If the property is unset, FileIO and token vending fall back to Application Default Credentials (for example GCE metadata or `GOOGLE_APPLICATION_CREDENTIALS`).
+:::
+
 | Property                   | Description                              | Default value                       | Required |
 |----------------------------|------------------------------------------|-------------------------------------|----------|
 | `gcs-service-account-file` | The location of the GCS credential file. | GCS Application default credential. | No       |
