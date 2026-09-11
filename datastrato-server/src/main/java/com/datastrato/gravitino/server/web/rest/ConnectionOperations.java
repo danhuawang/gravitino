@@ -11,7 +11,6 @@ import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestSupportResolver;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestType;
-import com.datastrato.gravitino.dto.ConnectionDTO;
 import com.datastrato.gravitino.dto.ConnectionOverviewDTO;
 import com.datastrato.gravitino.dto.ConnectionTestErrorDTO;
 import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
@@ -19,7 +18,6 @@ import com.datastrato.gravitino.dto.CredentialProviderStatusDTO;
 import com.datastrato.gravitino.dto.responses.ConnectionListResponse;
 import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
 import com.datastrato.gravitino.server.web.rest.converter.ConnectionConverter;
-import java.security.Principal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,13 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -52,7 +43,6 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.catalog.CatalogDispatcher;
-import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.credential.CredentialConstants;
 import org.apache.gravitino.dto.responses.ErrorConstants;
@@ -76,30 +66,10 @@ import org.slf4j.LoggerFactory;
 public class ConnectionOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(ConnectionOperations.class);
-  private static final int MAX_SCHEMA_COUNT_THREADS = 8;
-  private static final long SCHEMA_COUNT_THREAD_KEEP_ALIVE_SECONDS = 60L;
-  private static final AtomicInteger SCHEMA_COUNT_THREAD_COUNTER = new AtomicInteger();
   private static final ConnectionTestSupportResolver CONNECTION_TEST_SUPPORT_RESOLVER =
       new ConnectionTestSupportResolver();
-  private static final ExecutorService SCHEMA_COUNT_EXECUTOR =
-      new ThreadPoolExecutor(
-          0,
-          MAX_SCHEMA_COUNT_THREADS,
-          SCHEMA_COUNT_THREAD_KEEP_ALIVE_SECONDS,
-          TimeUnit.SECONDS,
-          new SynchronousQueue<>(),
-          runnable -> {
-            Thread thread =
-                new Thread(
-                    runnable,
-                    "connection-schema-count-" + SCHEMA_COUNT_THREAD_COUNTER.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-          },
-          new ThreadPoolExecutor.CallerRunsPolicy());
 
   private final CatalogDispatcher catalogDispatcher;
-  private final SchemaDispatcher schemaDispatcher;
   private final ConnectionTestStore connectionTestStore;
 
   @Context private HttpServletRequest httpRequest;
@@ -108,16 +78,12 @@ public class ConnectionOperations {
    * Constructs a new ConnectionOperations.
    *
    * @param catalogDispatcher The catalog dispatcher.
-   * @param schemaDispatcher The schema dispatcher.
    * @param connectionTestStore The persistent connection test store.
    */
   @Inject
   public ConnectionOperations(
-      CatalogDispatcher catalogDispatcher,
-      SchemaDispatcher schemaDispatcher,
-      ConnectionTestStore connectionTestStore) {
+      CatalogDispatcher catalogDispatcher, ConnectionTestStore connectionTestStore) {
     this.catalogDispatcher = catalogDispatcher;
-    this.schemaDispatcher = schemaDispatcher;
     this.connectionTestStore = connectionTestStore;
   }
 
@@ -164,11 +130,18 @@ public class ConnectionOperations {
 
             Map<String, String> credentialProviders =
                 resolveCredentialProviders(metalake, catalogs);
-            Map<String, Long> schemaCounts = listCatalogDirectChildCounts(metalake, catalogs);
-            ConnectionDTO[] connections =
-                ConnectionConverter.toConnectionDTOs(catalogs, schemaCounts, credentialProviders);
+            ConnectionOverviewDTO[] connections = new ConnectionOverviewDTO[catalogs.length];
+            for (int i = 0; i < catalogs.length; i++) {
+              Catalog catalog = catalogs[i];
+              NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, catalog.name());
+              String providers = resolveCredentialProviders(catalog);
+              if (StringUtils.isBlank(providers)) {
+                providers = credentialProviders.get(catalog.name());
+              }
+              connections[i] = toConnectionOverview(identifier, catalog, providers);
+            }
             int catalogCount = connections.length;
-            int systemCount = ConnectionConverter.calculateSystemCount(connections);
+            int systemCount = ConnectionConverter.calculateOverviewSystemCount(connections);
 
             LOG.info(
                 "Listed {} connections across {} systems under metalake: {}",
@@ -211,11 +184,8 @@ public class ConnectionOperations {
           () -> {
             NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, connection);
             Catalog catalog = catalogDispatcher.loadCatalog(identifier);
-            ConnectionTestStatusDTO status = resolveTestStatus(identifier, catalog.provider());
-            CredentialProviderStatusDTO[] credentialProviders =
-                resolveCredentialProviderStatuses(identifier, resolveCredentialProviders(catalog));
             ConnectionOverviewDTO overview =
-                ConnectionConverter.toConnectionOverviewDTO(catalog, status, credentialProviders);
+                toConnectionOverview(identifier, catalog, resolveCredentialProviders(catalog));
             return Utils.ok(new ConnectionOverviewResponse(overview));
           });
     } catch (Exception e) {
@@ -223,6 +193,14 @@ public class ConnectionOperations {
     } catch (Throwable throwable) {
       return Utils.internalError("Unexpected error while loading connection overview", throwable);
     }
+  }
+
+  private ConnectionOverviewDTO toConnectionOverview(
+      NameIdentifier identifier, Catalog catalog, @Nullable String configuredProviders) {
+    return ConnectionConverter.toConnectionOverviewDTO(
+        catalog,
+        resolveTestStatus(identifier, catalog.provider()),
+        resolveCredentialProviderStatuses(identifier, configuredProviders));
   }
 
   private ConnectionTestStatusDTO resolveTestStatus(NameIdentifier identifier, String provider) {
@@ -349,55 +327,5 @@ public class ConnectionOperations {
       }
     }
     return credentialProviders;
-  }
-
-  private Map<String, Long> listCatalogDirectChildCounts(String metalake, Catalog[] catalogs) {
-    Principal principal = PrincipalUtils.getCurrentPrincipal();
-    Map<String, Future<Long>> pendingCounts = new LinkedHashMap<>();
-    for (Catalog catalog : catalogs) {
-      Namespace catalogNamespace = Namespace.of(metalake, catalog.name());
-      pendingCounts.put(
-          catalog.name(),
-          SCHEMA_COUNT_EXECUTOR.submit(() -> listVisibleSchemaCount(principal, catalogNamespace)));
-    }
-
-    Map<String, Long> directChildCounts = new LinkedHashMap<>();
-    for (Map.Entry<String, Future<Long>> pendingCount : pendingCounts.entrySet()) {
-      try {
-        directChildCounts.put(pendingCount.getKey(), pendingCount.getValue().get());
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        pendingCounts.values().forEach(future -> future.cancel(true));
-        LOG.warn(
-            "Interrupted while retrieving schema counts under metalake {}; "
-                + "remaining counts will be unavailable",
-            metalake,
-            e);
-        break;
-      } catch (ExecutionException e) {
-        LOG.warn(
-            "Failed to retrieve the schema count for catalog {} under metalake {}; "
-                + "the count will be unavailable",
-            pendingCount.getKey(),
-            metalake,
-            e.getCause());
-      }
-    }
-    return directChildCounts;
-  }
-
-  private long listVisibleSchemaCount(Principal principal, Namespace catalogNamespace)
-      throws Exception {
-    if (principal == PrincipalUtils.getCurrentPrincipal()) {
-      return MetadataListingHelper.listVisibleSchemaIdentifiers(schemaDispatcher, catalogNamespace)
-          .length;
-    }
-    return PrincipalUtils.doAs(
-        principal,
-        () ->
-            (long)
-                MetadataListingHelper.listVisibleSchemaIdentifiers(
-                        schemaDispatcher, catalogNamespace)
-                    .length);
   }
 }

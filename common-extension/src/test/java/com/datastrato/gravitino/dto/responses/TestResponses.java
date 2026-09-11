@@ -7,6 +7,9 @@ import static org.apache.gravitino.file.Fileset.Type.EXTERNAL;
 import static org.apache.gravitino.file.Fileset.Type.MANAGED;
 
 import com.datastrato.gravitino.dto.ConnectionDTO;
+import com.datastrato.gravitino.dto.ConnectionOverviewDTO;
+import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
+import com.datastrato.gravitino.dto.CredentialProviderStatusDTO;
 import com.datastrato.gravitino.dto.DirectChildCountDTO;
 import com.datastrato.gravitino.dto.DirectChildCountState;
 import com.datastrato.gravitino.dto.ExtendedCatalogDTO;
@@ -427,7 +430,19 @@ public class TestResponses {
         new ConnectionDTO("invalid", "Hive", "thrift://hive:9083", "kerberos-keytab", -1L);
     Assertions.assertThrows(IllegalArgumentException.class, connectionWithInvalidCount::validate);
 
-    ConnectionDTO[] connections = new ConnectionDTO[] {connection};
+    ConnectionOverviewDTO[] connections = {
+      new ConnectionOverviewDTO(
+          "sales_catalog",
+          Catalog.Type.RELATIONAL,
+          "lakehouse-iceberg",
+          "Sales catalog",
+          "aws",
+          "us-east-1",
+          AuditDTO.builder().build(),
+          "https://irc.acme.internal/iceberg/",
+          new ConnectionTestStatusDTO(true, ConnectionTestStatusDTO.NOT_TESTED, null, null),
+          new CredentialProviderStatusDTO[0])
+    };
     ConnectionListResponse response = new ConnectionListResponse(connections, 1, 1);
     Assertions.assertDoesNotThrow(response::validate);
 

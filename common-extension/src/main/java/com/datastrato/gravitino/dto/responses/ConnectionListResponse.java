@@ -3,7 +3,7 @@
  */
 package com.datastrato.gravitino.dto.responses;
 
-import com.datastrato.gravitino.dto.ConnectionDTO;
+import com.datastrato.gravitino.dto.ConnectionOverviewDTO;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.Arrays;
@@ -19,7 +19,7 @@ import org.apache.gravitino.dto.responses.BaseResponse;
 public class ConnectionListResponse extends BaseResponse {
 
   @JsonProperty("connections")
-  private final ConnectionDTO[] connections;
+  private final ConnectionOverviewDTO[] connections;
 
   @JsonProperty("catalogCount")
   private final Integer catalogCount;
@@ -35,9 +35,9 @@ public class ConnectionListResponse extends BaseResponse {
    * @param systemCount The distinct system count.
    */
   public ConnectionListResponse(
-      ConnectionDTO[] connections, Integer catalogCount, Integer systemCount) {
+      ConnectionOverviewDTO[] connections, Integer catalogCount, Integer systemCount) {
     super(0);
-    this.connections = connections != null ? connections : new ConnectionDTO[0];
+    this.connections = connections != null ? connections : new ConnectionOverviewDTO[0];
     this.catalogCount = catalogCount != null ? catalogCount : this.connections.length;
     this.systemCount = systemCount != null ? systemCount : 0;
   }

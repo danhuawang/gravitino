@@ -12,6 +12,11 @@ paths:
       operationId: listConnections
       description: |
         List connections under the specified metalake for Connect UI page.
+        Each entry has the same complete shape as the connection overview, including
+        Catalog metadata, the latest valid manual testStatus, and credentialProviders.
+        Listing does not run a new connection test.
+        A failed test has an error with code, type, and message; the list response code
+        remains 0 when listing succeeds.
       parameters:
         - name: metalake
           in: path
@@ -104,35 +109,7 @@ components:
           type: array
           description: A list of connection objects
           items:
-            $ref: "#/components/schemas/Connection"
-
-    Connection:
-      type: object
-      required:
-        - name
-        - type
-        - endpoint
-        - credential
-        - schemaCount
-      properties:
-        name:
-          type: string
-          description: The name of the connection
-        type:
-          type: string
-          description: The user-friendly display type of the connection (e.g. Iceberg REST, Hive, MySQL)
-        endpoint:
-          type: string
-          description: The server or endpoint of the connection
-        credential:
-          type: string
-          description: The credential or authentication type of the connection
-        schemaCount:
-          type: integer
-          format: int64
-          nullable: true
-          description: |
-            The number of schemas in this connection, or null if the count could not be retrieved.
+            $ref: "#/components/schemas/ConnectionOverview"
 
     ConnectionOverviewResponse:
       type: object

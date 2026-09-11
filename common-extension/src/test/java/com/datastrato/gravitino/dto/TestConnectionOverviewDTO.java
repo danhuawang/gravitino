@@ -6,6 +6,7 @@ package com.datastrato.gravitino.dto;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.datastrato.gravitino.dto.responses.ConnectionListResponse;
 import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
 import java.time.Instant;
 import javax.annotation.Nullable;
@@ -90,6 +91,18 @@ class TestConnectionOverviewDTO {
             new ConnectionOverviewResponse(newOverview(new CredentialProviderStatusDTO[] {null}))
                 .validate());
     assertThrows(IllegalArgumentException.class, () -> new ConnectionOverviewResponse().validate());
+  }
+
+  @Test
+  void testListResponseValidatesCompleteOverviews() {
+    ConnectionOverviewDTO overview = newOverview(new CredentialProviderStatusDTO[0]);
+    assertDoesNotThrow(
+        () -> new ConnectionListResponse(new ConnectionOverviewDTO[] {overview}, 1, 1).validate());
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            new ConnectionListResponse(new ConnectionOverviewDTO[] {newOverview(null)}, 1, 1)
+                .validate());
   }
 
   private ConnectionOverviewDTO newOverview(

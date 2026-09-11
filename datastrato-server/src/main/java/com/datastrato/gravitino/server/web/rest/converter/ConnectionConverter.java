@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
@@ -195,22 +196,28 @@ public class ConnectionConverter {
       return 0;
     }
 
-    Set<String> distinctEndpoints = new HashSet<>();
-    int unknownEndpointCount = 0;
+    return countDistinctEndpoints(
+        Arrays.stream(connections)
+            .filter(Objects::nonNull)
+            .map(ConnectionDTO::getEndpoint)
+            .collect(Collectors.toList()));
+  }
 
-    for (ConnectionDTO connection : connections) {
-      if (connection == null) {
-        continue;
-      }
-      String endpoint = connection.getEndpoint();
-      if (StringUtils.isNotBlank(endpoint) && !DEFAULT_VALUE.equals(endpoint.trim())) {
-        distinctEndpoints.add(normalizeEndpoint(endpoint));
-      } else {
-        unknownEndpointCount++;
-      }
+  /**
+   * Calculates the distinct system count from complete connection overviews.
+   *
+   * @param connections The connection overviews.
+   * @return The count of distinct underlying systems.
+   */
+  public static int calculateOverviewSystemCount(ConnectionOverviewDTO[] connections) {
+    if (connections == null) {
+      return 0;
     }
-
-    return distinctEndpoints.size() + unknownEndpointCount;
+    return countDistinctEndpoints(
+        Arrays.stream(connections)
+            .filter(Objects::nonNull)
+            .map(ConnectionOverviewDTO::getEndpoint)
+            .collect(Collectors.toList()));
   }
 
   /**
@@ -352,6 +359,20 @@ public class ConnectionConverter {
    */
   public static String resolveCredential(Map<String, String> properties) {
     return resolveCredential(properties, null);
+  }
+
+  private static int countDistinctEndpoints(List<String> endpoints) {
+    Set<String> distinctEndpoints = new HashSet<>();
+    int unknownEndpointCount = 0;
+    for (String endpoint : endpoints) {
+      if (StringUtils.isNotBlank(endpoint) && !DEFAULT_VALUE.equals(endpoint.trim())) {
+        distinctEndpoints.add(normalizeEndpoint(endpoint));
+      } else {
+        unknownEndpointCount++;
+      }
+    }
+
+    return distinctEndpoints.size() + unknownEndpointCount;
   }
 
   private static String resolveCredential(
