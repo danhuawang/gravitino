@@ -44,6 +44,9 @@ jobs:
       - name: Free disk space
         run: dev/ci/util_free_space.sh
 
+      - name: Install MySQL client
+        run: sudo apt-get update -q && sudo apt-get install -y -q default-mysql-client
+
       - name: Apply Gravitino MySQL schema
         run: |
           # Keep in sync with the latest schema file under scripts/mysql/ when the version bumps.

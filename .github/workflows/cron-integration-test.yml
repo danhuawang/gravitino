@@ -1,18 +1,15 @@
 name: Cron Integration Test
 
-# Orchestrates Apache Gravitino integration tests. Nightly schedule stays on
-# apache/gravitino. Manual / workflow_call runs can select suites (used later
-# by gravitino-test release-test).
+# Orchestrates Enterprise integration tests. It remains manual or callable so
+# routine coverage stays in the dedicated run-ci-gated workflows.
 #
 # Phase-1 suites (gvfs-fuse, web-ui, frontend, contrib-catalog are excluded):
 #   backend, spark, flink, maintenance, python, trino, access-control,
 #   iceberg-rest-trino, mcp, idp, trino-multi-version, lance, multi-instance
 
-run-name: OSS IT (${{ inputs.suites || 'all' }}) caller=${{ inputs.caller_run_id || 'manual' }}
+run-name: Enterprise IT (${{ inputs.suites || 'all' }}) caller=${{ inputs.caller_run_id || 'manual' }}
 
 on:
-  schedule:
-    - cron: '0 19 * * *' # 19:00 UTC; 03:00 GMT+8 next day
   workflow_dispatch:
     inputs:
       suites:
@@ -52,7 +49,6 @@ concurrency:
 jobs:
   select-suites:
     name: Select suites
-    if: github.event_name != 'schedule' || github.repository == 'apache/gravitino'
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.parse.outputs.backend }}
@@ -274,7 +270,7 @@ jobs:
           MULTI_INSTANCE: ${{ needs.multi-instance.result }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          ## OSS Integration Test Summary
+          ## Enterprise Integration Test Summary
 
           | | |
           |---|---|
