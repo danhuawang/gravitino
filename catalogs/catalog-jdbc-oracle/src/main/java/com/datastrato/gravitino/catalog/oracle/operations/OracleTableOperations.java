@@ -936,12 +936,15 @@ public class OracleTableOperations extends JdbcTableOperations {
               // already in physical form and only need quoting, not folding (unlike
               // TableChange.AddIndex's field names at ALTER TABLE time; see
               // formatIndexColumnsForAlter).
+              // The constraint NAME, however, is NOT normalized by core (there is no Scope.INDEX),
+              // so it is folded here via quotedName: an unquoted name is uppercased to match
+              // Oracle's unquoted-identifier folding, while a quoted name keeps its exact case.
               String columns = formatIndexColumnsForCreate(index.fieldNames());
               if (index.type() == Index.IndexType.PRIMARY_KEY) {
                 if (StringUtils.isNotBlank(index.name())) {
                   return String.format(
                       "CONSTRAINT %s PRIMARY KEY (%s)",
-                      OracleIdentifierUtil.quote(index.name()), columns);
+                      OracleIdentifierUtil.quotedName(index.name()), columns);
                 }
                 return String.format("PRIMARY KEY (%s)", columns);
               }
@@ -949,7 +952,7 @@ public class OracleTableOperations extends JdbcTableOperations {
                 if (StringUtils.isNotBlank(index.name())) {
                   return String.format(
                       "CONSTRAINT %s UNIQUE (%s)",
-                      OracleIdentifierUtil.quote(index.name()), columns);
+                      OracleIdentifierUtil.quotedName(index.name()), columns);
                 }
                 return String.format("UNIQUE (%s)", columns);
               }
@@ -1276,15 +1279,18 @@ public class OracleTableOperations extends JdbcTableOperations {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(addIndex.getName()), "Oracle constraint requires a name.");
     String columns = formatIndexColumnsForAlter(addIndex.getFieldNames());
+    // Fold the constraint name (quotedName) so an unquoted name is stored uppercase like every
+    // other unquoted Oracle identifier, matching the CREATE TABLE path (see
+    // buildConstraintDefinitions).
     if (addIndex.getType() == Index.IndexType.PRIMARY_KEY) {
       return String.format(
           "ALTER TABLE %s ADD CONSTRAINT %s PRIMARY KEY (%s)",
-          qualifiedTableName, OracleIdentifierUtil.quote(addIndex.getName()), columns);
+          qualifiedTableName, OracleIdentifierUtil.quotedName(addIndex.getName()), columns);
     }
     if (addIndex.getType() == Index.IndexType.UNIQUE_KEY) {
       return String.format(
           "ALTER TABLE %s ADD CONSTRAINT %s UNIQUE (%s)",
-          qualifiedTableName, OracleIdentifierUtil.quote(addIndex.getName()), columns);
+          qualifiedTableName, OracleIdentifierUtil.quotedName(addIndex.getName()), columns);
     }
     throw new UnsupportedOperationException(
         "Oracle supports only PRIMARY_KEY and UNIQUE_KEY indexes.");
@@ -1293,16 +1299,23 @@ public class OracleTableOperations extends JdbcTableOperations {
   private String generateDropConstraintSql(String qualifiedTableName, String constraintName) {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(constraintName), "Oracle DROP CONSTRAINT requires a name.");
+    // Fold the constraint name the same way it was folded when created/added, so a name that was
+    // stored uppercase (from an unquoted logical name) is targeted correctly on drop.
     return String.format(
         "ALTER TABLE %s DROP CONSTRAINT %s",
-        qualifiedTableName, OracleIdentifierUtil.quote(constraintName));
+        qualifiedTableName, OracleIdentifierUtil.quotedName(constraintName));
   }
 
   private boolean indexExists(JdbcTable table, String indexName) {
-    // Index names are never folded by Gravitino core (there is no Scope.INDEX) and are quoted
-    // case-preserving, exactly like Oracle's own case-sensitive quoted-identifier semantics, so
-    // this must match exactly, not case-insensitively.
-    return Arrays.stream(table.index()).anyMatch(index -> Objects.equals(index.name(), indexName));
+    // index.name() is the constraint's physical name, read verbatim from ALL_CONSTRAINTS by
+    // getIndexes(), so it must be compared as-is and must not be folded again. The requested
+    // indexName is still a logical name, so only it is resolved to its physical form: an unquoted
+    // name is uppercased, a quoted name keeps its exact case. This matches the same physical name
+    // that generateDropConstraintSql targets via quotedName, so a constraint created quoted with a
+    // lower-case name is found and dropped instead of being skipped.
+    String requestedPhysical = OracleIdentifierUtil.toPhysicalName(indexName);
+    return Arrays.stream(table.index())
+        .anyMatch(index -> Objects.equals(index.name(), requestedPhysical));
   }
 
   private String buildColumnDefinition(

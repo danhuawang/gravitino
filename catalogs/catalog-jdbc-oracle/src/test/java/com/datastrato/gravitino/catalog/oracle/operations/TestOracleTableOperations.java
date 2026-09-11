@@ -1220,8 +1220,9 @@ public class TestOracleTableOperations {
   @Test
   void testGenerateAlterTableSqlIndexChanges() {
     // Column names referenced by an index have already been normalized to their physical
-    // (uppercase) form by core before reaching this method, which only quotes them. Index names
-    // themselves are not covered by that normalization and are quoted as given.
+    // (uppercase) form by core before reaching this method, which only quotes them. The constraint
+    // NAME is not covered by that normalization, so it is folded here via quotedName: an unquoted
+    // name is uppercased, a quoted name keeps its case.
     String addPkSql =
         operations.generateAlterTableSql(
             "APP_USER",
@@ -1231,6 +1232,29 @@ public class TestOracleTableOperations {
     assertTrue(
         addPkSql.contains(
             "ALTER TABLE \"APP_USER\".\"T1\" ADD CONSTRAINT \"PK_T1\" PRIMARY KEY (\"ID\")"));
+
+    // An unquoted lower-case constraint name is folded to uppercase, so a DBA can later drop it
+    // with an unquoted DROP CONSTRAINT.
+    String addLowerCasePkSql =
+        operations.generateAlterTableSql(
+            "APP_USER",
+            "T1",
+            TableChange.addIndex(
+                Index.IndexType.PRIMARY_KEY, "pk_idx_probe", new String[][] {new String[] {"ID"}}));
+    assertTrue(
+        addLowerCasePkSql.contains("ADD CONSTRAINT \"PK_IDX_PROBE\" PRIMARY KEY (\"ID\")"),
+        "unquoted lower-case constraint name should be folded to uppercase");
+
+    // A quoted constraint name keeps its exact (lower) case, honoring the explicit request.
+    String addQuotedPkSql =
+        operations.generateAlterTableSql(
+            "APP_USER",
+            "T1",
+            TableChange.addIndex(
+                Index.IndexType.PRIMARY_KEY, "\"pk_idx_probe\"", new String[][] {{"ID"}}));
+    assertTrue(
+        addQuotedPkSql.contains("ADD CONSTRAINT \"pk_idx_probe\" PRIMARY KEY (\"ID\")"),
+        "quoted constraint name should keep its exact case");
 
     String addUkSql =
         operations.generateAlterTableSql(
@@ -1264,12 +1288,45 @@ public class TestOracleTableOperations {
     assertTrue(
         dropExistingIndexSql.contains("ALTER TABLE \"APP_USER\".\"T1\" DROP CONSTRAINT \"PK_T1\""));
 
-    // Index names are quoted case-preserving (not folded), matching Oracle's own case-sensitive
-    // quoted-identifier semantics, so a differently-cased reference does not match the existing
-    // index and is skipped, exactly like Oracle would treat "pk_t1" and "PK_T1" as distinct.
-    String skipDifferentCaseIndexSql =
+    // An unquoted logical name folds to uppercase, so deleteIndex("pk_t1") resolves to the physical
+    // object PK_T1, matches the loaded PK_T1, and drops it.
+    String dropUnquotedLowerCaseIndexSql =
         operations.generateAlterTableSql("APP_USER", "T1", TableChange.deleteIndex("pk_t1", true));
-    assertEquals("", skipDifferentCaseIndexSql);
+    assertTrue(
+        dropUnquotedLowerCaseIndexSql.contains(
+            "ALTER TABLE \"APP_USER\".\"T1\" DROP CONSTRAINT \"PK_T1\""));
+
+    // A quoted name asks for the lower-case object "pk_t1", which is distinct from the loaded
+    // uppercase PK_T1, so it does not match and is skipped.
+    String skipQuotedLowerCaseIndexSql =
+        operations.generateAlterTableSql(
+            "APP_USER", "T1", TableChange.deleteIndex("\"pk_t1\"", true));
+    assertEquals("", skipQuotedLowerCaseIndexSql);
+
+    // A constraint that was created quoted has a genuinely lower-case physical name (pk_t1). The
+    // existence check must compare against that physical name as-is, without folding it, so
+    // deleteIndex("pk_t1") quoted with ifExists=true finds it and drops it instead of skipping.
+    operations.tableForLoad =
+        JdbcTable.builder()
+            .withName("T1")
+            .withDatabaseName("APP_USER")
+            .withColumns(new JdbcColumn[0])
+            .withIndexes(new Index[] {Indexes.primary("pk_t1", new String[][] {{"ID"}})})
+            .build();
+
+    String dropQuotedLowerCaseIndexSql =
+        operations.generateAlterTableSql(
+            "APP_USER", "T1", TableChange.deleteIndex("\"pk_t1\"", true));
+    assertTrue(
+        dropQuotedLowerCaseIndexSql.contains(
+            "ALTER TABLE \"APP_USER\".\"T1\" DROP CONSTRAINT \"pk_t1\""),
+        "an existing quoted lower-case constraint should be found and dropped, not skipped");
+
+    // The same lower-case physical constraint must NOT be matched by an unquoted logical name,
+    // which folds to the distinct object PK_T1.
+    String skipUnquotedAgainstLowerCaseIndexSql =
+        operations.generateAlterTableSql("APP_USER", "T1", TableChange.deleteIndex("pk_t1", true));
+    assertEquals("", skipUnquotedAgainstLowerCaseIndexSql);
   }
 
   @Test

@@ -36,6 +36,7 @@ import org.apache.gravitino.SupportsSchemas;
 import org.apache.gravitino.catalog.jdbc.config.JdbcConfig;
 import org.apache.gravitino.client.GravitinoMetalake;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
+import org.apache.gravitino.exceptions.NoSuchTableException;
 import org.apache.gravitino.integration.test.container.ContainerSuite;
 import org.apache.gravitino.integration.test.container.OracleContainer;
 import org.apache.gravitino.integration.test.util.BaseIT;
@@ -1248,5 +1249,56 @@ public class CatalogOracleIT extends BaseIT {
     Map<String, String> partedProps =
         tableCatalog.loadTable(NameIdentifier.of(schemaName, parted)).properties();
     assertEquals("YES", partedProps.get(PARTITIONED));
+  }
+
+  @Test
+  void testQuotedLowerCaseTableIsListableAndLoadableByQuotedName() {
+    // Issue #1749: an Oracle table created with a quoted, lower-case physical name is listed by its
+    // bare physical name but cannot be loaded under that bare name, because loadTable folds an
+    // unquoted identifier to uppercase before the lookup. The quoted logical name "lower_case_tbl"
+    // must round-trip: list -> load -> drop all agree on the same physical object. This is the
+    // exact end-to-end path the web UI drives after it wraps a case-sensitive name in quotes.
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+
+    // Create the table directly in Oracle with a quoted, case-sensitive lower-case name, so its
+    // physical name is stored verbatim as "lower_case_tbl" (not folded to LOWER_CASE_TBL).
+    String physicalName = "lower_case_tbl";
+    oracleService.executeQuery(String.format("CREATE TABLE \"%s\" (\"id\" NUMBER)", physicalName));
+    assertTrue(
+        oracleService.tableExistsExact(physicalName),
+        "precondition: the quoted lower-case table should exist with its exact physical name");
+
+    try {
+      // 1. listTables returns the physical name exactly as Oracle stores it (bare, lower-case).
+      NameIdentifier[] listed = tableCatalog.listTables(Namespace.of(schemaName));
+      assertTrue(
+          Arrays.stream(listed).anyMatch(ident -> physicalName.equals(ident.name())),
+          "listTables should surface the bare physical name: " + Arrays.toString(listed));
+
+      // 2. Loading with the quoted logical name resolves to the exact physical object (the fix the
+      // UI relies on): normalizeName unquotes it to "lower_case_tbl" instead of folding to
+      // LOWER_CASE_TBL.
+      NameIdentifier quotedIdent = NameIdentifier.of(schemaName, "\"" + physicalName + "\"");
+      Table loaded = tableCatalog.loadTable(quotedIdent);
+      assertEquals(physicalName, loaded.name(), "loaded table should report its physical name");
+      assertTrue(tableCatalog.tableExists(quotedIdent));
+
+      // 3. Loading with the bare name still fails, documenting the exact #1749 symptom: the bare
+      // name folds to LOWER_CASE_TBL, which does not exist.
+      NameIdentifier bareIdent = NameIdentifier.of(schemaName, physicalName);
+      assertThrows(NoSuchTableException.class, () -> tableCatalog.loadTable(bareIdent));
+
+      // 4. Dropping with the quoted name removes the real physical object (no orphan left behind).
+      assertTrue(tableCatalog.dropTable(quotedIdent), "dropTable with the quoted name should drop");
+      assertFalse(
+          oracleService.tableExistsExact(physicalName),
+          "the physical table should be gone after dropping by its quoted name");
+    } finally {
+      // Safety net: if an assertion failed before the drop, remove the raw table so it does not
+      // leak into other tests (clearTables cannot purge it — it is not loadable by its bare name).
+      if (oracleService.tableExistsExact(physicalName)) {
+        oracleService.executeQuery(String.format("DROP TABLE \"%s\"", physicalName));
+      }
+    }
   }
 }
