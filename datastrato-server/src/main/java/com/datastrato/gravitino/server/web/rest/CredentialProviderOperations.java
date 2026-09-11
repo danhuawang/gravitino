@@ -30,6 +30,7 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.catalog.CatalogDispatcher;
+import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.credential.CredentialProvider;
 import org.apache.gravitino.credential.CredentialProviderFactory;
@@ -61,6 +62,7 @@ public class CredentialProviderOperations {
 
   private final ConnectionTestStore connectionTestStore;
   private final CatalogDispatcher catalogDispatcher;
+  private final CatalogManager catalogManager;
   private final Clock clock;
 
   @Context private HttpServletRequest httpRequest;
@@ -70,18 +72,25 @@ public class CredentialProviderOperations {
    *
    * @param catalogDispatcher The Catalog dispatcher.
    * @param connectionTestStore The persistent connection test store.
+   * @param catalogManager The Catalog manager.
    */
   @Inject
   public CredentialProviderOperations(
-      CatalogDispatcher catalogDispatcher, ConnectionTestStore connectionTestStore) {
-    this(catalogDispatcher, connectionTestStore, Clock.systemUTC());
+      CatalogDispatcher catalogDispatcher,
+      ConnectionTestStore connectionTestStore,
+      CatalogManager catalogManager) {
+    this(catalogDispatcher, connectionTestStore, catalogManager, Clock.systemUTC());
   }
 
   @VisibleForTesting
   CredentialProviderOperations(
-      CatalogDispatcher catalogDispatcher, ConnectionTestStore connectionTestStore, Clock clock) {
+      CatalogDispatcher catalogDispatcher,
+      ConnectionTestStore connectionTestStore,
+      CatalogManager catalogManager,
+      Clock clock) {
     this.catalogDispatcher = catalogDispatcher;
     this.connectionTestStore = connectionTestStore;
+    this.catalogManager = catalogManager;
     this.clock = clock;
   }
 
@@ -148,7 +157,7 @@ public class CredentialProviderOperations {
             }
 
             try {
-              testCredentialProvider(credentialType, request.getPath(), properties);
+              testCredentialProvider(identifier, credentialType, request.getPath(), properties);
             } catch (Exception e) {
               if (!hasProposedUpdates) {
                 connectionTestStore.recordTestResult(
@@ -198,19 +207,34 @@ public class CredentialProviderOperations {
   }
 
   private void testCredentialProvider(
-      String credentialType, String path, Map<String, String> properties) throws Exception {
-    try (CredentialProvider provider = createCredentialProvider(credentialType, properties)) {
-      if (!provider
-          .getCredentialOptional(
-              new PathBasedCredentialContext(
-                  PrincipalUtils.getCurrentUserName(),
-                  Collections.singleton(path),
-                  Collections.singleton(path)))
-          .isPresent()) {
-        throw new IllegalStateException(
-            String.format("Credential provider %s did not generate a credential", credentialType));
-      }
-    }
+      NameIdentifier identifier,
+      String credentialType,
+      String path,
+      Map<String, String> properties) {
+    catalogManager.doWithCatalog(
+        identifier,
+        catalog -> {
+          try (CredentialProvider provider = createCredentialProvider(credentialType, properties)) {
+            if (!provider
+                .getCredentialOptional(
+                    new PathBasedCredentialContext(
+                        PrincipalUtils.getCurrentUserName(),
+                        Collections.singleton(path),
+                        Collections.singleton(path)))
+                .isPresent()) {
+              throw new IllegalStateException(
+                  String.format(
+                      "Credential provider %s did not generate a credential", credentialType));
+            }
+            return null;
+          }
+        });
+  }
+
+  @VisibleForTesting
+  CredentialProvider createCredentialProvider(
+      String credentialType, Map<String, String> properties) {
+    return CredentialProviderFactory.create(credentialType, properties);
   }
 
   private Map<String, String> credentialProperties(Catalog catalog) {
@@ -254,11 +278,5 @@ public class CredentialProviderOperations {
       String credentialType, Map<String, String> properties) {
     CredentialConfig credentialConfig = new CredentialConfig(properties);
     return credentialConfig.get(CredentialConfig.CREDENTIAL_PROVIDERS).contains(credentialType);
-  }
-
-  @VisibleForTesting
-  CredentialProvider createCredentialProvider(
-      String credentialType, Map<String, String> properties) {
-    return CredentialProviderFactory.create(credentialType, properties);
   }
 }

@@ -6,6 +6,7 @@ package com.datastrato.gravitino.server.web.rest;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -32,6 +33,7 @@ import javax.ws.rs.core.Response;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.catalog.CatalogDispatcher;
+import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.credential.Credential;
 import org.apache.gravitino.credential.CredentialContext;
@@ -41,6 +43,7 @@ import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.utils.ThrowableFunction;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -57,6 +60,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
   private final ConnectionTestStore connectionTestStore = mock(ConnectionTestStore.class);
   private final CatalogDispatcher catalogDispatcher = mock(CatalogDispatcher.class);
+  private final CatalogManager catalogManager = mock(CatalogManager.class);
 
   /** Simulates the overlapping connection root resource registered by the production server. */
   @Path("/web/metalakes/{metalake}/connections")
@@ -76,10 +80,13 @@ public class TestCredentialProviderOperations extends JerseyTest {
   private static class MockCredentialProviderOperations extends CredentialProviderOperations {
     @Inject
     MockCredentialProviderOperations(
-        CatalogDispatcher catalogDispatcher, ConnectionTestStore connectionTestStore) {
+        CatalogDispatcher catalogDispatcher,
+        ConnectionTestStore connectionTestStore,
+        CatalogManager catalogManager) {
       super(
           catalogDispatcher,
           connectionTestStore,
+          catalogManager,
           Clock.fixed(Instant.ofEpochMilli(123456L), ZoneOffset.UTC));
     }
 
@@ -100,6 +107,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   protected Application configure() {
     try {
       forceSet(
@@ -107,6 +115,14 @@ public class TestCredentialProviderOperations extends JerseyTest {
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
+
+    doAnswer(
+            invocation -> {
+              ThrowableFunction<BaseCatalog, Object> operation = invocation.getArgument(1);
+              return operation.apply(null);
+            })
+        .when(catalogManager)
+        .doWithCatalog(any(), any());
 
     ResourceConfig resourceConfig = new ResourceConfig();
     resourceConfig.register(CompetingConnectionOperations.class);
@@ -118,6 +134,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
             bind(connectionTestStore).to(ConnectionTestStore.class).ranked(2);
             bindFactory(MockServletRequestFactory.class).to(HttpServletRequest.class);
             bind(catalogDispatcher).to(CatalogDispatcher.class).ranked(2);
+            bind(catalogManager).to(CatalogManager.class).ranked(2);
           }
         });
     return resourceConfig;

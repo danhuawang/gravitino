@@ -14,6 +14,7 @@ import java.io.IOException;
 import javax.annotation.Nullable;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.catalog.CatalogManager;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +22,13 @@ import org.slf4j.LoggerFactory;
 public class DatastratoGravitinoServer extends GravitinoServer {
   private static final Logger LOG = LoggerFactory.getLogger(DatastratoGravitinoServer.class);
 
+  private final CatalogManager catalogManager;
+
   @Nullable private CatalogConnectionTestGarbageCollector connectionTestGarbageCollector;
 
   public DatastratoGravitinoServer(ServerConfig config, GravitinoEnv gravitinoEnv) {
     super(config, gravitinoEnv);
+    this.catalogManager = gravitinoEnv.catalogManager();
   }
 
   public static void main(String[] args) {
@@ -93,6 +97,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
           protected void configure() {
             bind(metricDataService).to(MetricDataService.class).ranked(1);
             bind(connectionTestStore).to(ConnectionTestStore.class).ranked(1);
+            bind(catalogManager).to(CatalogManager.class).ranked(1);
           }
         });
     register(LicenseStatusResource.class);
