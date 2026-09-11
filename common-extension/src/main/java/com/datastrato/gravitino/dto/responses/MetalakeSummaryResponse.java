@@ -4,12 +4,14 @@
 package com.datastrato.gravitino.dto.responses;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import javax.annotation.Nullable;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
+import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 
 /**
@@ -36,6 +38,12 @@ public class MetalakeSummaryResponse extends BaseResponse {
   @JsonProperty("roleCount")
   private final Long roleCount;
 
+  /** Null when ownership is unassigned or access control is disabled. */
+  @Nullable
+  @JsonProperty("owner")
+  @JsonInclude(JsonInclude.Include.ALWAYS)
+  private final OwnerDTO owner;
+
   /**
    * Creates a metalake summary response.
    *
@@ -43,11 +51,25 @@ public class MetalakeSummaryResponse extends BaseResponse {
    * @param userCount The number of users in the metalake, null when access control is disabled.
    * @param roleCount The number of roles in the metalake, null when access control is disabled.
    */
+  public MetalakeSummaryResponse(
+      Long catalogCount, @Nullable Long userCount, @Nullable Long roleCount) {
+    this(catalogCount, userCount, roleCount, null);
+  }
+
+  /**
+   * Creates a metalake summary response with ownership information.
+   *
+   * @param catalogCount The number of catalogs in the metalake.
+   * @param userCount The number of users, or null when access control is disabled.
+   * @param roleCount The number of roles, or null when access control is disabled.
+   * @param owner The owner, or null when unassigned or access control is disabled.
+   */
   @JsonCreator
   public MetalakeSummaryResponse(
       @JsonProperty("catalogCount") Long catalogCount,
       @Nullable @JsonProperty("userCount") Long userCount,
-      @Nullable @JsonProperty("roleCount") Long roleCount) {
+      @Nullable @JsonProperty("roleCount") Long roleCount,
+      @Nullable @JsonProperty("owner") OwnerDTO owner) {
     super(0);
     Preconditions.checkArgument(catalogCount != null, "catalogCount cannot be null");
     Preconditions.checkArgument(catalogCount >= 0, "catalogCount cannot be negative");
@@ -58,5 +80,6 @@ public class MetalakeSummaryResponse extends BaseResponse {
     this.catalogCount = catalogCount;
     this.userCount = userCount;
     this.roleCount = roleCount;
+    this.owner = owner;
   }
 }

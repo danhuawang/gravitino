@@ -28,10 +28,12 @@ import com.google.common.collect.ImmutableSet;
 import java.util.Map;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.CatalogDTO;
 import org.apache.gravitino.dto.MetalakeDTO;
 import org.apache.gravitino.dto.SchemaDTO;
+import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
@@ -94,6 +96,28 @@ public class TestResponses {
             JsonUtils.objectMapper()
                 .readValue(
                     "{\"code\":0,\"userCount\":0,\"roleCount\":0}", MetalakeSummaryResponse.class));
+  }
+
+  @Test
+  void testMetalakeSummaryOwnerRoundTripAndLegacyResponse() throws JsonProcessingException {
+    OwnerDTO owner = OwnerDTO.builder().withName("data-admins").withType(Owner.Type.GROUP).build();
+    MetalakeSummaryResponse response = new MetalakeSummaryResponse(2L, 3L, 1L, owner);
+    String serialized = JsonUtils.objectMapper().writeValueAsString(response);
+    MetalakeSummaryResponse restored =
+        JsonUtils.objectMapper().readValue(serialized, MetalakeSummaryResponse.class);
+    Assertions.assertEquals("data-admins", restored.getOwner().name());
+    Assertions.assertEquals(Owner.Type.GROUP, restored.getOwner().type());
+    Assertions.assertEquals(2, restored.getCatalogCount());
+    Assertions.assertEquals(3L, restored.getUserCount());
+    Assertions.assertEquals(1L, restored.getRoleCount());
+
+    MetalakeSummaryResponse legacy =
+        JsonUtils.objectMapper()
+            .readValue(
+                "{\"code\":0,\"catalogCount\":2,\"userCount\":3,\"roleCount\":1}",
+                MetalakeSummaryResponse.class);
+    Assertions.assertNull(legacy.getOwner());
+    Assertions.assertEquals(2, legacy.getCatalogCount());
   }
 
   @Test

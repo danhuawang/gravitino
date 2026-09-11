@@ -9,6 +9,7 @@ import com.datastrato.gravitino.dto.responses.MetalakeSummaryResponse;
 import com.datastrato.gravitino.metalake.MetalakeSummaryCounts;
 import com.datastrato.gravitino.metalake.MetalakeSummaryMetaService;
 import com.google.common.base.Preconditions;
+import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -18,7 +19,11 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
+import org.apache.gravitino.dto.authorization.OwnerDTO;
+import org.apache.gravitino.dto.util.DTOConverters;
 import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -82,11 +87,23 @@ public class MetalakeSummaryOperations {
             AccessControlDispatcher accessControlDispatcher =
                 GravitinoEnv.getInstance().accessControlDispatcher();
             MetalakeSummaryCounts counts = summaryMetaService.loadCounts(metalake);
+            @Nullable
+            OwnerDTO owner =
+                accessControlDispatcher == null
+                    ? null
+                    : GravitinoEnv.getInstance()
+                        .ownerDispatcher()
+                        .getOwner(
+                            metalake,
+                            MetadataObjects.of(null, metalake, MetadataObject.Type.METALAKE))
+                        .map(DTOConverters::toDTO)
+                        .orElse(null);
             MetalakeSummaryResponse response =
                 new MetalakeSummaryResponse(
                     counts.catalogCount(),
                     accessControlDispatcher == null ? null : counts.userCount(),
-                    accessControlDispatcher == null ? null : counts.roleCount());
+                    accessControlDispatcher == null ? null : counts.roleCount(),
+                    owner);
             LOG.info("Loaded summary for metalake: {}, {}", metalake, response);
             return Utils.ok(response);
           });

@@ -16,7 +16,9 @@ paths:
         snapshots, so they are exact and independent of background refreshes. The endpoint requires
         metalake ownership and returns counts without per-object visibility filtering. The catalog
         count is always present; user and role counts are exact when authorization is enabled and
-        null otherwise. Disabled metalakes are supported without temporarily enabling the metalake.
+        null otherwise. The owner includes its name and user/group type, or is explicitly null when
+        unassigned or authorization is disabled. Disabled metalakes are supported without temporarily
+        enabling the metalake.
       parameters:
         - name: metalake
           in: path
@@ -31,6 +33,41 @@ paths:
             application/vnd.gravitino.v1+json:
               schema:
                 $ref: "#/components/schemas/MetalakeSummaryResponse"
+              examples:
+                userOwner:
+                  summary: A metalake owned by a user
+                  value:
+                    code: 0
+                    catalogCount: 2
+                    userCount: 3
+                    roleCount: 1
+                    owner:
+                      name: alice
+                      type: user
+                groupOwner:
+                  summary: A metalake owned by a group
+                  value:
+                    code: 0
+                    catalogCount: 2
+                    userCount: 3
+                    roleCount: 1
+                    owner:
+                      name: data-admins
+                      type: group
+                unassignedOwner:
+                  summary: A metalake without an assigned owner
+                  value:
+                    code: 0
+                    catalogCount: 2
+                    userCount: 3
+                    roleCount: 1
+                    owner: null
+                accessControlDisabled:
+                  summary: Access control is disabled
+                  value:
+                    code: 0
+                    catalogCount: 2
+                    owner: null
         "404":
           description: Not Found - The specified metalake does not exist
           content:
@@ -55,6 +92,7 @@ components:
       required:
         - code
         - catalogCount
+        - owner
       properties:
         code:
           type: integer
@@ -83,3 +121,20 @@ components:
           description: |
             The number of roles in the metalake. Null when access control is disabled because role
             data is unavailable.
+        owner:
+          type: object
+          nullable: true
+          description: The metalake owner, or null when unassigned or access control is disabled.
+          required:
+            - name
+            - type
+          properties:
+            name:
+              type: string
+              description: The name of the user or group that owns the metalake.
+            type:
+              type: string
+              description: The owner type, serialized in lowercase by the web API.
+              enum:
+                - user
+                - group
