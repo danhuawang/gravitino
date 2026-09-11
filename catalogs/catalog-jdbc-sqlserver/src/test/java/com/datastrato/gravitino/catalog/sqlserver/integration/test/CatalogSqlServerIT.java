@@ -244,19 +244,15 @@ public class CatalogSqlServerIT extends BaseIT {
   }
 
   @Test
-  void testSchemaCommentIgnored() {
+  void testSchemaCommentRejection() {
     String testSchemaName = GravitinoITUtils.genRandomName("comment_schema");
-    Schema created =
-        catalog.asSchemas().createSchema(testSchemaName, "some comment", Collections.emptyMap());
-    try {
-      Assertions.assertEquals(testSchemaName, created.name());
-      Assertions.assertNull(created.comment());
-      Schema loaded = catalog.asSchemas().loadSchema(testSchemaName);
-      Assertions.assertEquals(testSchemaName, loaded.name());
-      Assertions.assertNull(loaded.comment());
-    } finally {
-      catalog.asSchemas().dropSchema(testSchemaName, false);
-    }
+    Assertions.assertThrows(
+        UnsupportedOperationException.class,
+        () ->
+            catalog
+                .asSchemas()
+                .createSchema(testSchemaName, "some comment", Collections.emptyMap()));
+    Assertions.assertFalse(catalog.asSchemas().schemaExists(testSchemaName));
   }
 
   @Test

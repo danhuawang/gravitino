@@ -92,7 +92,7 @@ Please refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#c
 - Gravitino schema corresponds to the SQL Server schema (e.g., `dbo`).
 - Supports creating schema.
 - Supports dropping schema.
-- Schema comments supplied during creation are accepted but ignored; this connector does not persist them.
+- Schema comments are unsupported. Creating a schema with a non-empty comment throws `UnsupportedOperationException`.
 - Doesn't support cascade dropping schema (SQL Server does not support `DROP SCHEMA ... CASCADE`). If the schema contains objects, the drop will fail with a native SQL Server error.
 
 :::info
@@ -266,7 +266,7 @@ The following features are not supported in the current version:
 | Feature                                      | Reason                                                                                                                                                                           |
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | View support                                 | Gravitino `ViewCatalog` interface is `@Unstable`, no JDBC catalog implements it yet.                                                                                             |
-| Schema comments                              | Comments supplied during creation are accepted but ignored by this connector.                                                                                                    |
+| Schema comments                              | Non-empty comments are rejected with `UnsupportedOperationException`.                                                                                                    |
 | Cascade drop schema                          | SQL Server does not support `DROP SCHEMA ... CASCADE`. Native error is surfaced.                                                                                                 |
 | `datetimeoffset` native mapping              | No Gravitino equivalent. Use `ExternalType`.                                                                                                                                     |
 | `TimestampType.withTimeZone`                 | SQL Server uses `datetimeoffset` which is offset-based, not timezone-based. Use `ExternalType`.                                                                                  |

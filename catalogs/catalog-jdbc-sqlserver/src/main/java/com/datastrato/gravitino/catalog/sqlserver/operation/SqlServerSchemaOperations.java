@@ -58,9 +58,7 @@ public class SqlServerSchemaOperations extends JdbcDatabaseOperations {
   public void create(String databaseName, String comment, Map<String, String> properties)
       throws SchemaAlreadyExistsException {
     try {
-      // Schema comments are not persisted by this connector. Accept the optional field
-      // without letting the shared JDBC comment check reject schema creation.
-      super.create(databaseName, null, properties);
+      super.create(databaseName, comment, properties);
     } catch (TableAlreadyExistsException e) {
       // SQL Server returns error code 2714 for both duplicate tables and duplicate schemas.
       // The converter maps 2714 to TableAlreadyExistsException, but in schema context

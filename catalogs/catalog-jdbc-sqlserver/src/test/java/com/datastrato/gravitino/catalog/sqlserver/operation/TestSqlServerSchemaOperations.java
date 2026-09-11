@@ -17,7 +17,6 @@ import java.util.Set;
 import javax.sql.DataSource;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.StringIdentifier;
-import org.apache.gravitino.catalog.jdbc.JdbcSchema;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -32,8 +31,7 @@ public class TestSqlServerSchemaOperations {
 
   @ParameterizedTest
   @NullAndEmptySource
-  @ValueSource(strings = {"probe", "a comment with 'quotes'"})
-  void testCreateAcceptsOptionalComment(String comment) throws Exception {
+  void testCreateWithoutComment(String comment) throws Exception {
     DataSource dataSource = Mockito.mock(DataSource.class);
     Connection connection = Mockito.mock(Connection.class);
     Statement statement = Mockito.mock(Statement.class);
@@ -51,29 +49,43 @@ public class TestSqlServerSchemaOperations {
     Mockito.verify(connection).close();
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"probe", "a comment with 'quotes'", " "})
+  void testCreateRejectsCommentBeforeOpeningConnection(String comment) {
+    DataSource dataSource = Mockito.mock(DataSource.class);
+    schemaOps.initialize(
+        dataSource,
+        new SqlServerExceptionConverter(),
+        Collections.singletonMap("jdbc-database", "test_database"));
+    Assertions.assertThrows(
+        UnsupportedOperationException.class,
+        () -> schemaOps.create("probe_schema", comment, Collections.emptyMap()));
+    Mockito.verifyNoInteractions(dataSource);
+  }
+
   @Test
-  void testCatalogCreateResponseIgnoresComment() {
-    SqlServerSchemaOperations databaseOperation = Mockito.mock(SqlServerSchemaOperations.class);
+  void testCatalogCreateRejectsComment() {
+    DataSource dataSource = Mockito.mock(DataSource.class);
+    schemaOps.initialize(
+        dataSource,
+        new SqlServerExceptionConverter(),
+        Collections.singletonMap("jdbc-database", "test_database"));
     try (SqlServerCatalogOperations catalogOperations =
         new SqlServerCatalogOperations(
             new SqlServerExceptionConverter(),
             new SqlServerTypeConverter(),
-            databaseOperation,
+            schemaOps,
             Mockito.mock(SqlServerTableOperations.class),
             new SqlServerColumnDefaultValueConverter())) {
-      JdbcSchema created =
-          catalogOperations.createSchema(
-              NameIdentifier.of("probe_schema"),
-              "probe",
-              StringIdentifier.newPropertiesWithId(
-                  StringIdentifier.fromId(1L), Collections.emptyMap()));
-      Assertions.assertEquals("probe_schema", created.name());
-      Assertions.assertNull(created.comment());
-      Mockito.verify(databaseOperation)
-          .create(
-              Mockito.eq("probe_schema"),
-              Mockito.argThat(comment -> "".equals(StringIdentifier.removeIdFromComment(comment))),
-              Mockito.eq(Collections.emptyMap()));
+      Assertions.assertThrows(
+          UnsupportedOperationException.class,
+          () ->
+              catalogOperations.createSchema(
+                  NameIdentifier.of("probe_schema"),
+                  "probe",
+                  StringIdentifier.newPropertiesWithId(
+                      StringIdentifier.fromId(1L), Collections.emptyMap())));
+      Mockito.verifyNoInteractions(dataSource);
     }
   }
 
