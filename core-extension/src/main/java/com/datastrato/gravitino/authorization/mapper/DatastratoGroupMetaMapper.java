@@ -19,9 +19,12 @@ public interface DatastratoGroupMetaMapper {
   String IDP_USER_GROUP_REL_TABLE_NAME = "idp_user_group_rel";
   String SCIM_GROUP_TABLE_NAME = "scim_group_meta";
   String SCIM_USER_GROUP_REL_TABLE_NAME = "scim_user_group_rel";
+  String JIT_GROUP_TABLE_NAME = "jit_group_meta";
+  String JIT_USER_GROUP_REL_TABLE_NAME = "jit_user_group_rel";
 
   /**
-   * Lists all active Local IdP group names from {@code idp_group_meta}.
+   * Lists all active group names from identity stores ({@code scim_group_meta}, {@code
+   * idp_group_meta}, {@code jit_group_meta}), deduplicated.
    *
    * @return Group names ordered by name.
    */
@@ -174,13 +177,15 @@ public interface DatastratoGroupMetaMapper {
    * @param groupId Generated group id.
    * @param groupName Group name.
    * @param groupComment Group comment.
+   * @param auditInfo Serialized create audit info.
    * @return Number of rows inserted.
    */
   @InsertProvider(type = DatastratoGroupMetaSQLProviderFactory.class, method = "insertIdpGroup")
   int insertIdpGroup(
       @Param("groupId") long groupId,
       @Param("groupName") String groupName,
-      @Param("groupComment") String groupComment);
+      @Param("groupComment") String groupComment,
+      @Param("auditInfo") String auditInfo);
 
   /**
    * Batch-inserts {@code idp_user_group_rel} rows for a new Directory Group.

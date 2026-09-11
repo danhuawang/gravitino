@@ -8,17 +8,18 @@ paths:
     get:
       tags:
         - groups
-      summary: List Local IdP group names
+      summary: List identity-store group names
       operationId: listLocalIdpGroupNames
       description: |
-        List active Local (built-in IdP) group names from `idp_group_meta`.
+        List distinct active group names from `scim_group_meta`, `idp_group_meta`, and
+        `jit_group_meta` (UNION, no duplicates).
 
-        Instance-scoped: no metalake parameter. Returns names only — does not include Provisioned
-        or JIT identities, and does not report metalake membership.
+        Instance-scoped: no metalake parameter. Returns names only — does not report metalake
+        membership. Used by Add-role group member pickers.
 
       responses:
         "200":
-          description: Returns the list of Local IdP group names
+          description: Returns the deduplicated list of group names
           content:
             application/vnd.gravitino.v1+json:
               schema:

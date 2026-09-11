@@ -96,7 +96,7 @@ public class DirectoryUserDetailDTO {
    *
    * @param name Username.
    * @param enabled Enabled flag.
-   * @param origin Local or Provisioned.
+   * @param origin Local, Provisioned, or JIT.
    * @param externalId Optional SCIM external id.
    * @param createTime Optional creation time.
    * @return Detail DTO.
@@ -110,8 +110,10 @@ public class DirectoryUserDetailDTO {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
     Preconditions.checkArgument(origin != null, "origin cannot be null");
     Preconditions.checkArgument(
-        origin == IdentitySource.LOCAL || origin == IdentitySource.PROVISIONED,
-        "origin must be Local or Provisioned");
+        origin == IdentitySource.LOCAL
+            || origin == IdentitySource.PROVISIONED
+            || origin == IdentitySource.JIT,
+        "origin must be Local, Provisioned, or JIT");
     return new DirectoryUserDetailDTO(name, enabled, origin, externalId, createTime);
   }
 }

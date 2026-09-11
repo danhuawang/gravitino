@@ -70,8 +70,9 @@ public class DatastratoUserMetaSQLProviderFactory {
       @Param("userId") long userId,
       @Param("userName") String userName,
       @Param("passwordHash") String passwordHash,
-      @Param("enabled") boolean enabled) {
-    return getProvider().insertIdpUser(userId, userName, passwordHash, enabled);
+      @Param("enabled") boolean enabled,
+      @Param("auditInfo") String auditInfo) {
+    return getProvider().insertIdpUser(userId, userName, passwordHash, enabled, auditInfo);
   }
 
   public static String batchInsertIdpUserGroupRels(

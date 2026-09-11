@@ -4,7 +4,7 @@
 package com.datastrato.gravitino.authorization.po;
 
 /**
- * Insert row for {@code idp_user_group_rel} when creating a Directory User.
+ * Insert row for {@code idp_user_group_rel} when creating a Directory User or Group.
  *
  * <p>Used only as a MyBatis parameter object.
  */
@@ -13,6 +13,7 @@ public class IdpUserGroupRelInsertPO {
   private Long id;
   private Long userId;
   private Long groupId;
+  private String auditInfo;
 
   /**
    * Creates a relation insert row.
@@ -20,11 +21,13 @@ public class IdpUserGroupRelInsertPO {
    * @param id Relation id.
    * @param userId IdP user id.
    * @param groupId IdP group id.
+   * @param auditInfo Serialized create audit info.
    */
-  public IdpUserGroupRelInsertPO(Long id, Long userId, Long groupId) {
+  public IdpUserGroupRelInsertPO(Long id, Long userId, Long groupId, String auditInfo) {
     this.id = id;
     this.userId = userId;
     this.groupId = groupId;
+    this.auditInfo = auditInfo;
   }
 
   /** Default constructor for MyBatis. */
@@ -70,5 +73,19 @@ public class IdpUserGroupRelInsertPO {
    */
   public void setGroupId(Long groupId) {
     this.groupId = groupId;
+  }
+
+  /**
+   * @return Serialized create audit info.
+   */
+  public String getAuditInfo() {
+    return auditInfo;
+  }
+
+  /**
+   * @param auditInfo Serialized create audit info.
+   */
+  public void setAuditInfo(String auditInfo) {
+    this.auditInfo = auditInfo;
   }
 }

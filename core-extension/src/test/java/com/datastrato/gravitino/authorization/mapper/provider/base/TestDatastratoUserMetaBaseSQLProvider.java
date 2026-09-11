@@ -4,7 +4,6 @@
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
@@ -28,8 +27,13 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("GROUP BY membership.userId"));
     assertTrue(sql.contains("idp_user_group_rel"));
     assertTrue(sql.contains("scim_user_group_rel"));
+    assertTrue(sql.contains("jit_user_group_rel"));
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("scim_group_meta"));
+    assertTrue(sql.contains("jit_user_meta"));
+    assertTrue(sql.contains("jit_group_meta"));
+    assertTrue(sql.contains("LEFT JOIN scim_user_meta su"));
+    assertTrue(sql.contains("su.user_name IS NOT NULL"));
     assertFalse(sql.contains("ut.external_id"));
     assertFalse(sql.contains("ut.enabled"));
     assertTrue(sql.contains("as enabled"));
@@ -37,6 +41,10 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("su.external_id"));
     assertTrue(sql.contains("as originCode"));
     assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_PROVISIONED));
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_LOCAL));
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_JIT));
+    assertTrue(sql.contains("ELSE NULL END as originCode"));
     assertTrue(sql.contains("UNION ALL"));
     assertTrue(sql.contains("metalake_name = #{metalakeName}"));
     assertFalse(sql.contains("GROUP BY ut.user_id"));
@@ -50,8 +58,10 @@ public class TestDatastratoUserMetaBaseSQLProvider {
 
     assertTrue(sql.contains("idp_user_meta"));
     assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("jit_user_meta"));
     assertTrue(sql.contains("idp_user_group_rel"));
     assertTrue(sql.contains("scim_user_group_rel"));
+    assertTrue(sql.contains("jit_user_group_rel"));
     assertTrue(sql.contains("originCode"));
     assertTrue(sql.contains("metalakeNames"));
     assertTrue(sql.contains("UNION ALL"));
@@ -61,8 +71,9 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     // Metalake names are aggregated per username for the Directory Users table.
     assertTrue(sql.contains("GROUP BY ut.user_name"));
     assertFalse(sql.contains("#{metalakeName}"));
-    // No metalake-only JIT identity branch (origin code 2).
-    assertFalse(sql.contains(" " + 2 + " as originCode"));
+    assertTrue(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
+    assertTrue(sql.contains("true as enabled"));
+    assertTrue(sql.contains("jitGroups.groupNames"));
   }
 
   @Test
@@ -156,16 +167,20 @@ public class TestDatastratoUserMetaBaseSQLProvider {
 
   @Test
   public void testInsertIdpUserAndBatchInsertRels() {
-    String insert = provider.insertIdpUser(1L, "alice", "hash", true);
+    String insert = provider.insertIdpUser(1L, "alice", "hash", true, "{\"creator\":\"admin\"}");
     assertTrue(insert.contains("INSERT INTO idp_user_meta"));
     assertTrue(insert.contains("password_hash"));
+    assertTrue(insert.contains("audit_info"));
+    assertTrue(insert.contains("#{auditInfo}"));
 
     String rels =
         provider.batchInsertIdpUserGroupRels(
             Lists.newArrayList(
                 new com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO(
-                    10L, 1L, 200L)));
+                    10L, 1L, 200L, "{\"creator\":\"admin\"}")));
     assertTrue(rels.contains("INSERT INTO idp_user_group_rel"));
+    assertTrue(rels.contains("audit_info"));
+    assertTrue(rels.contains("#{item.auditInfo}"));
     assertTrue(rels.contains("foreach"));
   }
 
@@ -205,15 +220,22 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("as externalId"));
     assertTrue(sql.contains("external_id"));
     assertTrue(sql.contains("as originCode"));
-    // Local / Provisioned; unknown → NULL (not JIT).
+    // SCIM → IdP → JIT → NULL
+    assertTrue(sql.contains("jit_user_meta"));
     assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_LOCAL));
     assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_PROVISIONED));
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_JIT));
     assertTrue(sql.contains("ELSE NULL END as originCode"));
     assertFalse(sql.contains("ELSE " + IdentitySource.ORIGIN_CODE_JIT));
     assertTrue(
         sql.contains(
-            "COALESCE(MAX(CASE WHEN COALESCE(su.enabled, iu.enabled) THEN 1 ELSE 0 END), 1) <> 0"
-                + " as enabled"));
+            "COALESCE(MAX(CASE WHEN COALESCE(su.enabled, iu.enabled) IS NULL THEN NULL WHEN"
+                + " COALESCE(su.enabled, iu.enabled) THEN 1 ELSE 0 END), 1) <> 0 as enabled"));
+    // Must not map NULL identity enabled to 0 before COALESCE(..., 1), or metalake-only users
+    // become Suspended.
+    assertFalse(
+        sql.contains(
+            "COALESCE(MAX(CASE WHEN COALESCE(su.enabled, iu.enabled) THEN 1 ELSE 0 END), 1)"));
     // Must not apply MAX() directly to a boolean/TINYINT expression (breaks on PostgreSQL
     // BOOLEAN).
     assertFalse(sql.contains("MAX(COALESCE(su.enabled, iu.enabled))"));
@@ -228,11 +250,19 @@ public class TestDatastratoUserMetaBaseSQLProvider {
 
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("jit_user_meta"));
     assertTrue(sql.contains("as enabled"));
     assertTrue(sql.contains("as externalId"));
     assertTrue(sql.contains("external_id"));
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_PROVISIONED));
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_LOCAL));
+    assertTrue(sql.contains("THEN " + IdentitySource.ORIGIN_CODE_JIT));
     assertTrue(sql.contains("ELSE NULL END as originCode"));
     assertFalse(sql.contains("ELSE " + IdentitySource.ORIGIN_CODE_JIT));
+    assertTrue(
+        sql.contains(
+            "COALESCE(MAX(CASE WHEN COALESCE(su.enabled, iu.enabled) IS NULL THEN NULL WHEN"
+                + " COALESCE(su.enabled, iu.enabled) THEN 1 ELSE 0 END), 1) <> 0 as enabled"));
     assertFalse(sql.contains("as inBuiltInIdp"));
   }
 
@@ -266,10 +296,15 @@ public class TestDatastratoUserMetaBaseSQLProvider {
   }
 
   @Test
-  public void testListDirectoryUsersForGroupRejectsJit() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> provider.listDirectoryUsersForGroup("governance", IdentitySource.ORIGIN_CODE_JIT));
+  public void testListDirectoryUsersForGroupJit() {
+    String sql = provider.listDirectoryUsersForGroup("engineers", IdentitySource.ORIGIN_CODE_JIT);
+    assertTrue(sql.contains("jit_group_meta"));
+    assertTrue(sql.contains("jit_user_group_rel"));
+    assertTrue(sql.contains("jit_user_meta"));
+    assertTrue(sql.contains("true as enabled"));
+    assertTrue(sql.contains("jg.group_name = #{groupName}"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
+    assertTrue(sql.contains("NOT EXISTS"));
   }
 
   @Test
@@ -293,17 +328,25 @@ public class TestDatastratoUserMetaBaseSQLProvider {
   }
 
   @Test
-  public void testGetDirectoryUserRejectsJit() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> provider.getDirectoryUser("jordan.m", IdentitySource.ORIGIN_CODE_JIT));
+  public void testGetDirectoryUserJit() {
+    String sql = provider.getDirectoryUser("jordan.m", IdentitySource.ORIGIN_CODE_JIT);
+    assertTrue(sql.contains("jit_user_meta"));
+    assertTrue(sql.contains("ju.audit_info as auditInfo"));
+    assertTrue(sql.contains("true as enabled"));
+    assertTrue(sql.contains("NULL as externalId"));
+    assertTrue(sql.contains("ju.user_name = #{userName}"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
+    assertTrue(sql.contains("NOT EXISTS"));
   }
 
   @Test
   public void testListIdpUserNames() {
     String sql = provider.listIdpUserNames();
 
-    assertTrue(sql.contains("SELECT user_name FROM idp_user_meta"));
+    assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("jit_user_meta"));
+    assertTrue(sql.contains("UNION"));
     assertTrue(sql.contains("deleted_at = 0"));
     assertTrue(sql.contains("ORDER BY user_name"));
   }

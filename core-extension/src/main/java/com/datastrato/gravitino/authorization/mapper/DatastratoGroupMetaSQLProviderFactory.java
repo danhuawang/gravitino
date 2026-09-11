@@ -84,8 +84,9 @@ public class DatastratoGroupMetaSQLProviderFactory {
   public static String insertIdpGroup(
       @Param("groupId") long groupId,
       @Param("groupName") String groupName,
-      @Param("groupComment") String groupComment) {
-    return getProvider().insertIdpGroup(groupId, groupName, groupComment);
+      @Param("groupComment") String groupComment,
+      @Param("auditInfo") String auditInfo) {
+    return getProvider().insertIdpGroup(groupId, groupName, groupComment, auditInfo);
   }
 
   public static String batchInsertIdpUserGroupRels(

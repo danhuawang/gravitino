@@ -58,8 +58,13 @@ public class TestDatastratoUserMetaSQLProviderFactory {
     for (String s : new String[] {sql, groupUsersSql}) {
       assertTrue(
           s.contains(
+              "COALESCE(MAX(CASE WHEN COALESCE((su.enabled <> 0), iu.enabled) IS NULL THEN NULL"
+                  + " WHEN COALESCE((su.enabled <> 0), iu.enabled) THEN 1 ELSE 0 END), 1) <> 0"
+                  + " as enabled"));
+      assertFalse(
+          s.contains(
               "COALESCE(MAX(CASE WHEN COALESCE((su.enabled <> 0), iu.enabled) THEN 1 ELSE 0"
-                  + " END), 1) <> 0 as enabled"));
+                  + " END), 1)"));
       assertFalse(s.contains("MAX(COALESCE((su.enabled <> 0), iu.enabled))"));
       assertFalse(s.contains("MAX(COALESCE(su.enabled, iu.enabled))"));
     }

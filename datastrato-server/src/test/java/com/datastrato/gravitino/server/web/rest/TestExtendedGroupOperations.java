@@ -278,7 +278,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
   public void testListDirectoryUsersForGroupBadOrigin() {
     Response response =
         target("/web/security/directory/groups/governance/users")
-            .queryParam("origin", "JIT")
+            .queryParam("origin", "Unknown")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

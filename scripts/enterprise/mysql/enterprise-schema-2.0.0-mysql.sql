@@ -21,7 +21,6 @@ CREATE TABLE IF NOT EXISTS `scim_token_meta` (
 CREATE TABLE IF NOT EXISTS `scim_user_meta` (
     `user_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'scim user id',
     `user_name` VARCHAR(128) NOT NULL COMMENT 'scim username',
-    `user_name_normalized` VARCHAR(128) GENERATED ALWAYS AS (LOWER(`user_name`)) STORED COMMENT 'lower(user_name) for case-insensitive uniqueness',
     `external_id` VARCHAR(256) NULL COMMENT 'SCIM externalId',
     `enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'maps SCIM User active, 0 disabled, 1 enabled',
     `audit_info` MEDIUMTEXT NOT NULL COMMENT 'scim user audit info',
@@ -30,14 +29,12 @@ CREATE TABLE IF NOT EXISTS `scim_user_meta` (
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'scim user deleted at',
     PRIMARY KEY (`user_id`),
     UNIQUE KEY `uk_sun_del` (`user_name`, `deleted_at`),
-    UNIQUE KEY `uk_sun_norm_del` (`user_name_normalized`, `deleted_at`),
     UNIQUE KEY `uk_sue_del` (`external_id`, `deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'scim user metadata';
 
 CREATE TABLE IF NOT EXISTS `scim_group_meta` (
     `group_id` BIGINT(20) UNSIGNED NOT NULL COMMENT 'scim group id',
     `group_name` VARCHAR(128) NOT NULL COMMENT 'scim group name',
-    `group_name_normalized` VARCHAR(128) GENERATED ALWAYS AS (LOWER(`group_name`)) STORED COMMENT 'lower(group_name) for case-insensitive uniqueness',
     `group_comment` VARCHAR(1024) DEFAULT '' COMMENT 'scim group comment',
     `external_id` VARCHAR(256) NULL COMMENT 'SCIM externalId',
     `audit_info` MEDIUMTEXT NOT NULL COMMENT 'scim group audit info',
@@ -46,7 +43,6 @@ CREATE TABLE IF NOT EXISTS `scim_group_meta` (
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'scim group deleted at',
     PRIMARY KEY (`group_id`),
     UNIQUE KEY `uk_sgn_del` (`group_name`, `deleted_at`),
-    UNIQUE KEY `uk_sgn_norm_del` (`group_name_normalized`, `deleted_at`),
     UNIQUE KEY `uk_sge_del` (`external_id`, `deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'scim group metadata';
 

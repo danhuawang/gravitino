@@ -11,24 +11,25 @@ import javax.annotation.Nullable;
  * Source of a metalake user or group identity for the security UI. Serialized as JSON {@code
  * origin}.
  *
- * <p>For Directory Users/Groups lists: {@code Local} from IdP tables, {@code Provisioned} from SCIM
- * tables (Directory lists do not include metalake-only rows). For metalake security Users/Groups
- * lists: {@code Local} / {@code Provisioned} when present in the corresponding identity store;
- * otherwise {@code origin} is omitted ({@code null}) rather than inferred as {@code JIT}.
+ * <p>For Directory Users/Groups lists: {@code Local} from {@code idp_*}, {@code Provisioned} from
+ * {@code scim_*} (excluding IdP names), {@code JIT} from {@code jit_*} (excluding IdP and SCIM
+ * names). For metalake security Users/Groups lists, origin priority is {@code scim_*} →
+ * Provisioned, else {@code idp_*} → Local, else {@code jit_*} → JIT; otherwise {@code origin} is
+ * omitted ({@code null}).
  *
- * <p>{@link #JIT} remains for write-time JWT discovery and explicit responses; list SQL no longer
- * maps "neither IdP nor SCIM" to JIT.
+ * <p>{@link #JIT} is also used for write-time JWT discovery; list SQL maps JIT from {@code
+ * jit_user_meta} / {@code jit_group_meta}, not from mere absence in IdP/SCIM.
  */
 public enum IdentitySource {
   /** Present in the built-in IdP. */
   LOCAL("Local"),
 
-  /** Present in SCIM (or otherwise not in the built-in IdP for metalake pages). */
+  /** Present in SCIM. */
   PROVISIONED("Provisioned"),
 
   /**
-   * Reserved for identities first discovered from a JWT claim with no SCIM record. Not inferred by
-   * metalake or Directory list SQL from mere absence in IdP/SCIM.
+   * Present in {@code jit_user_meta} / {@code jit_group_meta} (e.g. first discovered from a JWT
+   * claim with no SCIM/IdP record).
    */
   JIT("JIT");
 
@@ -105,7 +106,8 @@ public enum IdentitySource {
   /**
    * Derives identity source from a nullable SQL origin code.
    *
-   * @param originCode Origin code from SQL, or {@code null} when neither IdP nor SCIM matched.
+   * @param originCode Origin code from SQL, or {@code null} when neither SCIM, IdP, nor JIT
+   *     matched.
    * @return Matching identity source, or {@code null} when {@code originCode} is null.
    */
   @Nullable

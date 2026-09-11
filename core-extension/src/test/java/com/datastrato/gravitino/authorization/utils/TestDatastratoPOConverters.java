@@ -4,7 +4,9 @@
 package com.datastrato.gravitino.authorization.utils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -46,5 +48,13 @@ public class TestDatastratoPOConverters {
     assertNull(DatastratoPOConverters.parseCreateTime(""));
     assertNull(DatastratoPOConverters.parseCreateTime("not-json"));
     assertNull(DatastratoPOConverters.parseCreateTime("{\"creator\":\"admin\"}"));
+  }
+
+  /** Verifies Directory Local create path can serialize create audit_info. */
+  @Test
+  public void testNewCreateAuditInfoJson() {
+    String json = DatastratoPOConverters.newCreateAuditInfoJson();
+    assertNotNull(DatastratoPOConverters.parseCreateTime(json));
+    assertTrue(json.contains("creator"));
   }
 }

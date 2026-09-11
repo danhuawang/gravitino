@@ -685,9 +685,10 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Lists Local IdP user names from {@code idp_user_meta} (instance-scoped, names only).
+   * Lists distinct active usernames from {@code scim_user_meta}, {@code idp_user_meta}, and {@code
+   * jit_user_meta} (instance-scoped, names only).
    *
-   * @return Active Local IdP user names ordered by name.
+   * @return Deduplicated usernames ordered by name.
    */
   public String[] listIdpUserNames() {
     List<String> names =
@@ -697,9 +698,10 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Lists Local IdP group names from {@code idp_group_meta} (instance-scoped, names only).
+   * Lists distinct active group names from {@code scim_group_meta}, {@code idp_group_meta}, and
+   * {@code jit_group_meta} (instance-scoped, names only).
    *
-   * @return Active Local IdP group names ordered by name.
+   * @return Deduplicated group names ordered by name.
    */
   public String[] listIdpGroupNames() {
     List<String> names =

@@ -78,7 +78,7 @@ public class DirectoryGroupDetailDTO {
    *
    * @param name Group name.
    * @param memberCount Identity-store member count.
-   * @param origin Local or Provisioned.
+   * @param origin Local, Provisioned, or JIT.
    * @param createTime Optional creation time.
    * @return Detail DTO.
    */
@@ -88,8 +88,10 @@ public class DirectoryGroupDetailDTO {
     Preconditions.checkArgument(memberCount >= 0, "memberCount cannot be negative");
     Preconditions.checkArgument(origin != null, "origin cannot be null");
     Preconditions.checkArgument(
-        origin == IdentitySource.LOCAL || origin == IdentitySource.PROVISIONED,
-        "origin must be Local or Provisioned");
+        origin == IdentitySource.LOCAL
+            || origin == IdentitySource.PROVISIONED
+            || origin == IdentitySource.JIT,
+        "origin must be Local, Provisioned, or JIT");
     return new DirectoryGroupDetailDTO(name, memberCount, origin, createTime);
   }
 }

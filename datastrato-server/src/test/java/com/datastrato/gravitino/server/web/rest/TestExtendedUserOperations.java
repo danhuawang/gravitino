@@ -397,7 +397,7 @@ public class TestExtendedUserOperations extends JerseyTest {
   public void testListDirectoryGroupsForUserBadOrigin() {
     Response response =
         target("/web/security/directory/users/dana.k/groups")
-            .queryParam("origin", "JIT")
+            .queryParam("origin", "Unknown")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

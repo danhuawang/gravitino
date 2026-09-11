@@ -22,6 +22,8 @@ public interface DatastratoUserMetaMapper {
   String IDP_USER_GROUP_REL_TABLE_NAME = "idp_user_group_rel";
   String SCIM_USER_TABLE_NAME = "scim_user_meta";
   String SCIM_USER_GROUP_REL_TABLE_NAME = "scim_user_group_rel";
+  String JIT_USER_TABLE_NAME = "jit_user_meta";
+  String JIT_USER_GROUP_REL_TABLE_NAME = "jit_user_group_rel";
 
   @SelectProvider(
       type = DatastratoUserMetaSQLProviderFactory.class,
@@ -73,7 +75,8 @@ public interface DatastratoUserMetaMapper {
   List<String> selectIdpUserNamesByNames(@Param("userNames") List<String> userNames);
 
   /**
-   * Lists all active Local IdP usernames from {@code idp_user_meta}.
+   * Lists all active usernames from identity stores ({@code scim_user_meta}, {@code idp_user_meta},
+   * {@code jit_user_meta}), deduplicated.
    *
    * @return Usernames ordered by name.
    */
@@ -111,6 +114,7 @@ public interface DatastratoUserMetaMapper {
    * @param userName Username.
    * @param passwordHash Hashed password.
    * @param enabled Whether the user is enabled.
+   * @param auditInfo Serialized create audit info.
    * @return Number of rows inserted.
    */
   @InsertProvider(type = DatastratoUserMetaSQLProviderFactory.class, method = "insertIdpUser")
@@ -118,7 +122,8 @@ public interface DatastratoUserMetaMapper {
       @Param("userId") long userId,
       @Param("userName") String userName,
       @Param("passwordHash") String passwordHash,
-      @Param("enabled") boolean enabled);
+      @Param("enabled") boolean enabled,
+      @Param("auditInfo") String auditInfo);
 
   /**
    * Batch-inserts {@code idp_user_group_rel} rows for a new Directory User.

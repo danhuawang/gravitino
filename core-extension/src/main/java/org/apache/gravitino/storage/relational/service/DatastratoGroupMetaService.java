@@ -86,9 +86,12 @@ public class DatastratoGroupMetaService {
   public DirectoryGroupDetailPO getDirectoryGroup(String groupName, IdentitySource origin) {
     Preconditions.checkArgument(StringUtils.isNotBlank(groupName), "groupName cannot be blank");
     Preconditions.checkArgument(origin != null, "origin cannot be null");
-    if (origin != IdentitySource.LOCAL && origin != IdentitySource.PROVISIONED) {
+    if (origin != IdentitySource.LOCAL
+        && origin != IdentitySource.PROVISIONED
+        && origin != IdentitySource.JIT) {
       throw new IllegalArgumentException(
-          "Directory group detail origin must be Local or Provisioned, got: " + origin.value());
+          "Directory group detail origin must be Local, Provisioned, or JIT, got: "
+              + origin.value());
     }
 
     DirectoryGroupDetailPO row =
@@ -121,9 +124,12 @@ public class DatastratoGroupMetaService {
   public List<DirectoryGroup> listDirectoryGroupsForUser(String userName, IdentitySource origin) {
     Preconditions.checkArgument(StringUtils.isNotBlank(userName), "userName cannot be blank");
     Preconditions.checkArgument(origin != null, "origin cannot be null");
-    if (origin != IdentitySource.LOCAL && origin != IdentitySource.PROVISIONED) {
+    if (origin != IdentitySource.LOCAL
+        && origin != IdentitySource.PROVISIONED
+        && origin != IdentitySource.JIT) {
       throw new IllegalArgumentException(
-          "Directory user groups origin must be Local or Provisioned, got: " + origin.value());
+          "Directory user groups origin must be Local, Provisioned, or JIT, got: "
+              + origin.value());
     }
 
     // Ensure the Directory User exists for this origin (404 when missing).
@@ -197,13 +203,17 @@ public class DatastratoGroupMetaService {
             }
           }
 
-          mapper.insertIdpGroup(groupId, groupName, normalizedComment);
+          String auditInfo = DatastratoPOConverters.newCreateAuditInfoJson();
+          mapper.insertIdpGroup(groupId, groupName, normalizedComment, auditInfo);
           if (!memberNames.isEmpty()) {
             List<IdpUserGroupRelInsertPO> relations = new ArrayList<>(memberNames.size());
             for (String member : memberNames) {
               relations.add(
                   new IdpUserGroupRelInsertPO(
-                      RandomIdGenerator.INSTANCE.nextId(), userIdsByName.get(member), groupId));
+                      RandomIdGenerator.INSTANCE.nextId(),
+                      userIdsByName.get(member),
+                      groupId,
+                      auditInfo));
             }
             mapper.batchInsertIdpUserGroupRels(relations);
           }

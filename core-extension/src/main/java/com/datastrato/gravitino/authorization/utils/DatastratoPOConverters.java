@@ -22,6 +22,7 @@ import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.storage.relational.utils.POConverters;
+import org.apache.gravitino.utils.PrincipalUtils;
 
 /** JSON helpers for enterprise authorization read models. */
 public final class DatastratoPOConverters {
@@ -47,6 +48,24 @@ public final class DatastratoPOConverters {
       return auditInfo == null ? null : auditInfo.createTime();
     } catch (Exception e) {
       return null;
+    }
+  }
+
+  /**
+   * Builds create-time {@code audit_info} JSON for Directory Local IdP inserts.
+   *
+   * @return serialized {@link AuditInfo} with creator and createTime
+   */
+  public static String newCreateAuditInfoJson() {
+    try {
+      return JsonUtils.anyFieldMapper()
+          .writeValueAsString(
+              AuditInfo.builder()
+                  .withCreator(PrincipalUtils.getCurrentUserName())
+                  .withCreateTime(Instant.now())
+                  .build());
+    } catch (Exception e) {
+      throw new IllegalStateException("Failed to serialize Directory create audit_info", e);
     }
   }
 

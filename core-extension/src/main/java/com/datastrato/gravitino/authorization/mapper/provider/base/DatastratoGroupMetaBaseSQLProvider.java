@@ -16,10 +16,12 @@ import org.apache.gravitino.storage.relational.mapper.MetalakeMetaMapper;
 import org.apache.gravitino.storage.relational.mapper.UserMetaMapper;
 import org.apache.ibatis.annotations.Param;
 
-/** Base SQL for enterprise group_meta reads with built-in IdP origin checks. */
+/** Base SQL for enterprise group_meta reads with identity-store origin checks. */
 public class DatastratoGroupMetaBaseSQLProvider {
 
   private static final String SCIM_GROUP_ALIAS = "sg";
+  private static final String IDP_GROUP_ALIAS = "ig";
+  private static final String JIT_GROUP_ALIAS = "jg";
 
   /**
    * Lists active IdP group names with whether each is already in the metalake.
@@ -43,14 +45,27 @@ public class DatastratoGroupMetaBaseSQLProvider {
   }
 
   /**
-   * Lists all active Local IdP group names from {@code idp_group_meta}.
+   * Lists distinct active group names from identity stores ({@code scim_group_meta}, {@code
+   * idp_group_meta}, {@code jit_group_meta}).
+   *
+   * <p>Used by Add-role member pickers. Names present in more than one table appear once.
    *
    * @return MyBatis SQL ordered by group name.
    */
   public String listIdpGroupNames() {
-    return "SELECT group_name FROM "
+    return "SELECT group_name FROM ("
+        + " SELECT group_name FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + " UNION"
+        + " SELECT group_name FROM "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " WHERE deleted_at = 0 ORDER BY group_name";
+        + " WHERE deleted_at = 0"
+        + " UNION"
+        + " SELECT group_name FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + ") identity_groups ORDER BY group_name";
   }
 
   /**
@@ -71,8 +86,8 @@ public class DatastratoGroupMetaBaseSQLProvider {
   /**
    * Lists metalake groups with roles and identity-store origin in one query.
    *
-   * <p>{@code origin} is Local when the name exists in {@code idp_group_meta}, Provisioned when it
-   * exists in {@code scim_group_meta} (and not IdP), otherwise {@code null} (not inferred as JIT).
+   * <p>{@code origin} priority: {@code scim_group_meta} → Provisioned, else {@code idp_group_meta}
+   * → Local, else {@code jit_group_meta} → JIT, else {@code null}.
    *
    * @param metalakeName The metalake name.
    * @return JOIN SQL.
@@ -120,6 +135,8 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + localGroupHasMemberExists()
         + " OR "
         + scimGroupHasMemberExists()
+        + " OR "
+        + jitGroupHasMemberExists()
         + ") THEN 1 ELSE 0 END), 0) AS empty"
         + " FROM "
         + GROUP_TABLE_NAME
@@ -132,9 +149,9 @@ public class DatastratoGroupMetaBaseSQLProvider {
   /**
    * Lists Directory Groups for Configure → Directory → Groups.
    *
-   * <p>Local rows come from {@code idp_group_meta}; Provisioned from {@code scim_group_meta}
-   * excluding IdP names. Metalake-only ({@code JIT}) names are not included. {@code memberCount} is
-   * the identity-store membership count. Metalakes are distinct {@code metalake_meta} names that
+   * <p>Rows come from identity stores with priority {@code idp_group_meta} → Local, else {@code
+   * scim_group_meta} → Provisioned, else {@code jit_group_meta} → JIT. {@code memberCount} is the
+   * identity-store membership count. Metalakes are distinct {@code metalake_meta} names that
    * contain the group name in {@code group_meta}.
    *
    * @return MyBatis SQL ordered by group name.
@@ -145,7 +162,9 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + IdentitySource.ORIGIN_CODE_LOCAL
         + " THEN idpMembers.memberCount WHEN identity.originCode = "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " THEN scimMembers.memberCount ELSE 0 END, 0) as memberCount,"
+        + " THEN scimMembers.memberCount WHEN identity.originCode = "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " THEN jitMembers.memberCount ELSE 0 END, 0) as memberCount,"
         + " metalakes.metalakeNames as metalakeNames"
         + " FROM ("
         + directoryGroupIdentityUnion()
@@ -156,6 +175,9 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " LEFT JOIN ("
         + scimDirectoryMemberAggregation()
         + ") scimMembers ON identity.scimGroupId = scimMembers.groupId"
+        + " LEFT JOIN ("
+        + jitDirectoryMemberAggregation()
+        + ") jitMembers ON identity.jitGroupId = jitMembers.groupId"
         + " LEFT JOIN ("
         + directoryGroupMetalakeAggregation()
         + ") metalakes ON metalakes.groupName = identity.groupName"
@@ -198,16 +220,20 @@ public class DatastratoGroupMetaBaseSQLProvider {
    * @param groupId Generated group id.
    * @param groupName Group name.
    * @param groupComment Group comment.
+   * @param auditInfo Serialized create audit info.
    * @return Insert SQL.
    */
   public String insertIdpGroup(
       @Param("groupId") long groupId,
       @Param("groupName") String groupName,
-      @Param("groupComment") String groupComment) {
+      @Param("groupComment") String groupComment,
+      @Param("auditInfo") String auditInfo) {
     return "INSERT INTO "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " (group_id, group_name, group_comment, current_version, last_version, deleted_at)"
-        + " VALUES (#{groupId}, #{groupName}, COALESCE(#{groupComment}, ''), 1, 1, 0)";
+        + " (group_id, group_name, group_comment, audit_info, current_version, last_version,"
+        + " deleted_at)"
+        + " VALUES (#{groupId}, #{groupName}, COALESCE(#{groupComment}, ''), #{auditInfo}, 1, 1,"
+        + " 0)";
   }
 
   /**
@@ -221,10 +247,10 @@ public class DatastratoGroupMetaBaseSQLProvider {
     return "<script>"
         + "INSERT INTO "
         + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
-        + " (id, user_id, group_id, current_version, last_version, deleted_at)"
+        + " (id, user_id, group_id, audit_info, current_version, last_version, deleted_at)"
         + " VALUES "
         + "<foreach item='item' collection='relations' separator=','>"
-        + "(#{item.id}, #{item.userId}, #{item.groupId}, 1, 1, 0)"
+        + "(#{item.id}, #{item.userId}, #{item.groupId}, #{item.auditInfo}, 1, 1, 0)"
         + "</foreach>"
         + "</script>";
   }
@@ -235,7 +261,9 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " as originCode,"
         + " ig.group_id as idpGroupId, "
         + nullLongLiteral()
-        + " as scimGroupId"
+        + " as scimGroupId, "
+        + nullLongLiteral()
+        + " as jitGroupId"
         + " FROM "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
         + " ig WHERE ig.deleted_at = 0"
@@ -245,21 +273,40 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " as originCode,"
         + " "
         + nullLongLiteral()
-        + " as idpGroupId, sg.group_id as scimGroupId"
+        + " as idpGroupId, sg.group_id as scimGroupId, "
+        + nullLongLiteral()
+        + " as jitGroupId"
         + " FROM "
         + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
         + " sg WHERE sg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0)";
+        + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0)"
+        + " UNION ALL "
+        + "SELECT jg.group_name as groupName, "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " as originCode,"
+        + " "
+        + nullLongLiteral()
+        + " as idpGroupId, "
+        + nullLongLiteral()
+        + " as scimGroupId, jg.group_id as jitGroupId"
+        + " FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg WHERE jg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig WHERE ig.group_name = jg.group_name AND ig.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg WHERE sg.group_name = jg.group_name AND sg.deleted_at = 0)";
   }
 
   /**
    * Loads one Directory Group Overview row by group name and origin.
    *
-   * <p>{@code originCode} must be {@link IdentitySource#ORIGIN_CODE_LOCAL} or {@link
-   * IdentitySource#ORIGIN_CODE_PROVISIONED}. Local reads {@code idp_group_meta}; Provisioned reads
-   * {@code scim_group_meta} excluding IdP names. {@code memberCount} comes from the matching
-   * identity-store membership table.
+   * <p>{@code originCode} must be Local, Provisioned, or JIT. Local reads {@code idp_group_meta};
+   * Provisioned reads {@code scim_group_meta} excluding IdP names; JIT reads {@code jit_group_meta}
+   * excluding IdP and SCIM names. {@code memberCount} comes from the matching identity-store
+   * membership table.
    *
    * @param groupName Group name.
    * @param originCode Directory origin code.
@@ -299,17 +346,37 @@ public class DatastratoGroupMetaBaseSQLProvider {
           + scimDirectoryMemberAggregation()
           + ") scimMembers ON identity.scimGroupId = scimMembers.groupId";
     }
+    if (originCode == IdentitySource.ORIGIN_CODE_JIT) {
+      return "SELECT identity.groupName as groupName, identity.originCode as originCode,"
+          + " COALESCE(jitMembers.memberCount, 0) as memberCount, identity.auditInfo as auditInfo"
+          + " FROM ("
+          + "SELECT jg.group_name as groupName, "
+          + IdentitySource.ORIGIN_CODE_JIT
+          + " as originCode, jg.group_id as jitGroupId, jg.audit_info as auditInfo"
+          + " FROM "
+          + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+          + " jg WHERE jg.group_name = #{groupName} AND jg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+          + " ig WHERE ig.group_name = jg.group_name AND ig.deleted_at = 0)"
+          + " AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+          + " sg WHERE sg.group_name = jg.group_name AND sg.deleted_at = 0)"
+          + ") identity"
+          + " LEFT JOIN ("
+          + jitDirectoryMemberAggregation()
+          + ") jitMembers ON identity.jitGroupId = jitMembers.groupId";
+    }
     throw new IllegalArgumentException(
-        "Directory group detail originCode must be Local or Provisioned, got: " + originCode);
+        "Directory group detail originCode must be Local, Provisioned, or JIT, got: " + originCode);
   }
 
   /**
    * Lists Directory Groups for Configure → Directory → User → Groups.
    *
-   * <p>{@code originCode} must be Local or Provisioned. Local resolves membership from {@code
-   * idp_user_group_rel}; Provisioned from {@code scim_user_group_rel} (user not in IdP). Each row
-   * includes identity-store {@code memberCount}. Returns an empty list when the user exists but has
-   * no groups.
+   * <p>{@code originCode} must be Local, Provisioned, or JIT. Local resolves membership from {@code
+   * idp_user_group_rel}; Provisioned from {@code scim_user_group_rel} (user not in IdP); JIT from
+   * {@code jit_user_group_rel} (user not in IdP or SCIM). Each row includes identity-store {@code
+   * memberCount}. Returns an empty list when the user exists but has no groups.
    *
    * @param userName Username.
    * @param originCode Directory origin code.
@@ -349,8 +416,28 @@ public class DatastratoGroupMetaBaseSQLProvider {
           + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
           + " iu WHERE iu.user_name = su.user_name AND iu.deleted_at = 0) ORDER BY sg.group_name";
     }
+    if (originCode == IdentitySource.ORIGIN_CODE_JIT) {
+      return "SELECT jg.group_name as groupName, "
+          + IdentitySource.ORIGIN_CODE_JIT
+          + " as originCode, COALESCE(jitMembers.memberCount, 0) as memberCount, NULL as"
+          + " metalakeNames FROM "
+          + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+          + " ju JOIN "
+          + DatastratoGroupMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+          + " jugr ON jugr.user_id = ju.user_id AND jugr.deleted_at = 0 JOIN "
+          + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+          + " jg ON jg.group_id = jugr.group_id AND jg.deleted_at = 0 LEFT JOIN ("
+          + jitDirectoryMemberAggregation()
+          + ") jitMembers ON jitMembers.groupId = jg.group_id WHERE ju.user_name = #{userName} AND"
+          + " ju.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+          + " iu WHERE iu.user_name = ju.user_name AND iu.deleted_at = 0)"
+          + " AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+          + " su WHERE su.user_name = ju.user_name AND su.deleted_at = 0) ORDER BY jg.group_name";
+    }
     throw new IllegalArgumentException(
-        "Directory user groups originCode must be Local or Provisioned, got: " + originCode);
+        "Directory user groups originCode must be Local, Provisioned, or JIT, got: " + originCode);
   }
 
   private String idpDirectoryMemberAggregation() {
@@ -363,6 +450,12 @@ public class DatastratoGroupMetaBaseSQLProvider {
     return "SELECT sur.group_id as groupId, COUNT(DISTINCT sur.user_id) as memberCount FROM "
         + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
         + " sur WHERE sur.deleted_at = 0 GROUP BY sur.group_id";
+  }
+
+  private String jitDirectoryMemberAggregation() {
+    return "SELECT jugr.group_id as groupId, COUNT(DISTINCT jugr.user_id) as memberCount FROM "
+        + DatastratoGroupMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+        + " jugr WHERE jugr.deleted_at = 0 GROUP BY jugr.group_id";
   }
 
   private String directoryGroupMetalakeAggregation() {
@@ -410,14 +503,35 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0)";
   }
 
+  private String jitGroupHasMemberExists() {
+    return "EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg INNER JOIN "
+        + DatastratoGroupMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+        + " jugr ON jugr.group_id = jg.group_id AND jugr.deleted_at = 0"
+        + " INNER JOIN "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " ju ON ju.user_id = jugr.user_id AND ju.deleted_at = 0"
+        + " INNER JOIN "
+        + UserMetaMapper.USER_TABLE_NAME
+        + " ut ON ut.metalake_id = gt.metalake_id AND ut.user_name = ju.user_name AND ut.deleted_at = 0"
+        + " WHERE jg.group_name = gt.group_name AND jg.deleted_at = 0)";
+  }
+
   private String groupUserCountSelect() {
     return " COALESCE(CASE WHEN EXISTS (SELECT 1 FROM "
         + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
         + " sg WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0) THEN ("
         + scimGroupUserCountSubquery()
-        + ") ELSE ("
+        + ") WHEN EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0) THEN ("
         + localGroupUserCountSubquery()
-        + ") END, 0) as userCount";
+        + ") WHEN EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg WHERE jg.group_name = gt.group_name AND jg.deleted_at = 0) THEN ("
+        + jitGroupUserCountSubquery()
+        + ") ELSE 0 END, 0) as userCount";
   }
 
   private String localGroupUserCountSubquery() {
@@ -451,6 +565,21 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0";
   }
 
+  private String jitGroupUserCountSubquery() {
+    return "SELECT COUNT(DISTINCT ut.user_id) FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg INNER JOIN "
+        + DatastratoGroupMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+        + " jugr ON jugr.group_id = jg.group_id AND jugr.deleted_at = 0"
+        + " INNER JOIN "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " ju ON ju.user_id = jugr.user_id AND ju.deleted_at = 0"
+        + " INNER JOIN "
+        + UserMetaMapper.USER_TABLE_NAME
+        + " ut ON ut.metalake_id = gt.metalake_id AND ut.user_name = ju.user_name AND ut.deleted_at = 0"
+        + " WHERE jg.group_name = gt.group_name AND jg.deleted_at = 0";
+  }
+
   private String groupsForMetalakeUserSelectAndFrom() {
     return "SELECT gt.group_id as groupId, gt.group_name as groupName,"
         + " gt.metalake_id as metalakeId,"
@@ -462,12 +591,8 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " as roleNames,"
         + " "
         + jsonArrayAgg("rot.role_id")
-        + " as roleIds,"
-        + " CASE WHEN MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
-        + IdentitySource.ORIGIN_CODE_LOCAL
-        + " WHEN MAX(CASE WHEN sgm.group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
-        + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " ELSE NULL END as originCode"
+        + " as roleIds, "
+        + originCodeSelect()
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + " mt INNER JOIN "
@@ -475,9 +600,10 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " ut ON ut.metalake_id = mt.metalake_id AND ut.deleted_at = 0"
         + " AND ut.user_name = #{userName}"
         + membershipGroupsJoinForUser()
-        + " LEFT JOIN "
-        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 LEFT OUTER JOIN ("
+        + scimGroupJoin("gt")
+        + idpGroupJoin("gt")
+        + jitGroupJoin("gt")
+        + " LEFT OUTER JOIN ("
         + " SELECT * FROM "
         + GROUP_ROLE_RELATION_TABLE_NAME
         + " WHERE deleted_at = 0)"
@@ -497,6 +623,10 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
         + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0 AND su.user_id IS NULL"
         + " LEFT JOIN "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " ju ON ju.user_name = ut.user_name AND ju.deleted_at = 0 AND su.user_id IS NULL"
+        + " AND iu.user_id IS NULL"
+        + " LEFT JOIN "
         + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
         + " iugr ON iugr.user_id = iu.user_id AND iugr.deleted_at = 0"
         + " LEFT JOIN "
@@ -509,10 +639,17 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
         + " sgm ON sgm.group_id = sur.group_id AND sgm.deleted_at = 0"
         + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+        + " jugr ON jugr.user_id = ju.user_id AND jugr.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jgm ON jgm.group_id = jugr.group_id AND jgm.deleted_at = 0"
+        + " LEFT JOIN "
         + GROUP_TABLE_NAME
         + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0"
-        + " AND ((su.user_id IS NULL AND gt.group_name = igm.group_name)"
-        + " OR (su.user_id IS NOT NULL AND gt.group_name = sgm.group_name))";
+        + " AND ((su.user_id IS NOT NULL AND gt.group_name = sgm.group_name)"
+        + " OR (su.user_id IS NULL AND iu.user_id IS NOT NULL AND gt.group_name = igm.group_name)"
+        + " OR (su.user_id IS NULL AND iu.user_id IS NULL AND gt.group_name = jgm.group_name))";
   }
 
   private String groupsWithOriginSelectAndFrom(boolean innerJoinGroup, String extraFilter) {
@@ -535,29 +672,17 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " "
         + jsonArrayAgg("rot.role_id")
         + " as roleIds,"
-        + " CASE WHEN MAX(CASE WHEN ig.group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
-        + IdentitySource.ORIGIN_CODE_LOCAL
-        + " WHEN MAX(CASE WHEN "
-        + SCIM_GROUP_ALIAS
-        + ".group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
-        + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " ELSE NULL END as originCode,"
+        + " "
+        + originCodeSelect()
+        + ","
         + groupUserCountSelect()
         + " FROM "
         + MetalakeMetaMapper.TABLE_NAME
         + groupJoin
-        + " LEFT JOIN "
-        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0"
-        + " LEFT JOIN "
-        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
-        + " "
-        + SCIM_GROUP_ALIAS
-        + " ON "
-        + SCIM_GROUP_ALIAS
-        + ".group_name = gt.group_name AND "
-        + SCIM_GROUP_ALIAS
-        + ".deleted_at = 0 LEFT OUTER JOIN ("
+        + scimGroupJoin("gt")
+        + idpGroupJoin("gt")
+        + jitGroupJoin("gt")
+        + " LEFT OUTER JOIN ("
         + " SELECT * FROM "
         + GROUP_ROLE_RELATION_TABLE_NAME
         + " WHERE deleted_at = 0)"
@@ -568,6 +693,65 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " AS rot ON rot.role_id = rt.role_id"
         + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
         + (extraFilter == null ? "" : extraFilter);
+  }
+
+  /** Origin code with SCIM → IdP → JIT → null priority; uses MAX for GROUP BY role joins. */
+  private String originCodeSelect() {
+    return "CASE WHEN MAX(CASE WHEN "
+        + SCIM_GROUP_ALIAS
+        + ".group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " WHEN MAX(CASE WHEN "
+        + IDP_GROUP_ALIAS
+        + ".group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " WHEN MAX(CASE WHEN "
+        + JIT_GROUP_ALIAS
+        + ".group_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " ELSE NULL END as originCode";
+  }
+
+  protected String scimGroupJoin(String groupTableAlias) {
+    return " LEFT JOIN "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " "
+        + SCIM_GROUP_ALIAS
+        + " ON "
+        + SCIM_GROUP_ALIAS
+        + ".group_name = "
+        + groupTableAlias
+        + ".group_name AND "
+        + SCIM_GROUP_ALIAS
+        + ".deleted_at = 0";
+  }
+
+  protected String idpGroupJoin(String groupTableAlias) {
+    return " LEFT JOIN "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " "
+        + IDP_GROUP_ALIAS
+        + " ON "
+        + IDP_GROUP_ALIAS
+        + ".group_name = "
+        + groupTableAlias
+        + ".group_name AND "
+        + IDP_GROUP_ALIAS
+        + ".deleted_at = 0";
+  }
+
+  protected String jitGroupJoin(String groupTableAlias) {
+    return " LEFT JOIN "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " "
+        + JIT_GROUP_ALIAS
+        + " ON "
+        + JIT_GROUP_ALIAS
+        + ".group_name = "
+        + groupTableAlias
+        + ".group_name AND "
+        + JIT_GROUP_ALIAS
+        + ".deleted_at = 0";
   }
 
   protected String jsonArrayAgg(String expr) {

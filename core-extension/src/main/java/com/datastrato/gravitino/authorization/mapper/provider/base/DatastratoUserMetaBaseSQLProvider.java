@@ -27,6 +27,8 @@ public class DatastratoUserMetaBaseSQLProvider {
 
   private static final String IDP_USER_ALIAS = "iu";
 
+  private static final String JIT_USER_ALIAS = "ju";
+
   /**
    * Lists active users under a metalake by name.
    *
@@ -155,14 +157,27 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Lists all active Local IdP usernames from {@code idp_user_meta}.
+   * Lists distinct active usernames from identity stores ({@code scim_user_meta}, {@code
+   * idp_user_meta}, {@code jit_user_meta}).
+   *
+   * <p>Used by Add-role member pickers. Names present in more than one table appear once.
    *
    * @return MyBatis SQL ordered by username.
    */
   public String listIdpUserNames() {
-    return "SELECT user_name FROM "
+    return "SELECT user_name FROM ("
+        + " SELECT user_name FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + " UNION"
+        + " SELECT user_name FROM "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-        + " WHERE deleted_at = 0 ORDER BY user_name";
+        + " WHERE deleted_at = 0"
+        + " UNION"
+        + " SELECT user_name FROM "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + ") identity_users ORDER BY user_name";
   }
 
   /**
@@ -207,17 +222,20 @@ public class DatastratoUserMetaBaseSQLProvider {
    * @param userName Username.
    * @param passwordHash Hashed password.
    * @param enabled Whether the user is enabled.
+   * @param auditInfo Serialized create audit info.
    * @return Insert SQL.
    */
   public String insertIdpUser(
       @Param("userId") long userId,
       @Param("userName") String userName,
       @Param("passwordHash") String passwordHash,
-      @Param("enabled") boolean enabled) {
+      @Param("enabled") boolean enabled,
+      @Param("auditInfo") String auditInfo) {
     return "INSERT INTO "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-        + " (user_id, user_name, password_hash, enabled, current_version, last_version, deleted_at)"
-        + " VALUES (#{userId}, #{userName}, #{passwordHash}, #{enabled}, 1, 1, 0)";
+        + " (user_id, user_name, password_hash, enabled, audit_info, current_version, last_version,"
+        + " deleted_at)"
+        + " VALUES (#{userId}, #{userName}, #{passwordHash}, #{enabled}, #{auditInfo}, 1, 1, 0)";
   }
 
   /**
@@ -231,10 +249,10 @@ public class DatastratoUserMetaBaseSQLProvider {
     return "<script>"
         + "INSERT INTO "
         + DatastratoUserMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
-        + " (id, user_id, group_id, current_version, last_version, deleted_at)"
+        + " (id, user_id, group_id, audit_info, current_version, last_version, deleted_at)"
         + " VALUES "
         + "<foreach item='item' collection='relations' separator=','>"
-        + "(#{item.id}, #{item.userId}, #{item.groupId}, 1, 1, 0)"
+        + "(#{item.id}, #{item.userId}, #{item.groupId}, #{item.auditInfo}, 1, 1, 0)"
         + "</foreach>"
         + "</script>";
   }
@@ -315,8 +333,9 @@ public class DatastratoUserMetaBaseSQLProvider {
   /**
    * Lists metalake users with roles, group names, and identity-store origin in one query.
    *
-   * <p>{@code origin} is Local when the name exists in {@code idp_user_meta}, Provisioned when it
-   * exists in {@code scim_user_meta} (and not IdP), otherwise {@code null} (not inferred as JIT).
+   * <p>{@code origin} priority: {@code scim_user_meta} → Provisioned, else {@code idp_user_meta} →
+   * Local, else {@code jit_user_meta} → JIT, else {@code null}. Enabled comes from SCIM then IdP,
+   * defaulting to Active for JIT / unknown.
    *
    * @param metalakeName The metalake name.
    * @return MyBatis SQL.
@@ -334,24 +353,20 @@ public class DatastratoUserMetaBaseSQLProvider {
         + identityEnabledSelect()
         + ", "
         + identityExternalIdSelect()
-        + ", CASE WHEN iu.user_name IS NOT NULL THEN "
-        + IdentitySource.ORIGIN_CODE_LOCAL
-        + " WHEN "
-        + SCIM_USER_ALIAS
-        + ".user_name IS NOT NULL THEN "
-        + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " ELSE NULL END as originCode"
+        + ", "
+        + originCodeSelectNonAggregated()
         + " FROM "
         + USER_TABLE_NAME
         + " ut"
-        + scimUserJoin("ut")
         + " JOIN "
         + MetalakeMetaMapper.TABLE_NAME
         + " mt ON ut.metalake_id = mt.metalake_id AND mt.deleted_at = 0 AND mt.metalake_name ="
         + " #{metalakeName}"
+        + scimUserJoin("ut")
         + " LEFT JOIN "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
         + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0"
+        + jitUserJoin("ut")
         + " LEFT OUTER JOIN ("
         + roleAggregationSubquery()
         + ") roles ON roles.userId = ut.user_id"
@@ -364,10 +379,10 @@ public class DatastratoUserMetaBaseSQLProvider {
   /**
    * Lists Directory Users for Configure → Directory → Users.
    *
-   * <p>Local rows come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}
-   * excluding IdP names. Metalake-only ({@code JIT}) names are not included. Groups are
-   * identity-store group names. Metalakes are distinct {@code metalake_meta} names that contain the
-   * username in {@code user_meta}.
+   * <p>Rows come from identity stores with priority {@code idp_user_meta} → Local, else {@code
+   * scim_user_meta} → Provisioned, else {@code jit_user_meta} → JIT. Groups are identity-store
+   * group names. Metalakes are distinct {@code metalake_meta} names that contain the username in
+   * {@code user_meta}. JIT has no {@code enabled} column and defaults to Active.
    *
    * @return MyBatis SQL ordered by username.
    */
@@ -378,7 +393,9 @@ public class DatastratoUserMetaBaseSQLProvider {
         + IdentitySource.ORIGIN_CODE_LOCAL
         + " THEN idpGroups.groupNames WHEN identity.originCode = "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
-        + " THEN scimGroups.groupNames ELSE NULL END as groupNames,"
+        + " THEN scimGroups.groupNames WHEN identity.originCode = "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " THEN jitGroups.groupNames ELSE NULL END as groupNames,"
         + " metalakes.metalakeNames as metalakeNames"
         + " FROM ("
         + directoryIdentityUnion()
@@ -390,16 +407,22 @@ public class DatastratoUserMetaBaseSQLProvider {
         + scimDirectoryGroupAggregation()
         + ") scimGroups ON identity.scimUserId = scimGroups.userId"
         + " LEFT JOIN ("
+        + jitDirectoryGroupAggregation()
+        + ") jitGroups ON identity.jitUserId = jitGroups.userId"
+        + " LEFT JOIN ("
         + directoryMetalakeAggregation()
         + ") metalakes ON metalakes.userName = identity.userName"
         + " ORDER BY identity.userName";
   }
 
   /**
-   * Builds the Local / Provisioned identity UNION for Directory Users.
+   * Builds the Local / Provisioned / JIT identity UNION for Directory Users.
+   *
+   * <p>Priority: IdP → Local; SCIM excluding IdP names → Provisioned; JIT excluding IdP and SCIM
+   * names → JIT.
    *
    * @return UNION ALL SQL selecting {@code userName}, {@code enabled}, {@code originCode}, and IdP
-   *     / SCIM ids.
+   *     / SCIM / JIT ids.
    */
   protected String directoryIdentityUnion() {
     return "SELECT iu.user_name as userName, iu.enabled as enabled, "
@@ -407,7 +430,9 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " as originCode,"
         + " iu.user_id as idpUserId, "
         + nullLongLiteral()
-        + " as scimUserId"
+        + " as scimUserId, "
+        + nullLongLiteral()
+        + " as jitUserId"
         + " FROM "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
         + " iu WHERE iu.deleted_at = 0"
@@ -419,20 +444,39 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " as originCode,"
         + " "
         + nullLongLiteral()
-        + " as idpUserId, su.user_id as scimUserId"
+        + " as idpUserId, su.user_id as scimUserId, "
+        + nullLongLiteral()
+        + " as jitUserId"
         + " FROM "
         + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
         + " su WHERE su.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-        + " iu WHERE iu.user_name = su.user_name AND iu.deleted_at = 0)";
+        + " iu WHERE iu.user_name = su.user_name AND iu.deleted_at = 0)"
+        + " UNION ALL "
+        + "SELECT ju.user_name as userName, true as enabled, "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " as originCode,"
+        + " "
+        + nullLongLiteral()
+        + " as idpUserId, "
+        + nullLongLiteral()
+        + " as scimUserId, ju.user_id as jitUserId"
+        + " FROM "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " ju WHERE ju.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu WHERE iu.user_name = ju.user_name AND iu.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su WHERE su.user_name = ju.user_name AND su.deleted_at = 0)";
   }
 
   /**
    * Loads one Directory User Overview row by username and origin.
    *
-   * <p>{@code originCode} must be {@link IdentitySource#ORIGIN_CODE_LOCAL} or {@link
-   * IdentitySource#ORIGIN_CODE_PROVISIONED}. Local reads {@code idp_user_meta}; Provisioned reads
-   * {@code scim_user_meta} excluding IdP names.
+   * <p>{@code originCode} must be Local, Provisioned, or JIT. Local reads {@code idp_user_meta};
+   * Provisioned reads {@code scim_user_meta} excluding IdP names; JIT reads {@code jit_user_meta}
+   * excluding IdP and SCIM names.
    *
    * @param userName Username.
    * @param originCode Directory origin code.
@@ -460,18 +504,32 @@ public class DatastratoUserMetaBaseSQLProvider {
           + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
           + " iu WHERE iu.user_name = su.user_name AND iu.deleted_at = 0)";
     }
+    if (originCode == IdentitySource.ORIGIN_CODE_JIT) {
+      return "SELECT ju.user_name as userName, true as enabled, "
+          + IdentitySource.ORIGIN_CODE_JIT
+          + " as originCode, NULL as externalId, ju.audit_info as auditInfo"
+          + " FROM "
+          + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+          + " ju WHERE ju.user_name = #{userName} AND ju.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+          + " iu WHERE iu.user_name = ju.user_name AND iu.deleted_at = 0)"
+          + " AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+          + " su WHERE su.user_name = ju.user_name AND su.deleted_at = 0)";
+    }
     throw new IllegalArgumentException(
-        "Directory user detail originCode must be Local or Provisioned, got: " + originCode);
+        "Directory user detail originCode must be Local, Provisioned, or JIT, got: " + originCode);
   }
 
   /**
    * Lists Directory Users that belong to a Directory Group for Configure → Directory → Group →
    * Members.
    *
-   * <p>{@code originCode} must be Local or Provisioned. Local resolves membership from {@code
-   * idp_user_group_rel}; Provisioned from {@code scim_user_group_rel} (group not in IdP). Each row
-   * includes {@code enabled} (Status) and {@code origin} matching the group's identity store.
-   * Identity-store group and metalake name arrays are left unset (unused on this tab).
+   * <p>{@code originCode} must be Local, Provisioned, or JIT. Local resolves membership from {@code
+   * idp_user_group_rel}; Provisioned from {@code scim_user_group_rel} (group not in IdP); JIT from
+   * {@code jit_user_group_rel} (group not in IdP or SCIM). Each row includes {@code enabled}
+   * (Status) and {@code origin} matching the group's identity store. Identity-store group and
+   * metalake name arrays are left unset (unused on this tab).
    *
    * @param groupName Group name.
    * @param originCode Directory origin code.
@@ -507,8 +565,26 @@ public class DatastratoUserMetaBaseSQLProvider {
           + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
           + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0) ORDER BY su.user_name";
     }
+    if (originCode == IdentitySource.ORIGIN_CODE_JIT) {
+      return "SELECT ju.user_name as userName, true as enabled, "
+          + IdentitySource.ORIGIN_CODE_JIT
+          + " as originCode FROM "
+          + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+          + " jg JOIN "
+          + DatastratoUserMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+          + " jugr ON jugr.group_id = jg.group_id AND jugr.deleted_at = 0 JOIN "
+          + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+          + " ju ON ju.user_id = jugr.user_id AND ju.deleted_at = 0 WHERE jg.group_name ="
+          + " #{groupName} AND jg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+          + " ig WHERE ig.group_name = jg.group_name AND ig.deleted_at = 0)"
+          + " AND NOT EXISTS (SELECT 1 FROM "
+          + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+          + " sg WHERE sg.group_name = jg.group_name AND sg.deleted_at = 0) ORDER BY ju.user_name";
+    }
     throw new IllegalArgumentException(
-        "Directory group members originCode must be Local or Provisioned, got: " + originCode);
+        "Directory group members originCode must be Local, Provisioned, or JIT, got: "
+            + originCode);
   }
 
   /**
@@ -545,6 +621,17 @@ public class DatastratoUserMetaBaseSQLProvider {
         + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
         + " sg ON sg.group_id = sur.group_id AND sg.deleted_at = 0"
         + " WHERE sur.deleted_at = 0 GROUP BY sur.user_id";
+  }
+
+  private String jitDirectoryGroupAggregation() {
+    return "SELECT jugr.user_id as userId, "
+        + jsonArrayAgg("jg.group_name")
+        + " as groupNames FROM "
+        + DatastratoUserMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+        + " jugr JOIN "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg ON jg.group_id = jugr.group_id AND jg.deleted_at = 0"
+        + " WHERE jugr.deleted_at = 0 GROUP BY jugr.user_id";
   }
 
   private String directoryMetalakeAggregation() {
@@ -623,7 +710,9 @@ public class DatastratoUserMetaBaseSQLProvider {
         + scimUserJoin("ut")
         + " LEFT JOIN "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-        + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0 LEFT OUTER JOIN ("
+        + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0"
+        + jitUserJoin("ut")
+        + " LEFT OUTER JOIN ("
         + " SELECT * FROM "
         + USER_ROLE_RELATION_TABLE_NAME
         + " WHERE deleted_at = 0)"
@@ -643,6 +732,10 @@ public class DatastratoUserMetaBaseSQLProvider {
         + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
         + " ig ON ig.group_name = gt.group_name AND ig.deleted_at = 0 AND sg.group_id IS NULL"
         + " LEFT JOIN "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg ON jg.group_name = gt.group_name AND jg.deleted_at = 0 AND sg.group_id IS NULL"
+        + " AND ig.group_id IS NULL"
+        + " LEFT JOIN "
         + DatastratoUserMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
         + " iugr ON iugr.group_id = ig.group_id AND iugr.deleted_at = 0"
         + " LEFT JOIN "
@@ -655,10 +748,17 @@ public class DatastratoUserMetaBaseSQLProvider {
         + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
         + " sum ON sum.user_id = sur.user_id AND sum.deleted_at = 0"
         + " LEFT JOIN "
+        + DatastratoUserMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+        + " jugr ON jugr.group_id = jg.group_id AND jugr.deleted_at = 0"
+        + " LEFT JOIN "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " jum ON jum.user_id = jugr.user_id AND jum.deleted_at = 0"
+        + " LEFT JOIN "
         + USER_TABLE_NAME
         + " ut ON ut.metalake_id = mt.metalake_id AND ut.deleted_at = 0"
-        + " AND ((sg.group_id IS NULL AND ut.user_name = ium.user_name)"
-        + " OR (sg.group_id IS NOT NULL AND ut.user_name = sum.user_name))";
+        + " AND ((sg.group_id IS NOT NULL AND ut.user_name = sum.user_name)"
+        + " OR (sg.group_id IS NULL AND ig.group_id IS NOT NULL AND ut.user_name = ium.user_name)"
+        + " OR (sg.group_id IS NULL AND ig.group_id IS NULL AND ut.user_name = jum.user_name))";
   }
 
   private String usersWithOriginSelectAndFrom(boolean innerJoinUser, String extraFilter) {
@@ -693,7 +793,9 @@ public class DatastratoUserMetaBaseSQLProvider {
         + scimUserJoin("ut")
         + " LEFT JOIN "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-        + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0 LEFT OUTER JOIN ("
+        + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0"
+        + jitUserJoin("ut")
+        + " LEFT OUTER JOIN ("
         + " SELECT * FROM "
         + USER_ROLE_RELATION_TABLE_NAME
         + " WHERE deleted_at = 0)"
@@ -706,17 +808,37 @@ public class DatastratoUserMetaBaseSQLProvider {
         + (extraFilter == null ? "" : extraFilter);
   }
 
-  /**
-   * Local / Provisioned origin code (null when neither identity store matches); uses MAX for GROUP
-   * BY role joins.
-   */
+  /** Origin code with SCIM → IdP → JIT → null priority; uses MAX for GROUP BY role joins. */
   private String originCodeSelect() {
-    return "CASE WHEN MAX(CASE WHEN iu.user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
-        + IdentitySource.ORIGIN_CODE_LOCAL
-        + " WHEN MAX(CASE WHEN "
+    return "CASE WHEN MAX(CASE WHEN "
         + SCIM_USER_ALIAS
         + ".user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
         + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " WHEN MAX(CASE WHEN "
+        + IDP_USER_ALIAS
+        + ".user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " WHEN MAX(CASE WHEN "
+        + JIT_USER_ALIAS
+        + ".user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN "
+        + IdentitySource.ORIGIN_CODE_JIT
+        + " ELSE NULL END as originCode";
+  }
+
+  /** Non-aggregated origin: SCIM → IdP → JIT → null. */
+  private String originCodeSelectNonAggregated() {
+    return "CASE WHEN "
+        + SCIM_USER_ALIAS
+        + ".user_name IS NOT NULL THEN "
+        + IdentitySource.ORIGIN_CODE_PROVISIONED
+        + " WHEN "
+        + IDP_USER_ALIAS
+        + ".user_name IS NOT NULL THEN "
+        + IdentitySource.ORIGIN_CODE_LOCAL
+        + " WHEN "
+        + JIT_USER_ALIAS
+        + ".user_name IS NOT NULL THEN "
+        + IdentitySource.ORIGIN_CODE_JIT
         + " ELSE NULL END as originCode";
   }
 
@@ -725,36 +847,42 @@ public class DatastratoUserMetaBaseSQLProvider {
     return coalescedEnabledWithDefault() + " as enabled";
   }
 
-  /** SCIM {@code external_id} when not Local; otherwise {@code NULL} (omitted for Local / JIT). */
+  /** SCIM {@code external_id} when Provisioned; otherwise {@code NULL}. */
   private String identityExternalIdSelect() {
     return "CASE WHEN "
-        + IDP_USER_ALIAS
-        + ".user_name IS NOT NULL THEN NULL ELSE "
         + SCIM_USER_ALIAS
-        + ".external_id END as externalId";
+        + ".user_name IS NOT NULL THEN "
+        + SCIM_USER_ALIAS
+        + ".external_id ELSE NULL END as externalId";
   }
 
   /**
    * Identity-store enabled with MAX for GROUP BY role / membership joins.
    *
-   * <p>Aggregates via {@code CASE WHEN ... THEN 1 ELSE 0 END} so {@code MAX} is applied to an
-   * integer. PostgreSQL rejects {@code MAX(boolean)} ({@code idp_user_meta.enabled} is {@code
-   * BOOLEAN}); MySQL / H2 store the same flag as {@code TINYINT(1)} where {@code MAX} already
-   * works, but the integer form is portable across all three backends.
+   * <p>Aggregates via integer {@code CASE} so {@code MAX} is portable: PostgreSQL rejects {@code
+   * MAX(boolean)} ({@code idp_user_meta.enabled} is {@code BOOLEAN}); MySQL / H2 use {@code
+   * TINYINT(1)} where {@code MAX} already works.
+   *
+   * <p>When neither SCIM nor IdP has a row (JIT or unknown), {@code coalescedEnabled()} is {@code
+   * NULL}. That must stay {@code NULL} through {@code MAX} so the outer {@code COALESCE(..., 1)}
+   * defaults to Active.
    */
   private String identityEnabledSelectForGroupBy() {
+    String enabled = coalescedEnabled();
     return "COALESCE(MAX(CASE WHEN "
-        + coalescedEnabled()
+        + enabled
+        + " IS NULL THEN NULL WHEN "
+        + enabled
         + " THEN 1 ELSE 0 END), 1) <> 0 as enabled";
   }
 
-  /** SCIM {@code external_id} with MAX for GROUP BY; null when Local. */
+  /** SCIM {@code external_id} with MAX for GROUP BY; set only when Provisioned. */
   private String identityExternalIdSelectForGroupBy() {
     return "CASE WHEN MAX(CASE WHEN "
-        + IDP_USER_ALIAS
-        + ".user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN NULL ELSE MAX("
         + SCIM_USER_ALIAS
-        + ".external_id) END as externalId";
+        + ".user_name IS NOT NULL THEN 1 ELSE 0 END) = 1 THEN MAX("
+        + SCIM_USER_ALIAS
+        + ".external_id) ELSE NULL END as externalId";
   }
 
   protected String scimUserJoin(String userTableAlias) {
@@ -768,6 +896,20 @@ public class DatastratoUserMetaBaseSQLProvider {
         + userTableAlias
         + ".user_name AND "
         + SCIM_USER_ALIAS
+        + ".deleted_at = 0";
+  }
+
+  protected String jitUserJoin(String userTableAlias) {
+    return " LEFT JOIN "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " "
+        + JIT_USER_ALIAS
+        + " ON "
+        + JIT_USER_ALIAS
+        + ".user_name = "
+        + userTableAlias
+        + ".user_name AND "
+        + JIT_USER_ALIAS
         + ".deleted_at = 0";
   }
 
@@ -846,7 +988,11 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   private String userGroupMembershipSubquery() {
-    return localIdpGroupMembershipSelect() + " UNION ALL " + scimGroupMembershipSelect();
+    return localIdpGroupMembershipSelect()
+        + " UNION ALL "
+        + scimGroupMembershipSelect()
+        + " UNION ALL "
+        + jitGroupMembershipSelect();
   }
 
   private String localIdpGroupMembershipSelect() {
@@ -896,5 +1042,33 @@ public class DatastratoUserMetaBaseSQLProvider {
         + GroupMetaMapper.GROUP_TABLE_NAME
         + " g ON g.group_name = sg.group_name AND g.metalake_id = u.metalake_id AND g.deleted_at = 0"
         + " WHERE u.deleted_at = 0";
+  }
+
+  private String jitGroupMembershipSelect() {
+    return "SELECT u.user_id as userId, g.group_name as groupName"
+        + " FROM "
+        + USER_TABLE_NAME
+        + " u JOIN "
+        + MetalakeMetaMapper.TABLE_NAME
+        + " mm ON u.metalake_id = mm.metalake_id AND mm.deleted_at = 0 AND mm.metalake_name ="
+        + " #{metalakeName}"
+        + " JOIN "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " ju ON ju.user_name = u.user_name AND ju.deleted_at = 0"
+        + " JOIN "
+        + DatastratoUserMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+        + " jr ON jr.user_id = ju.user_id AND jr.deleted_at = 0"
+        + " JOIN "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg ON jg.group_id = jr.group_id AND jg.deleted_at = 0"
+        + " JOIN "
+        + GroupMetaMapper.GROUP_TABLE_NAME
+        + " g ON g.group_name = jg.group_name AND g.metalake_id = u.metalake_id AND g.deleted_at = 0"
+        + " WHERE u.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su WHERE su.user_name = u.user_name AND su.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu WHERE iu.user_name = u.user_name AND iu.deleted_at = 0)";
   }
 }

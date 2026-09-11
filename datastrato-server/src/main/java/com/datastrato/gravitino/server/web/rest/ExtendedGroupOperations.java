@@ -212,12 +212,14 @@ public class ExtendedGroupOperations {
   private static IdentitySource requireDirectoryOrigin(String origin) {
     if (origin == null || origin.isBlank()) {
       throw new IllegalArgumentException(
-          "Query parameter 'origin' is required (Local or Provisioned)");
+          "Query parameter 'origin' is required (Local, Provisioned, or JIT)");
     }
     IdentitySource identitySource = IdentitySource.fromValue(origin);
-    if (identitySource != IdentitySource.LOCAL && identitySource != IdentitySource.PROVISIONED) {
+    if (identitySource != IdentitySource.LOCAL
+        && identitySource != IdentitySource.PROVISIONED
+        && identitySource != IdentitySource.JIT) {
       throw new IllegalArgumentException(
-          "Query parameter 'origin' must be Local or Provisioned, got: " + origin);
+          "Query parameter 'origin' must be Local, Provisioned, or JIT, got: " + origin);
     }
     return identitySource;
   }

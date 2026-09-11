@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.authorization.DirectoryUser;
 import com.datastrato.gravitino.authorization.UserWithGroups;
+import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -23,6 +24,7 @@ import java.util.List;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
+import org.apache.gravitino.storage.relational.utils.SessionUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,6 +89,7 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
               + "user_name VARCHAR(128) NOT NULL,"
               + "password_hash VARCHAR(1024) NOT NULL,"
               + "enabled BOOLEAN NOT NULL DEFAULT TRUE,"
+              + "audit_info CLOB NOT NULL,"
               + "current_version INT NOT NULL DEFAULT 1,"
               + "last_version INT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
@@ -94,12 +97,14 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
           "CREATE TABLE idp_group_meta ("
               + "group_id BIGINT NOT NULL PRIMARY KEY,"
               + "group_name VARCHAR(128) NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE idp_user_group_rel ("
               + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
               + "user_id BIGINT NOT NULL,"
               + "group_id BIGINT NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
               + "current_version INT NOT NULL DEFAULT 1,"
               + "last_version INT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
@@ -125,6 +130,25 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
               + "group_id BIGINT NOT NULL,"
               + "audit_info CLOB NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE jit_user_meta ("
+              + "user_id BIGINT NOT NULL PRIMARY KEY,"
+              + "user_name VARCHAR(128) NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE jit_group_meta ("
+              + "group_id BIGINT NOT NULL PRIMARY KEY,"
+              + "group_name VARCHAR(128) NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE jit_user_group_rel ("
+              + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+              + "user_id BIGINT NOT NULL,"
+              + "group_id BIGINT NOT NULL,"
+              + "audit_info CLOB NOT NULL,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
     }
     SqlSessionFactoryHelper.getInstance().init(config);
   }
@@ -139,9 +163,12 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
         Statement statement = connection.createStatement()) {
       statement.execute("DELETE FROM scim_user_group_rel");
+      statement.execute("DELETE FROM jit_user_group_rel");
       statement.execute("DELETE FROM idp_user_group_rel");
       statement.execute("DELETE FROM scim_user_meta");
       statement.execute("DELETE FROM scim_group_meta");
+      statement.execute("DELETE FROM jit_user_meta");
+      statement.execute("DELETE FROM jit_group_meta");
       statement.execute("DELETE FROM idp_user_meta");
       statement.execute("DELETE FROM idp_group_meta");
       statement.execute("DELETE FROM user_meta");
@@ -151,14 +178,18 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
           "INSERT INTO metalake_meta (metalake_id, metalake_name, deleted_at)"
               + " VALUES (1, 'Acme', 0), (2, 'Contoso', 0), (3, 'Northwind', 0)");
       statement.execute(
-          "INSERT INTO idp_user_meta (user_id, user_name, password_hash, enabled, deleted_at)"
-              + " VALUES (100, 'sam.o', 'hash', TRUE, 0), (101, 'lee.p', 'hash', FALSE, 0)");
+          "INSERT INTO idp_user_meta (user_id, user_name, password_hash, enabled, audit_info,"
+              + " deleted_at)"
+              + " VALUES (100, 'sam.o', 'hash', TRUE, '{\"creator\":\"test\"}', 0),"
+              + " (101, 'lee.p', 'hash', FALSE, '{\"creator\":\"test\"}', 0)");
       statement.execute(
-          "INSERT INTO idp_group_meta (group_id, group_name, deleted_at)"
-              + " VALUES (200, 'governance', 0), (201, 'ops', 0)");
+          "INSERT INTO idp_group_meta (group_id, group_name, audit_info, deleted_at)"
+              + " VALUES (200, 'governance', '{\"creator\":\"test\"}', 0),"
+              + " (201, 'ops', '{\"creator\":\"test\"}', 0)");
       statement.execute(
-          "INSERT INTO idp_user_group_rel (user_id, group_id, deleted_at)"
-              + " VALUES (100, 200, 0), (100, 201, 0)");
+          "INSERT INTO idp_user_group_rel (user_id, group_id, audit_info, deleted_at)"
+              + " VALUES (100, 200, '{\"creator\":\"test\"}', 0),"
+              + " (100, 201, '{\"creator\":\"test\"}', 0)");
       statement.execute(
           "INSERT INTO scim_user_meta (user_id, user_name, external_id, enabled, audit_info,"
               + " deleted_at)"
@@ -180,6 +211,24 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
               + " (1004, 'jordan.m', 2, TRUE, '{}', 0),"
               + " (1005, 'jordan.m', 3, FALSE, '{}', 0)");
     }
+  }
+
+  /** Verifies Add-role user picker names are SCIM ∪ IdP ∪ JIT without duplicates. */
+  @Test
+  public void testListIdpUserNamesUnionsIdentityStores() throws Exception {
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "INSERT INTO jit_user_meta (user_id, user_name, audit_info, deleted_at)"
+              + " VALUES (30, 'jwt.user', '{\"creator\":\"test\"}', 0),"
+              + " (31, 'sam.o', '{\"creator\":\"test\"}', 0)");
+    }
+
+    List<String> names =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class, DatastratoUserMetaMapper::listIdpUserNames);
+
+    assertEquals(List.of("dana.k", "jwt.user", "lee.p", "sam.o"), names);
   }
 
   /** Verifies Local / Provisioned Directory Users (no metalake-only JIT). */
@@ -228,7 +277,8 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
 
     UserWithGroups sam =
         contoso.stream().filter(u -> u.user().name().equals("sam.o")).findFirst().orElseThrow();
-    assertEquals(IdentitySource.LOCAL, sam.origin());
+    // Present in both scim_user_meta and idp_user_meta → metalake origin is SCIM/Provisioned.
+    assertEquals(IdentitySource.PROVISIONED, sam.origin());
 
     List<UserWithGroups> acme = DatastratoUserMetaService.getInstance().listUsersWithGroups("Acme");
     UserWithGroups lee =
@@ -308,22 +358,28 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
         Statement statement = connection.createStatement()) {
       try (ResultSet user =
           statement.executeQuery(
-              "SELECT enabled, password_hash FROM idp_user_meta WHERE user_name = 'jordan.m'")) {
+              "SELECT enabled, password_hash, audit_info FROM idp_user_meta WHERE user_name ="
+                  + " 'jordan.m'")) {
         assertTrue(user.next());
         assertTrue(user.getBoolean(1));
         assertTrue(user.getString(2).length() > 10);
+        String auditInfo = user.getString(3);
+        assertTrue(auditInfo.contains("createTime"));
+        assertTrue(auditInfo.contains("creator"));
       }
       try (ResultSet groups =
           statement.executeQuery(
-              "SELECT g.group_name FROM idp_user_group_rel r"
+              "SELECT g.group_name, r.audit_info FROM idp_user_group_rel r"
                   + " JOIN idp_user_meta u ON u.user_id = r.user_id"
                   + " JOIN idp_group_meta g ON g.group_id = r.group_id"
                   + " WHERE u.user_name = 'jordan.m' AND r.deleted_at = 0"
                   + " ORDER BY g.group_name")) {
         assertTrue(groups.next());
         assertEquals("governance", groups.getString(1));
+        assertTrue(groups.getString(2).contains("createTime"));
         assertTrue(groups.next());
         assertEquals("ops", groups.getString(1));
+        assertTrue(groups.getString(2).contains("createTime"));
       }
     }
   }
