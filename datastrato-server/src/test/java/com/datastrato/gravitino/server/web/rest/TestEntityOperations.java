@@ -106,6 +106,7 @@ import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.dto.tag.TagDTO;
+import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.function.Function;
 import org.apache.gravitino.function.FunctionType;
@@ -478,6 +479,85 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertTrue(
         errorResp.getMessage().contains("contains an empty segment after splitting"),
         errorResp.getMessage());
+  }
+
+  @Test
+  public void testListEntitiesReturnsCatalogConnectionFailure() throws Exception {
+    Namespace namespace = Namespace.of("metalake", "catalog");
+    NameIdentifier catalogIdent = NameIdentifier.of("metalake", "catalog");
+    when(schemaDispatcher.listSchemas(namespace))
+        .thenThrow(new IllegalStateException("Failed to list schemas"));
+    doThrow(new ConnectionFailedException("Catalog is unreachable"))
+        .when(catalogDispatcher)
+        .testConnection(catalogIdent);
+
+    Response response =
+        target("/web/entities")
+            .queryParam("namespace", "metalake.catalog")
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.BAD_GATEWAY.getStatusCode(), response.getStatus());
+    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.CONNECTION_FAILED_CODE, errorResponse.getCode());
+    Assertions.assertEquals(
+        ConnectionFailedException.class.getSimpleName(), errorResponse.getType());
+    Assertions.assertEquals("Catalog is unreachable", errorResponse.getMessage());
+    Assertions.assertNull(errorResponse.getStack());
+    Mockito.verify(catalogDispatcher, Mockito.times(1)).testConnection(catalogIdent);
+  }
+
+  @Test
+  public void testListEntitiesPreservesListFailureWhenCatalogConnectionPasses() throws Exception {
+    Namespace namespace = Namespace.of("metalake", "catalog");
+    NameIdentifier catalogIdent = NameIdentifier.of("metalake", "catalog");
+    when(schemaDispatcher.listSchemas(namespace))
+        .thenThrow(new IllegalArgumentException("Invalid list request"));
+
+    Response response =
+        target("/web/entities")
+            .queryParam("namespace", "metalake.catalog")
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, errorResponse.getCode());
+    Assertions.assertEquals(
+        IllegalArgumentException.class.getSimpleName(), errorResponse.getType());
+    Assertions.assertTrue(errorResponse.getMessage().contains("Invalid list request"));
+    Mockito.verify(catalogDispatcher, Mockito.times(1)).testConnection(catalogIdent);
+  }
+
+  @Test
+  public void testListEntitiesPreservesListFailureWhenCatalogTestIsUnsupported() throws Exception {
+    Namespace namespace = Namespace.of("metalake", "catalog");
+    NameIdentifier catalogIdent = NameIdentifier.of("metalake", "catalog");
+    when(schemaDispatcher.listSchemas(namespace))
+        .thenThrow(new IllegalArgumentException("Invalid list request"));
+    doThrow(new UnsupportedOperationException("Catalog test is unsupported"))
+        .when(catalogDispatcher)
+        .testConnection(catalogIdent);
+
+    Response response =
+        target("/web/entities")
+            .queryParam("namespace", "metalake.catalog")
+            .queryParam("catalogType", "relational")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+
+    Assertions.assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
+    ErrorResponse errorResponse = response.readEntity(ErrorResponse.class);
+    Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, errorResponse.getCode());
+    Assertions.assertEquals(
+        IllegalArgumentException.class.getSimpleName(), errorResponse.getType());
+    Assertions.assertTrue(errorResponse.getMessage().contains("Invalid list request"));
+    Mockito.verify(catalogDispatcher, Mockito.times(1)).testConnection(catalogIdent);
   }
 
   @Test

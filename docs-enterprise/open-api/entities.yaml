@@ -13,6 +13,10 @@ paths:
       description: |
         List entities under the specified namespace, this endpoint is used for display tree in Web UI.
         When namespace is omitted, list Metalakes and their visible direct Catalog counts.
+        If listing entities below a Catalog fails, the server runs one Catalog-level connection
+        test using the stored Catalog configuration. A confirmed connection failure is returned as
+        HTTP 502 with application error code 1007 and no stack trace. The fallback does not invoke
+        storage-credential or credential-provider probes separately.
       parameters:
         - name: namespace
           in: query
@@ -66,6 +70,12 @@ paths:
                   - $ref: "#/components/schemas/ModelListResponse"
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "502":
+          description: The Catalog-level connection test confirmed that the Catalog is unreachable
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 

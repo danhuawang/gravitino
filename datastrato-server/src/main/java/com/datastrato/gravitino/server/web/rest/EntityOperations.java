@@ -47,6 +47,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -89,6 +90,7 @@ import org.apache.gravitino.dto.rel.TableDTO;
 import org.apache.gravitino.dto.rel.ViewDTO;
 import org.apache.gravitino.dto.tag.TagDTO;
 import org.apache.gravitino.dto.util.DTOConverters;
+import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.meta.FilesetEntity;
@@ -228,16 +230,24 @@ public class EntityOperations {
           return listSchemas(
               Namespace.of(namespace.level(0), namespace.level(1), parentSchema), resultLimit);
         } catch (Exception e) {
-          return ExceptionHandlers.handleSchemaException(
-              OperationType.LIST, "", namespace.toString(), e);
+          return handleListFailure(
+              namespace,
+              e,
+              failure ->
+                  ExceptionHandlers.handleSchemaException(
+                      OperationType.LIST, "", namespace.toString(), failure));
         }
       } else if (namespace.length() == 3) {
         // list tables/functions/views + sub-schemas for hierarchical schema
         try {
           return listTables(namespace, parentSchema, resultLimit);
         } catch (Exception e) {
-          return ExceptionHandlers.handleTableException(
-              OperationType.LIST, "", namespace.toString(), e);
+          return handleListFailure(
+              namespace,
+              e,
+              failure ->
+                  ExceptionHandlers.handleTableException(
+                      OperationType.LIST, "", namespace.toString(), failure));
         }
       } else {
         return Utils.illegalArguments(
@@ -260,8 +270,12 @@ public class EntityOperations {
         try {
           return listSchemas(namespace, resultLimit);
         } catch (Exception e) {
-          return ExceptionHandlers.handleSchemaException(
-              OperationType.LIST, "", namespace.toString(), e);
+          return handleListFailure(
+              namespace,
+              e,
+              failure ->
+                  ExceptionHandlers.handleSchemaException(
+                      OperationType.LIST, "", namespace.toString(), failure));
         }
       case 3:
         // list tables/topics/filesets/models
@@ -270,29 +284,45 @@ public class EntityOperations {
             try {
               return listTables(namespace, null, resultLimit);
             } catch (Exception e) {
-              return ExceptionHandlers.handleTableException(
-                  OperationType.LIST, "", namespace.toString(), e);
+              return handleListFailure(
+                  namespace,
+                  e,
+                  failure ->
+                      ExceptionHandlers.handleTableException(
+                          OperationType.LIST, "", namespace.toString(), failure));
             }
           case MESSAGING:
             try {
               return listTopics(namespace, resultLimit);
             } catch (Exception e) {
-              return ExceptionHandlers.handleTopicException(
-                  OperationType.LIST, "", namespace.toString(), e);
+              return handleListFailure(
+                  namespace,
+                  e,
+                  failure ->
+                      ExceptionHandlers.handleTopicException(
+                          OperationType.LIST, "", namespace.toString(), failure));
             }
           case FILESET:
             try {
               return listFilesets(namespace, resultLimit);
             } catch (Exception e) {
-              return ExceptionHandlers.handleFilesetException(
-                  OperationType.LIST, "", namespace.toString(), e);
+              return handleListFailure(
+                  namespace,
+                  e,
+                  failure ->
+                      ExceptionHandlers.handleFilesetException(
+                          OperationType.LIST, "", namespace.toString(), failure));
             }
           case MODEL:
             try {
               return listModels(namespace, resultLimit);
             } catch (Exception e) {
-              return ExceptionHandlers.handleModelException(
-                  OperationType.LIST, "", namespace.toString(), e);
+              return handleListFailure(
+                  namespace,
+                  e,
+                  failure ->
+                      ExceptionHandlers.handleModelException(
+                          OperationType.LIST, "", namespace.toString(), failure));
             }
           default:
             return Utils.illegalArguments(
@@ -302,6 +332,30 @@ public class EntityOperations {
         return Utils.illegalArguments(
             "Namespace levels should be less than 4: " + namespace, new IllegalArgumentException());
     }
+  }
+
+  private Response handleListFailure(
+      Namespace namespace,
+      Exception listFailure,
+      Function<Exception, Response> listFailureHandler) {
+    NameIdentifier catalogIdent =
+        NameIdentifierUtil.ofCatalog(namespace.level(0), namespace.level(1));
+    try {
+      catalogDispatcher.testConnection(catalogIdent);
+    } catch (ConnectionFailedException connectionFailure) {
+      LOG.warn(
+          "Catalog connection test failed after listing entities under namespace: {}",
+          namespace,
+          connectionFailure);
+      return Utils.connectionFailed(connectionFailure.getMessage());
+    } catch (Exception connectionTestFailure) {
+      LOG.warn(
+          "Unable to classify the entity listing failure with a Catalog connection test under "
+              + "namespace: {}",
+          namespace,
+          connectionTestFailure);
+    }
+    return listFailureHandler.apply(listFailure);
   }
 
   private void validateParentSchema(String parentSchema) {
