@@ -70,6 +70,7 @@ public class LanceRESTService implements GravitinoAuxiliaryService {
   public void serviceInit(Map<String, String> properties, boolean auxMode) {
     LanceConfig lanceConfig = new LanceConfig(properties);
     JettyServerConfig serverConfig = JettyServerConfig.fromConfig(lanceConfig);
+    LanceExceptionMapper.setIncludeErrorStackTrace(serverConfig.isIncludeErrorStackTrace());
 
     server = new JettyServer();
     // Get MetricsSystem and EventBus from GravitinoEnv once at init time.
