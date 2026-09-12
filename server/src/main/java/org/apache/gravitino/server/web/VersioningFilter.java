@@ -88,7 +88,7 @@ public class VersioningFilter implements Filter {
   private final ObjectMapper objectMapper;
 
   public VersioningFilter() {
-    this(JettyServerConfig.INCLUDE_ERROR_STACK_TRACE.getDefaultValue());
+    this.objectMapper = ObjectMapperProvider.objectMapper();
   }
 
   /**
