@@ -49,6 +49,63 @@ public class DatastratoTagPolicyBatchHelper {
   private DatastratoTagPolicyBatchHelper() {}
 
   /**
+   * Batch fetches direct tags for a list of metadata objects without querying policies.
+   *
+   * @param metalake The metalake name
+   * @param objects The metadata objects
+   * @return Direct tag entities keyed by metadata object
+   */
+  public static Map<MetadataObject, TagEntity[]> batchFetchDirectTags(
+      String metalake, List<MetadataObject> objects) {
+    if (objects == null || objects.isEmpty()) {
+      return new LinkedHashMap<>();
+    }
+    return batchFetchDirectTags(
+        metalake, objects, Collections.emptyMap(), GravitinoEnv.getInstance().entityStore());
+  }
+
+  /**
+   * Batch fetches direct tags while reusing entity IDs resolved by the caller.
+   *
+   * <p>An empty optional means the caller has already determined that the object is not stored, so
+   * this helper will not query the entity store for that object again. Objects absent from the map
+   * are resolved in batches by type and namespace.
+   *
+   * @param metalake The metalake name
+   * @param objects The metadata objects
+   * @param knownEntityIds Entity IDs already resolved by the caller
+   * @return Direct tag entities keyed by metadata object
+   */
+  public static Map<MetadataObject, TagEntity[]> batchFetchDirectTags(
+      String metalake,
+      List<MetadataObject> objects,
+      Map<MetadataObject, Optional<Long>> knownEntityIds) {
+    if (objects == null || objects.isEmpty()) {
+      return new LinkedHashMap<>();
+    }
+    return batchFetchDirectTags(
+        metalake, objects, knownEntityIds, GravitinoEnv.getInstance().entityStore());
+  }
+
+  static Map<MetadataObject, TagEntity[]> batchFetchDirectTags(
+      String metalake,
+      List<MetadataObject> objects,
+      Map<MetadataObject, Optional<Long>> knownEntityIds,
+      EntityStore entityStore) {
+    if (objects == null || objects.isEmpty()) {
+      return new LinkedHashMap<>();
+    }
+
+    Map<MetadataObject, TagEntity[]> tags = emptyTagResults(objects);
+    Map<MetadataObject.Type, Map<Long, MetadataObject>> resolvedObjects =
+        resolveStoredObjects(metalake, objects, knownEntityIds, entityStore);
+    if (!resolvedObjects.isEmpty()) {
+      populateTags(metalake, tags, resolvedObjects, resolvedObjectIds(resolvedObjects));
+    }
+    return tags;
+  }
+
+  /**
    * Batch fetches direct tags and policies for a list of metadata objects.
    *
    * <p>Entity IDs are resolved once per metadata object type and namespace, then shared by the tag
@@ -100,10 +157,9 @@ public class DatastratoTagPolicyBatchHelper {
       return new TagPolicyBatchResult(new LinkedHashMap<>(), new LinkedHashMap<>());
     }
 
-    Map<MetadataObject, TagEntity[]> tags = new LinkedHashMap<>();
+    Map<MetadataObject, TagEntity[]> tags = emptyTagResults(objects);
     Map<MetadataObject, PolicyEntity[]> policies = new LinkedHashMap<>();
     for (MetadataObject obj : objects) {
-      tags.put(obj, new TagEntity[0]);
       policies.put(obj, new PolicyEntity[0]);
     }
 
@@ -113,32 +169,9 @@ public class DatastratoTagPolicyBatchHelper {
       return new TagPolicyBatchResult(tags, policies);
     }
 
-    Set<Long> resolvedIds = new LinkedHashSet<>();
-    resolvedObjects.values().forEach(objectsById -> resolvedIds.addAll(objectsById.keySet()));
-    List<Long> metadataObjectIds = new ArrayList<>(resolvedIds);
-    Namespace tagNamespace = NamespaceUtil.ofTag(metalake);
+    List<Long> metadataObjectIds = resolvedObjectIds(resolvedObjects);
+    populateTags(metalake, tags, resolvedObjects, metadataObjectIds);
     Namespace policyNamespace = NamespaceUtil.ofPolicy(metalake);
-    List<DatastratoTagRelPO> tagRelPOs =
-        SessionUtils.getWithoutCommit(
-            DatastratoTagPolicyMetadataObjectMapper.class,
-            mapper -> mapper.batchListTagRelPOsByMetadataObjectIds(metadataObjectIds));
-    Map<MetadataObject, List<TagEntity>> objectTags = new HashMap<>();
-    if (tagRelPOs != null) {
-      for (DatastratoTagRelPO po : tagRelPOs) {
-        MetadataObject obj =
-            getResolvedObject(
-                resolvedObjects, po.getMetadataObjectType(), po.getMetadataObjectId());
-        if (obj != null) {
-          TagPO tagPO = toTagPO(po);
-          TagEntity entity = POConverters.fromTagPO(tagPO, tagNamespace);
-          objectTags.computeIfAbsent(obj, k -> new ArrayList<>()).add(entity);
-        }
-      }
-    }
-    for (Map.Entry<MetadataObject, List<TagEntity>> objectTagsEntry : objectTags.entrySet()) {
-      tags.put(objectTagsEntry.getKey(), objectTagsEntry.getValue().toArray(new TagEntity[0]));
-    }
-
     List<DatastratoPolicyRelPO> policyRelPOs =
         SessionUtils.getWithoutCommit(
             DatastratoTagPolicyMetadataObjectMapper.class,
@@ -200,6 +233,47 @@ public class DatastratoTagPolicyBatchHelper {
     public Map<MetadataObject, PolicyEntity[]> policies() {
       return policies;
     }
+  }
+
+  private static Map<MetadataObject, TagEntity[]> emptyTagResults(List<MetadataObject> objects) {
+    Map<MetadataObject, TagEntity[]> tags = new LinkedHashMap<>();
+    objects.forEach(object -> tags.put(object, new TagEntity[0]));
+    return tags;
+  }
+
+  private static List<Long> resolvedObjectIds(
+      Map<MetadataObject.Type, Map<Long, MetadataObject>> resolvedObjects) {
+    Set<Long> resolvedIds = new LinkedHashSet<>();
+    resolvedObjects.values().forEach(objectsById -> resolvedIds.addAll(objectsById.keySet()));
+    return new ArrayList<>(resolvedIds);
+  }
+
+  private static void populateTags(
+      String metalake,
+      Map<MetadataObject, TagEntity[]> tags,
+      Map<MetadataObject.Type, Map<Long, MetadataObject>> resolvedObjects,
+      List<Long> metadataObjectIds) {
+    Namespace tagNamespace = NamespaceUtil.ofTag(metalake);
+    List<DatastratoTagRelPO> tagRelPOs =
+        SessionUtils.getWithoutCommit(
+            DatastratoTagPolicyMetadataObjectMapper.class,
+            mapper -> mapper.batchListTagRelPOsByMetadataObjectIds(metadataObjectIds));
+    Map<MetadataObject, List<TagEntity>> objectTags = new HashMap<>();
+    if (tagRelPOs != null) {
+      for (DatastratoTagRelPO po : tagRelPOs) {
+        MetadataObject object =
+            getResolvedObject(
+                resolvedObjects, po.getMetadataObjectType(), po.getMetadataObjectId());
+        if (object != null) {
+          TagPO tagPO = toTagPO(po);
+          TagEntity entity = POConverters.fromTagPO(tagPO, tagNamespace);
+          objectTags.computeIfAbsent(object, ignored -> new ArrayList<>()).add(entity);
+        }
+      }
+    }
+    objectTags.forEach(
+        (object, objectTagEntities) ->
+            tags.put(object, objectTagEntities.toArray(new TagEntity[0])));
   }
 
   private static Map<MetadataObject.Type, Map<Long, MetadataObject>> resolveStoredObjects(

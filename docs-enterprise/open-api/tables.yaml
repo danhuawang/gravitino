@@ -1,0 +1,97 @@
+# Copyright 2026 Datastrato Inc.
+
+---
+
+paths:
+
+  /web/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+    parameters:
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/table"
+    get:
+      tags:
+        - table
+      summary: Load a table with column tags
+      operationId: loadTableWithColumnTags
+      description: |
+        Loads the specified table for the Enterprise Web UI. Each column contains a non-null
+        `tags` array containing the visible effective tag objects. Effective tags include direct and
+        inherited assignments; a nearer assignment takes precedence when the same tag name is
+        assigned at multiple levels.
+      responses:
+        "200":
+          description: Returns the table with tags on every column
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/TableWithColumnTagsResponse"
+        "400":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "403":
+          description: Forbidden - The caller cannot load the requested table
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "404":
+          description: Not Found - The target table does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NoSuchMetalakeException:
+                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
+                NoSuchCatalogException:
+                  $ref: "../../docs/open-api/catalogs.yaml#/components/examples/NoSuchCatalogException"
+                NoSuchSchemaException:
+                  $ref: "../../docs/open-api/schemas.yaml#/components/examples/NoSuchSchemaException"
+                NoSuchTableException:
+                  $ref: "../../docs/open-api/tables.yaml#/components/examples/NoSuchTableException"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    ExtendedColumn:
+      allOf:
+        - $ref: "../../docs/open-api/tables.yaml#/components/schemas/Column"
+        - type: object
+          required:
+            - tags
+          properties:
+            tags:
+              type: array
+              description: Visible effective tags associated with the column
+              items:
+                $ref: "../../docs/open-api/tags.yaml#/components/schemas/Tag"
+
+    TableWithColumnTags:
+      allOf:
+        - $ref: "../../docs/open-api/tables.yaml#/components/schemas/Table"
+        - type: object
+          required:
+            - columns
+          properties:
+            columns:
+              type: array
+              description: A list of columns with effective tags
+              items:
+                $ref: "#/components/schemas/ExtendedColumn"
+
+    TableWithColumnTagsResponse:
+      type: object
+      required:
+        - code
+        - table
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        table:
+          $ref: "#/components/schemas/TableWithColumnTags"

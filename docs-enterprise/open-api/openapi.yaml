@@ -70,6 +70,10 @@ paths:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./tags.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1tags"
 
+  /web/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./tables.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables~1%7Btable%7D"
+
   /web/entities:
     # escape the path name by replacing `{ }` with `%7B %7D`
     $ref: "./entities.yaml#/paths/~1web~1entities"

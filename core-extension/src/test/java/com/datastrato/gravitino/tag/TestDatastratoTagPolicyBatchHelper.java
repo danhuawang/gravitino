@@ -8,11 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.tag.mapper.DatastratoTagPolicyMetadataObjectMapper;
+import com.datastrato.gravitino.tag.po.DatastratoTagRelPO;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -25,8 +28,10 @@ import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -138,6 +143,44 @@ public class TestDatastratoTagPolicyBatchHelper {
     verifyNoInteractions(entityStore);
     verify(mapper).batchListTagRelPOsByMetadataObjectIds(ids);
     verify(mapper).batchListPolicyRelPOsByMetadataObjectIds(ids);
+  }
+
+  @Test
+  public void testTagOnlyBatchFetchDoesNotQueryPolicies() throws JsonProcessingException {
+    MetadataObject table =
+        MetadataObjects.of(List.of("catalog", "schema", "table"), MetadataObject.Type.TABLE);
+    EntityStore entityStore = mock(EntityStore.class);
+    List<Long> ids = List.of(1L);
+    DatastratoTagRelPO tagRelation = mock(DatastratoTagRelPO.class);
+    when(tagRelation.getMetadataObjectId()).thenReturn(1L);
+    when(tagRelation.getMetadataObjectType()).thenReturn(MetadataObject.Type.TABLE.name());
+    when(tagRelation.getTagId()).thenReturn(2L);
+    when(tagRelation.getTagName()).thenReturn("PII");
+    when(tagRelation.getMetalakeId()).thenReturn(3L);
+    when(tagRelation.getProperties()).thenReturn("{}");
+    when(tagRelation.getAuditInfo())
+        .thenReturn(
+            JsonUtils.anyFieldMapper()
+                .writeValueAsString(
+                    AuditInfo.builder()
+                        .withCreator("creator")
+                        .withCreateTime(Instant.now())
+                        .build()));
+    when(tagRelation.getCurrentVersion()).thenReturn(0L);
+    when(tagRelation.getLastVersion()).thenReturn(0L);
+    when(tagRelation.getDeletedAt()).thenReturn(0L);
+    when(mapper.batchListTagRelPOsByMetadataObjectIds(ids)).thenReturn(List.of(tagRelation));
+
+    Map<MetadataObject, TagEntity[]> result =
+        DatastratoTagPolicyBatchHelper.batchFetchDirectTags(
+            "metalake", List.of(table), Map.of(table, Optional.of(1L)), entityStore);
+
+    assertEquals(1, result.size());
+    assertEquals(1, result.get(table).length);
+    assertEquals("PII", result.get(table)[0].name());
+    verifyNoInteractions(entityStore);
+    verify(mapper).batchListTagRelPOsByMetadataObjectIds(ids);
+    verify(mapper, never()).batchListPolicyRelPOsByMetadataObjectIds(any());
   }
 
   @Test
