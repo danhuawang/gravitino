@@ -118,6 +118,8 @@ Do not treat this binary package as Apache-licensed as a whole.
    Apache Hadoop Yarn Client
    Apache Hive
    Apache HTrace
+   Google HTTP Client
+   Google HTTP Client GSON
    Apache HttpCore
    Apache HttpClient
    Apache Iceberg
