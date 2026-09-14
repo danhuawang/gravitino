@@ -49,6 +49,7 @@ import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.metrics.MetricsSystem;
 import org.apache.gravitino.metrics.source.MetricsSource;
 import org.apache.gravitino.policy.PolicyDispatcher;
+import org.apache.gravitino.secret.SecretPropertyOperationDispatcher;
 import org.apache.gravitino.server.authentication.ServerAuthenticator;
 import org.apache.gravitino.server.authorization.GravitinoAuthorizerProvider;
 import org.apache.gravitino.server.web.ConfigServlet;
@@ -174,6 +175,9 @@ public class GravitinoServer extends ResourceConfig {
             bind(gravitinoEnv.policyDispatcher()).to(PolicyDispatcher.class).ranked(1);
             bind(gravitinoEnv.credentialOperationDispatcher())
                 .to(CredentialOperationDispatcher.class)
+                .ranked(1);
+            bind(gravitinoEnv.secretPropertyOperationDispatcher())
+                .to(SecretPropertyOperationDispatcher.class)
                 .ranked(1);
             bind(gravitinoEnv.modelDispatcher()).to(ModelDispatcher.class).ranked(1);
             bind(gravitinoEnv.functionDispatcher()).to(FunctionDispatcher.class).ranked(1);

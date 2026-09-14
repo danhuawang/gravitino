@@ -71,6 +71,7 @@ import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.metrics.MetricsSystem;
 import org.apache.gravitino.policy.PolicyDispatcher;
+import org.apache.gravitino.secret.SecretPropertyOperationDispatcher;
 import org.apache.gravitino.stats.StatisticDispatcher;
 import org.apache.gravitino.storage.IdGenerator;
 import org.apache.gravitino.tag.TagDispatcher;
@@ -429,6 +430,11 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public CredentialOperationDispatcher credentialOperationDispatcher() {
     return GravitinoEnv.getInstance().credentialOperationDispatcher();
+  }
+
+  @Override
+  public SecretPropertyOperationDispatcher secretPropertyOperationDispatcher() {
+    return GravitinoEnv.getInstance().secretPropertyOperationDispatcher();
   }
 
   @Override

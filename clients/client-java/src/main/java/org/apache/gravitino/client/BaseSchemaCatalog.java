@@ -82,6 +82,7 @@ abstract class BaseSchemaCatalog extends CatalogDTO
   private final MetadataObjectPolicyOperations objectPolicyOperations;
   private final MetadataObjectRoleOperations objectRoleOperations;
   protected final MetadataObjectCredentialOperations objectCredentialOperations;
+  protected final MetadataObjectSecretOperations objectSecretOperations;
   private final FunctionCatalogOperations functionOperations;
 
   BaseSchemaCatalog(
@@ -113,6 +114,8 @@ abstract class BaseSchemaCatalog extends CatalogDTO
     this.objectCredentialOperations =
         new MetadataObjectCredentialOperations(
             catalogNamespace.level(0), metadataObject, restClient);
+    this.objectSecretOperations =
+        new MetadataObjectSecretOperations(catalogNamespace.level(0), metadataObject, restClient);
     this.functionOperations =
         new FunctionCatalogOperations(restClient, catalogNamespace, this.name());
   }
