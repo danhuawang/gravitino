@@ -151,7 +151,12 @@ public interface Privilege {
     /** The privilege to execute (invoke) a function. */
     EXECUTE_FUNCTION(0L, 1L << 31),
     /** The privilege to alter a function's metadata. */
-    MODIFY_FUNCTION(0L, 1L << 32);
+    MODIFY_FUNCTION(0L, 1L << 32),
+    /**
+     * The privilege to retrieve plaintext secrets and vend credentials for a metadata object via
+     * {@code getSecrets} / {@code getCredentials}.
+     */
+    USE_SECRET(0L, 1L << 37);
 
     private final long highBits;
     private final long lowBits;

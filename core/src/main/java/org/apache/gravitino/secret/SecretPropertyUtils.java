@@ -34,15 +34,12 @@ import javax.annotation.Nullable;
 public final class SecretPropertyUtils {
 
   /**
-   * Property keys whose names look like secret credentials. Matching is case-insensitive.
-   *
-   * <p>Matches {@code secret}, {@code password}, {@code token}, {@code credential}, or {@code
-   * account-key} as a substring so that {@code jdbc-password} and {@code s3-secret-access-key} are
-   * treated as secrets, while non-secret identifiers such as {@code jdbc-user} and {@code
-   * s3-access-key-id} are not (see issue #1952).
+   * Property keys whose names look like credentials. Matching is case-insensitive. Used to mask API
+   * responses and to expose plaintext via {@code getSecrets} for undeclared / mistyped credential
+   * properties.
    */
   private static final Pattern SENSITIVE_PROPERTY_KEY_PATTERN =
-      Pattern.compile(".*(secret|password|token|credential|account-key).*");
+      Pattern.compile(".*(secret|password|token|credential|access|account).*");
 
   private SecretPropertyUtils() {}
 
@@ -50,8 +47,9 @@ public final class SecretPropertyUtils {
    * Returns whether a property key name looks sensitive (credential-like).
    *
    * <p>A key matches when, after lower-casing, it contains {@code secret}, {@code password}, {@code
-   * token}, {@code credential}, or {@code account-key} as a substring. Underscores and hyphens are
-   * not normalized beyond the literal {@code account-key} token.
+   * token}, {@code credential}, {@code access}, or {@code account} as a substring (covers Azure
+   * storage account key/name and GCS service-account file paths). Underscores and hyphens are not
+   * normalized; they are irrelevant because the matched keywords contain neither.
    *
    * @param key the property key
    * @return true when the key name matches the sensitive pattern

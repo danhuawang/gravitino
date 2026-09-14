@@ -24,10 +24,9 @@ import java.util.Map;
  * Interface to retrieve plaintext secret properties for a metadata object.
  *
  * <p>Returns stored plaintext for property keys whose names look sensitive (contain {@code secret},
- * {@code password}, {@code token}, {@code credential}, or {@code account-key}, case-insensitive),
- * so mistyped / undeclared credential properties remain usable after API responses mask them as
- * {@code ******}. Non-secret identifiers such as {@code jdbc-user} and {@code s3-access-key-id} are
- * not treated as secrets.
+ * {@code password}, {@code token}, {@code credential}, {@code access}, or {@code account},
+ * case-insensitive), so mistyped / undeclared credential properties remain usable after API
+ * responses mask them as {@code ******}.
  *
  * <p>Properties that are only declared {@code hidden} in property metadata, and whose names do
  * <em>not</em> match the sensitive-name pattern above, are masked as {@code ******} on list/get but

@@ -30,16 +30,15 @@ public class TestSecretPropertyUtils {
     Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("S3_SECRET_ACCESS_KEY"));
     Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("jdbc-password"));
     Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("oauth2.token"));
+    Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("aws-access-key-id"));
     Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("credential-provider"));
     Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("azure-storage-account-key"));
-    Assertions.assertFalse(
-        SecretPropertyUtils.isSensitivePropertyKey("azure-storage-account-name"));
-    Assertions.assertFalse(SecretPropertyUtils.isSensitivePropertyKey("s3-access-key-id"));
-    Assertions.assertFalse(SecretPropertyUtils.isSensitivePropertyKey("aws-access-key-id"));
+    Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("azure-storage-account-name"));
+    Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("gcs-service-account-file"));
+    Assertions.assertTrue(SecretPropertyUtils.isSensitivePropertyKey("s3-access-key-id"));
     Assertions.assertFalse(SecretPropertyUtils.isSensitivePropertyKey("jdbc-user"));
     Assertions.assertFalse(SecretPropertyUtils.isSensitivePropertyKey("warehouse"));
     Assertions.assertFalse(SecretPropertyUtils.isSensitivePropertyKey("aws-region"));
-    Assertions.assertFalse(SecretPropertyUtils.isSensitivePropertyKey("gcs-service-account-file"));
     Assertions.assertFalse(SecretPropertyUtils.isSensitivePropertyKey(null));
     Assertions.assertFalse(SecretPropertyUtils.isSensitivePropertyKey(""));
   }
@@ -61,9 +60,9 @@ public class TestSecretPropertyUtils {
             "jdbc-password",
             "s3cr3t");
     Map<String, String> secrets = SecretPropertyUtils.buildSecrets(entityProps);
+    Assertions.assertEquals("AKIA...", secrets.get("s3-access-key-id"));
     Assertions.assertEquals("super-secret", secrets.get("s3-secret-access-key"));
     Assertions.assertEquals("s3cr3t", secrets.get("jdbc-password"));
-    Assertions.assertFalse(secrets.containsKey("s3-access-key-id"));
     Assertions.assertFalse(secrets.containsKey("jdbc-user"));
     Assertions.assertFalse(secrets.containsKey("warehouse"));
     Assertions.assertFalse(secrets.containsKey("aws-region"));

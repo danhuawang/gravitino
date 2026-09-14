@@ -34,16 +34,18 @@ import org.apache.gravitino.exceptions.TagAlreadyAssociatedException;
 import org.apache.gravitino.model.Model;
 import org.apache.gravitino.policy.Policy;
 import org.apache.gravitino.policy.SupportsPolicies;
+import org.apache.gravitino.secret.SupportsSecrets;
 import org.apache.gravitino.tag.SupportsTags;
 import org.apache.gravitino.tag.Tag;
 
 /** Represents a generic model. */
-class GenericModel implements Model, SupportsTags, SupportsPolicies {
+class GenericModel implements Model, SupportsTags, SupportsPolicies, SupportsSecrets {
 
   private final ModelDTO modelDTO;
 
   private final MetadataObjectTagOperations objectTagOperations;
   private final MetadataObjectPolicyOperations objectPolicyOperations;
+  private final MetadataObjectSecretOperations objectSecretOperations;
 
   GenericModel(ModelDTO modelDTO, RESTClient restClient, Namespace modelNs) {
     this.modelDTO = modelDTO;
@@ -54,6 +56,8 @@ class GenericModel implements Model, SupportsTags, SupportsPolicies {
         new MetadataObjectTagOperations(modelNs.level(0), modelObject, restClient);
     this.objectPolicyOperations =
         new MetadataObjectPolicyOperations(modelNs.level(0), modelObject, restClient);
+    this.objectSecretOperations =
+        new MetadataObjectSecretOperations(modelNs.level(0), modelObject, restClient);
   }
 
   @Override
@@ -89,6 +93,16 @@ class GenericModel implements Model, SupportsTags, SupportsPolicies {
   @Override
   public SupportsPolicies supportsPolicies() {
     return this;
+  }
+
+  @Override
+  public SupportsSecrets supportsSecrets() {
+    return this;
+  }
+
+  @Override
+  public Map<String, String> getSecrets() {
+    return objectSecretOperations.getSecrets();
   }
 
   @Override

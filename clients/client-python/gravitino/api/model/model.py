@@ -19,6 +19,7 @@ from abc import abstractmethod
 from typing import Dict, Optional
 
 from gravitino.api.auditable import Auditable
+from gravitino.api.secret.supports_secrets import SupportsSecrets
 from gravitino.api.tag.supports_tags import SupportsTags
 from gravitino.exceptions.base import UnsupportedOperationException
 
@@ -77,3 +78,8 @@ class Model(Auditable):
 
     def supports_tags(self) -> SupportsTags:
         raise UnsupportedOperationException("Model does not support tag operations.")
+
+    def support_secrets(self) -> SupportsSecrets:
+        raise UnsupportedOperationException(
+            "Model does not support secret property operations."
+        )
