@@ -50,11 +50,11 @@ public class DatastratoGroupMetaService {
   /**
    * Lists identity-store groups for Configure → Directory → Groups.
    *
-   * <p>Local groups come from {@code idp_group_meta}; Provisioned groups from {@code
-   * scim_group_meta}. Metalake-only ({@code JIT}) names are not included. When a group name exists
-   * in an identity store and metalake tables, the identity-store row wins.
+   * <p>Local from {@code idp_group_meta}, Provisioned from {@code scim_group_meta}, and JIT from
+   * {@code jit_group_meta}, without merging. The same group name may appear more than once when it
+   * exists in multiple stores.
    *
-   * @return Directory groups ordered by group name.
+   * @return Directory groups ordered by group name, then origin.
    */
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,

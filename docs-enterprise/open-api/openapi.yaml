@@ -167,6 +167,9 @@ paths:
   /web/security/idp/memberships:
     $ref: "./users.yaml#/paths/~1web~1security~1idp~1memberships"
 
+  /web/security/authn/me:
+    $ref: "./users.yaml#/paths/~1web~1security~1authn~1me"
+
   /web/security/idp/groups:
     $ref: "./groups.yaml#/paths/~1web~1security~1idp~1groups"
 

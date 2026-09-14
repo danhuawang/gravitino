@@ -7,6 +7,7 @@ import com.datastrato.gravitino.authorization.po.DirectoryUserDetailPO;
 import com.datastrato.gravitino.authorization.po.DirectoryUserPO;
 import com.datastrato.gravitino.authorization.po.IdpGroupIdPO;
 import com.datastrato.gravitino.authorization.po.IdpUserGroupRelInsertPO;
+import com.datastrato.gravitino.authorization.po.UserMetalakeRolePO;
 import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import java.util.List;
 import org.apache.gravitino.storage.relational.po.UserPO;
@@ -73,6 +74,50 @@ public interface DatastratoUserMetaMapper {
       type = DatastratoUserMetaSQLProviderFactory.class,
       method = "selectIdpUserNamesByNames")
   List<String> selectIdpUserNamesByNames(@Param("userNames") List<String> userNames);
+
+  /**
+   * Returns usernames that have an active row in {@code jit_user_meta}.
+   *
+   * @param userNames Usernames to check.
+   * @return JIT usernames present in the requested set.
+   */
+  @SelectProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "selectJitUserNamesByNames")
+  List<String> selectJitUserNamesByNames(@Param("userNames") List<String> userNames);
+
+  /**
+   * Lists identity-store origin codes present for a username (Local / Provisioned / JIT).
+   *
+   * @param userName Username.
+   * @return Origin codes for stores that have an active row; empty when none.
+   */
+  @SelectProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "selectUserOriginCodes")
+  List<Integer> selectUserOriginCodes(@Param("userName") String userName);
+
+  /**
+   * Lists metalake membership and direct role names for a username across all metalakes.
+   *
+   * @param userName Username.
+   * @return Rows of metalake name and optional role name.
+   */
+  @SelectProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "listUserRolesByMetalake")
+  List<UserMetalakeRolePO> listUserRolesByMetalake(@Param("userName") String userName);
+
+  /**
+   * Lists metalake names for which the username is the USER owner.
+   *
+   * @param userName Username.
+   * @return Owned metalake names ordered by name.
+   */
+  @SelectProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "listOwnedMetalakeNames")
+  List<String> listOwnedMetalakeNames(@Param("userName") String userName);
 
   /**
    * Lists all active usernames from identity stores ({@code scim_user_meta}, {@code idp_user_meta},
@@ -203,11 +248,12 @@ public interface DatastratoUserMetaMapper {
   /**
    * Lists identity-store users for the Directory Users page.
    *
-   * <p>Rows come from {@code idp_user_meta} (Local) and {@code scim_user_meta} (Provisioned). When
-   * a username exists in both, the IdP / Local row wins. Includes identity-store groups and
-   * metalake membership names.
+   * <p>Rows come from {@code idp_user_meta} (Local), {@code scim_user_meta} (Provisioned), and
+   * {@code jit_user_meta} (JIT) without merging. When a username exists in more than one store,
+   * each store contributes its own row. Includes identity-store groups and metalake membership
+   * names.
    *
-   * @return Directory user rows ordered by username.
+   * @return Directory user rows ordered by username, then origin.
    */
   @SelectProvider(type = DatastratoUserMetaSQLProviderFactory.class, method = "listDirectoryUsers")
   List<DirectoryUserPO> listDirectoryUsers();

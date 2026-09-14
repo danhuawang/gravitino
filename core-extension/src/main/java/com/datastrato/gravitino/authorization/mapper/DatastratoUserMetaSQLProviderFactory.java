@@ -48,6 +48,40 @@ public class DatastratoUserMetaSQLProviderFactory {
     return getProvider().selectIdpUserNamesByNames(userNames);
   }
 
+  public static String selectJitUserNamesByNames(@Param("userNames") List<String> userNames) {
+    return getProvider().selectJitUserNamesByNames(userNames);
+  }
+
+  /**
+   * Lists identity-store origin codes for a username.
+   *
+   * @param userName Username.
+   * @return MyBatis SQL selecting {@code originCode}.
+   */
+  public static String selectUserOriginCodes(@Param("userName") String userName) {
+    return getProvider().selectUserOriginCodes(userName);
+  }
+
+  /**
+   * Lists metalake membership and direct role names for a username.
+   *
+   * @param userName Username.
+   * @return MyBatis SQL selecting {@code metalakeName} and {@code roleName}.
+   */
+  public static String listUserRolesByMetalake(@Param("userName") String userName) {
+    return getProvider().listUserRolesByMetalake(userName);
+  }
+
+  /**
+   * Lists metalake names owned by a username.
+   *
+   * @param userName Username.
+   * @return MyBatis SQL selecting metalake names.
+   */
+  public static String listOwnedMetalakeNames(@Param("userName") String userName) {
+    return getProvider().listOwnedMetalakeNames(userName);
+  }
+
   /**
    * Lists all active Local IdP usernames from {@code idp_user_meta}.
    *

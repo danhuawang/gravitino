@@ -193,12 +193,13 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
     assertEquals(List.of("contractors", "engineers", "governance", "platform"), names);
   }
 
-  /** Verifies Local / Provisioned Directory Groups (no metalake-only JIT). */
+  /** Verifies Local / Provisioned Directory Groups without cross-store merging. */
   @Test
   public void testListDirectoryGroups() {
     List<DirectoryGroup> groups = DatastratoGroupMetaService.getInstance().listDirectoryGroups();
 
-    assertEquals(3, groups.size());
+    // contractors (Local), governance (Provisioned + Local), platform (Provisioned) — no merge.
+    assertEquals(4, groups.size());
 
     DirectoryGroup contractors = groups.get(0);
     assertEquals("contractors", contractors.name());
@@ -206,13 +207,20 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
     assertEquals(IdentitySource.LOCAL, contractors.origin());
     assertEquals(List.of("Acme"), contractors.metalakes());
 
-    DirectoryGroup governance = groups.get(1);
-    assertEquals("governance", governance.name());
-    assertEquals(2, governance.memberCount());
-    assertEquals(IdentitySource.LOCAL, governance.origin());
-    assertEquals(List.of("Acme", "Contoso"), governance.metalakes());
+    // ORIGIN_CODE_PROVISIONED (0) sorts before LOCAL (1) for the same group name.
+    DirectoryGroup governanceProvisioned = groups.get(1);
+    assertEquals("governance", governanceProvisioned.name());
+    assertEquals(0, governanceProvisioned.memberCount());
+    assertEquals(IdentitySource.PROVISIONED, governanceProvisioned.origin());
+    assertEquals(List.of("Acme", "Contoso"), governanceProvisioned.metalakes());
 
-    DirectoryGroup platform = groups.get(2);
+    DirectoryGroup governanceLocal = groups.get(2);
+    assertEquals("governance", governanceLocal.name());
+    assertEquals(2, governanceLocal.memberCount());
+    assertEquals(IdentitySource.LOCAL, governanceLocal.origin());
+    assertEquals(List.of("Acme", "Contoso"), governanceLocal.metalakes());
+
+    DirectoryGroup platform = groups.get(3);
     assertEquals("platform", platform.name());
     assertEquals(1, platform.memberCount());
     assertEquals(IdentitySource.PROVISIONED, platform.origin());

@@ -15,14 +15,22 @@ import static org.mockito.Mockito.when;
 import com.datastrato.gravitino.authorization.DirectoryUser;
 import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.dto.authorization.AuthMeRoleDTO;
+import com.datastrato.gravitino.dto.authorization.AuthMeSecurableObjectDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
+import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
 import org.junit.jupiter.api.AfterAll;
@@ -53,6 +61,25 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
           "CREATE TABLE metalake_meta ("
               + "metalake_id BIGINT NOT NULL PRIMARY KEY,"
               + "metalake_name VARCHAR(128) NOT NULL,"
+              + "metalake_comment VARCHAR(256),"
+              + "properties CLOB,"
+              + "audit_info CLOB,"
+              + "schema_version VARCHAR(64),"
+              + "current_version BIGINT NOT NULL DEFAULT 1,"
+              + "last_version BIGINT NOT NULL DEFAULT 1,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE catalog_meta ("
+              + "catalog_id BIGINT NOT NULL PRIMARY KEY,"
+              + "catalog_name VARCHAR(128) NOT NULL,"
+              + "metalake_id BIGINT NOT NULL,"
+              + "type VARCHAR(64),"
+              + "provider VARCHAR(64),"
+              + "catalog_comment VARCHAR(256),"
+              + "properties CLOB,"
+              + "audit_info CLOB,"
+              + "current_version BIGINT NOT NULL DEFAULT 1,"
+              + "last_version BIGINT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE user_meta ("
@@ -76,12 +103,27 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
               + "role_id BIGINT NOT NULL PRIMARY KEY,"
               + "role_name VARCHAR(128) NOT NULL,"
               + "metalake_id BIGINT NOT NULL,"
+              + "properties CLOB,"
+              + "audit_info CLOB,"
+              + "current_version BIGINT NOT NULL DEFAULT 1,"
+              + "last_version BIGINT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE user_role_rel ("
               + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
               + "user_id BIGINT NOT NULL,"
               + "role_id BIGINT NOT NULL,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE role_meta_securable_object ("
+              + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+              + "role_id BIGINT NOT NULL,"
+              + "metadata_object_id BIGINT NOT NULL,"
+              + "type VARCHAR(64) NOT NULL,"
+              + "privilege_names CLOB NOT NULL,"
+              + "privilege_conditions CLOB NOT NULL,"
+              + "current_version BIGINT NOT NULL DEFAULT 1,"
+              + "last_version BIGINT NOT NULL DEFAULT 1,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE idp_user_meta ("
@@ -149,6 +191,20 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
               + "group_id BIGINT NOT NULL,"
               + "audit_info CLOB NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
+          "CREATE TABLE owner_meta ("
+              + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+              + "metalake_id BIGINT NOT NULL,"
+              + "owner_id BIGINT NOT NULL,"
+              + "owner_type VARCHAR(64) NOT NULL,"
+              + "metadata_object_id BIGINT NOT NULL,"
+              + "metadata_object_type VARCHAR(64) NOT NULL,"
+              + "audit_info CLOB,"
+              + "current_version BIGINT NOT NULL DEFAULT 1,"
+              + "last_version BIGINT NOT NULL DEFAULT 1,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0,"
+              + "updated_at BIGINT NOT NULL DEFAULT 0,"
+              + "updated_at_id BIGINT NOT NULL DEFAULT 0)");
     }
     SqlSessionFactoryHelper.getInstance().init(config);
   }
@@ -165,6 +221,10 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
       statement.execute("DELETE FROM scim_user_group_rel");
       statement.execute("DELETE FROM jit_user_group_rel");
       statement.execute("DELETE FROM idp_user_group_rel");
+      statement.execute("DELETE FROM owner_meta");
+      statement.execute("DELETE FROM user_role_rel");
+      statement.execute("DELETE FROM role_meta_securable_object");
+      statement.execute("DELETE FROM role_meta");
       statement.execute("DELETE FROM scim_user_meta");
       statement.execute("DELETE FROM scim_group_meta");
       statement.execute("DELETE FROM jit_user_meta");
@@ -172,11 +232,15 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
       statement.execute("DELETE FROM idp_user_meta");
       statement.execute("DELETE FROM idp_group_meta");
       statement.execute("DELETE FROM user_meta");
+      statement.execute("DELETE FROM catalog_meta");
       statement.execute("DELETE FROM metalake_meta");
 
       statement.execute(
           "INSERT INTO metalake_meta (metalake_id, metalake_name, deleted_at)"
               + " VALUES (1, 'Acme', 0), (2, 'Contoso', 0), (3, 'Northwind', 0)");
+      statement.execute(
+          "INSERT INTO catalog_meta (catalog_id, catalog_name, metalake_id, deleted_at)"
+              + " VALUES (99, 'sales', 2, 0)");
       statement.execute(
           "INSERT INTO idp_user_meta (user_id, user_name, password_hash, enabled, audit_info,"
               + " deleted_at)"
@@ -231,12 +295,13 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(List.of("dana.k", "jwt.user", "lee.p", "sam.o"), names);
   }
 
-  /** Verifies Local / Provisioned Directory Users (no metalake-only JIT). */
+  /** Verifies Local / Provisioned / JIT Directory Users without cross-store merging. */
   @Test
   public void testListDirectoryUsers() {
     List<DirectoryUser> users = DatastratoUserMetaService.getInstance().listDirectoryUsers();
 
-    assertEquals(3, users.size());
+    // dana.k (Provisioned), lee.p (Local), sam.o (Provisioned + Local) — no merge.
+    assertEquals(4, users.size());
 
     DirectoryUser dana = users.get(0);
     assertEquals("dana.k", dana.name());
@@ -252,12 +317,20 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertTrue(lee.groups().isEmpty());
     assertEquals(List.of("Acme"), lee.metalakes());
 
-    DirectoryUser sam = users.get(2);
-    assertEquals("sam.o", sam.name());
-    assertTrue(sam.enabled());
-    assertEquals(IdentitySource.LOCAL, sam.origin());
-    assertEquals(List.of("governance", "ops"), sam.groups());
-    assertEquals(List.of("Contoso"), sam.metalakes());
+    // ORIGIN_CODE_PROVISIONED (0) sorts before LOCAL (1) for the same username.
+    DirectoryUser samProvisioned = users.get(2);
+    assertEquals("sam.o", samProvisioned.name());
+    assertTrue(samProvisioned.enabled());
+    assertEquals(IdentitySource.PROVISIONED, samProvisioned.origin());
+    assertTrue(samProvisioned.groups().isEmpty());
+    assertEquals(List.of("Contoso"), samProvisioned.metalakes());
+
+    DirectoryUser samLocal = users.get(3);
+    assertEquals("sam.o", samLocal.name());
+    assertTrue(samLocal.enabled());
+    assertEquals(IdentitySource.LOCAL, samLocal.origin());
+    assertEquals(List.of("governance", "ops"), samLocal.groups());
+    assertEquals(List.of("Contoso"), samLocal.metalakes());
   }
 
   /** Verifies metalake Users list origin (Local/Provisioned; unknown is null). */
@@ -313,8 +386,18 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     }
 
     List<DirectoryUser> users = DatastratoUserMetaService.getInstance().listDirectoryUsers();
-    assertFalse(users.get(1).enabled());
-    assertFalse(users.get(2).enabled());
+    DirectoryUser lee =
+        users.stream()
+            .filter(u -> u.name().equals("lee.p") && u.origin() == IdentitySource.LOCAL)
+            .findFirst()
+            .orElseThrow();
+    DirectoryUser samLocal =
+        users.stream()
+            .filter(u -> u.name().equals("sam.o") && u.origin() == IdentitySource.LOCAL)
+            .findFirst()
+            .orElseThrow();
+    assertFalse(lee.enabled());
+    assertFalse(samLocal.enabled());
   }
 
   @Test
@@ -402,5 +485,83 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
         () ->
             DatastratoUserMetaService.getInstance()
                 .addDirectoryUser("dup.user", "ChangeMe-2026!", List.of()));
+  }
+
+  /** Verifies auth/me helpers return all origins and lightweight roles keyed by metalake. */
+  @Test
+  public void testListUserOriginsAndRolesByMetalake() throws Exception {
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "INSERT INTO jit_user_meta (user_id, user_name, audit_info, deleted_at)"
+              + " VALUES (30, 'sam.o', '{\"creator\":\"test\"}', 0)");
+      statement.execute(
+          "INSERT INTO role_meta (role_id, role_name, metalake_id, properties, audit_info,"
+              + " deleted_at)"
+              + " VALUES (500, 'admin', 2, '{}', '{\"creator\":\"test\"}', 0),"
+              + " (501, 'viewer', 2, '{}', '{\"creator\":\"test\"}', 0),"
+              + " (502, 'analyst', 1, '{}', '{\"creator\":\"test\"}', 0)");
+      statement.execute(
+          "INSERT INTO user_role_rel (user_id, role_id, deleted_at)"
+              + " VALUES (1000, 500, 0), (1000, 501, 0)");
+      statement.execute(
+          "INSERT INTO role_meta_securable_object (role_id, metadata_object_id, type,"
+              + " privilege_names, privilege_conditions, deleted_at)"
+              + " VALUES (500, 2, 'METALAKE',"
+              + " '[\"USE_CATALOG\",\"CREATE_TABLE\"]', '[\"ALLOW\",\"ALLOW\"]', 0),"
+              + " (500, 99, 'CATALOG',"
+              + " '[\"USE_CATALOG\",\"SELECT_TABLE\"]', '[\"ALLOW\",\"DENY\"]', 0),"
+              + " (501, 2, 'METALAKE', '[\"USE_CATALOG\"]', '[\"ALLOW\"]', 0)");
+    }
+
+    List<IdentitySource> origins = DatastratoUserMetaService.getInstance().listUserOrigins("sam.o");
+    assertEquals(
+        List.of(IdentitySource.LOCAL, IdentitySource.PROVISIONED, IdentitySource.JIT), origins);
+
+    Map<String, List<AuthMeRoleDTO>> roles =
+        DatastratoRoleMetaService.getInstance().listUserRolesWithPrivileges("sam.o");
+    assertEquals(1, roles.size());
+    assertTrue(roles.containsKey("Contoso"));
+    assertEquals(2, roles.get("Contoso").size());
+    assertEquals("admin", roles.get("Contoso").get(0).getName());
+    Map<MetadataObject.Type, AuthMeSecurableObjectDTO> adminObjects =
+        roles.get("Contoso").get(0).getSecurableObjects().stream()
+            .collect(Collectors.toMap(AuthMeSecurableObjectDTO::getType, Function.identity()));
+    assertEquals(2, adminObjects.size());
+    assertEquals("Contoso", adminObjects.get(MetadataObject.Type.METALAKE).getFullName());
+    assertEquals(
+        Set.of("USE_CATALOG", "CREATE_TABLE"),
+        new HashSet<>(adminObjects.get(MetadataObject.Type.METALAKE).getPrivileges()));
+    assertEquals("sales", adminObjects.get(MetadataObject.Type.CATALOG).getFullName());
+    assertEquals(
+        Set.of("USE_CATALOG"),
+        new HashSet<>(adminObjects.get(MetadataObject.Type.CATALOG).getPrivileges()));
+    assertEquals("viewer", roles.get("Contoso").get(1).getName());
+    assertEquals(1, roles.get("Contoso").get(1).getSecurableObjects().size());
+    assertEquals(
+        Set.of("USE_CATALOG"),
+        new HashSet<>(roles.get("Contoso").get(1).getSecurableObjects().get(0).getPrivileges()));
+
+    List<IdentitySource> leeOrigins =
+        DatastratoUserMetaService.getInstance().listUserOrigins("lee.p");
+    assertEquals(List.of(IdentitySource.LOCAL), leeOrigins);
+
+    Map<String, List<AuthMeRoleDTO>> leeRoles =
+        DatastratoRoleMetaService.getInstance().listUserRolesWithPrivileges("lee.p");
+    assertEquals(1, leeRoles.size());
+    assertTrue(leeRoles.containsKey("Acme"));
+    assertTrue(leeRoles.get("Acme").isEmpty());
+
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      // sam.o's Contoso user_id is 1000; mark that user as Contoso metalake owner.
+      statement.execute(
+          "INSERT INTO owner_meta (metalake_id, owner_id, owner_type, metadata_object_id,"
+              + " metadata_object_type, deleted_at)"
+              + " VALUES (2, 1000, 'USER', 2, 'METALAKE', 0)");
+    }
+    assertEquals(
+        List.of("Contoso"), DatastratoUserMetaService.getInstance().listOwnedMetalakes("sam.o"));
+    assertTrue(DatastratoUserMetaService.getInstance().listOwnedMetalakes("lee.p").isEmpty());
   }
 }

@@ -38,13 +38,15 @@ paths:
       description: |
         List Directory Groups for Configure → Directory → Groups.
 
-        Rows come from:
+        Rows come from each identity store without merging:
         - `idp_group_meta` → `origin=Local`
-        - `scim_group_meta` (not also in IdP) → `origin=Provisioned`
+        - `scim_group_meta` → `origin=Provisioned`
+        - `jit_group_meta` → `origin=JIT`
 
+        The same group name may appear more than once when it exists in multiple stores.
         Metalake-only (`group_meta`) names are not listed. `memberCount` is the identity-store
-        membership count. `metalakes` are metalake names where the group name exists in
-        `group_meta`.
+        membership count for that row's origin. `metalakes` are metalake names where the group name
+        exists in `group_meta`.
 
       responses:
         "200":
@@ -129,10 +131,12 @@ paths:
 
         Requires `origin`:
         - `Local` → load from `idp_group_meta` with IdP membership count
-        - `Provisioned` → load from `scim_group_meta` excluding IdP names with SCIM membership count
+        - `Provisioned` → load from `scim_group_meta` with SCIM membership count
+        - `JIT` → load from `jit_group_meta` with JIT membership count
 
+        Detail is keyed by (group name, origin); cross-store names are not excluded.
         `memberCount` maps to Members on the Overview. `createTime` maps to Created and comes from
-        identity-store `audit_info.createTime` (`idp_group_meta` / `scim_group_meta`).
+        identity-store `audit_info.createTime`.
 
       responses:
         "200":

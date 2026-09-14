@@ -9,6 +9,7 @@ import com.datastrato.gravitino.authorization.mapper.IdpNameStatusPO;
 import com.datastrato.gravitino.authorization.po.DirectoryGroupDetailPO;
 import com.datastrato.gravitino.authorization.po.DirectoryUserDetailPO;
 import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
+import com.datastrato.gravitino.dto.authorization.AuthMeRoleDTO;
 import com.datastrato.gravitino.dto.authorization.DirectoryGroupDetailDTO;
 import com.datastrato.gravitino.dto.authorization.DirectoryUserDetailDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
@@ -353,6 +354,39 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
         row.origin(),
         row.getExternalId(),
         DatastratoPOConverters.parseCreateTime(row.getAuditInfo()));
+  }
+
+  /**
+   * Lists every identity-store origin present for a username.
+   *
+   * @param userName Username.
+   * @return Origins present for the user; empty when none.
+   */
+  public List<IdentitySource> listUserOrigins(String userName) {
+    return DatastratoUserMetaService.getInstance().listUserOrigins(userName);
+  }
+
+  /**
+   * Lists metalake names for which the username is the USER owner.
+   *
+   * @param userName Username.
+   * @return Owned metalake names ordered by name; empty when none.
+   */
+  public List<String> listOwnedMetalakes(String userName) {
+    return DatastratoUserMetaService.getInstance().listOwnedMetalakes(userName);
+  }
+
+  /**
+   * Lists lightweight roles for a username, keyed by metalake.
+   *
+   * <p>Each role includes securable objects ({@code fullName}, {@code type}) with ALLOW privilege
+   * names only.
+   *
+   * @param userName Username.
+   * @return Metalake name → lightweight roles; empty when the user is in no metalake.
+   */
+  public Map<String, List<AuthMeRoleDTO>> listUserRolesByMetalake(String userName) {
+    return DatastratoRoleMetaService.getInstance().listUserRolesWithPrivileges(userName);
   }
 
   /**

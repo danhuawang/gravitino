@@ -112,11 +112,12 @@ public interface DatastratoGroupMetaMapper {
   /**
    * Lists identity-store groups for the Directory Groups page.
    *
-   * <p>Rows come from {@code idp_group_meta} (Local) and {@code scim_group_meta} (Provisioned).
-   * When a group name exists in both, the IdP / Local row wins. Includes identity-store member
-   * counts and metalake membership names.
+   * <p>Rows come from {@code idp_group_meta} (Local), {@code scim_group_meta} (Provisioned), and
+   * {@code jit_group_meta} (JIT) without merging. When a group name exists in more than one store,
+   * each store contributes its own row. Includes identity-store member counts and metalake
+   * membership names.
    *
-   * @return Directory group rows ordered by group name.
+   * @return Directory group rows ordered by group name, then origin.
    */
   @SelectProvider(
       type = DatastratoGroupMetaSQLProviderFactory.class,

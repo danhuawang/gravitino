@@ -81,8 +81,8 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("metalakeNames"));
     assertTrue(sql.contains("originCode"));
     assertTrue(sql.contains("UNION ALL"));
-    assertTrue(sql.contains("NOT EXISTS"));
-    assertTrue(sql.contains("ORDER BY identity.groupName"));
+    assertFalse(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains("ORDER BY identity.groupName, identity.originCode"));
     assertTrue(sql.contains("CAST(NULL AS BIGINT)"));
     assertTrue(sql.contains("GROUP BY gt.group_name"));
     assertTrue(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
@@ -125,7 +125,7 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_group_meta"));
     assertTrue(sql.contains("memberCount"));
     assertTrue(sql.contains("su.user_name = #{userName}"));
-    assertTrue(sql.contains("NOT EXISTS"));
+    assertFalse(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " as originCode"));
     assertFalse(sql.contains("idp_user_group_rel"));
     assertFalse(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
@@ -140,7 +140,7 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("memberCount"));
     assertTrue(sql.contains("ju.user_name = #{userName}"));
     assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
-    assertTrue(sql.contains("NOT EXISTS"));
+    assertFalse(sql.contains("NOT EXISTS"));
   }
 
   @Test
@@ -160,7 +160,7 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_group_meta"));
     assertTrue(sql.contains("sg.audit_info as auditInfo"));
     assertTrue(sql.contains("identity.auditInfo as auditInfo"));
-    assertTrue(sql.contains("NOT EXISTS"));
+    assertFalse(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " as originCode"));
   }
 
@@ -172,7 +172,7 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("identity.auditInfo as auditInfo"));
     assertTrue(sql.contains("jitMembers.memberCount"));
     assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
-    assertTrue(sql.contains("NOT EXISTS"));
+    assertFalse(sql.contains("NOT EXISTS"));
   }
 
   @Test

@@ -10,20 +10,34 @@ import com.datastrato.gravitino.authorization.RoleGroupAssignment;
 import com.datastrato.gravitino.authorization.RoleUserAssignment;
 import com.datastrato.gravitino.authorization.mapper.DatastratoRoleAssignmentMapper;
 import com.datastrato.gravitino.authorization.mapper.DatastratoSecurableObjectMapper;
+import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
 import com.datastrato.gravitino.authorization.po.RoleAssignmentPO;
 import com.datastrato.gravitino.authorization.po.RoleGroupAssignmentPO;
 import com.datastrato.gravitino.authorization.po.RoleUserAssignmentPO;
+import com.datastrato.gravitino.authorization.po.UserMetalakeRolePO;
+import com.datastrato.gravitino.dto.authorization.AuthMeRoleDTO;
+import com.datastrato.gravitino.dto.authorization.AuthMeSecurableObjectDTO;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
+import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
@@ -91,6 +105,66 @@ public class DatastratoRoleMetaService {
                     securableObjectsByRoleId.getOrDefault(po.getRoleId(), Collections.emptyList()),
                     AuthorizationUtils.ofRoleNamespace(metalakeName)))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Lists lightweight roles for a username, keyed by metalake.
+   *
+   * <p>Includes every metalake where the user has an active {@code user_meta} row. Metalakes with
+   * no direct {@code user_role_rel} rows map to an empty role list. Each role carries securable
+   * objects ({@code fullName}, {@code type}) with distinct ALLOW privilege names.
+   *
+   * @param userName Username (current authenticated principal for auth/me).
+   * @return Metalake name → lightweight roles; empty when the user is in no metalake.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listUserRolesWithPrivileges")
+  public Map<String, List<AuthMeRoleDTO>> listUserRolesWithPrivileges(String userName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(userName), "userName cannot be blank");
+    List<UserMetalakeRolePO> rows =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class, mapper -> mapper.listUserRolesByMetalake(userName));
+    if (rows == null || rows.isEmpty()) {
+      return ImmutableMap.of();
+    }
+
+    List<Long> roleIds =
+        rows.stream()
+            .map(UserMetalakeRolePO::getRoleId)
+            .filter(Objects::nonNull)
+            .distinct()
+            .collect(Collectors.toList());
+    Map<Long, List<AuthMeSecurableObjectDTO>> securableObjectsByRoleId =
+        toAuthMeSecurableObjectsByRoleId(listSecurableObjectsByRoleIds(roleIds));
+
+    Map<String, List<AuthMeRoleDTO>> rolesByMetalake = new LinkedHashMap<>();
+    Map<String, Set<Long>> seenRoleIdsByMetalake = new HashMap<>();
+    for (UserMetalakeRolePO row : rows) {
+      if (row == null || StringUtils.isBlank(row.getMetalakeName())) {
+        continue;
+      }
+      rolesByMetalake.computeIfAbsent(row.getMetalakeName(), key -> new ArrayList<>());
+      if (row.getRoleId() == null || StringUtils.isBlank(row.getRoleName())) {
+        continue;
+      }
+      Set<Long> seenRoleIds =
+          seenRoleIdsByMetalake.computeIfAbsent(row.getMetalakeName(), key -> new HashSet<>());
+      if (!seenRoleIds.add(row.getRoleId())) {
+        continue;
+      }
+      rolesByMetalake
+          .get(row.getMetalakeName())
+          .add(
+              new AuthMeRoleDTO(
+                  row.getRoleName(),
+                  securableObjectsByRoleId.getOrDefault(row.getRoleId(), Collections.emptyList())));
+    }
+
+    ImmutableMap.Builder<String, List<AuthMeRoleDTO>> builder = ImmutableMap.builder();
+    rolesByMetalake.forEach(
+        (metalake, roles) -> builder.put(metalake, ImmutableList.copyOf(roles)));
+    return builder.build();
   }
 
   /**
@@ -341,6 +415,33 @@ public class DatastratoRoleMetaService {
     return SessionUtils.getWithoutCommit(
         DatastratoSecurableObjectMapper.class,
         mapper -> mapper.listSecurableObjectsByRoleIds(roleIds));
+  }
+
+  private static Map<Long, List<AuthMeSecurableObjectDTO>> toAuthMeSecurableObjectsByRoleId(
+      List<SecurableObjectPO> securableObjectPOs) {
+    Map<Long, List<SecurableObject>> securableObjectsByRoleId =
+        toSecurableObjectsByRoleId(securableObjectPOs);
+    Map<Long, List<AuthMeSecurableObjectDTO>> result = new HashMap<>();
+    securableObjectsByRoleId.forEach(
+        (roleId, objects) -> {
+          List<AuthMeSecurableObjectDTO> authMeObjects = Lists.newArrayList();
+          for (SecurableObject object : objects) {
+            List<String> allowPrivileges =
+                object.privileges().stream()
+                    .filter(privilege -> Privilege.Condition.ALLOW.equals(privilege.condition()))
+                    .map(privilege -> privilege.name().name())
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (allowPrivileges.isEmpty()) {
+              continue;
+            }
+            authMeObjects.add(
+                new AuthMeSecurableObjectDTO(
+                    object.fullName(), object.type(), ImmutableList.copyOf(allowPrivileges)));
+          }
+          result.put(roleId, ImmutableList.copyOf(authMeObjects));
+        });
+    return result;
   }
 
   private static Map<Long, List<SecurableObject>> toSecurableObjectsByRoleId(

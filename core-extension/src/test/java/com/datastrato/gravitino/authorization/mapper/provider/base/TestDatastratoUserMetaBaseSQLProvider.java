@@ -65,8 +65,8 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("originCode"));
     assertTrue(sql.contains("metalakeNames"));
     assertTrue(sql.contains("UNION ALL"));
-    assertTrue(sql.contains("NOT EXISTS"));
-    assertTrue(sql.contains("ORDER BY identity.userName"));
+    assertFalse(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains("ORDER BY identity.userName, identity.originCode"));
     assertTrue(sql.contains("CAST(NULL AS BIGINT)"));
     // Metalake names are aggregated per username for the Directory Users table.
     assertTrue(sql.contains("GROUP BY ut.user_name"));
@@ -289,7 +289,7 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("su.enabled"));
     assertTrue(sql.contains("sg.group_name = #{groupName}"));
-    assertTrue(sql.contains("NOT EXISTS"));
+    assertFalse(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " as originCode"));
     assertFalse(sql.contains("idp_user_group_rel"));
     assertFalse(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
@@ -304,7 +304,7 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("true as enabled"));
     assertTrue(sql.contains("jg.group_name = #{groupName}"));
     assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
-    assertTrue(sql.contains("NOT EXISTS"));
+    assertFalse(sql.contains("NOT EXISTS"));
   }
 
   @Test
@@ -323,7 +323,7 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("su.audit_info as auditInfo"));
     assertTrue(sql.contains("su.external_id as externalId"));
-    assertTrue(sql.contains("NOT EXISTS"));
+    assertFalse(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " as originCode"));
   }
 
@@ -336,7 +336,54 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("NULL as externalId"));
     assertTrue(sql.contains("ju.user_name = #{userName}"));
     assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
-    assertTrue(sql.contains("NOT EXISTS"));
+    assertFalse(sql.contains("NOT EXISTS"));
+  }
+
+  @Test
+  public void testSelectJitUserNamesByNames() {
+    String sql = provider.selectJitUserNamesByNames(Lists.newArrayList("alice", "bob"));
+    assertTrue(sql.contains("SELECT user_name FROM jit_user_meta"));
+    assertTrue(sql.contains("deleted_at = 0"));
+    assertTrue(sql.contains("user_name IN "));
+  }
+
+  @Test
+  public void testSelectUserOriginCodes() {
+    String sql = provider.selectUserOriginCodes("alice");
+    assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("scim_user_meta"));
+    assertTrue(sql.contains("jit_user_meta"));
+    assertTrue(sql.contains("UNION ALL"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_LOCAL + " AS originCode"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_PROVISIONED + " AS originCode"));
+    assertTrue(sql.contains(IdentitySource.ORIGIN_CODE_JIT + " AS originCode"));
+    assertTrue(sql.contains("user_name = #{userName}"));
+  }
+
+  @Test
+  public void testListUserRolesByMetalake() {
+    String sql = provider.listUserRolesByMetalake("alice");
+    assertTrue(sql.contains("metalake_name AS metalakeName"));
+    assertTrue(sql.contains("role_id AS roleId"));
+    assertTrue(sql.contains("role_name AS roleName"));
+    assertFalse(sql.contains("properties AS properties"));
+    assertTrue(sql.contains("user_meta"));
+    assertTrue(sql.contains("user_role_rel"));
+    assertTrue(sql.contains("role_meta"));
+    assertTrue(sql.contains("user_name = #{userName}"));
+    assertTrue(sql.contains("ORDER BY mt.metalake_name, rot.role_name"));
+  }
+
+  @Test
+  public void testListOwnedMetalakeNames() {
+    String sql = provider.listOwnedMetalakeNames("alice");
+    assertTrue(sql.contains("owner_meta"));
+    assertTrue(sql.contains("user_meta"));
+    assertTrue(sql.contains("metalake_meta"));
+    assertTrue(sql.contains("owner_type = 'USER'"));
+    assertTrue(sql.contains("metadata_object_type = 'METALAKE'"));
+    assertTrue(sql.contains("user_name = #{userName}"));
+    assertTrue(sql.contains("ORDER BY mt.metalake_name"));
   }
 
   @Test

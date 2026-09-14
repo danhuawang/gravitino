@@ -118,13 +118,15 @@ paths:
       description: |
         List Directory Users for Configure → Directory → Users.
 
-        Rows come from:
+        Rows come from each identity store without merging:
         - `idp_user_meta` → `origin=Local`
-        - `scim_user_meta` (not also in IdP) → `origin=Provisioned`
+        - `scim_user_meta` → `origin=Provisioned`
+        - `jit_user_meta` → `origin=JIT`
 
+        The same username may appear more than once when it exists in multiple stores.
         Metalake-only (`user_meta`) names are not listed. `enabled` maps to Active / Suspended in
-        the UI (from the identity store). `groups` are identity-store group names. `metalakes` are
-        metalake names where the username exists in `user_meta`.
+        the UI (from the identity store). `groups` are identity-store group names for that row's
+        origin. `metalakes` are metalake names where the username exists in `user_meta`.
 
       responses:
         "200":
@@ -187,6 +189,43 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
+  /web/security/authn/me:
+    get:
+      tags:
+        - authentication
+      summary: Get the authenticated enterprise user
+      operationId: getExtendedAuthenticatedUser
+      description: |
+        Enterprise counterpart of OSS `GET /authn/me`. Returns the server-resolved principal
+        name and service-administrator status for the current authenticated user, plus:
+
+        - `origins`: every identity-store origin present for that username (`Local` /
+          `Provisioned` / `JIT` from `idp_user_meta` / `scim_user_meta` / `jit_user_meta`)
+        - `ownedMetalakes`: metalake names for which the user is the USER owner (`owner_meta`)
+        - `roles`: lightweight roles keyed by metalake (`name` + `securableObjects` with
+          `fullName` / `type` / ALLOW `privileges`)
+
+        Prefer this over hard-coding `origin=Provisioned` for Profile / sidebar identity.
+
+      responses:
+        "200":
+          description: Returns the authenticated enterprise user information
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ExtendedAuthMeResponse"
+              examples:
+                ExtendedAuthMeResponse:
+                  $ref: "#/components/examples/ExtendedAuthMeResponse"
+        "401":
+          description: Unauthorized - Authentication credentials are missing or invalid
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /web/security/directory/users/{user}:
     parameters:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
@@ -198,7 +237,8 @@ paths:
           enum:
             - Local
             - Provisioned
-        description: Identity origin of the Directory User (`Local` or `Provisioned`)
+            - JIT
+        description: Identity origin of the Directory User (`Local`, `Provisioned`, or `JIT`)
     get:
       tags:
         - users
@@ -209,10 +249,12 @@ paths:
 
         Requires `origin`:
         - `Local` → load from `idp_user_meta` (`externalId` omitted)
-        - `Provisioned` → load from `scim_user_meta` excluding IdP names (`externalId` when present)
+        - `Provisioned` → load from `scim_user_meta` (`externalId` when present)
+        - `JIT` → load from `jit_user_meta` (`externalId` omitted)
 
+        Detail is keyed by (username, origin); cross-store names are not excluded.
         `enabled` maps to Status (Active / Suspended). `createTime` maps to Created and comes from
-        identity-store `audit_info.createTime` (`idp_user_meta` / `scim_user_meta`).
+        identity-store `audit_info.createTime`.
 
       responses:
         "200":
@@ -869,6 +911,97 @@ components:
         user:
           $ref: "#/components/schemas/ExtendedUser"
 
+    ExtendedAuthMeResponse:
+      type: object
+      required:
+        - code
+        - principal
+        - serviceAdmin
+        - origins
+        - ownedMetalakes
+        - roles
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Status code of the response
+          enum:
+            - 0
+        principal:
+          type: string
+          description: The server-resolved principal name of the authenticated user
+        serviceAdmin:
+          type: boolean
+          description: Whether the authenticated user is a Gravitino service administrator
+        origins:
+          type: array
+          description: Identity-store origins present for the user
+          items:
+            $ref: "#/components/schemas/IdentitySource"
+        ownedMetalakes:
+          type: array
+          description: Metalake names for which the user is the USER owner
+          items:
+            type: string
+        roles:
+          type: object
+          description: >
+            Direct roles keyed by metalake name. Each entry is a lightweight role with `name`
+            and `securableObjects` (`fullName`, `type`, ALLOW `privileges`). DENY is omitted.
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/AuthMeRole"
+
+    AuthMeRole:
+      type: object
+      required:
+        - name
+        - securableObjects
+      properties:
+        name:
+          type: string
+          description: Role name
+        securableObjects:
+          type: array
+          description: Securable objects granted to the role (ALLOW privileges only)
+          items:
+            $ref: "#/components/schemas/AuthMeSecurableObject"
+
+    AuthMeSecurableObject:
+      type: object
+      required:
+        - fullName
+        - type
+        - privileges
+      properties:
+        fullName:
+          type: string
+          description: Metadata object full name (e.g. catalog, catalog.schema.table)
+        type:
+          type: string
+          description: Metadata object type
+          enum:
+            - METALAKE
+            - CATALOG
+            - SCHEMA
+            - TABLE
+            - COLUMN
+            - FILESET
+            - TOPIC
+            - MODEL
+            - FUNCTION
+            - VIEW
+            - TAG
+            - POLICY
+            - JOB
+            - JOB_TEMPLATE
+        privileges:
+          type: array
+          description: Distinct ALLOW privilege names on this object
+          items:
+            type: string
+
     DirectoryUserDTO:
       type: object
       required:
@@ -1047,6 +1180,30 @@ components:
           $ref: "#/components/schemas/DirectoryUserDetailDTO"
 
   examples:
+    ExtendedAuthMeResponse:
+      value: {
+        "code": 0,
+        "principal": "sai",
+        "serviceAdmin": false,
+        "origins": ["Local", "JIT"],
+        "ownedMetalakes": ["metalake1"],
+        "roles": {
+          "metalake1": [
+            {
+              "name": "admin",
+              "securableObjects": [
+                {
+                  "fullName": "catalog1",
+                  "type": "CATALOG",
+                  "privileges": ["USE_CATALOG"]
+                }
+              ]
+            }
+          ],
+          "metalake2": []
+        }
+      }
+
     LocalUserAddRequest:
       value:
         name: jordan.reyes

@@ -149,12 +149,13 @@ public class DatastratoGroupMetaBaseSQLProvider {
   /**
    * Lists Directory Groups for Configure → Directory → Groups.
    *
-   * <p>Rows come from identity stores with priority {@code idp_group_meta} → Local, else {@code
-   * scim_group_meta} → Provisioned, else {@code jit_group_meta} → JIT. {@code memberCount} is the
-   * identity-store membership count. Metalakes are distinct {@code metalake_meta} names that
+   * <p>Rows come from each identity store without merging: {@code idp_group_meta} → Local, {@code
+   * scim_group_meta} → Provisioned, {@code jit_group_meta} → JIT. The same group name may appear
+   * more than once when it exists in multiple stores. {@code memberCount} is the identity-store
+   * membership count for that row's origin. Metalakes are distinct {@code metalake_meta} names that
    * contain the group name in {@code group_meta}.
    *
-   * @return MyBatis SQL ordered by group name.
+   * @return MyBatis SQL ordered by group name, then origin.
    */
   public String listDirectoryGroups() {
     return "SELECT identity.groupName as groupName, identity.originCode as originCode,"
@@ -181,7 +182,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " LEFT JOIN ("
         + directoryGroupMetalakeAggregation()
         + ") metalakes ON metalakes.groupName = identity.groupName"
-        + " ORDER BY identity.groupName";
+        + " ORDER BY identity.groupName, identity.originCode";
   }
 
   /**
@@ -255,6 +256,16 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + "</script>";
   }
 
+  /**
+   * Builds the Local / Provisioned / JIT identity UNION ALL for Directory Groups.
+   *
+   * <p>No cross-store exclusion: every active row from {@code idp_group_meta}, {@code
+   * scim_group_meta}, and {@code jit_group_meta} is listed. Duplicate names across stores become
+   * separate Directory rows with different origins.
+   *
+   * @return UNION ALL SQL selecting {@code groupName}, {@code originCode}, and IdP / SCIM / JIT
+   *     ids.
+   */
   private String directoryGroupIdentityUnion() {
     return "SELECT ig.group_name as groupName, "
         + IdentitySource.ORIGIN_CODE_LOCAL
@@ -278,9 +289,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " as jitGroupId"
         + " FROM "
         + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
-        + " sg WHERE sg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
-        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0)"
+        + " sg WHERE sg.deleted_at = 0"
         + " UNION ALL "
         + "SELECT jg.group_name as groupName, "
         + IdentitySource.ORIGIN_CODE_JIT
@@ -292,21 +301,16 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " as scimGroupId, jg.group_id as jitGroupId"
         + " FROM "
         + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
-        + " jg WHERE jg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
-        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig WHERE ig.group_name = jg.group_name AND ig.deleted_at = 0)"
-        + " AND NOT EXISTS (SELECT 1 FROM "
-        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
-        + " sg WHERE sg.group_name = jg.group_name AND sg.deleted_at = 0)";
+        + " jg WHERE jg.deleted_at = 0";
   }
 
   /**
    * Loads one Directory Group Overview row by group name and origin.
    *
    * <p>{@code originCode} must be Local, Provisioned, or JIT. Local reads {@code idp_group_meta};
-   * Provisioned reads {@code scim_group_meta} excluding IdP names; JIT reads {@code jit_group_meta}
-   * excluding IdP and SCIM names. {@code memberCount} comes from the matching identity-store
-   * membership table.
+   * Provisioned reads {@code scim_group_meta}; JIT reads {@code jit_group_meta}. Cross-store names
+   * are not excluded: detail is keyed by (group name, origin). {@code memberCount} comes from the
+   * matching identity-store membership table.
    *
    * @param groupName Group name.
    * @param originCode Directory origin code.
@@ -338,9 +342,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
           + " as originCode, sg.group_id as scimGroupId, sg.audit_info as auditInfo"
           + " FROM "
           + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
-          + " sg WHERE sg.group_name = #{groupName} AND sg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
-          + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-          + " ig WHERE ig.group_name = sg.group_name AND ig.deleted_at = 0)"
+          + " sg WHERE sg.group_name = #{groupName} AND sg.deleted_at = 0"
           + ") identity"
           + " LEFT JOIN ("
           + scimDirectoryMemberAggregation()
@@ -355,12 +357,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
           + " as originCode, jg.group_id as jitGroupId, jg.audit_info as auditInfo"
           + " FROM "
           + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
-          + " jg WHERE jg.group_name = #{groupName} AND jg.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
-          + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-          + " ig WHERE ig.group_name = jg.group_name AND ig.deleted_at = 0)"
-          + " AND NOT EXISTS (SELECT 1 FROM "
-          + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
-          + " sg WHERE sg.group_name = jg.group_name AND sg.deleted_at = 0)"
+          + " jg WHERE jg.group_name = #{groupName} AND jg.deleted_at = 0"
           + ") identity"
           + " LEFT JOIN ("
           + jitDirectoryMemberAggregation()
@@ -374,9 +371,10 @@ public class DatastratoGroupMetaBaseSQLProvider {
    * Lists Directory Groups for Configure → Directory → User → Groups.
    *
    * <p>{@code originCode} must be Local, Provisioned, or JIT. Local resolves membership from {@code
-   * idp_user_group_rel}; Provisioned from {@code scim_user_group_rel} (user not in IdP); JIT from
-   * {@code jit_user_group_rel} (user not in IdP or SCIM). Each row includes identity-store {@code
-   * memberCount}. Returns an empty list when the user exists but has no groups.
+   * idp_user_group_rel}; Provisioned from {@code scim_user_group_rel}; JIT from {@code
+   * jit_user_group_rel}. Membership is scoped to the user's origin store only (no cross-store
+   * exclusion). Each row includes identity-store {@code memberCount}. Returns an empty list when
+   * the user exists but has no groups.
    *
    * @param userName Username.
    * @param originCode Directory origin code.
@@ -412,9 +410,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
           + " sg ON sg.group_id = sur.group_id AND sg.deleted_at = 0 LEFT JOIN ("
           + scimDirectoryMemberAggregation()
           + ") scimMembers ON scimMembers.groupId = sg.group_id WHERE su.user_name = #{userName} AND"
-          + " su.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
-          + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-          + " iu WHERE iu.user_name = su.user_name AND iu.deleted_at = 0) ORDER BY sg.group_name";
+          + " su.deleted_at = 0 ORDER BY sg.group_name";
     }
     if (originCode == IdentitySource.ORIGIN_CODE_JIT) {
       return "SELECT jg.group_name as groupName, "
@@ -429,12 +425,7 @@ public class DatastratoGroupMetaBaseSQLProvider {
           + " jg ON jg.group_id = jugr.group_id AND jg.deleted_at = 0 LEFT JOIN ("
           + jitDirectoryMemberAggregation()
           + ") jitMembers ON jitMembers.groupId = jg.group_id WHERE ju.user_name = #{userName} AND"
-          + " ju.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
-          + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-          + " iu WHERE iu.user_name = ju.user_name AND iu.deleted_at = 0)"
-          + " AND NOT EXISTS (SELECT 1 FROM "
-          + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
-          + " su WHERE su.user_name = ju.user_name AND su.deleted_at = 0) ORDER BY jg.group_name";
+          + " ju.deleted_at = 0 ORDER BY jg.group_name";
     }
     throw new IllegalArgumentException(
         "Directory user groups originCode must be Local, Provisioned, or JIT, got: " + originCode);

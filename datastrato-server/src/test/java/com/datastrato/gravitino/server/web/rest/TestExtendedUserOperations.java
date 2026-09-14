@@ -38,6 +38,7 @@ import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.connector.PropertiesMetadata;
 import org.apache.gravitino.dto.responses.ErrorConstants;
@@ -70,12 +71,15 @@ public class TestExtendedUserOperations extends JerseyTest {
   private static final EntityStore entityStore = mock(EntityStore.class);
   private static final GravitinoAuthorizer gravitinoAuthorizer = mock(GravitinoAuthorizer.class);
   private static GravitinoAuthorizer previousAuthorizer;
+  private static final ThreadLocal<String> authorizationHeader = new ThreadLocal<>();
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
     @Override
     public HttpServletRequest get() {
       HttpServletRequest request = mock(HttpServletRequest.class);
       when(request.getRemoteUser()).thenReturn(null);
+      when(request.getHeader(AuthConstants.HTTP_HEADER_AUTHORIZATION))
+          .thenAnswer(invocation -> authorizationHeader.get());
       return request;
     }
   }
@@ -109,6 +113,7 @@ public class TestExtendedUserOperations extends JerseyTest {
   public void resetMocks() throws IOException {
     reset(accessControlDispatcher, entityStore, gravitinoAuthorizer);
     when(gravitinoAuthorizer.isServiceAdmin()).thenReturn(true);
+    authorizationHeader.remove();
     mockInUseMetalake();
   }
 

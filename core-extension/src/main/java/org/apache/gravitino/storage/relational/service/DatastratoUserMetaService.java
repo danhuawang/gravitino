@@ -17,8 +17,10 @@ import com.datastrato.gravitino.authorization.po.UserWithGroupsPO;
 import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -48,6 +50,21 @@ import org.apache.gravitino.storage.relational.utils.SessionUtils;
  */
 public class DatastratoUserMetaService {
   private static final DatastratoUserMetaService INSTANCE = new DatastratoUserMetaService();
+
+  private static final Comparator<IdentitySource> ORIGIN_DISPLAY_ORDER =
+      Comparator.comparingInt(
+          origin -> {
+            switch (origin) {
+              case LOCAL:
+                return 0;
+              case PROVISIONED:
+                return 1;
+              case JIT:
+                return 2;
+              default:
+                return 3;
+            }
+          });
 
   private DatastratoUserMetaService() {}
 
@@ -112,10 +129,11 @@ public class DatastratoUserMetaService {
   /**
    * Lists Directory Users for Configure → Directory → Users.
    *
-   * <p>Local users come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}.
-   * Metalake-only ({@code JIT}) names are not included.
+   * <p>Local from {@code idp_user_meta}, Provisioned from {@code scim_user_meta}, and JIT from
+   * {@code jit_user_meta}, without merging. The same username may appear more than once when it
+   * exists in multiple stores.
    *
-   * @return Directory users ordered by username.
+   * @return Directory users ordered by username, then origin.
    */
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
@@ -165,6 +183,55 @@ public class DatastratoUserMetaService {
           "Directory user does not exist: %s (%s)", userName, origin.value());
     }
     return row;
+  }
+
+  /**
+   * Lists every identity-store origin present for a username.
+   *
+   * <p>Returns {@link IdentitySource#LOCAL}, {@link IdentitySource#PROVISIONED}, and/or {@link
+   * IdentitySource#JIT} when the corresponding {@code idp_user_meta} / {@code scim_user_meta} /
+   * {@code jit_user_meta} row is active. Order is Local, Provisioned, JIT.
+   *
+   * @param userName Username (current authenticated principal for auth/me).
+   * @return Origins present for the user; empty when none.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listUserOrigins")
+  public List<IdentitySource> listUserOrigins(String userName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(userName), "userName cannot be blank");
+    List<Integer> originCodes =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class, mapper -> mapper.selectUserOriginCodes(userName));
+    if (originCodes == null || originCodes.isEmpty()) {
+      return ImmutableList.of();
+    }
+    return originCodes.stream()
+        .map(IdentitySource::fromOriginCodeOrNull)
+        .filter(origin -> origin != null)
+        .distinct()
+        .sorted(ORIGIN_DISPLAY_ORDER)
+        .collect(ImmutableList.toImmutableList());
+  }
+
+  /**
+   * Lists metalake names for which the username is the USER owner.
+   *
+   * @param userName Username (current authenticated principal for auth/me).
+   * @return Owned metalake names ordered by name; empty when none.
+   */
+  @Monitored(
+      metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
+      baseMetricName = "listOwnedMetalakes")
+  public List<String> listOwnedMetalakes(String userName) {
+    Preconditions.checkArgument(StringUtils.isNotBlank(userName), "userName cannot be blank");
+    List<String> names =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class, mapper -> mapper.listOwnedMetalakeNames(userName));
+    if (names == null || names.isEmpty()) {
+      return ImmutableList.of();
+    }
+    return ImmutableList.copyOf(names);
   }
 
   /**

@@ -11,11 +11,12 @@ import javax.annotation.Nullable;
  * Source of a metalake user or group identity for the security UI. Serialized as JSON {@code
  * origin}.
  *
- * <p>For Directory Users/Groups lists: {@code Local} from {@code idp_*}, {@code Provisioned} from
- * {@code scim_*} (excluding IdP names), {@code JIT} from {@code jit_*} (excluding IdP and SCIM
- * names). For metalake security Users/Groups lists, origin priority is {@code scim_*} →
- * Provisioned, else {@code idp_*} → Local, else {@code jit_*} → JIT; otherwise {@code origin} is
- * omitted ({@code null}).
+ * <p>For Directory Users/Groups lists: each active row from {@code idp_*}, {@code scim_*}, and
+ * {@code jit_*} is listed without merging — {@code Local}, {@code Provisioned}, and {@code JIT}
+ * respectively. The same name may appear more than once when it exists in multiple stores. For
+ * metalake security Users/Groups lists, origin priority is {@code scim_*} → Provisioned, else
+ * {@code idp_*} → Local, else {@code jit_*} → JIT; otherwise {@code origin} is omitted ({@code
+ * null}).
  *
  * <p>{@link #JIT} is also used for write-time JWT discovery; list SQL maps JIT from {@code
  * jit_user_meta} / {@code jit_group_meta}, not from mere absence in IdP/SCIM.
