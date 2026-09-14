@@ -57,6 +57,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
   private static volatile CredentialProvider testProvider;
   private static volatile String testCredentialType;
   private static volatile Map<String, String> testProperties;
+  private static volatile BaseCatalog<?> testLiveCatalog;
 
   private final ConnectionTestStore connectionTestStore = mock(ConnectionTestStore.class);
   private final CatalogDispatcher catalogDispatcher = mock(CatalogDispatcher.class);
@@ -120,7 +121,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
     doAnswer(
             invocation -> {
               ThrowableFunction<BaseCatalog, Object> operation = invocation.getArgument(1);
-              return operation.apply(null);
+              return operation.apply(testLiveCatalog);
             })
         .when(catalogManager)
         .doWithCatalog(any(), any());
@@ -141,7 +142,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
     return resourceConfig;
   }
 
-  private Catalog catalog(String name, Map<String, String> properties) {
+  private BaseCatalog<?> catalog(String name, Map<String, String> properties) {
     BaseCatalog<?> catalog = mock(BaseCatalog.class);
     CatalogEntity entity = mock(CatalogEntity.class);
     when(catalog.name()).thenReturn(name);
@@ -165,19 +166,31 @@ public class TestCredentialProviderOperations extends JerseyTest {
   }
 
   private void loadCatalog(Catalog loadedCatalog) {
+    if (loadedCatalog instanceof BaseCatalog) {
+      testLiveCatalog = (BaseCatalog<?>) loadedCatalog;
+    } else {
+      testLiveCatalog = catalog(loadedCatalog.name(), loadedCatalog.properties());
+    }
+    when(catalogDispatcher.loadCatalog(any())).thenReturn(loadedCatalog);
+  }
+
+  private void loadCatalog(Catalog loadedCatalog, BaseCatalog<?> liveCatalog) {
+    testLiveCatalog = liveCatalog;
     when(catalogDispatcher.loadCatalog(any())).thenReturn(loadedCatalog);
   }
 
   /** Verifies a successful configured-provider probe is persisted and returns HTTP 200. */
   @Test
   public void testExistingCredentialProviderPersistsPassedResult() throws IOException {
-    Map<String, String> properties =
-        Map.of("key", "saved-value", "credential-providers", "test-provider");
-    loadCatalog(genericCatalog("catalog", properties));
+    Map<String, String> rawProperties =
+        Map.of("key", "raw-value", "credential-providers", "test-provider");
+    Map<String, String> maskedProperties =
+        Map.of("key", "******", "credential-providers", "test-provider");
+    loadCatalog(genericCatalog("catalog", maskedProperties), catalog("catalog", rawProperties));
     when(connectionTestStore.recordTestResult(
             eq(NameIdentifier.of("metalake", "catalog")),
             eq("fileset"),
-            eq(properties),
+            eq(maskedProperties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             anyLong(),
@@ -196,8 +209,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
             .post(Entity.json("{\"path\":\"s3://bucket/path\"}"));
 
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-    Assertions.assertEquals(
-        Map.of("key", "saved-value", "credential-providers", "test-provider"), testProperties);
+    Assertions.assertEquals(rawProperties, testProperties);
     Assertions.assertEquals("test-provider", testCredentialType);
     ArgumentCaptor<CredentialContext> contextCaptor =
         ArgumentCaptor.forClass(CredentialContext.class);
@@ -211,7 +223,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
         .recordTestResult(
             eq(NameIdentifier.of("metalake", "catalog")),
             eq("fileset"),
-            eq(properties),
+            eq(maskedProperties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             eq(123456L),

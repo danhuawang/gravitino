@@ -147,17 +147,11 @@ public class CredentialProviderOperations {
             NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, connection);
             Catalog catalog = catalogDispatcher.loadCatalog(identifier);
             boolean hasProposedUpdates = !request.getUpdates().isEmpty();
-            Map<String, String> properties =
-                applyProposedUpdates(credentialProperties(catalog), request.getUpdates());
-            if (!isCredentialProviderConfigured(credentialType, properties)) {
-              return Utils.illegalArguments(
-                  String.format(
-                      "Credential provider %s is not configured on Catalog %s",
-                      credentialType, identifier));
-            }
-
+            boolean configured;
             try {
-              testCredentialProvider(identifier, credentialType, request.getPath(), properties);
+              configured =
+                  testCredentialProvider(
+                      identifier, credentialType, request.getPath(), request.getUpdates());
             } catch (Exception e) {
               if (!hasProposedUpdates) {
                 connectionTestStore.recordTestResult(
@@ -170,6 +164,12 @@ public class CredentialProviderOperations {
                     SAFE_CREDENTIAL_FAILURE_MESSAGE);
               }
               throw e;
+            }
+            if (!configured) {
+              return Utils.illegalArguments(
+                  String.format(
+                      "Credential provider %s is not configured on Catalog %s",
+                      credentialType, identifier));
             }
 
             if (!hasProposedUpdates) {
@@ -206,14 +206,19 @@ public class CredentialProviderOperations {
     }
   }
 
-  private void testCredentialProvider(
+  private boolean testCredentialProvider(
       NameIdentifier identifier,
       String credentialType,
       String path,
-      Map<String, String> properties) {
-    catalogManager.doWithCatalog(
+      List<CatalogUpdateRequest> updates) {
+    return catalogManager.doWithCatalog(
         identifier,
         catalog -> {
+          Map<String, String> properties =
+              applyProposedUpdates(credentialProperties(catalog), updates);
+          if (!isCredentialProviderConfigured(credentialType, properties)) {
+            return false;
+          }
           try (CredentialProvider provider = createCredentialProvider(credentialType, properties)) {
             if (!provider
                 .getCredentialOptional(
@@ -226,7 +231,7 @@ public class CredentialProviderOperations {
                   String.format(
                       "Credential provider %s did not generate a credential", credentialType));
             }
-            return null;
+            return true;
           }
         });
   }
