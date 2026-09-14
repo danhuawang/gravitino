@@ -199,12 +199,12 @@ public class ConnectionOperations {
       NameIdentifier identifier, Catalog catalog, @Nullable String configuredProviders) {
     return ConnectionConverter.toConnectionOverviewDTO(
         catalog,
-        resolveTestStatus(identifier, catalog.provider()),
+        resolveTestStatus(identifier, catalog),
         resolveCredentialProviderStatuses(identifier, configuredProviders));
   }
 
-  private ConnectionTestStatusDTO resolveTestStatus(NameIdentifier identifier, String provider) {
-    if (!CONNECTION_TEST_SUPPORT_RESOLVER.supports(provider)) {
+  private ConnectionTestStatusDTO resolveTestStatus(NameIdentifier identifier, Catalog catalog) {
+    if (!CONNECTION_TEST_SUPPORT_RESOLVER.supports(catalog.provider(), catalog.properties())) {
       return new ConnectionTestStatusDTO(false, null, null, null);
     }
 

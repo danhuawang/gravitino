@@ -107,10 +107,17 @@ class TestConnectionPropertyClassifier {
     assertTrue(resolver.supports("lakehouse-hudi"));
     assertTrue(resolver.supports("fileset"));
     assertTrue(resolver.supports("hadoop"));
+    assertTrue(resolver.supports("fileset", null));
+    assertTrue(resolver.supports("fileset", ImmutableMap.of()));
+    assertTrue(resolver.supports("fileset", ImmutableMap.of("disable-filesystem-ops", "false")));
+    assertFalse(resolver.supports("FILESET", ImmutableMap.of("disable-filesystem-ops", "true")));
+    assertFalse(resolver.supports("hadoop", ImmutableMap.of("disable-filesystem-ops", "TRUE")));
+    assertTrue(resolver.supports("hive", ImmutableMap.of("disable-filesystem-ops", "true")));
     assertFalse(resolver.supports("model"));
     assertFalse(resolver.supports("lakehouse-generic"));
     assertFalse(resolver.supports("unknown"));
     assertFalse(resolver.supports(null));
+    assertFalse(resolver.supports(null, ImmutableMap.of()));
   }
 
   private void assertConnectionKey(String provider, String key) {

@@ -712,6 +712,57 @@ public class TestConnectionOperations extends JerseyTest {
   }
 
   @Test
+  void testFilesetWithFilesystemOperationsDisabledIsUnsupported() throws Exception {
+    String metalake = "fileset_metalake";
+    String catalogName = "metadata_only_fileset";
+    NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, catalogName);
+    CatalogDTO catalog =
+        CatalogDTO.builder()
+            .withName(catalogName)
+            .withType(Catalog.Type.FILESET)
+            .withProvider("fileset")
+            .withProperties(
+                ImmutableMap.of(
+                    "location", "file:///tmp/fileset", "disable-filesystem-ops", "true"))
+            .withAudit(AuditDTO.builder().build())
+            .build();
+    when(catalogDispatcher.listCatalogsInfo(Namespace.of(metalake)))
+        .thenReturn(new Catalog[] {catalog});
+    when(catalogDispatcher.loadCatalog(identifier)).thenReturn(catalog);
+
+    try (Response response =
+        target("/web/metalakes/" + metalake + "/connections")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get()) {
+      assertEquals(200, response.getStatus());
+      ConnectionTestStatusDTO status =
+          response.readEntity(ConnectionListResponse.class).getConnections()[0].getTestStatus();
+      assertFalse(status.isSupported());
+      assertNull(status.getStatus());
+      assertNull(status.getLastTestedAt());
+      assertNull(status.getError());
+    }
+
+    try (Response response =
+        target("/web/metalakes/" + metalake + "/connections/" + catalogName)
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get()) {
+      assertEquals(200, response.getStatus());
+      ConnectionTestStatusDTO status =
+          response.readEntity(ConnectionOverviewResponse.class).getConnection().getTestStatus();
+      assertFalse(status.isSupported());
+      assertNull(status.getStatus());
+      assertNull(status.getLastTestedAt());
+      assertNull(status.getError());
+    }
+
+    Mockito.verify(connectionTestStore, Mockito.never())
+        .getValidTestResult(identifier, ConnectionTestType.CATALOG);
+  }
+
+  @Test
   void testLoadConnectionNotFoundAndListJsonRegression() {
     String metalake = "missing_metalake";
     String catalogName = "missing_catalog";
