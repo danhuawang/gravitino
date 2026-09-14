@@ -58,8 +58,9 @@ import org.apache.gravitino.model.ModelChange;
 import org.apache.gravitino.model.ModelVersion;
 import org.apache.gravitino.model.ModelVersionChange;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.secret.SupportsSecrets;
 
-class GenericModelCatalog extends BaseSchemaCatalog implements ModelCatalog {
+class GenericModelCatalog extends BaseSchemaCatalog implements ModelCatalog, SupportsSecrets {
 
   GenericModelCatalog(
       Namespace namespace,
@@ -76,6 +77,16 @@ class GenericModelCatalog extends BaseSchemaCatalog implements ModelCatalog {
   @Override
   public ModelCatalog asModelCatalog() {
     return this;
+  }
+
+  @Override
+  public SupportsSecrets supportsSecrets() throws UnsupportedOperationException {
+    return this;
+  }
+
+  @Override
+  public Map<String, String> getSecrets() {
+    return objectSecretOperations.getSecrets();
   }
 
   @Override

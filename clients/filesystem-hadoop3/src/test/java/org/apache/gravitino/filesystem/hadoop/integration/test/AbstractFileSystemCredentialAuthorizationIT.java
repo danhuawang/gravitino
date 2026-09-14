@@ -124,7 +124,9 @@ abstract class AbstractFileSystemCredentialAuthorizationIT extends BaseIT {
 
     List<SecurableObject> securableObjects = new ArrayList<>();
     SecurableObject catalogObject =
-        SecurableObjects.ofCatalog(catalogName, ImmutableList.of(Privileges.UseCatalog.allow()));
+        SecurableObjects.ofCatalog(
+            catalogName,
+            ImmutableList.of(Privileges.UseCatalog.allow(), Privileges.UseSecret.allow()));
     securableObjects.add(catalogObject);
     SecurableObject schemaObject =
         SecurableObjects.ofSchema(

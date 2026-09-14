@@ -47,6 +47,7 @@ import org.apache.gravitino.Catalog;
 import org.apache.gravitino.client.GravitinoAdminClient;
 import org.apache.gravitino.client.GravitinoMetalake;
 import org.apache.gravitino.exceptions.RESTException;
+import org.apache.gravitino.secret.SupportsSecrets;
 import org.apache.gravitino.trino.connector.GravitinoConfig;
 import org.apache.gravitino.trino.connector.GravitinoErrorCode;
 import org.apache.gravitino.trino.connector.metadata.GravitinoCatalog;
@@ -1336,12 +1337,45 @@ public class TestCatalogConnectorManager {
     return states.get(0);
   }
 
+  @Test
+  public void testPropsWithSecrets() {
+    Catalog catalog = mock(Catalog.class);
+    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    when(catalog.properties()).thenReturn(Map.of("visible", "v1", "shared", "from-props"));
+    when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
+    when(supportsSecrets.getSecrets())
+        .thenReturn(Map.of("jdbc-password", "secret", "shared", "from-secret"));
+
+    Map<String, String> merged = CatalogConnectorManager.propsWithSecrets(catalog);
+
+    assertEquals("v1", merged.get("visible"));
+    assertEquals("secret", merged.get("jdbc-password"));
+    assertEquals("from-secret", merged.get("shared"));
+  }
+
+  @Test
+  public void testPropsWithSecretsNullProps() {
+    Catalog catalog = mock(Catalog.class);
+    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    when(catalog.properties()).thenReturn(null);
+    when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of("jdbc-password", "secret"));
+
+    Map<String, String> merged = CatalogConnectorManager.propsWithSecrets(catalog);
+
+    assertEquals("secret", merged.get("jdbc-password"));
+    assertEquals(1, merged.size());
+  }
+
   private static Catalog mockCatalog(String name, String provider, Catalog.Type type) {
     Catalog catalog = mock(Catalog.class);
     when(catalog.name()).thenReturn(name);
     when(catalog.provider()).thenReturn(provider);
     when(catalog.type()).thenReturn(type);
     when(catalog.properties()).thenReturn(ImmutableMap.of());
+    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of());
+    when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
     Audit audit = mock(Audit.class);
     when(audit.createTime()).thenReturn(Instant.now());
     when(audit.lastModifiedTime()).thenReturn(null);
