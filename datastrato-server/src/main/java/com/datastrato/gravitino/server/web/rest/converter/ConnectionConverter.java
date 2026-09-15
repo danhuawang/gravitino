@@ -43,6 +43,23 @@ public class ConnectionConverter {
   private static final String JDBC_PREFIX = "jdbc:";
   private static final String BIGQUERY_JDBC_PREFIX = "jdbc:bigquery://";
   private static final String ORACLE_THIN_JDBC_PREFIX = "jdbc:oracle:thin:";
+  private static final Set<String> JDBC_DISPLAY_PROPERTIES =
+      Set.of(
+          "databasename",
+          "database",
+          "trustservercertificate",
+          "encrypt",
+          "ssl",
+          "sslmode",
+          "currentschema",
+          "servertimezone",
+          "characterencoding",
+          "useunicode",
+          "usessl",
+          "allowpublickeyretrieval",
+          "connecttimeout",
+          "sockettimeout");
+
   private static final Pattern ORACLE_TNS_DESCRIPTION_PATTERN =
       Pattern.compile("^\\(\\s*DESCRIPTION\\s*=", Pattern.CASE_INSENSITIVE);
   private static final Pattern ORACLE_TNS_ADDRESS_PATTERN =
@@ -463,13 +480,69 @@ public class ConnectionConverter {
       return DEFAULT_VALUE;
     }
 
+    String endpoint;
     if (isBigQueryJdbc(provider, driver, lowerUrl)) {
-      return sanitizeBigQueryJdbcEndpoint(trimmedUrl);
+      endpoint = sanitizeBigQueryJdbcEndpoint(trimmedUrl);
+    } else if (isOracleJdbc(provider, driver, lowerUrl)) {
+      endpoint = sanitizeOracleJdbcEndpoint(trimmedUrl);
+    } else {
+      endpoint = sanitizeHierarchicalJdbcEndpoint(trimmedUrl);
     }
-    if (isOracleJdbc(provider, driver, lowerUrl)) {
-      return sanitizeOracleJdbcEndpoint(trimmedUrl);
+    return DEFAULT_VALUE.equals(endpoint) ? endpoint : endpoint + jdbcDisplayProperties(trimmedUrl);
+  }
+
+  // Only publish known connection settings. Unknown driver-specific properties may contain secrets.
+  private static String jdbcDisplayProperties(String jdbcUrl) {
+    int start = stripJdbcProperties(jdbcUrl).length();
+    if (start == jdbcUrl.length() || jdbcUrl.charAt(start) == '#') {
+      return "";
     }
-    return sanitizeHierarchicalJdbcEndpoint(trimmedUrl);
+    boolean query = jdbcUrl.charAt(start) == '?';
+    boolean hasQuery = false;
+    boolean braces = false;
+    StringBuilder result = new StringBuilder();
+    int tokenStart = start + 1;
+    int valueStart = -1;
+    for (int i = tokenStart; i <= jdbcUrl.length(); i++) {
+      char c = i == jdbcUrl.length() ? '\0' : jdbcUrl.charAt(i);
+      if (!query && c == '=' && valueStart < 0) {
+        valueStart = i + 1;
+      } else if (!query
+          && c == '{'
+          && valueStart >= 0
+          && jdbcUrl.substring(valueStart, i).trim().isEmpty()) {
+        braces = true;
+      } else if (!query && c == '}' && braces) {
+        if (i + 1 < jdbcUrl.length() && jdbcUrl.charAt(i + 1) == '}') {
+          i++;
+        } else {
+          braces = false;
+        }
+      }
+      if (braces) {
+        if (c == '\0') {
+          return "";
+        }
+        continue;
+      }
+      if (c == '\0' || (query && c == '#') || (query ? c == '&' : c == ';')) {
+        String property = jdbcUrl.substring(tokenStart, i);
+        int equals = property.indexOf('=');
+        if (equals > 0
+            && JDBC_DISPLAY_PROPERTIES.contains(
+                property.substring(0, equals).toLowerCase(Locale.ROOT))
+            && property.substring(equals + 1).matches("[\\p{L}\\p{N}_.:/+% -]*")) {
+          result.append(query ? (hasQuery ? '&' : '?') : ';').append(property);
+          hasQuery |= query;
+        }
+        if (c == '\0' || (query && c == '#')) {
+          break;
+        }
+        tokenStart = i + 1;
+        valueStart = -1;
+      }
+    }
+    return result.toString();
   }
 
   private static boolean isBigQueryJdbc(String provider, String driver, String lowerUrl) {
@@ -667,7 +740,16 @@ public class ConnectionConverter {
   }
 
   private static boolean isSafeOracleTarget(String endpoint) {
-    return StringUtils.isNotBlank(endpoint) && hasOnlyOracleTargetCharacters(endpoint);
+    if (StringUtils.isBlank(endpoint)) {
+      return false;
+    }
+    int slash = endpoint.indexOf('/');
+    if (slash < 0) {
+      return hasOnlyOracleTargetCharacters(endpoint);
+    }
+    return slash > 0
+        && hasOnlyOracleTargetCharacters(endpoint.substring(0, slash))
+        && isSafeOracleConnectIdentifier(endpoint.substring(slash + 1));
   }
 
   private static boolean hasOnlyOracleTargetCharacters(String value) {
@@ -873,6 +955,9 @@ public class ConnectionConverter {
 
   private static String normalizeEndpoint(String endpoint) {
     String trimmedEndpoint = endpoint.trim();
+    if (startsWithIgnoreCase(trimmedEndpoint, JDBC_PREFIX)) {
+      trimmedEndpoint = stripJdbcProperties(trimmedEndpoint);
+    }
     if (startsWithIgnoreCase(trimmedEndpoint, BIGQUERY_JDBC_PREFIX + "http://")
         || startsWithIgnoreCase(trimmedEndpoint, BIGQUERY_JDBC_PREFIX + "https://")) {
       String nestedEndpoint = trimmedEndpoint.substring(BIGQUERY_JDBC_PREFIX.length());

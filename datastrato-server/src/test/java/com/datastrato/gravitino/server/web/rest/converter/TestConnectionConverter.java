@@ -23,6 +23,102 @@ import org.junit.jupiter.api.Test;
 public class TestConnectionConverter {
 
   @Test
+  void testSemicolonPasswordIsNotParsedAsQueryParameters() {
+    assertEquals(
+        "jdbc:sqlserver://db:1433;encrypt=true",
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-sqlserver",
+            ImmutableMap.of(
+                "jdbc-url",
+                "jdbc:sqlserver://db:1433;password=secret?databaseName=hidden;encrypt=true")));
+  }
+
+  @Test
+  void testJdbcDisplaySettingsDoNotChangeSystemCount() {
+    ConnectionDTO first =
+        new ConnectionDTO(
+            "a",
+            "SQL Server",
+            "jdbc:sqlserver://db:1433;databaseName=demo;encrypt=true",
+            "--",
+            null);
+    ConnectionDTO second =
+        new ConnectionDTO(
+            "b",
+            "SQL Server",
+            "jdbc:sqlserver://db:1433;databaseName=other;encrypt=false",
+            "--",
+            null);
+    assertEquals(1, ConnectionConverter.calculateSystemCount(new ConnectionDTO[] {first, second}));
+  }
+
+  @Test
+  void testOracleServiceNameEndpoint() {
+    String url = "jdbc:oracle:thin:@oracle.sources.svc.cluster.local:1521/FREEPDB1";
+    assertEquals(
+        url, ConnectionConverter.resolveEndpoint("jdbc-oracle", ImmutableMap.of("jdbc-url", url)));
+    assertEquals(
+        url,
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-oracle",
+            ImmutableMap.of(
+                "jdbc-url",
+                "jdbc:oracle:thin:user/secret@oracle.sources.svc.cluster.local:1521/FREEPDB1")));
+  }
+
+  @Test
+  void testJdbcDisplayParameters() {
+    String sqlServer =
+        "jdbc:sqlserver://sqlserver.sources.svc.cluster.local:1433"
+            + ";databaseName=demo;trustServerCertificate=true";
+    assertEquals(
+        sqlServer,
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-sqlserver", ImmutableMap.of("jdbc-url", sqlServer)));
+    assertEquals(
+        "jdbc:postgresql://db:5432/demo?sslmode=require&currentSchema=sales",
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-postgresql",
+            ImmutableMap.of(
+                "jdbc-url",
+                "jdbc:postgresql://user:secret@db:5432/demo?sslmode=require&password=secret&currentSchema=sales&accessToken=token")));
+    assertEquals(
+        "jdbc:sqlserver://db:1433;databaseName=demo;encrypt=true",
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-sqlserver",
+            ImmutableMap.of(
+                "jdbc-url",
+                "jdbc:sqlserver://db:1433;password={secret;databaseName=hidden}}value};databaseName=demo;encrypt=true")));
+    assertEquals(
+        "jdbc:sqlserver://db:1433;databaseName=demo;trustServerCertificate=true",
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-sqlserver",
+            ImmutableMap.of(
+                "jdbc-url",
+                "jdbc:sqlserver://db:1433;user=app;password=Pa#ss2026;databaseName=demo;trustServerCertificate=true")));
+    assertEquals(
+        "jdbc:sqlserver://db:1433;databaseName=demo;encrypt=true",
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-sqlserver",
+            ImmutableMap.of(
+                "jdbc-url",
+                "jdbc:sqlserver://db:1433;applicationName=etl{nightly;databaseName=demo;encrypt=true")));
+    assertEquals(
+        "jdbc:sqlserver://db:1433",
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-sqlserver",
+            ImmutableMap.of(
+                "jdbc-url", "jdbc:sqlserver://db:1433;password={secret;databaseName=hidden")));
+    assertEquals(
+        "jdbc:mysql://db/demo?useSSL=true",
+        ConnectionConverter.resolveEndpoint(
+            "jdbc-mysql",
+            ImmutableMap.of(
+                "jdbc-url",
+                "jdbc:mysql://db/demo?password=secret;databaseName=hidden&useSSL=true#secret")));
+  }
+
+  @Test
   void testToConnectionOverviewDTOUsesWhitelistedCatalogFields() {
     Map<String, String> properties = new LinkedHashMap<>();
     properties.put(
@@ -254,7 +350,7 @@ public class TestConnectionConverter {
                 "jdbc:mysql://app-user:ui-secret@mysql.example.com:3306/SalesDb"
                     + "?user=query-user&password=query-secret&accessToken=query-token")));
     assertEquals(
-        "jdbc:sqlserver://sqlserver.example.com:1433",
+        "jdbc:sqlserver://sqlserver.example.com:1433;databaseName=SalesDb",
         ConnectionConverter.resolveEndpoint(
             "jdbc-sqlserver",
             ImmutableMap.of(

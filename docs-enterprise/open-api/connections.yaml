@@ -168,7 +168,12 @@ components:
           $ref: "../../docs/open-api/openapi.yaml#/components/schemas/Audit"
         endpoint:
           type: string
-          description: Safe Connect display endpoint, or -- when it cannot be resolved
+          description: >-
+            Safe Connect display endpoint, or -- when it cannot be resolved.
+            JDBC endpoints retain allowlisted database and transport settings such as
+            databaseName, trustServerCertificate, encrypt, and sslmode. Credentials,
+            unknown properties, and fragments are omitted. This is a display value,
+            not a complete JDBC URL intended for establishing a connection.
         testStatus:
           $ref: "#/components/schemas/ConnectionTestStatus"
 

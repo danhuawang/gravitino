@@ -23,6 +23,7 @@ import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
 import com.datastrato.gravitino.dto.responses.ConnectionListResponse;
 import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
@@ -809,7 +810,7 @@ public class TestConnectionOperations extends JerseyTest {
                 ImmutableMap.of(
                     "jdbc-url",
                     "jdbc:postgresql://hidden-user:hidden-password@db.example.com:5432/reporting"
-                        + "?password=hidden-query-secret",
+                        + "?password=hidden-query-secret&sslmode=require",
                     Catalog.CLOUD_NAME,
                     "aws",
                     Catalog.CLOUD_REGION_CODE,
@@ -878,7 +879,7 @@ public class TestConnectionOperations extends JerseyTest {
               "lastModifier": "bob",
               "lastModifiedTime": "2026-08-02T04:05:06Z"
             },
-            "endpoint": "jdbc:postgresql://db.example.com:5432/reporting",
+            "endpoint": "jdbc:postgresql://db.example.com:5432/reporting?sslmode=require",
             "testStatus": {
               "supported": true,
               "status": "FAILED",
@@ -1026,6 +1027,45 @@ public class TestConnectionOperations extends JerseyTest {
         """);
     Mockito.verifyNoInteractions(schemaDispatcher);
     Mockito.verify(catalogDispatcher, Mockito.never()).testConnection(any(NameIdentifier.class));
+  }
+
+  @Test
+  void testJdbcEndpointsInListAndDetailJson() throws Exception {
+    String[][] cases = {
+      {"jdbc-oracle", "jdbc:oracle:thin:@oracle.sources.svc.cluster.local:1521/FREEPDB1"},
+      {
+        "jdbc-sqlserver",
+        "jdbc:sqlserver://sqlserver.sources.svc.cluster.local:1433;databaseName=demo;trustServerCertificate=true"
+      }
+    };
+    for (String[] example : cases) {
+      CatalogDTO catalog =
+          CatalogDTO.builder()
+              .withName("jdbc_demo")
+              .withType(Catalog.Type.RELATIONAL)
+              .withProvider(example[0])
+              .withProperties(ImmutableMap.of("jdbc-url", example[1] + ";password=hidden-secret"))
+              .withAudit(AuditDTO.builder().build())
+              .build();
+      when(catalogDispatcher.listCatalogsInfo(Namespace.of("contract")))
+          .thenReturn(new Catalog[] {catalog});
+      when(catalogDispatcher.loadCatalog(NameIdentifier.of("contract", "jdbc_demo")))
+          .thenReturn(catalog);
+      for (boolean detail : new boolean[] {false, true}) {
+        try (Response response =
+            target("/web/metalakes/contract/connections" + (detail ? "/jdbc_demo" : ""))
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .accept("application/vnd.gravitino.v1+json")
+                .get()) {
+          assertEquals(200, response.getStatus());
+          String body = response.readEntity(String.class);
+          JsonNode root = new ObjectMapper().readTree(body);
+          JsonNode connection = detail ? root.get("connection") : root.get("connections").get(0);
+          assertEquals(example[1], connection.get("endpoint").asText());
+          assertFalse(body.contains("hidden-secret"));
+        }
+      }
+    }
   }
 
   @SuppressWarnings("unchecked")
