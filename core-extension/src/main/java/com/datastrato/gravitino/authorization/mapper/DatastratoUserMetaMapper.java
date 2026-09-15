@@ -87,6 +87,17 @@ public interface DatastratoUserMetaMapper {
   List<String> selectJitUserNamesByNames(@Param("userNames") List<String> userNames);
 
   /**
+   * Returns usernames that have an active row in any identity store.
+   *
+   * @param userNames Usernames to check.
+   * @return Usernames present in SCIM, Local IdP, or JIT identity storage.
+   */
+  @SelectProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "selectIdentityUserNamesByNames")
+  List<String> selectIdentityUserNamesByNames(@Param("userNames") List<String> userNames);
+
+  /**
    * Lists identity-store origin codes present for a username (Local / Provisioned / JIT).
    *
    * @param userName Username.

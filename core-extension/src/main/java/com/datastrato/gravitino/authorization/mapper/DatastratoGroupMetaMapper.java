@@ -162,6 +162,17 @@ public interface DatastratoGroupMetaMapper {
   List<String> selectIdpGroupNamesByNames(@Param("groupNames") List<String> groupNames);
 
   /**
+   * Returns group names that have an active row in any identity store.
+   *
+   * @param groupNames Group names to check.
+   * @return Group names present in SCIM, Local IdP, or JIT identity storage.
+   */
+  @SelectProvider(
+      type = DatastratoGroupMetaSQLProviderFactory.class,
+      method = "selectIdentityGroupNamesByNames")
+  List<String> selectIdentityGroupNamesByNames(@Param("groupNames") List<String> groupNames);
+
+  /**
    * Returns active IdP user ids for the given names.
    *
    * @param userNames Usernames to resolve.

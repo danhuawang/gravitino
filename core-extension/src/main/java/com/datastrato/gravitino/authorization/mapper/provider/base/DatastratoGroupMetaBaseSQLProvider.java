@@ -201,6 +201,31 @@ public class DatastratoGroupMetaBaseSQLProvider {
   }
 
   /**
+   * Returns requested group names that have an active row in any identity store.
+   *
+   * @param groupNames Group names to check.
+   * @return MyBatis script SQL.
+   */
+  public String selectIdentityGroupNamesByNames(@Param("groupNames") List<String> groupNames) {
+    return "<script>"
+        + "SELECT group_name FROM ("
+        + " SELECT group_name FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + " UNION"
+        + " SELECT group_name FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + " UNION"
+        + " SELECT group_name FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + ") identity_groups WHERE group_name IN "
+        + groupNameInClause()
+        + "</script>";
+  }
+
+  /**
    * Returns active IdP user ids for the given names.
    *
    * @param userNames Usernames to resolve.

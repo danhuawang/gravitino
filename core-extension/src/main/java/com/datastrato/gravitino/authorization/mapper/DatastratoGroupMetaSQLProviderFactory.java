@@ -77,6 +77,17 @@ public class DatastratoGroupMetaSQLProviderFactory {
     return getProvider().selectIdpGroupNamesByNames(groupNames);
   }
 
+  /**
+   * Builds SQL that selects requested group names from all identity stores.
+   *
+   * @param groupNames Group names to check.
+   * @return MyBatis SQL for the configured database.
+   */
+  public static String selectIdentityGroupNamesByNames(
+      @Param("groupNames") List<String> groupNames) {
+    return getProvider().selectIdentityGroupNamesByNames(groupNames);
+  }
+
   public static String selectIdpUserIdsByNames(@Param("userNames") List<String> userNames) {
     return getProvider().selectIdpUserIdsByNames(userNames);
   }

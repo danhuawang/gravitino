@@ -17,6 +17,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Set;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
@@ -191,6 +192,14 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
             DatastratoGroupMetaMapper.class, DatastratoGroupMetaMapper::listIdpGroupNames);
 
     assertEquals(List.of("contractors", "engineers", "governance", "platform"), names);
+
+    List<String> requestedNames =
+        SessionUtils.getWithoutCommit(
+            DatastratoGroupMetaMapper.class,
+            mapper ->
+                mapper.selectIdentityGroupNamesByNames(
+                    List.of("contractors", "engineers", "platform", "missing")));
+    assertEquals(Set.of("contractors", "engineers", "platform"), Set.copyOf(requestedNames));
   }
 
   /** Verifies Local / Provisioned Directory Groups without cross-store merging. */

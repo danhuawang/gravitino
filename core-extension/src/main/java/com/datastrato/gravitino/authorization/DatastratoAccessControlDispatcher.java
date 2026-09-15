@@ -1120,8 +1120,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Assigns multiple roles to multiple users and groups with direct batch relation SQL.
    *
    * <p>Missing roles are created without privileges. Requested users and groups that are not yet in
-   * the metalake are added after their existence in the built-in IdP is verified. All user-role and
-   * group-role assignments are then inserted in one transaction.
+   * the metalake are validated against the identity stores and added before all user-role and
+   * group-role assignments are inserted in one transaction.
    *
    * @param metalake The metalake name.
    * @param roles The role names.
@@ -1179,7 +1179,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
                             List<String> missingUsers = missingNames(userNames, usersByName);
                             List<String> missingGroups = missingNames(groupNames, groupsByName);
 
-                            validateIdpPrincipals(missingUsers, missingGroups);
+                            validateDirectoryPrincipals(missingUsers, missingGroups);
                             List<RoleEntity> loadedRoles = loadOrCreateRoles(metalake, roleNames);
 
                             addUsersToMetalake(metalake, missingUsers, usersByName);
@@ -1467,13 +1467,30 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
     return missing;
   }
 
-  private void validateIdpPrincipals(List<String> missingUsers, List<String> missingGroups) {
-    for (String user : missingUsers) {
-      idpUserGroupManager.getUser(user);
+  private void validateDirectoryPrincipals(List<String> missingUsers, List<String> missingGroups) {
+    if (missingUsers.isEmpty() && missingGroups.isEmpty()) {
+      return;
     }
-    for (String group : missingGroups) {
-      idpUserGroupManager.getGroup(group);
+
+    List<String> existingUsers =
+        missingUsers.isEmpty() ? Collections.emptyList() : loadIdentityUserNames(missingUsers);
+    List<String> existingGroups =
+        missingGroups.isEmpty() ? Collections.emptyList() : loadIdentityGroupNames(missingGroups);
+    if (existingUsers.isEmpty() && existingGroups.isEmpty()) {
+      throw new NotFoundException(
+          "None of the requested users or groups exist in an identity store");
     }
+  }
+
+  List<String> loadIdentityUserNames(List<String> userNames) {
+    return SessionUtils.getWithoutCommit(
+        DatastratoUserMetaMapper.class, mapper -> mapper.selectIdentityUserNamesByNames(userNames));
+  }
+
+  List<String> loadIdentityGroupNames(List<String> groupNames) {
+    return SessionUtils.getWithoutCommit(
+        DatastratoGroupMetaMapper.class,
+        mapper -> mapper.selectIdentityGroupNamesByNames(groupNames));
   }
 
   private void addUsersToMetalake(

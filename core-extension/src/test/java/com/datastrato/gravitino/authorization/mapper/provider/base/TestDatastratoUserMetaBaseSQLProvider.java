@@ -348,6 +348,17 @@ public class TestDatastratoUserMetaBaseSQLProvider {
   }
 
   @Test
+  public void testSelectIdentityUserNamesByNames() {
+    String sql = provider.selectIdentityUserNamesByNames(Lists.newArrayList("alice", "bob"));
+
+    assertTrue(sql.contains("SELECT user_name FROM scim_user_meta"));
+    assertTrue(sql.contains("SELECT user_name FROM idp_user_meta"));
+    assertTrue(sql.contains("SELECT user_name FROM jit_user_meta"));
+    assertTrue(sql.contains("UNION"));
+    assertTrue(sql.contains("user_name IN "));
+  }
+
+  @Test
   public void testSelectUserOriginCodes() {
     String sql = provider.selectUserOriginCodes("alice");
     assertTrue(sql.contains("idp_user_meta"));

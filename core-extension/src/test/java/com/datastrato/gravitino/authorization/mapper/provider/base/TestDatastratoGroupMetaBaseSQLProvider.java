@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 public class TestDatastratoGroupMetaBaseSQLProvider {
@@ -203,5 +204,16 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("UNION"));
     assertTrue(sql.contains("deleted_at = 0"));
     assertTrue(sql.contains("ORDER BY group_name"));
+  }
+
+  @Test
+  public void testSelectIdentityGroupNamesByNames() {
+    String sql = provider.selectIdentityGroupNamesByNames(List.of("governance", "ops"));
+
+    assertTrue(sql.contains("SELECT group_name FROM scim_group_meta"));
+    assertTrue(sql.contains("SELECT group_name FROM idp_group_meta"));
+    assertTrue(sql.contains("SELECT group_name FROM jit_group_meta"));
+    assertTrue(sql.contains("UNION"));
+    assertTrue(sql.contains("group_name IN "));
   }
 }
