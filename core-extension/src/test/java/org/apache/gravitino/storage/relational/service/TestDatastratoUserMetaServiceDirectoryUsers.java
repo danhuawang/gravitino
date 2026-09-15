@@ -293,6 +293,14 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
             DatastratoUserMetaMapper.class, DatastratoUserMetaMapper::listIdpUserNames);
 
     assertEquals(List.of("dana.k", "jwt.user", "lee.p", "sam.o"), names);
+
+    List<String> requestedNames =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class,
+            mapper ->
+                mapper.selectIdentityUserNamesByNames(
+                    List.of("dana.k", "jwt.user", "lee.p", "missing")));
+    assertEquals(Set.of("dana.k", "jwt.user", "lee.p"), Set.copyOf(requestedNames));
   }
 
   /** Verifies Local / Provisioned / JIT Directory Users without cross-store merging. */

@@ -19,6 +19,8 @@ from abc import abstractmethod
 from typing import Optional, Dict
 
 from gravitino.api.auditable import Auditable
+from gravitino.api.secret.supports_secrets import SupportsSecrets
+from gravitino.exceptions.base import UnsupportedOperationException
 
 
 class Metalake(Auditable):
@@ -55,3 +57,8 @@ class Metalake(Auditable):
             Optional[Dict[str, str]]: The properties of the metalake.
         """
         pass
+
+    def support_secrets(self) -> SupportsSecrets:
+        raise UnsupportedOperationException(
+            "Metalake does not support secret property operations."
+        )

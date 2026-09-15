@@ -55,10 +55,11 @@ paths:
       operationId: assignRolesToPrincipals
       description: |
         Assigns all requested roles to all requested users and groups. Roles that do not exist are
-        created without privileges or properties. Users and groups that exist in the built-in IdP
-        but not in the metalake are added to the metalake before assignment. The user-role and
-        group-role assignment writes are atomic, and existing active assignments retain their
-        original assignment audit information.
+        created without privileges or properties. Users and groups that are not in the metalake are
+        checked against the SCIM, Local IdP, and JIT identity stores. If at least one requested
+        missing principal exists, all missing principals are added to the metalake before
+        assignment. The user-role and group-role assignment writes are atomic, and existing active
+        assignments retain their original assignment audit information.
       requestBody:
         required: true
         content:
@@ -72,8 +73,8 @@ paths:
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
         "404":
           description: >-
-            Not Found - The target metalake or a requested user or group does not exist in the
-            built-in IdP
+            Not Found - The target metalake does not exist, or none of the requested missing users
+            or groups exists in an identity store
           content:
             application/vnd.gravitino.v1+json:
               schema:

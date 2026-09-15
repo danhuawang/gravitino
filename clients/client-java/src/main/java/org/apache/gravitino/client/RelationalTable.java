@@ -59,6 +59,7 @@ import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.rel.partitions.Partition;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.secret.SupportsSecrets;
 import org.apache.gravitino.stats.PartitionRange;
 import org.apache.gravitino.stats.PartitionStatistics;
 import org.apache.gravitino.stats.PartitionStatisticsDrop;
@@ -78,7 +79,8 @@ class RelationalTable
         SupportsRoles,
         SupportsPolicies,
         SupportsStatistics,
-        SupportsPartitionStatistics {
+        SupportsPartitionStatistics,
+        SupportsSecrets {
 
   private final Table table;
 
@@ -91,6 +93,7 @@ class RelationalTable
   private final MetadataObjectPolicyOperations objectPolicyOperations;
   private final MetadataObjectStatisticsOperations objectStatisticsOperations;
   private final MetadataObjectPartitionStatisticsOperations objectPartitionStatisticsOperations;
+  private final MetadataObjectSecretOperations objectSecretOperations;
 
   /**
    * Creates a new RelationalTable.
@@ -130,6 +133,8 @@ class RelationalTable
     this.objectPartitionStatisticsOperations =
         new MetadataObjectPartitionStatisticsOperations(
             namespace.level(0), tableObject, restClient);
+    this.objectSecretOperations =
+        new MetadataObjectSecretOperations(namespace.level(0), tableObject, restClient);
   }
 
   /**
@@ -360,6 +365,16 @@ class RelationalTable
   @Override
   public SupportsRoles supportsRoles() {
     return this;
+  }
+
+  @Override
+  public SupportsSecrets supportsSecrets() {
+    return this;
+  }
+
+  @Override
+  public Map<String, String> getSecrets() {
+    return objectSecretOperations.getSecrets();
   }
 
   @Override

@@ -32,11 +32,16 @@ from gravitino.api.job.job_template import JobTemplate
 from gravitino.api.job.job_template_change import JobTemplateChange
 from gravitino.api.job.supports_jobs import SupportsJobs
 from gravitino.api.metadata_object import MetadataObject
+from gravitino.api.metadata_objects import MetadataObjects
+from gravitino.api.secret.supports_secrets import SupportsSecrets
 from gravitino.api.tag.tag import Tag
 from gravitino.api.tag.tag_operations import TagOperations
 from gravitino.client.dto_converters import DTOConverters
 from gravitino.client.generic_job_handle import GenericJobHandle
 from gravitino.client.generic_tag import GenericTag
+from gravitino.client.metadata_object_secret_operations import (
+    MetadataObjectSecretOperations,
+)
 from gravitino.dto.metalake_dto import MetalakeDTO
 from gravitino.dto.requests.catalog_create_request import CatalogCreateRequest
 from gravitino.dto.requests.catalog_set_request import CatalogSetRequest
@@ -112,7 +117,8 @@ class GravitinoMetalake(
     MetalakeDTO,
     SupportsJobs,
     TagOperations,
-):
+    SupportsSecrets,
+):  # pylint: disable=too-many-ancestors
     """
     Gravitino Metalake is the top-level metadata repository for users. It contains a list of catalogs
     as sub-level metadata collections. With GravitinoMetalake, users can list, create, load,
@@ -154,6 +160,12 @@ class GravitinoMetalake(
             _audit=metalake.audit_info(),
         )
         self.rest_client = client
+        metalake_object = MetadataObjects.of(
+            [self.name()], MetadataObject.Type.METALAKE
+        )
+        self._object_secret_operations = MetadataObjectSecretOperations(
+            self.name(), metalake_object, client
+        )
 
     def list_catalogs(self) -> List[str]:
         """List all the catalogs under this metalake.
@@ -1075,6 +1087,12 @@ class GravitinoMetalake(
     #####################
     # Role operations
     #####################
+
+    def support_secrets(self) -> SupportsSecrets:
+        return self
+
+    def get_secrets(self) -> Dict[str, str]:
+        return self._object_secret_operations.get_secrets()
 
     def create_role(
         self,

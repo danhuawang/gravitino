@@ -158,6 +158,7 @@ public abstract class SparkAuthorizationIT extends BaseIT {
             JDBC_CATALOG,
             ImmutableList.of(
                 Privileges.UseCatalog.allow(),
+                Privileges.UseSecret.allow(),
                 Privileges.UseSchema.allow(),
                 Privileges.SelectTable.allow(),
                 Privileges.CreateTable.allow()));

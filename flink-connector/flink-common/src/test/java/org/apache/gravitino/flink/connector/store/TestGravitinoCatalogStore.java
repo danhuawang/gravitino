@@ -18,6 +18,7 @@
  */
 package org.apache.gravitino.flink.connector.store;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -25,13 +26,20 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.function.Predicate;
+import org.apache.flink.table.catalog.CatalogDescriptor;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.factories.Factory;
+import org.apache.gravitino.Catalog;
+import org.apache.gravitino.flink.connector.CatalogPropertiesConverter;
 import org.apache.gravitino.flink.connector.catalog.BaseCatalogFactory;
 import org.apache.gravitino.flink.connector.catalog.GravitinoCatalogManager;
+import org.apache.gravitino.secret.SupportsSecrets;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -130,5 +138,113 @@ public class TestGravitinoCatalogStore {
             "Unexpected factory loading error.");
 
     assertSame(expectedFactory, actualFactory);
+  }
+
+  @Test
+  public void testMergeSecrets() {
+    Catalog catalog = mock(Catalog.class);
+    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    when(gravitinoCatalogMockManager.getGravitinoCatalogInfo("sec")).thenReturn(catalog);
+    when(catalog.provider()).thenReturn("test-provider");
+    when(catalog.properties()).thenReturn(Map.of("visible", "v1"));
+    when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of("jdbc-password", "secret"));
+
+    BaseCatalogFactory factory = mock(BaseCatalogFactory.class);
+    CatalogPropertiesConverter converter = mock(CatalogPropertiesConverter.class);
+    when(factory.catalogPropertiesConverter()).thenReturn(converter);
+    when(converter.toFlinkCatalogProperties(org.mockito.ArgumentMatchers.anyMap()))
+        .thenAnswer(
+            invocation -> {
+              Map<String, String> in = invocation.getArgument(0);
+              Map<String, String> out = new HashMap<>(in);
+              out.put("type", "generic_in_memory");
+              return out;
+            });
+
+    GravitinoCatalogStore store =
+        new GravitinoCatalogStore(gravitinoCatalogMockManager) {
+          @Override
+          BaseCatalogFactory catalogFactoryForProvider(String provider) {
+            return factory;
+          }
+        };
+
+    Optional<CatalogDescriptor> descriptor = store.getCatalog("sec");
+    assertTrue(descriptor.isPresent());
+    assertEquals("secret", descriptor.get().getConfiguration().toMap().get("jdbc-password"));
+    assertEquals("v1", descriptor.get().getConfiguration().toMap().get("visible"));
+  }
+
+  @Test
+  public void testMergeSecretsNullProps() {
+    Catalog catalog = mock(Catalog.class);
+    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    when(gravitinoCatalogMockManager.getGravitinoCatalogInfo("sec-null")).thenReturn(catalog);
+    when(catalog.provider()).thenReturn("test-provider");
+    when(catalog.properties()).thenReturn(null);
+    when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of("jdbc-password", "secret"));
+
+    BaseCatalogFactory factory = mock(BaseCatalogFactory.class);
+    CatalogPropertiesConverter converter = mock(CatalogPropertiesConverter.class);
+    when(factory.catalogPropertiesConverter()).thenReturn(converter);
+    when(converter.toFlinkCatalogProperties(org.mockito.ArgumentMatchers.anyMap()))
+        .thenAnswer(
+            invocation -> {
+              Map<String, String> in = invocation.getArgument(0);
+              Map<String, String> out = new HashMap<>(in);
+              out.put("type", "generic_in_memory");
+              return out;
+            });
+
+    GravitinoCatalogStore store =
+        new GravitinoCatalogStore(gravitinoCatalogMockManager) {
+          @Override
+          BaseCatalogFactory catalogFactoryForProvider(String provider) {
+            return factory;
+          }
+        };
+
+    Optional<CatalogDescriptor> descriptor = store.getCatalog("sec-null");
+    assertTrue(descriptor.isPresent());
+    assertEquals("secret", descriptor.get().getConfiguration().toMap().get("jdbc-password"));
+  }
+
+  @Test
+  public void testMergeMemorySecrets() {
+    Catalog catalog = mock(Catalog.class);
+    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    when(gravitinoCatalogMockManager.getGravitinoCatalogInfo("mem")).thenReturn(catalog);
+    when(catalog.provider()).thenReturn("test-provider");
+    when(catalog.properties()).thenReturn(Map.of("jdbc-url", "jdbc:mysql://localhost/db"));
+    when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of("jdbc-password", "mem-pwd"));
+
+    BaseCatalogFactory factory = mock(BaseCatalogFactory.class);
+    CatalogPropertiesConverter converter = mock(CatalogPropertiesConverter.class);
+    when(factory.catalogPropertiesConverter()).thenReturn(converter);
+    when(converter.toFlinkCatalogProperties(org.mockito.ArgumentMatchers.anyMap()))
+        .thenAnswer(
+            invocation -> {
+              Map<String, String> in = invocation.getArgument(0);
+              Map<String, String> out = new HashMap<>(in);
+              out.put("type", "generic_in_memory");
+              return out;
+            });
+
+    GravitinoCatalogStore store =
+        new GravitinoCatalogStore(gravitinoCatalogMockManager) {
+          @Override
+          BaseCatalogFactory catalogFactoryForProvider(String provider) {
+            return factory;
+          }
+        };
+
+    Optional<CatalogDescriptor> descriptor = store.getCatalog("mem");
+    assertTrue(descriptor.isPresent());
+    assertEquals("mem-pwd", descriptor.get().getConfiguration().toMap().get("jdbc-password"));
+    assertEquals(
+        "jdbc:mysql://localhost/db", descriptor.get().getConfiguration().toMap().get("jdbc-url"));
   }
 }

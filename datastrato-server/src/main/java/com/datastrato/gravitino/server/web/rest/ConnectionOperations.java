@@ -20,7 +20,6 @@ import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
 import com.datastrato.gravitino.server.web.rest.converter.ConnectionConverter;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -43,7 +42,8 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
 import org.apache.gravitino.catalog.CatalogDispatcher;
-import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.credential.CredentialConstants;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
@@ -70,6 +70,7 @@ public class ConnectionOperations {
       new ConnectionTestSupportResolver();
 
   private final CatalogDispatcher catalogDispatcher;
+  private final CatalogManager catalogManager;
   private final ConnectionTestStore connectionTestStore;
 
   @Context private HttpServletRequest httpRequest;
@@ -78,12 +79,16 @@ public class ConnectionOperations {
    * Constructs a new ConnectionOperations.
    *
    * @param catalogDispatcher The catalog dispatcher.
+   * @param catalogManager The catalog manager.
    * @param connectionTestStore The persistent connection test store.
    */
   @Inject
   public ConnectionOperations(
-      CatalogDispatcher catalogDispatcher, ConnectionTestStore connectionTestStore) {
+      CatalogDispatcher catalogDispatcher,
+      CatalogManager catalogManager,
+      ConnectionTestStore connectionTestStore) {
     this.catalogDispatcher = catalogDispatcher;
+    this.catalogManager = catalogManager;
     this.connectionTestStore = connectionTestStore;
   }
 
@@ -128,16 +133,11 @@ public class ConnectionOperations {
                     catalogs,
                     catalog -> NameIdentifierUtil.ofCatalog(metalake, catalog.name()));
 
-            Map<String, String> credentialProviders =
-                resolveCredentialProviders(metalake, catalogs);
             ConnectionOverviewDTO[] connections = new ConnectionOverviewDTO[catalogs.length];
             for (int i = 0; i < catalogs.length; i++) {
               Catalog catalog = catalogs[i];
               NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, catalog.name());
-              String providers = resolveCredentialProviders(catalog);
-              if (StringUtils.isBlank(providers)) {
-                providers = credentialProviders.get(catalog.name());
-              }
+              String providers = resolveCredentialProviders(identifier, catalog);
               connections[i] = toConnectionOverview(identifier, catalog, providers);
             }
             int catalogCount = connections.length;
@@ -185,7 +185,8 @@ public class ConnectionOperations {
             NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, connection);
             Catalog catalog = catalogDispatcher.loadCatalog(identifier);
             ConnectionOverviewDTO overview =
-                toConnectionOverview(identifier, catalog, resolveCredentialProviders(catalog));
+                toConnectionOverview(
+                    identifier, catalog, resolveCredentialProviders(identifier, catalog));
             return Utils.ok(new ConnectionOverviewResponse(overview));
           });
     } catch (Exception e) {
@@ -282,50 +283,29 @@ public class ConnectionOperations {
   }
 
   @Nullable
-  private String resolveCredentialProviders(Catalog catalog) {
+  private String resolveCredentialProviders(NameIdentifier identifier, Catalog catalog) {
     Map<String, String> properties = catalog.properties();
     String providers =
         properties == null ? null : properties.get(CredentialConstants.CREDENTIAL_PROVIDERS);
-    if (StringUtils.isNotBlank(providers) || !(catalog instanceof BaseCatalog)) {
+    if (StringUtils.isNotBlank(providers)
+        && !HiddenPropertyMaskUtils.isMaskedPlaceholder(providers)) {
       return providers;
     }
-    return ((BaseCatalog<?>) catalog)
-        .propertiesWithCredentialProviders()
-        .get(CredentialConstants.CREDENTIAL_PROVIDERS);
-  }
-
-  private Map<String, String> resolveCredentialProviders(String metalake, Catalog[] catalogs) {
-    Map<String, String> credentialProviders = new LinkedHashMap<>();
-    for (Catalog catalog : catalogs) {
-      Map<String, String> publicProperties = catalog.properties();
-      if (publicProperties != null
-          && StringUtils.isNotBlank(
-              publicProperties.get(CredentialConstants.CREDENTIAL_PROVIDERS))) {
-        continue;
-      }
-
-      try {
-        Catalog loadedCatalog =
-            catalogDispatcher.loadCatalog(NameIdentifierUtil.ofCatalog(metalake, catalog.name()));
-        if (!(loadedCatalog instanceof BaseCatalog)) {
-          continue;
-        }
-
-        String providers =
-            ((BaseCatalog<?>) loadedCatalog)
-                .propertiesWithCredentialProviders()
-                .get(CredentialConstants.CREDENTIAL_PROVIDERS);
-        if (StringUtils.isNotBlank(providers)) {
-          credentialProviders.put(catalog.name(), providers);
-        }
-      } catch (RuntimeException e) {
-        LOG.warn(
-            "Failed to resolve credential providers for catalog {} under metalake {}; "
-                + "the credential type will be unavailable",
-            catalog.name(),
-            metalake);
-      }
+    try {
+      return catalogManager.doWithCatalog(
+          identifier,
+          loadedCatalog ->
+              (String)
+                  loadedCatalog
+                      .propertiesWithCredentialProviders()
+                      .get(CredentialConstants.CREDENTIAL_PROVIDERS));
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "Failed to resolve credential providers for catalog {}; "
+              + "the credential type will be unavailable",
+          identifier,
+          e);
+      return null;
     }
-    return credentialProviders;
   }
 }

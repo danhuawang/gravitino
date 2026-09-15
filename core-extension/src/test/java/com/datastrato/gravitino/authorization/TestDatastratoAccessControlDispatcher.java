@@ -37,8 +37,6 @@ import org.apache.gravitino.connector.authorization.AuthorizationPlugin;
 import org.apache.gravitino.exceptions.NoSuchRoleException;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.idp.IdpUserGroupManager;
-import org.apache.gravitino.idp.model.IdpGroup;
-import org.apache.gravitino.idp.model.IdpUser;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.api.event.BaseEvent;
 import org.apache.gravitino.listener.api.event.GrantGroupRolesEvent;
@@ -227,13 +225,14 @@ public class TestDatastratoAccessControlDispatcher {
     DatastratoUserMetaService userMetaService = mock(DatastratoUserMetaService.class);
     EventBus eventBus = mock(EventBus.class);
     DatastratoAccessControlDispatcher dispatcher =
-        new DatastratoAccessControlDispatcher(
-            delegate,
-            batchEntityStore,
-            idpUserGroupManager,
-            roleMetaService,
-            userMetaService,
-            eventBus);
+        Mockito.spy(
+            new DatastratoAccessControlDispatcher(
+                delegate,
+                batchEntityStore,
+                idpUserGroupManager,
+                roleMetaService,
+                userMetaService,
+                eventBus));
 
     RoleEntity batchRole =
         RoleEntity.builder()
@@ -318,8 +317,16 @@ public class TestDatastratoAccessControlDispatcher {
                 eq(Entity.EntityType.GROUP),
                 eq(GroupEntity.class)))
         .thenReturn(Lists.newArrayList(analysts));
-    Mockito.when(idpUserGroupManager.getUser("bob")).thenReturn(mock(IdpUser.class));
-    Mockito.when(idpUserGroupManager.getGroup("admins")).thenReturn(mock(IdpGroup.class));
+    Mockito.doReturn(Collections.emptyList()).when(dispatcher).loadIdentityUserNames(anyList());
+    Mockito.doAnswer(
+            invocation -> {
+              List<String> names = invocation.getArgument(0);
+              return names.contains("admins")
+                  ? Lists.newArrayList("admins")
+                  : Collections.emptyList();
+            })
+        .when(dispatcher)
+        .loadIdentityGroupNames(anyList());
     Mockito.when(delegate.addUser(METALAKE, "bob")).thenReturn(bob);
     Mockito.when(delegate.addGroup(METALAKE, "admins")).thenReturn(admins);
 
@@ -357,8 +364,8 @@ public class TestDatastratoAccessControlDispatcher {
     Assertions.assertEquals(Lists.newArrayList(10L, 20L), groupsCaptor.getValue().get(0).roleIds());
     Assertions.assertEquals(Lists.newArrayList(10L, 20L), usersCaptor.getValue().get(1).roleIds());
     Assertions.assertEquals(Lists.newArrayList(10L, 20L), groupsCaptor.getValue().get(1).roleIds());
-    verify(idpUserGroupManager).getUser("bob");
-    verify(idpUserGroupManager).getGroup("admins");
+    verify(dispatcher).loadIdentityUserNames(Lists.newArrayList("bob"));
+    verify(dispatcher).loadIdentityGroupNames(Lists.newArrayList("admins"));
     verify(delegate).addUser(METALAKE, "bob");
     verify(delegate).addGroup(METALAKE, "admins");
     verify(delegate)
@@ -388,23 +395,26 @@ public class TestDatastratoAccessControlDispatcher {
     Assertions.assertEquals(
         Lists.newArrayList("batch-role", "second-batch-role"), aliceEvent.roles());
 
-    Mockito.clearInvocations(delegate, idpUserGroupManager, roleMetaService, eventBus);
+    Mockito.clearInvocations(dispatcher, delegate, idpUserGroupManager, roleMetaService, eventBus);
     Mockito.when(
             batchEntityStore.batchGet(
                 Mockito.<NameIdentifier>anyList(),
                 eq(Entity.EntityType.GROUP),
                 eq(GroupEntity.class)))
         .thenReturn(Lists.newArrayList());
-    Mockito.when(idpUserGroupManager.getGroup("missing"))
-        .thenThrow(new NotFoundException("Group missing does not exist in the IdP"));
-    Assertions.assertThrows(
-        NotFoundException.class,
-        () ->
-            dispatcher.assignRolesToPrincipals(
-                METALAKE,
-                Lists.newArrayList("batch-role", "second-batch-role"),
-                Lists.newArrayList("alice"),
-                Lists.newArrayList("missing")));
+    NotFoundException notFoundException =
+        Assertions.assertThrows(
+            NotFoundException.class,
+            () ->
+                dispatcher.assignRolesToPrincipals(
+                    METALAKE,
+                    Lists.newArrayList("batch-role", "second-batch-role"),
+                    Lists.newArrayList("alice"),
+                    Lists.newArrayList("missing")));
+    Assertions.assertEquals(
+        "None of the requested users or groups exist in an identity store",
+        notFoundException.getMessage());
+    verify(dispatcher).loadIdentityGroupNames(Lists.newArrayList("missing"));
     verify(delegate, never()).addGroup(any(), any());
     verify(delegate, never()).createRole(any(), any(), any(), any());
     verify(roleMetaService, never()).batchAssignRolesToPrincipals(anyList(), anyList(), anyList());
@@ -419,7 +429,8 @@ public class TestDatastratoAccessControlDispatcher {
         Assertions.assertInstanceOf(GrantGroupRolesFailureEvent.class, failureEvents.get(3));
     Assertions.assertEquals("missing", groupFailureEvent.groupName());
 
-    Mockito.clearInvocations(delegate, idpUserGroupManager, roleMetaService, eventBus);
+    Mockito.clearInvocations(dispatcher, delegate, idpUserGroupManager, roleMetaService, eventBus);
+    Mockito.doReturn(Lists.newArrayList("bob")).when(dispatcher).loadIdentityUserNames(anyList());
     RuntimeException provisioningFailure = new RuntimeException("Failed to provision bob");
     Mockito.when(delegate.addUser(METALAKE, "bob")).thenThrow(provisioningFailure);
     RuntimeException thrown =
@@ -438,7 +449,7 @@ public class TestDatastratoAccessControlDispatcher {
     verify(delegate, never()).createRole(any(), any(), any(), any());
     verify(roleMetaService, never()).batchAssignRolesToPrincipals(anyList(), anyList(), anyList());
 
-    Mockito.clearInvocations(delegate, idpUserGroupManager, roleMetaService, eventBus);
+    Mockito.clearInvocations(dispatcher, delegate, idpUserGroupManager, roleMetaService, eventBus);
     RuntimeException groupProvisioningFailure = new RuntimeException("Failed to provision admins");
     Mockito.when(delegate.addGroup(METALAKE, "admins")).thenThrow(groupProvisioningFailure);
     RuntimeException groupThrown =
@@ -457,7 +468,7 @@ public class TestDatastratoAccessControlDispatcher {
     verify(delegate, never()).createRole(any(), any(), any(), any());
     verify(roleMetaService, never()).batchAssignRolesToPrincipals(anyList(), anyList(), anyList());
 
-    Mockito.clearInvocations(delegate, idpUserGroupManager, roleMetaService, eventBus);
+    Mockito.clearInvocations(dispatcher, delegate, idpUserGroupManager, roleMetaService, eventBus);
     RuntimeException roleCreationFailure = new RuntimeException("Failed to create role");
     Mockito.when(delegate.getRole(METALAKE, "failing-role"))
         .thenThrow(new NoSuchRoleException("Role does not exist"));
@@ -475,8 +486,8 @@ public class TestDatastratoAccessControlDispatcher {
                     Lists.newArrayList("bob"),
                     Lists.newArrayList("admins")));
     Assertions.assertSame(roleCreationFailure, roleThrown);
-    verify(idpUserGroupManager).getUser("bob");
-    verify(idpUserGroupManager).getGroup("admins");
+    verify(dispatcher).loadIdentityUserNames(Lists.newArrayList("bob"));
+    verify(dispatcher).loadIdentityGroupNames(Lists.newArrayList("admins"));
     verify(delegate).getRole(METALAKE, "failing-role");
     verify(delegate)
         .createRole(METALAKE, "failing-role", Collections.emptyMap(), Collections.emptyList());

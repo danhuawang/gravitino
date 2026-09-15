@@ -214,6 +214,7 @@ components:
             - REGISTER_MODEL
             - LINK_MODEL_VERSION
             - USE_MODEL
+            - USE_SECRET
             - REGISTER_FUNCTION
             - EXECUTE_FUNCTION
             - MODIFY_FUNCTION

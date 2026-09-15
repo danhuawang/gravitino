@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
+import org.apache.gravitino.Schema;
 import org.apache.gravitino.auth.AuthProperties;
 import org.apache.gravitino.client.DefaultOAuth2TokenProvider;
 import org.apache.gravitino.client.GravitinoClient;
@@ -37,6 +38,7 @@ import org.apache.gravitino.lance.common.config.LanceConfig;
 import org.apache.gravitino.lance.common.ops.LanceNamespaceOperations;
 import org.apache.gravitino.lance.common.ops.LanceTableOperations;
 import org.apache.gravitino.lance.common.ops.NamespaceWrapper;
+import org.apache.gravitino.secret.SupportsSecrets;
 import org.lance.namespace.errors.NamespaceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -113,6 +115,45 @@ public class GravitinoLanceNamespaceWrapper extends NamespaceWrapper {
         LOG.warn("Error closing Gravitino client", e);
       }
     }
+  }
+
+  /**
+   * Catalog properties merged with plaintext from {@link SupportsSecrets#getSecrets()}.
+   *
+   * @param catalog the catalog
+   * @return properties with secrets overlaid
+   */
+  Map<String, String> propsWithSecrets(Catalog catalog) {
+    return mergePropsAndSecrets(catalog.properties(), catalog.supportsSecrets());
+  }
+
+  /**
+   * Schema properties merged with plaintext from {@link SupportsSecrets#getSecrets()}.
+   *
+   * @param catalog the catalog containing the schema
+   * @param schemaName the schema name
+   * @return properties with secrets overlaid
+   */
+  Map<String, String> schemaPropsWithSecrets(Catalog catalog, String schemaName) {
+    Schema schema = catalog.asSchemas().loadSchema(schemaName);
+    return mergePropsAndSecrets(schema.properties(), schema.supportsSecrets());
+  }
+
+  @VisibleForTesting
+  static Map<String, String> mergePropsAndSecrets(
+      Map<String, String> props, SupportsSecrets secrets) {
+    Map<String, String> result = new HashMap<>(props == null ? Map.of() : props);
+    try {
+      if (secrets != null) {
+        Map<String, String> secretProps = secrets.getSecrets();
+        if (secretProps != null) {
+          result.putAll(secretProps);
+        }
+      }
+    } catch (UnsupportedOperationException ignored) {
+      // Catalog/schema does not support secret property operations.
+    }
+    return result;
   }
 
   public boolean isLakehouseCatalog(Catalog catalog) {

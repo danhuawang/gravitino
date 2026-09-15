@@ -22,6 +22,7 @@ import com.google.common.collect.ImmutableMap;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.gravitino.lance.common.config.LanceConfig;
+import org.apache.gravitino.secret.SupportsSecrets;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -228,5 +229,40 @@ public class TestGravitinoLanceNamespaceWrapper {
     Assertions.assertEquals("400", allConfig.get("gravitino.client.maxConnectionsPerRoute"));
     Assertions.assertEquals("10000", allConfig.get("gravitino.client.connectionTimeoutMs"));
     Assertions.assertEquals("60000", allConfig.get("gravitino.client.socketTimeoutMs"));
+  }
+
+  @Test
+  public void testMergePropsAndSecrets() {
+    SupportsSecrets secrets =
+        new SupportsSecrets() {
+          @Override
+          public Map<String, String> getSecrets() {
+            return Map.of("jdbc-password", "secret", "shared", "from-secret");
+          }
+        };
+
+    Map<String, String> merged =
+        GravitinoLanceNamespaceWrapper.mergePropsAndSecrets(
+            Map.of("visible", "v1", "shared", "from-props"), secrets);
+
+    Assertions.assertEquals("v1", merged.get("visible"));
+    Assertions.assertEquals("secret", merged.get("jdbc-password"));
+    Assertions.assertEquals("from-secret", merged.get("shared"));
+  }
+
+  @Test
+  public void testMergePropsAndSecretsNullProps() {
+    SupportsSecrets secrets =
+        new SupportsSecrets() {
+          @Override
+          public Map<String, String> getSecrets() {
+            return Map.of("jdbc-password", "secret");
+          }
+        };
+
+    Map<String, String> merged = GravitinoLanceNamespaceWrapper.mergePropsAndSecrets(null, secrets);
+
+    Assertions.assertEquals("secret", merged.get("jdbc-password"));
+    Assertions.assertEquals(1, merged.size());
   }
 }

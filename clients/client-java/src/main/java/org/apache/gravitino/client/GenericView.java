@@ -31,15 +31,17 @@ import org.apache.gravitino.exceptions.TagAlreadyAssociatedException;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.Representation;
 import org.apache.gravitino.rel.View;
+import org.apache.gravitino.secret.SupportsSecrets;
 import org.apache.gravitino.tag.SupportsTags;
 import org.apache.gravitino.tag.Tag;
 
 /** Represents a generic view. */
-class GenericView implements View, SupportsTags {
+class GenericView implements View, SupportsTags, SupportsSecrets {
 
   private final ViewDTO viewDTO;
 
   private final MetadataObjectTagOperations objectTagOperations;
+  private final MetadataObjectSecretOperations objectSecretOperations;
 
   GenericView(ViewDTO viewDTO, RESTClient restClient, Namespace viewNs) {
     this.viewDTO = viewDTO;
@@ -48,6 +50,8 @@ class GenericView implements View, SupportsTags {
     MetadataObject viewObject = MetadataObjects.of(viewFullName, MetadataObject.Type.VIEW);
     this.objectTagOperations =
         new MetadataObjectTagOperations(viewNs.level(0), viewObject, restClient);
+    this.objectSecretOperations =
+        new MetadataObjectSecretOperations(viewNs.level(0), viewObject, restClient);
   }
 
   @Override
@@ -93,6 +97,16 @@ class GenericView implements View, SupportsTags {
   @Override
   public SupportsTags supportsTags() {
     return this;
+  }
+
+  @Override
+  public SupportsSecrets supportsSecrets() {
+    return this;
+  }
+
+  @Override
+  public Map<String, String> getSecrets() {
+    return objectSecretOperations.getSecrets();
   }
 
   @Override

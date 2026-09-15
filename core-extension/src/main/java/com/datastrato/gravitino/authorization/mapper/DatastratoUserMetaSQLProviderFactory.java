@@ -53,6 +53,16 @@ public class DatastratoUserMetaSQLProviderFactory {
   }
 
   /**
+   * Builds SQL that selects requested usernames from all identity stores.
+   *
+   * @param userNames Usernames to check.
+   * @return MyBatis SQL for the configured database.
+   */
+  public static String selectIdentityUserNamesByNames(@Param("userNames") List<String> userNames) {
+    return getProvider().selectIdentityUserNamesByNames(userNames);
+  }
+
+  /**
    * Lists identity-store origin codes for a username.
    *
    * @param userName Username.

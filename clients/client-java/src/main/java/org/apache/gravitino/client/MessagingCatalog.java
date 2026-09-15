@@ -45,13 +45,14 @@ import org.apache.gravitino.messaging.Topic;
 import org.apache.gravitino.messaging.TopicCatalog;
 import org.apache.gravitino.messaging.TopicChange;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.secret.SupportsSecrets;
 
 /**
  * Messaging catalog is a catalog implementation that supports messaging-like metadata operations,
  * for example, topics list, creation, update and deletion. A Messaging catalog is under the
  * metalake.
  */
-class MessagingCatalog extends BaseSchemaCatalog implements TopicCatalog {
+class MessagingCatalog extends BaseSchemaCatalog implements TopicCatalog, SupportsSecrets {
 
   MessagingCatalog(
       Namespace namespace,
@@ -75,6 +76,16 @@ class MessagingCatalog extends BaseSchemaCatalog implements TopicCatalog {
   @Override
   public TopicCatalog asTopicCatalog() throws UnsupportedOperationException {
     return this;
+  }
+
+  @Override
+  public SupportsSecrets supportsSecrets() throws UnsupportedOperationException {
+    return this;
+  }
+
+  @Override
+  public Map<String, String> getSecrets() {
+    return objectSecretOperations.getSecrets();
   }
 
   /**

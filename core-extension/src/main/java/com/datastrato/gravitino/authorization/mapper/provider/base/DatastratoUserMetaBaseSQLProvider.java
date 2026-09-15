@@ -175,6 +175,31 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
+   * Returns requested usernames that have an active row in any identity store.
+   *
+   * @param userNames Usernames to check.
+   * @return MyBatis script SQL.
+   */
+  public String selectIdentityUserNamesByNames(@Param("userNames") List<String> userNames) {
+    return "<script>"
+        + "SELECT user_name FROM ("
+        + " SELECT user_name FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + " UNION"
+        + " SELECT user_name FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + " UNION"
+        + " SELECT user_name FROM "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " WHERE deleted_at = 0"
+        + ") identity_users WHERE user_name IN "
+        + userNameInClause()
+        + "</script>";
+  }
+
+  /**
    * Lists every identity-store origin code present for a username.
    *
    * <p>Returns one row per store that has an active row: Local ({@code idp_user_meta}), Provisioned

@@ -25,6 +25,7 @@ import io.airlift.log.Logger;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorContext;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -528,7 +529,8 @@ public class CatalogConnectorManager {
       String provider = null;
       try {
         Catalog catalog = metalake.loadCatalog(catalogName);
-        GravitinoCatalog gravitinoCatalog = new GravitinoCatalog(metalakeName, catalog);
+        GravitinoCatalog gravitinoCatalog =
+            new GravitinoCatalog(metalakeName, catalog, propsWithSecrets(catalog));
         provider = gravitinoCatalog.getProvider();
         // Checked before the already-registered path: a catalog can be dropped and recreated
         // under the same name with a type or provider this connector cannot serve, and treating
@@ -982,6 +984,14 @@ public class CatalogConnectorManager {
       }
     }
     return false;
+  }
+
+  /** Visible catalog properties overlaid with {@code getSecrets()}. */
+  static Map<String, String> propsWithSecrets(Catalog catalog) {
+    Map<String, String> props =
+        new HashMap<>(catalog.properties() == null ? Map.of() : catalog.properties());
+    props.putAll(catalog.supportsSecrets().getSecrets());
+    return props;
   }
 
   public interface TrinoCatalogNameHandler {

@@ -80,6 +80,7 @@ import org.apache.gravitino.exceptions.NoSuchFilesetException;
 import org.apache.gravitino.exceptions.NoSuchLocationNameException;
 import org.apache.gravitino.file.Fileset;
 import org.apache.gravitino.file.FilesetCatalog;
+import org.apache.gravitino.secret.SupportsSecrets;
 import org.apache.gravitino.storage.AzureProperties;
 import org.apache.gravitino.storage.CloudStorageCredentialPropertyKeys;
 import org.apache.gravitino.storage.OSSProperties;
@@ -727,7 +728,7 @@ public abstract class BaseGVFSOperations implements Closeable {
           filesetIdent);
 
       Path targetLocation = new Path(fileset.storageLocations().get(targetLocationName));
-      Map<String, String> allProperties = getAllProperties(filesetIdent, fileset.properties());
+      Map<String, String> allProperties = getAllProperties(filesetIdent);
       allProperties.putAll(
           FilesetUtil.getUserDefinedFileSystemConfigs(
               targetLocation.toUri(), allProperties, FS_GRAVITINO_PATH_CONFIG_PREFIX));
@@ -946,20 +947,33 @@ public abstract class BaseGVFSOperations implements Closeable {
     return cacheBuilder.build();
   }
 
-  private Map<String, String> getAllProperties(
-      NameIdentifier filesetIdent, Map<String, String> filesetProperties) {
-    Map<String, String> allProperties = new HashMap<>();
-    Catalog catalog =
-        (Catalog)
-            getFilesetCatalog(
-                NameIdentifier.of(
-                    filesetIdent.namespace().level(0), filesetIdent.namespace().level(1)));
-    Schema schema = getSchema(NameIdentifier.parse(filesetIdent.namespace().toString()));
-    putOmittedStaticCredentialProperties(allProperties, catalog.properties());
-    putOmittedStaticCredentialProperties(allProperties, schema.properties());
-    putOmittedStaticCredentialProperties(allProperties, filesetProperties);
-    allProperties.putAll(extractNonDefaultConfig(conf));
-    return allProperties;
+  @VisibleForTesting
+  Map<String, String> getAllProperties(NameIdentifier filesetIdent) {
+    String catalogName = filesetIdent.namespace().level(1);
+    String schemaName = filesetIdent.namespace().level(2);
+    Catalog catalog = getGravitinoClient().loadCatalog(catalogName);
+    Schema schema = catalog.asSchemas().loadSchema(schemaName);
+    Fileset fileset =
+        catalog.asFilesetCatalog().loadFileset(NameIdentifier.of(schemaName, filesetIdent.name()));
+
+    Map<String, String> all = new HashMap<>();
+    putPropsAndSecrets(all, catalog.properties(), catalog.supportsSecrets());
+    putPropsAndSecrets(all, schema.properties(), schema.supportsSecrets());
+    putPropsAndSecrets(all, fileset.properties(), fileset.supportsSecrets());
+    all.putAll(extractNonDefaultConfig(conf));
+    return all;
+  }
+
+  private static void putPropsAndSecrets(
+      Map<String, String> target, Map<String, String> props, SupportsSecrets secrets) {
+    // Omit static cloud credentials from visible props; restore plaintext via getSecrets.
+    putOmittedStaticCredentialProperties(target, props);
+    if (secrets != null) {
+      Map<String, String> secretProps = secrets.getSecrets();
+      if (secretProps != null) {
+        target.putAll(secretProps);
+      }
+    }
   }
 
   private static void putOmittedStaticCredentialProperties(
