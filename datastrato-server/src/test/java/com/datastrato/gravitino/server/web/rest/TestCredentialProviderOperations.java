@@ -190,7 +190,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
     when(connectionTestStore.recordTestResult(
             eq(NameIdentifier.of("metalake", "catalog")),
             eq("fileset"),
-            eq(maskedProperties),
+            eq(rawProperties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             anyLong(),
@@ -223,7 +223,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
         .recordTestResult(
             eq(NameIdentifier.of("metalake", "catalog")),
             eq("fileset"),
-            eq(maskedProperties),
+            eq(rawProperties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.PASSED),
             eq(123456L),
@@ -303,9 +303,13 @@ public class TestCredentialProviderOperations extends JerseyTest {
   /** Verifies a failed configured-provider probe persists a safe failure result. */
   @Test
   public void testExistingCredentialProviderPersistsFailedResult() throws IOException {
-    Map<String, String> properties =
-        Map.of("key", "saved-value", "credential-providers", "test-provider");
-    loadCatalog("failed-catalog", properties);
+    Map<String, String> rawProperties =
+        Map.of("key", "raw-value", "credential-providers", "test-provider");
+    Map<String, String> maskedProperties =
+        Map.of("key", "******", "credential-providers", "test-provider");
+    loadCatalog(
+        genericCatalog("failed-catalog", maskedProperties),
+        catalog("failed-catalog", rawProperties));
     CredentialProvider provider = mock(CredentialProvider.class);
     when(provider.getCredentialOptional(any())).thenReturn(Optional.empty());
     testProvider = provider;
@@ -329,7 +333,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
         .recordTestResult(
             eq(NameIdentifier.of("metalake", "failed-catalog")),
             eq("fileset"),
-            eq(properties),
+            eq(rawProperties),
             eq(ConnectionTestType.credential("test-provider")),
             eq(ConnectionTestResult.Status.FAILED),
             eq(123456L),

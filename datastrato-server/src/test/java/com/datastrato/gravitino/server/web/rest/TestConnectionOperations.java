@@ -42,6 +42,7 @@ import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.credential.CredentialConstants;
 import org.apache.gravitino.dto.AuditDTO;
 import org.apache.gravitino.dto.CatalogDTO;
@@ -52,6 +53,7 @@ import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.web.ObjectMapperProvider;
 import org.apache.gravitino.utils.NameIdentifierUtil;
+import org.apache.gravitino.utils.ThrowableFunction;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -72,7 +74,8 @@ public class TestConnectionOperations extends JerseyTest {
     }
   }
 
-  private final CatalogDispatcher catalogDispatcher = mock(CatalogManager.class);
+  private final CatalogManager catalogManager = mock(CatalogManager.class);
+  private final CatalogDispatcher catalogDispatcher = catalogManager;
   private final SchemaDispatcher schemaDispatcher = mock(SchemaDispatcher.class);
   private final ConnectionTestStore connectionTestStore = mock(ConnectionTestStore.class);
 
@@ -108,6 +111,7 @@ public class TestConnectionOperations extends JerseyTest {
           @Override
           protected void configure() {
             bind(catalogDispatcher).to(CatalogDispatcher.class).ranked(2);
+            bind(catalogManager).to(CatalogManager.class).ranked(2);
             bind(schemaDispatcher).to(SchemaDispatcher.class).ranked(2);
             bind(connectionTestStore).to(ConnectionTestStore.class).ranked(2);
             bindFactory(MockServletRequestFactory.class).to(HttpServletRequest.class);
@@ -356,8 +360,7 @@ public class TestConnectionOperations extends JerseyTest {
                 "raw-password-secret"));
 
     when(catalogDispatcher.listCatalogsInfo(catalogNS)).thenReturn(new Catalog[] {catalog});
-    when(catalogDispatcher.loadCatalog(NameIdentifierUtil.ofCatalog(metalake, catalogName)))
-        .thenReturn(loadedCatalog);
+    mockDoWithCatalog(NameIdentifierUtil.ofCatalog(metalake, catalogName), loadedCatalog);
     when(schemaDispatcher.listSchemas(Namespace.of(metalake, catalogName)))
         .thenReturn(new NameIdentifier[0]);
 
@@ -398,7 +401,8 @@ public class TestConnectionOperations extends JerseyTest {
             .build();
 
     when(catalogDispatcher.listCatalogsInfo(catalogNS)).thenReturn(new Catalog[] {catalog});
-    when(catalogDispatcher.loadCatalog(NameIdentifierUtil.ofCatalog(metalake, catalogName)))
+    when(catalogManager.doWithCatalog(
+            Mockito.eq(NameIdentifierUtil.ofCatalog(metalake, catalogName)), any()))
         .thenThrow(new IllegalStateException("Credential inference is unavailable"));
     when(schemaDispatcher.listSchemas(Namespace.of(metalake, catalogName)))
         .thenReturn(new NameIdentifier[0]);
@@ -519,10 +523,15 @@ public class TestConnectionOperations extends JerseyTest {
                     "us-east-1",
                     "warehouse",
                     "s3a://warehouse-user:warehouse-secret@bucket/path",
-                    "credential-providers",
-                    "s3-token,gcs-token"))
+                    CredentialConstants.CREDENTIAL_PROVIDERS,
+                    HiddenPropertyMaskUtils.MASKED_VALUE))
             .withAudit(AuditDTO.builder().build())
             .build();
+    BaseCatalog<?> liveCatalog = mock(BaseCatalog.class);
+    when(liveCatalog.propertiesWithCredentialProviders())
+        .thenReturn(
+            ImmutableMap.of(CredentialConstants.CREDENTIAL_PROVIDERS, "s3-token,gcs-token"));
+    mockDoWithCatalog(identifier, liveCatalog);
     when(catalogDispatcher.loadCatalog(identifier)).thenReturn(catalog);
     when(catalogDispatcher.listCatalogsInfo(Namespace.of(metalake)))
         .thenReturn(new Catalog[] {catalog});
@@ -1017,6 +1026,17 @@ public class TestConnectionOperations extends JerseyTest {
         """);
     Mockito.verifyNoInteractions(schemaDispatcher);
     Mockito.verify(catalogDispatcher, Mockito.never()).testConnection(any(NameIdentifier.class));
+  }
+
+  @SuppressWarnings("unchecked")
+  private void mockDoWithCatalog(NameIdentifier identifier, BaseCatalog<?> catalog) {
+    Mockito.doAnswer(
+            invocation -> {
+              ThrowableFunction<BaseCatalog, Object> operation = invocation.getArgument(1);
+              return operation.apply(catalog);
+            })
+        .when(catalogManager)
+        .doWithCatalog(Mockito.eq(identifier), any());
   }
 
   private void assertListJsonContract(String expectedJson) throws JsonProcessingException {

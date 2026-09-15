@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
@@ -145,27 +146,25 @@ public class CredentialProviderOperations {
           httpRequest,
           () -> {
             NameIdentifier identifier = NameIdentifierUtil.ofCatalog(metalake, connection);
-            Catalog catalog = catalogDispatcher.loadCatalog(identifier);
+            catalogDispatcher.loadCatalog(identifier);
             boolean hasProposedUpdates = !request.getUpdates().isEmpty();
-            boolean configured;
-            try {
-              configured =
-                  testCredentialProvider(
-                      identifier, credentialType, request.getPath(), request.getUpdates());
-            } catch (Exception e) {
+            CredentialProviderProbe probe =
+                testCredentialProvider(
+                    identifier, credentialType, request.getPath(), request.getUpdates());
+            if (probe.failure != null) {
               if (!hasProposedUpdates) {
                 connectionTestStore.recordTestResult(
                     identifier,
-                    catalog.provider(),
-                    persistedProperties(catalog),
+                    probe.catalogProvider,
+                    probe.persistedProperties,
                     testType,
                     ConnectionTestResult.Status.FAILED,
                     clock.millis(),
                     SAFE_CREDENTIAL_FAILURE_MESSAGE);
               }
-              throw e;
+              throw probe.failure;
             }
-            if (!configured) {
+            if (!probe.configured) {
               return Utils.illegalArguments(
                   String.format(
                       "Credential provider %s is not configured on Catalog %s",
@@ -176,8 +175,8 @@ public class CredentialProviderOperations {
               boolean recorded =
                   connectionTestStore.recordTestResult(
                       identifier,
-                      catalog.provider(),
-                      persistedProperties(catalog),
+                      probe.catalogProvider,
+                      probe.persistedProperties,
                       testType,
                       ConnectionTestResult.Status.PASSED,
                       clock.millis(),
@@ -206,7 +205,7 @@ public class CredentialProviderOperations {
     }
   }
 
-  private boolean testCredentialProvider(
+  private CredentialProviderProbe testCredentialProvider(
       NameIdentifier identifier,
       String credentialType,
       String path,
@@ -214,24 +213,31 @@ public class CredentialProviderOperations {
     return catalogManager.doWithCatalog(
         identifier,
         catalog -> {
-          Map<String, String> properties =
-              applyProposedUpdates(credentialProperties(catalog), updates);
-          if (!isCredentialProviderConfigured(credentialType, properties)) {
-            return false;
-          }
-          try (CredentialProvider provider = createCredentialProvider(credentialType, properties)) {
-            if (!provider
-                .getCredentialOptional(
-                    new PathBasedCredentialContext(
-                        PrincipalUtils.getCurrentUserName(),
-                        Collections.singleton(path),
-                        Collections.singleton(path)))
-                .isPresent()) {
-              throw new IllegalStateException(
-                  String.format(
-                      "Credential provider %s did not generate a credential", credentialType));
+          String catalogProvider = catalog.provider();
+          Map<String, String> persistedProperties = persistedProperties(catalog);
+          try {
+            Map<String, String> properties =
+                applyProposedUpdates(credentialProperties(catalog), updates);
+            if (!isCredentialProviderConfigured(credentialType, properties)) {
+              return new CredentialProviderProbe(false, catalogProvider, persistedProperties, null);
             }
-            return true;
+            try (CredentialProvider provider =
+                createCredentialProvider(credentialType, properties)) {
+              if (!provider
+                  .getCredentialOptional(
+                      new PathBasedCredentialContext(
+                          PrincipalUtils.getCurrentUserName(),
+                          Collections.singleton(path),
+                          Collections.singleton(path)))
+                  .isPresent()) {
+                throw new IllegalStateException(
+                    String.format(
+                        "Credential provider %s did not generate a credential", credentialType));
+              }
+            }
+            return new CredentialProviderProbe(true, catalogProvider, persistedProperties, null);
+          } catch (Exception e) {
+            return new CredentialProviderProbe(false, catalogProvider, persistedProperties, e);
           }
         });
   }
@@ -255,7 +261,7 @@ public class CredentialProviderOperations {
         catalog instanceof BaseCatalog
             ? ((BaseCatalog<?>) catalog).entity().getProperties()
             : catalog.properties();
-    return properties == null ? Collections.emptyMap() : properties;
+    return properties == null ? Collections.emptyMap() : new HashMap<>(properties);
   }
 
   private Map<String, String> applyProposedUpdates(
@@ -283,5 +289,24 @@ public class CredentialProviderOperations {
       String credentialType, Map<String, String> properties) {
     CredentialConfig credentialConfig = new CredentialConfig(properties);
     return credentialConfig.get(CredentialConfig.CREDENTIAL_PROVIDERS).contains(credentialType);
+  }
+
+  private static class CredentialProviderProbe {
+
+    private final boolean configured;
+    private final String catalogProvider;
+    private final Map<String, String> persistedProperties;
+    @Nullable private final Exception failure;
+
+    private CredentialProviderProbe(
+        boolean configured,
+        String catalogProvider,
+        Map<String, String> persistedProperties,
+        @Nullable Exception failure) {
+      this.configured = configured;
+      this.catalogProvider = catalogProvider;
+      this.persistedProperties = persistedProperties;
+      this.failure = failure;
+    }
   }
 }
