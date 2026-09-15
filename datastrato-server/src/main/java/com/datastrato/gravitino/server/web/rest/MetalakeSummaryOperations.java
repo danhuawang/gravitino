@@ -92,7 +92,7 @@ public class MetalakeSummaryOperations {
                 accessControlDispatcher == null
                     ? null
                     : GravitinoEnv.getInstance()
-                        .ownerDispatcher()
+                        .internalOwnerDispatcher()
                         .getOwner(
                             metalake,
                             MetadataObjects.of(null, metalake, MetadataObject.Type.METALAKE))

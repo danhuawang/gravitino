@@ -55,6 +55,8 @@ import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataSer
 import com.datastrato.gravitino.tag.mapper.DatastratoTagPolicyMetadataObjectMapper;
 import com.datastrato.gravitino.tag.po.DatastratoPolicyRelPO;
 import com.datastrato.gravitino.tag.po.DatastratoTagRelPO;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
@@ -80,11 +82,14 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.UserPrincipal;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
+import org.apache.gravitino.authorization.Owner;
+import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
@@ -96,6 +101,7 @@ import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.dto.SchemaDTO;
+import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.file.FilesetDTO;
 import org.apache.gravitino.dto.function.FunctionDTO;
 import org.apache.gravitino.dto.messaging.TopicDTO;
@@ -134,6 +140,7 @@ import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.GravitinoAuthorizerProvider;
 import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
+import org.apache.gravitino.server.web.ObjectMapperProvider;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.gravitino.tag.TagDispatcher;
 import org.apache.gravitino.utils.PrincipalUtils;
@@ -141,6 +148,8 @@ import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.TransactionIsolationLevel;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
+import org.glassfish.jersey.client.ClientConfig;
+import org.glassfish.jersey.jackson.JacksonFeature;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
@@ -250,6 +259,7 @@ public class TestEntityOperations extends JerseyTest {
 
     ResourceConfig resourceConfig = new ResourceConfig();
     resourceConfig.register(EntityOperations.class);
+    resourceConfig.register(ObjectMapperProvider.class).register(JacksonFeature.class);
     resourceConfig.register(
         new AbstractBinder() {
           @Override
@@ -272,6 +282,94 @@ public class TestEntityOperations extends JerseyTest {
         });
 
     return resourceConfig;
+  }
+
+  @Override
+  protected void configureClient(ClientConfig config) {
+    config.register(ObjectMapperProvider.class).register(JacksonFeature.class);
+  }
+
+  @Test
+  public void testMetalakeOwnersInListJson() throws Exception {
+    OwnerDispatcher previous = GravitinoEnv.getInstance().internalOwnerDispatcher();
+    OwnerDispatcher previousPublic = GravitinoEnv.getInstance().ownerDispatcher();
+    OwnerDispatcher publicOwners = mock(OwnerDispatcher.class);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "ownerDispatcher", publicOwners, true);
+    OwnerDispatcher owners = mock(OwnerDispatcher.class);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "internalOwnerDispatcher", owners, true);
+    try {
+      when(metalakeDispatcher.listMetalakes())
+          .thenReturn(
+              new Metalake[] {
+                buildMetalake(4L, "z"),
+                buildMetalake(3L, "c"),
+                buildMetalake(2L, "b"),
+                buildMetalake(1L, "a")
+              });
+      when(catalogDispatcher.listCatalogs(any(Namespace.class))).thenReturn(new NameIdentifier[0]);
+      when(owners.getOwner("a", MetadataObjects.of(null, "a", MetadataObject.Type.METALAKE)))
+          .thenReturn(
+              Optional.of(OwnerDTO.builder().withName("alice").withType(Owner.Type.USER).build()));
+      when(owners.getOwner("b", MetadataObjects.of(null, "b", MetadataObject.Type.METALAKE)))
+          .thenReturn(
+              Optional.of(
+                  OwnerDTO.builder().withName("admins").withType(Owner.Type.GROUP).build()));
+      when(owners.getOwner("c", MetadataObjects.of(null, "c", MetadataObject.Type.METALAKE)))
+          .thenReturn(Optional.empty());
+      try (Response response =
+          target("/web/entities")
+              .queryParam("resultLimit", 3)
+              .request()
+              .accept("application/vnd.gravitino.v1+json")
+              .get()) {
+        Assertions.assertEquals(200, response.getStatus());
+        JsonNode root = new ObjectMapper().readTree(response.readEntity(String.class));
+        Assertions.assertEquals(0, root.get("code").asInt());
+        JsonNode metalakes = root.get("metalakes");
+        Assertions.assertEquals(3, metalakes.size());
+        Assertions.assertEquals("a", metalakes.get(0).get("name").asText());
+        Assertions.assertEquals("b", metalakes.get(1).get("name").asText());
+        Assertions.assertEquals("c", metalakes.get(2).get("name").asText());
+        Assertions.assertEquals("alice", metalakes.get(0).get("owner").get("name").asText());
+        Assertions.assertEquals("user", metalakes.get(0).get("owner").get("type").asText());
+        Assertions.assertEquals("admins", metalakes.get(1).get("owner").get("name").asText());
+        Assertions.assertEquals("group", metalakes.get(1).get("owner").get("type").asText());
+        Assertions.assertTrue(metalakes.get(2).get("owner").isNull());
+        Assertions.assertEquals(0, metalakes.get(0).get("directChildCounts").asInt());
+        Assertions.assertTrue(metalakes.get(0).has("audit"));
+      }
+      Mockito.verify(owners, Mockito.never()).getOwner(Mockito.eq("z"), any());
+      Mockito.verify(owners, Mockito.times(3)).getOwner(any(), any());
+      Mockito.verifyNoInteractions(publicOwners);
+    } finally {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "ownerDispatcher", previousPublic, true);
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "internalOwnerDispatcher", previous, true);
+    }
+  }
+
+  @Test
+  public void testMetalakeOwnerIsNullWithoutAuthorization() throws Exception {
+    OwnerDispatcher previous = GravitinoEnv.getInstance().internalOwnerDispatcher();
+    OwnerDispatcher previousPublic = GravitinoEnv.getInstance().ownerDispatcher();
+    OwnerDispatcher publicOwners = mock(OwnerDispatcher.class);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "ownerDispatcher", publicOwners, true);
+    FieldUtils.writeField(GravitinoEnv.getInstance(), "internalOwnerDispatcher", null, true);
+    try {
+      when(metalakeDispatcher.listMetalakes()).thenReturn(new Metalake[] {buildMetalake(1L, "a")});
+      when(catalogDispatcher.listCatalogs(any(Namespace.class))).thenReturn(new NameIdentifier[0]);
+      try (Response response =
+          target("/web/entities").request().accept("application/vnd.gravitino.v1+json").get()) {
+        Assertions.assertEquals(200, response.getStatus());
+        JsonNode entry =
+            new ObjectMapper().readTree(response.readEntity(String.class)).get("metalakes").get(0);
+        Assertions.assertTrue(entry.has("owner"));
+        Assertions.assertTrue(entry.get("owner").isNull());
+      }
+      Mockito.verifyNoInteractions(publicOwners);
+    } finally {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "ownerDispatcher", previousPublic, true);
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "internalOwnerDispatcher", previous, true);
+    }
   }
 
   @BeforeEach

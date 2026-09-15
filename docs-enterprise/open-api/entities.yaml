@@ -86,6 +86,17 @@ components:
         - $ref: "../../docs/open-api/metalakes.yaml#/components/schemas/Metalake"
         - type: object
           properties:
+            owner:
+              type: object
+              nullable: true
+              description: The metalake owner, or null when authorization is disabled or no owner is assigned.
+              required: [name, type]
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [user, group]
             directChildCounts:
               type: integer
               format: int64

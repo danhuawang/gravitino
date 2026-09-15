@@ -151,6 +151,38 @@ public class TestResponses {
   }
 
   @Test
+  void testExtendedMetalakeOwnerRoundTripAndLegacyResponse() throws JsonProcessingException {
+    MetalakeDTO metalake =
+        MetalakeDTO.builder().withName("lake").withAudit(AuditDTO.builder().build()).build();
+    for (Owner.Type type : Owner.Type.values()) {
+      OwnerDTO owner = OwnerDTO.builder().withName("owner").withType(type).build();
+      ExtendedMetalakeDTO dto = new ExtendedMetalakeDTO(metalake, 2L, owner);
+      dto.validate();
+      String json = JsonUtils.objectMapper().writeValueAsString(dto);
+      ExtendedMetalakeDTO restored =
+          JsonUtils.objectMapper().readValue(json, ExtendedMetalakeDTO.class);
+      Assertions.assertEquals("lake", restored.name());
+      Assertions.assertEquals(2L, restored.getDirectChildCounts());
+      Assertions.assertEquals("owner", restored.getOwner().name());
+      Assertions.assertEquals(type, restored.getOwner().type());
+      Assertions.assertEquals(dto, restored);
+      Assertions.assertEquals(dto.hashCode(), restored.hashCode());
+      Assertions.assertNotEquals(dto, new ExtendedMetalakeDTO(metalake, 2L));
+      Assertions.assertNotEquals(
+          dto,
+          new ExtendedMetalakeDTO(
+              metalake, 2L, OwnerDTO.builder().withName("other").withType(type).build()));
+    }
+    ExtendedMetalakeDTO legacy =
+        JsonUtils.objectMapper()
+            .readValue(
+                "{\"name\":\"lake\",\"audit\":{},\"directChildCounts\":2}",
+                ExtendedMetalakeDTO.class);
+    Assertions.assertNull(legacy.getOwner());
+    Assertions.assertNull(new ExtendedMetalakeDTO(metalake, 2L).getOwner());
+  }
+
+  @Test
   public void testCatalogListResponse() throws JsonProcessingException {
     CatalogDTO catalog =
         CatalogDTO.builder()

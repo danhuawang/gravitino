@@ -45,6 +45,7 @@ import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,7 +65,10 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
   private static final MetalakeSummaryMetaService summaryMetaService =
       mock(MetalakeSummaryMetaService.class);
 
+  private static final OwnerDispatcher publicOwnerDispatcher = mock(OwnerDispatcher.class);
+
   private static OwnerDispatcher previousOwnerDispatcher;
+  private static OwnerDispatcher previousPublicOwnerDispatcher;
 
   private static class MockServletRequestFactory extends ServletRequestFactoryBase {
     /** {@inheritDoc} */
@@ -79,7 +83,8 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
   /** Sets the shared Gravitino environment used by the endpoint. */
   @BeforeAll
   public static void setup() throws IllegalAccessException {
-    previousOwnerDispatcher = GravitinoEnv.getInstance().ownerDispatcher();
+    previousPublicOwnerDispatcher = GravitinoEnv.getInstance().ownerDispatcher();
+    previousOwnerDispatcher = GravitinoEnv.getInstance().internalOwnerDispatcher();
     Config config = mock(Config.class);
     Mockito.doReturn(false).when(config).get(ENABLE_AUTHORIZATION);
     Mockito.doReturn(100000L).when(config).get(TREE_LOCK_MAX_NODE_IN_MEMORY);
@@ -93,16 +98,28 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
   @AfterAll
   public static void restoreOwnerDispatcher() throws IllegalAccessException {
     FieldUtils.writeField(
-        GravitinoEnv.getInstance(), "ownerDispatcher", previousOwnerDispatcher, true);
+        GravitinoEnv.getInstance(), "ownerDispatcher", previousPublicOwnerDispatcher, true);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalOwnerDispatcher", previousOwnerDispatcher, true);
   }
 
   /** Resets dispatcher mocks before each test. */
   @BeforeEach
   public void resetMocks() throws IllegalAccessException {
-    Mockito.reset(accessControlDispatcher, summaryMetaService, ownerDispatcher);
-    FieldUtils.writeField(GravitinoEnv.getInstance(), "ownerDispatcher", ownerDispatcher, true);
+    Mockito.reset(
+        accessControlDispatcher, summaryMetaService, ownerDispatcher, publicOwnerDispatcher);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "ownerDispatcher", publicOwnerDispatcher, true);
+    FieldUtils.writeField(
+        GravitinoEnv.getInstance(), "internalOwnerDispatcher", ownerDispatcher, true);
     FieldUtils.writeField(
         GravitinoEnv.getInstance(), "accessControlDispatcher", accessControlDispatcher, true);
+  }
+
+  /** Verifies summary enrichment never calls the event-emitting owner dispatcher. */
+  @AfterEach
+  public void verifyNoPublicOwnerLookups() {
+    Mockito.verifyNoInteractions(publicOwnerDispatcher);
   }
 
   /** {@inheritDoc} */

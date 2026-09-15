@@ -41,7 +41,6 @@ import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.google.common.annotations.VisibleForTesting;
 import java.util.Optional;
-import java.util.function.Supplier;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
@@ -143,7 +142,6 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
         createExternalTableHookDispatcher(
             tableOperationDispatcher,
             catalogManager(),
-            this::ownerDispatcher,
             new IcebergEncryptionPolicyResolver(policyDispatcher(), new SinglePolicyChecker()),
             IcebergTableEncryptionDispatcher.registryValidator(kmsClientRegistry()));
     DatastratoTableDispatcher tableNormalizeDispatcher =
@@ -245,16 +243,16 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   }
 
   @VisibleForTesting
-  static DatastratoTableHookDispatcher createExternalTableHookDispatcher(
+  DatastratoTableHookDispatcher createExternalTableHookDispatcher(
       DatastratoTableDispatcher tableOperationDispatcher,
       CatalogManager catalogManager,
-      Supplier<OwnerDispatcher> ownerDispatcher,
       IcebergEncryptionPolicyResolver policyResolver,
       IcebergEncryptionPolicyEvaluator.KmsKeyValidator keyValidator) {
     DatastratoTableDispatcher tableEncryptionDispatcher =
         new IcebergTableEncryptionDispatcher(
             tableOperationDispatcher, catalogManager, policyResolver, keyValidator);
-    return new DatastratoTableHookDispatcher(tableEncryptionDispatcher, ownerDispatcher);
+    return new DatastratoTableHookDispatcher(
+        tableEncryptionDispatcher, this::internalOwnerDispatcher);
   }
 
   @Override
@@ -440,6 +438,12 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
   @Override
   public OwnerDispatcher ownerDispatcher() {
     return GravitinoEnv.getInstance().ownerDispatcher();
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public OwnerDispatcher internalOwnerDispatcher() {
+    return GravitinoEnv.getInstance().internalOwnerDispatcher();
   }
 
   @Override

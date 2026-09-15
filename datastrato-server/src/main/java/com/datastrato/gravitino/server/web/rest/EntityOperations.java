@@ -61,6 +61,7 @@ import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Entity;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.MetadataObjects;
@@ -68,6 +69,7 @@ import org.apache.gravitino.Metalake;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AuthorizationUtils;
+import org.apache.gravitino.authorization.OwnerDispatcher;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.FilesetDispatcher;
 import org.apache.gravitino.catalog.FunctionDispatcher;
@@ -382,12 +384,23 @@ public class EntityOperations {
             .toArray(Metalake[]::new);
     Map<String, Long> directChildCounts = listMetalakeDirectChildCounts(selectedMetalakes);
 
+    OwnerDispatcher ownerDispatcher = GravitinoEnv.getInstance().internalOwnerDispatcher();
     ExtendedMetalakeDTO[] extendedMetalakes =
         Arrays.stream(selectedMetalakes)
             .map(
                 metalake ->
                     new ExtendedMetalakeDTO(
-                        DTOConverters.toDTO(metalake), directChildCounts.get(metalake.name())))
+                        DTOConverters.toDTO(metalake),
+                        directChildCounts.get(metalake.name()),
+                        ownerDispatcher == null
+                            ? null
+                            : ownerDispatcher
+                                .getOwner(
+                                    metalake.name(),
+                                    MetadataObjects.of(
+                                        null, metalake.name(), MetadataObject.Type.METALAKE))
+                                .map(DTOConverters::toDTO)
+                                .orElse(null)))
             .toArray(ExtendedMetalakeDTO[]::new);
 
     Response response = Utils.ok(new MetalakeListResponse(extendedMetalakes));
