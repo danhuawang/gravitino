@@ -19,16 +19,25 @@
 package org.apache.gravitino.server;
 
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_PATH;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import org.apache.commons.io.FileUtils;
 import org.apache.gravitino.GravitinoEnv;
@@ -39,6 +48,7 @@ import org.apache.gravitino.server.web.HttpAuditFilter;
 import org.apache.gravitino.server.web.JettyServer;
 import org.apache.gravitino.server.web.JettyServerConfig;
 import org.apache.gravitino.server.web.JettyServerTestUtils;
+import org.apache.gravitino.server.web.ObjectMapperProvider;
 import org.eclipse.jetty.http.pathmap.ServletPathSpec;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHandler;
@@ -162,6 +172,22 @@ public class TestGravitinoServer {
   }
 
   @Test
+  public void testJerseyErrorOmitsStackTraceByDefault() throws Exception {
+    JsonNode response = requestMalformedMetalakeCreate(false);
+
+    assertTrue(response.hasNonNull("message"), response.toString());
+    assertFalse(response.has("stack"), response.toString());
+  }
+
+  @Test
+  public void testJerseyErrorIncludesStackTraceWhenEnabled() throws Exception {
+    JsonNode response = requestMalformedMetalakeCreate(true);
+
+    assertTrue(response.hasNonNull("message"), response.toString());
+    assertTrue(response.has("stack"), response.toString());
+  }
+
+  @Test
   public void testMainShutdownHookShouldInvokeServerStop() throws IOException {
     Path sourceFile = Path.of("src/main/java/org/apache/gravitino/server/GravitinoServer.java");
     String source = Files.readString(sourceFile);
@@ -250,6 +276,40 @@ public class TestGravitinoServer {
     return filterPathSpecs.stream()
         .anyMatch(
             filterPathSpec -> new ServletPathSpec(filterPathSpec).matches(representativePath));
+  }
+
+  private JsonNode requestMalformedMetalakeCreate(boolean includeErrorStackTrace) throws Exception {
+    int port = RESTUtils.findAvailablePort(5000, 6000);
+    Map<String, String> configs = new HashMap<>();
+    configs.put(
+        GravitinoServer.WEBSERVER_CONF_PREFIX + JettyServerConfig.WEBSERVER_HTTP_PORT.getKey(),
+        Integer.toString(port));
+    configs.put(
+        GravitinoServer.WEBSERVER_CONF_PREFIX
+            + JettyServerConfig.INCLUDE_ERROR_STACK_TRACE.getKey(),
+        Boolean.toString(includeErrorStackTrace));
+    ServerConfig serverConfig = new ServerConfig();
+    serverConfig.loadFromMap(configs, key -> true);
+    ServerConfig testServerConfig = Mockito.spy(serverConfig);
+    Mockito.when(
+            testServerConfig.getConfigsWithPrefix(
+                AuxiliaryServiceManager.GRAVITINO_AUX_SERVICE_PREFIX))
+        .thenReturn(ImmutableMap.of(AuxiliaryServiceManager.AUX_SERVICE_NAMES, ""));
+    gravitinoServer = new GravitinoServer(testServerConfig, GravitinoEnv.getInstance());
+    gravitinoServer.initialize();
+    gravitinoServer.start();
+
+    HttpResponse<String> response =
+        HttpClient.newHttpClient()
+            .send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/metalakes"))
+                    .header("Accept", "application/vnd.gravitino.v1+json")
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{"))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
+    assertEquals(400, response.statusCode(), response.body());
+    return ObjectMapperProvider.objectMapper(true).readTree(response.body());
   }
 
   private static ServletContextHandler getServletContextHandler(GravitinoServer gravitinoServer)

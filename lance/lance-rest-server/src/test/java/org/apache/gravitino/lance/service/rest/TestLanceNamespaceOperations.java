@@ -47,15 +47,18 @@ import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.lance.common.ops.LanceTableOperations;
 import org.apache.gravitino.lance.common.ops.NamespaceWrapper;
 import org.apache.gravitino.lance.common.utils.LanceConstants;
+import org.apache.gravitino.lance.service.LanceExceptionMapper;
 import org.apache.gravitino.rest.RESTUtils;
 import org.glassfish.jersey.CommonProperties;
 import org.glassfish.jersey.internal.inject.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.lance.namespace.errors.NamespaceNotFoundException;
 import org.lance.namespace.errors.TableNotFoundException;
 import org.lance.namespace.model.AlterColumnsEntry;
 import org.lance.namespace.model.AlterTableAlterColumnsRequest;
@@ -140,6 +143,11 @@ public class TestLanceNamespaceOperations extends JerseyTest {
     when(namespaceWrapper.asTableOps()).thenReturn(tableOps);
   }
 
+  @AfterEach
+  public void resetErrorStackTraceSetting() {
+    LanceExceptionMapper.setIncludeErrorStackTrace(false);
+  }
+
   @Test
   public void testListNamespaces() {
     String namespaceId = "ns1.ns2";
@@ -210,8 +218,7 @@ public class TestLanceNamespaceOperations extends JerseyTest {
     Assertions.assertEquals(18, errorResp.getCode());
     Assertions.assertEquals("Test exception", errorResp.getError());
     Assertions.assertEquals("ns1.ns2", errorResp.getInstance());
-    Assertions.assertNotNull(errorResp.getDetail());
-    Assertions.assertTrue(errorResp.getDetail().contains("Test exception"));
+    Assertions.assertEquals("", errorResp.getDetail());
 
     // root endpoint should use explicit root identifier instead of delimiter in error instance
     resp =
@@ -263,6 +270,39 @@ public class TestLanceNamespaceOperations extends JerseyTest {
     ErrorResponse errorResp = resp.readEntity(ErrorResponse.class);
     Assertions.assertEquals(18, errorResp.getCode());
     Assertions.assertEquals("Test exception", errorResp.getError());
+  }
+
+  @Test
+  public void testNativeExceptionStackDetailFollowsSetting() {
+    String namespaceId = "ns1.ns2";
+    String capturedStack =
+        "java.lang.RuntimeException: Captured stacktrace\n"
+            + "\tat org.apache.gravitino.lance.common.ops.gravitino.CommonUtil"
+            + ".formatCurrentStackTrace(CommonUtil.java:30)";
+    doThrow(new NamespaceNotFoundException("Namespace not found", capturedStack, namespaceId))
+        .when(namespaceOps)
+        .describeNamespace(any(), any());
+
+    LanceExceptionMapper.setIncludeErrorStackTrace(false);
+    try (Response response =
+        target("/v1/namespace/" + namespaceId + "/describe")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .post(null)) {
+      Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
+      ErrorResponse error = response.readEntity(ErrorResponse.class);
+      Assertions.assertEquals("Namespace not found", error.getError());
+      Assertions.assertEquals("", error.getDetail());
+    }
+
+    LanceExceptionMapper.setIncludeErrorStackTrace(true);
+    try (Response response =
+        target("/v1/namespace/" + namespaceId + "/describe")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .post(null)) {
+      Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
+      ErrorResponse error = response.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(capturedStack, error.getDetail());
+    }
   }
 
   @Test

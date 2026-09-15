@@ -99,23 +99,47 @@ public class TestIcebergErrorHandling extends JerseyTest {
    */
   @Test
   public void testErrorResponsesAndSubsequentRequests() throws IOException {
+    IcebergRESTUtils.setIncludeErrorStackTrace(true);
+    try {
+      for (String mode : new String[] {"direct", "do-as"}) {
+        try (Response response =
+            target("failure/" + mode).request(MediaType.APPLICATION_JSON_TYPE).get()) {
+          Assertions.assertEquals(500, response.getStatus());
+          Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
+          ErrorResponse error =
+              IcebergObjectMapper.getInstance()
+                  .readValue(response.readEntity(String.class), ErrorResponse.class);
+          Assertions.assertEquals(500, error.code());
+          Assertions.assertEquals("NoClassDefFoundError", error.type());
+          Assertions.assertEquals("catalog class", error.message());
+          Assertions.assertTrue(
+              String.join("\n", error.stack())
+                  .contains("Caused by: java.lang.ClassNotFoundException: missing dependency"));
+        }
+        try (Response response = target("failure/healthy").request().get()) {
+          Assertions.assertEquals(200, response.getStatus());
+        }
+      }
+    } finally {
+      IcebergRESTUtils.setIncludeErrorStackTrace(false);
+    }
+  }
+
+  /** Verifies both error paths omit stack traces by default without losing the public contract. */
+  @Test
+  public void testErrorResponsesOmitStacksByDefault() throws IOException {
+    IcebergRESTUtils.setIncludeErrorStackTrace(false);
     for (String mode : new String[] {"direct", "do-as"}) {
       try (Response response =
           target("failure/" + mode).request(MediaType.APPLICATION_JSON_TYPE).get()) {
         Assertions.assertEquals(500, response.getStatus());
-        Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, response.getMediaType());
+        String json = response.readEntity(String.class);
+        Assertions.assertFalse(json.contains("\"stack\""), json);
         ErrorResponse error =
-            IcebergObjectMapper.getInstance()
-                .readValue(response.readEntity(String.class), ErrorResponse.class);
+            IcebergObjectMapper.getInstance().readValue(json, ErrorResponse.class);
         Assertions.assertEquals(500, error.code());
         Assertions.assertEquals("NoClassDefFoundError", error.type());
         Assertions.assertEquals("catalog class", error.message());
-        Assertions.assertTrue(
-            String.join("\n", error.stack())
-                .contains("Caused by: java.lang.ClassNotFoundException: missing dependency"));
-      }
-      try (Response response = target("failure/healthy").request().get()) {
-        Assertions.assertEquals(200, response.getStatus());
       }
     }
   }

@@ -69,8 +69,7 @@ public class TestAuthenticationFilter {
   @Test
   public void testDoFilterWithException() throws ServletException, IOException {
     Authenticator authenticator = mock(Authenticator.class);
-    AuthenticationFilter filter =
-        new AuthenticationFilter(Lists.newArrayList(authenticator), false);
+    AuthenticationFilter filter = new AuthenticationFilter(Lists.newArrayList(authenticator));
     FilterChain mockChain = mock(FilterChain.class);
     HttpServletRequest mockRequest = mock(HttpServletRequest.class);
     HttpServletResponse mockResponse = mock(HttpServletResponse.class);

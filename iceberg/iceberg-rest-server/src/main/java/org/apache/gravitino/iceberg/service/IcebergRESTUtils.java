@@ -414,15 +414,22 @@ public class IcebergRESTUtils {
   }
 
   /**
-   * Build an Iceberg {@link ErrorResponse} for a given HTTP status code and message, without an
-   * exception. Used by the Jetty error handler for pre-JAX-RS errors.
+   * Builds an Iceberg error response while applying the configured stack-trace policy.
+   *
+   * @param httpStatus HTTP status code
+   * @param type Iceberg error type
+   * @param message public error message
+   * @param cause failure whose stack trace may be included
+   * @return the configured Iceberg error response
    */
-  public static ErrorResponse errorResponse(int httpStatus, String type, String message) {
-    return ErrorResponse.builder()
-        .responseCode(httpStatus)
-        .withType(type)
-        .withMessage(message)
-        .build();
+  public static ErrorResponse errorResponse(
+      int httpStatus, String type, String message, Throwable cause) {
+    ErrorResponse.Builder builder =
+        ErrorResponse.builder().responseCode(httpStatus).withType(type).withMessage(message);
+    if (includeErrorStackTrace) {
+      builder.withStackTrace(cause);
+    }
+    return builder.build();
   }
 
   public static Instant calculateNewTimestamp(Instant currentTimestamp, int hours) {

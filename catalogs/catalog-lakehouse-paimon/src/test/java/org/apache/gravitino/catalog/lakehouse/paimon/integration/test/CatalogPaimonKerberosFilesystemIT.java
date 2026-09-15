@@ -48,6 +48,8 @@ import org.apache.gravitino.rel.expressions.distributions.Distributions;
 import org.apache.gravitino.rel.expressions.sorts.SortOrders;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.types.Types;
+import org.apache.gravitino.server.GravitinoServer;
+import org.apache.gravitino.server.web.JettyServerConfig;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.authentication.util.KerberosName;
 import org.apache.hadoop.security.authentication.util.KerberosUtil;
@@ -193,6 +195,11 @@ public class CatalogPaimonKerberosFilesystemIT extends BaseIT {
   }
 
   private void addKerberosConfig() {
+    // This fixture verifies diagnostic causes propagated from the Paimon connector.
+    customConfigs.put(
+        GravitinoServer.WEBSERVER_CONF_PREFIX
+            + JettyServerConfig.INCLUDE_ERROR_STACK_TRACE.getKey(),
+        "true");
     customConfigs.put(Configs.AUTHENTICATORS.getKey(), "kerberos");
     customConfigs.put("gravitino.authenticator.kerberos.principal", GRAVITINO_SERVER_PRINCIPAL);
     customConfigs.put("gravitino.authenticator.kerberos.keytab", TMP_DIR + GRAVITINO_SERVER_KEYTAB);

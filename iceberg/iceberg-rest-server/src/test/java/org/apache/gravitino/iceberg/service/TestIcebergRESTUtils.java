@@ -455,19 +455,19 @@ public class TestIcebergRESTUtils {
   void testErrorResponseStackTraceFollowsSetting() throws Exception {
     RuntimeException failure = new RuntimeException("failure");
     try {
-      ErrorResponse withStack =
-          (ErrorResponse) IcebergRESTUtils.errorResponse(failure, 500).getEntity();
-      Assertions.assertTrue(
-          IcebergObjectMapper.getInstance().writeValueAsString(withStack).contains("\"stack\""));
-
-      IcebergRESTUtils.setIncludeErrorStackTrace(false);
       ErrorResponse withoutStack =
           (ErrorResponse) IcebergRESTUtils.errorResponse(failure, 500).getEntity();
       String json = IcebergObjectMapper.getInstance().writeValueAsString(withoutStack);
       Assertions.assertFalse(json.contains("\"stack\""), json);
       Assertions.assertEquals("failure", withoutStack.message());
-    } finally {
+
       IcebergRESTUtils.setIncludeErrorStackTrace(true);
+      ErrorResponse withStack =
+          (ErrorResponse) IcebergRESTUtils.errorResponse(failure, 500).getEntity();
+      Assertions.assertTrue(
+          IcebergObjectMapper.getInstance().writeValueAsString(withStack).contains("\"stack\""));
+    } finally {
+      IcebergRESTUtils.setIncludeErrorStackTrace(false);
     }
   }
 }

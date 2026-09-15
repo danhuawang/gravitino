@@ -35,11 +35,11 @@ public class TestJettyServerConfig {
   public void testIncludeErrorStackTrace() {
     Config config = new Config() {};
     JettyServerConfig jettyServerConfig = JettyServerConfig.fromConfig(config, "");
-    Assertions.assertTrue(jettyServerConfig.isIncludeErrorStackTrace());
-
-    config.set(JettyServerConfig.INCLUDE_ERROR_STACK_TRACE, false);
-    jettyServerConfig = JettyServerConfig.fromConfig(config, "");
     Assertions.assertFalse(jettyServerConfig.isIncludeErrorStackTrace());
+
+    config.set(JettyServerConfig.INCLUDE_ERROR_STACK_TRACE, true);
+    jettyServerConfig = JettyServerConfig.fromConfig(config, "");
+    Assertions.assertTrue(jettyServerConfig.isIncludeErrorStackTrace());
   }
 
   @Test

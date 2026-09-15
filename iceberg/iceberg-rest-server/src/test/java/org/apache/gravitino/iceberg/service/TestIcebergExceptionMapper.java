@@ -68,26 +68,31 @@ public class TestIcebergExceptionMapper {
   /** Checks that errors retain their type and nested causes in the response. */
   @Test
   public void testErrorsRetainTypeAndCause() {
-    for (Error error :
-        new Error[] {
-          new OutOfMemoryError("Metaspace"), new StackOverflowError(),
-          new NoClassDefFoundError("catalog class"), new AssertionError("assertion")
-        }) {
-      error.initCause(new IllegalStateException("root cause"));
-      try (MockedStatic<ServerHealth> shared = Mockito.mockStatic(ServerHealth.class)) {
-        ServerHealth health = new ServerHealth();
-        shared.when(ServerHealth::getInstance).thenReturn(health);
-        try (Response response = icebergExceptionMapper.toResponse(error)) {
-          Assertions.assertEquals(500, response.getStatus());
-          ErrorResponse entity = (ErrorResponse) response.getEntity();
-          Assertions.assertEquals(error.getClass().getSimpleName(), entity.type());
-          Assertions.assertEquals(error.getMessage(), entity.message());
-          Assertions.assertTrue(
-              String.join("\n", entity.stack())
-                  .contains("Caused by: java.lang.IllegalStateException: root cause"));
+    IcebergRESTUtils.setIncludeErrorStackTrace(true);
+    try {
+      for (Error error :
+          new Error[] {
+            new OutOfMemoryError("Metaspace"), new StackOverflowError(),
+            new NoClassDefFoundError("catalog class"), new AssertionError("assertion")
+          }) {
+        error.initCause(new IllegalStateException("root cause"));
+        try (MockedStatic<ServerHealth> shared = Mockito.mockStatic(ServerHealth.class)) {
+          ServerHealth health = new ServerHealth();
+          shared.when(ServerHealth::getInstance).thenReturn(health);
+          try (Response response = icebergExceptionMapper.toResponse(error)) {
+            Assertions.assertEquals(500, response.getStatus());
+            ErrorResponse entity = (ErrorResponse) response.getEntity();
+            Assertions.assertEquals(error.getClass().getSimpleName(), entity.type());
+            Assertions.assertEquals(error.getMessage(), entity.message());
+            Assertions.assertTrue(
+                String.join("\n", entity.stack())
+                    .contains("Caused by: java.lang.IllegalStateException: root cause"));
+          }
+          Assertions.assertEquals(error instanceof OutOfMemoryError, health.hasOutOfMemoryError());
         }
-        Assertions.assertEquals(error instanceof OutOfMemoryError, health.hasOutOfMemoryError());
       }
+    } finally {
+      IcebergRESTUtils.setIncludeErrorStackTrace(false);
     }
   }
 

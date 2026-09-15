@@ -19,21 +19,38 @@
 package org.apache.gravitino.iceberg;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.codahale.metrics.MetricRegistry;
+import io.prometheus.client.exporter.MetricsServlet;
+import java.nio.file.Path;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
+import org.apache.gravitino.Config;
+import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
+import org.apache.gravitino.iceberg.service.IcebergRESTUtils;
 import org.apache.gravitino.listener.EventBus;
+import org.apache.gravitino.metrics.MetricsSystem;
+import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.web.HttpAuditFilter;
 import org.apache.gravitino.server.web.JettyServer;
 import org.apache.gravitino.server.web.JettyServerConfig;
 import org.apache.gravitino.server.web.JettyServerTestUtils;
 import org.apache.gravitino.server.web.RequestContextFilter;
+import org.apache.iceberg.rest.responses.ErrorResponse;
 import org.eclipse.jetty.servlet.ServletHandler;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 public class TestRESTService {
+
+  @TempDir private Path warehouse;
 
   /**
    * RESTService.initServer() previously registered /metrics and /prometheus/metrics (added by
@@ -79,10 +96,60 @@ public class TestRESTService {
   /** The documented Iceberg REST key reaches the value the service passes to its error builder. */
   @Test
   public void testIncludeErrorStackTraceReadFromServiceConfig() {
-    assertTrue(JettyServerConfig.fromConfig(new IcebergConfig()).isIncludeErrorStackTrace());
-    assertFalse(
+    assertFalse(JettyServerConfig.fromConfig(new IcebergConfig()).isIncludeErrorStackTrace());
+    assertTrue(
         JettyServerConfig.fromConfig(
-                new IcebergConfig(Collections.singletonMap("includeErrorStackTrace", "false")))
+                new IcebergConfig(Collections.singletonMap("includeErrorStackTrace", "true")))
             .isIncludeErrorStackTrace());
+  }
+
+  @Test
+  public void testServiceInitAppliesAndResetsErrorStackTraceSetting() throws Exception {
+    GravitinoEnv environment = Mockito.mock(GravitinoEnv.class);
+    MetricsSystem metricsSystem = Mockito.mock(MetricsSystem.class);
+    Mockito.when(metricsSystem.getMetricRegistry()).thenReturn(new MetricRegistry());
+    Mockito.when(metricsSystem.getPrometheusServlet())
+        .thenReturn(Mockito.mock(MetricsServlet.class));
+    Mockito.when(environment.metricsSystem()).thenReturn(metricsSystem);
+    Mockito.when(environment.eventBus()).thenReturn(new EventBus(Collections.emptyList()));
+    Mockito.when(environment.config()).thenReturn(new Config(false) {});
+    RuntimeException failure = new RuntimeException("failure");
+
+    try (MockedStatic<GravitinoEnv> shared = Mockito.mockStatic(GravitinoEnv.class)) {
+      shared.when(GravitinoEnv::getInstance).thenReturn(environment);
+
+      RESTService enabledService = initializeService(Boolean.TRUE);
+      try {
+        ErrorResponse response =
+            (ErrorResponse) IcebergRESTUtils.errorResponse(failure, 500).getEntity();
+        assertTrue(String.join("\n", response.stack()).contains("RuntimeException: failure"));
+      } finally {
+        enabledService.serviceStop();
+      }
+
+      RESTService defaultService = initializeService(null);
+      try {
+        ErrorResponse response =
+            (ErrorResponse) IcebergRESTUtils.errorResponse(failure, 500).getEntity();
+        assertNull(response.stack());
+      } finally {
+        defaultService.serviceStop();
+      }
+    } finally {
+      IcebergRESTUtils.setIncludeErrorStackTrace(false);
+    }
+  }
+
+  private RESTService initializeService(Boolean includeErrorStackTrace) throws Exception {
+    Map<String, String> properties = new HashMap<>();
+    properties.put("host", "127.0.0.1");
+    properties.put("httpPort", Integer.toString(RESTUtils.findAvailablePort(0, 0)));
+    properties.put("warehouse", warehouse.toString());
+    if (includeErrorStackTrace != null) {
+      properties.put("includeErrorStackTrace", includeErrorStackTrace.toString());
+    }
+    RESTService service = new RESTService();
+    service.serviceInit(properties, false);
+    return service;
   }
 }

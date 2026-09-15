@@ -75,6 +75,14 @@ import org.apache.gravitino.server.web.rest.TableOperations;
 import org.apache.gravitino.server.web.rest.ViewOperations;
 import org.apache.gravitino.utils.PrincipalUtils;
 import org.apache.gravitino.utils.RequestContext;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractAppender;
+import org.apache.logging.log4j.core.config.AbstractConfiguration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.glassfish.hk2.api.Descriptor;
 import org.glassfish.hk2.api.Filter;
 import org.junit.jupiter.api.AfterEach;
@@ -1057,6 +1065,7 @@ public class TestGravitinoInterceptionService {
     @Override
     public void close() throws IOException {}
   }
+
   private static class CaptureAppender extends AbstractAppender {
     private final List<LogEvent> events = new CopyOnWriteArrayList<>();
 

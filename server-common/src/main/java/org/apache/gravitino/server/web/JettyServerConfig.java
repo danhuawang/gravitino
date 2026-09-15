@@ -113,19 +113,18 @@ public final class JettyServerConfig {
           .createWithDefault(128 * 1024);
 
   /**
-   * Whether HTTP error responses include server-side stack traces. Defaults to {@code true} for
-   * compatibility with clients that read the {@code stack} field.
+   * Whether HTTP error responses include server-side stack traces. Defaults to {@code false} to
+   * avoid exposing implementation details in public responses.
    */
   public static final ConfigEntry<Boolean> INCLUDE_ERROR_STACK_TRACE =
       new ConfigBuilder("includeErrorStackTrace")
           .doc(
-              "Whether to include server-side stack traces in HTTP error responses. Set this to "
-                  + "false in new deployments because stack traces can expose internal "
-                  + "implementation details. It remains true by default only to avoid breaking "
-                  + "legacy clients that expect the stack field")
-          .version(ConfigConstants.VERSION_2_0_0)
+              "Whether to include server-side stack traces in HTTP error responses. Stack traces "
+                  + "can expose internal implementation details, so Enterprise disables them by "
+                  + "default. Enable them only for controlled diagnostics")
+          .version(ConfigConstants.VERSION_1_3_0)
           .booleanConf()
-          .createWithDefault(true);
+          .createWithDefault(false);
 
   public static final ConfigEntry<Integer> WEBSERVER_THREAD_POOL_WORK_QUEUE_SIZE =
       new ConfigBuilder("threadPoolWorkQueueSize")

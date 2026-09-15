@@ -41,6 +41,8 @@ import org.apache.gravitino.integration.test.util.BaseIT;
 import org.apache.gravitino.integration.test.util.TestDatabaseName;
 import org.apache.gravitino.rel.Column;
 import org.apache.gravitino.rel.types.Types;
+import org.apache.gravitino.server.GravitinoServer;
+import org.apache.gravitino.server.web.JettyServerConfig;
 import org.apache.gravitino.utils.RandomNameUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -54,6 +56,14 @@ public class TestMultipleJDBCLoad extends BaseIT {
 
   private static MySQLContainer mySQLContainer;
   private static PostgreSQLContainer postgreSQLContainer;
+
+  /** Enables diagnostic error details before the server starts for JDBC failure assertions. */
+  public TestMultipleJDBCLoad() {
+    customConfigs.put(
+        GravitinoServer.WEBSERVER_CONF_PREFIX
+            + JettyServerConfig.INCLUDE_ERROR_STACK_TRACE.getKey(),
+        "true");
+  }
 
   @BeforeAll
   public void startup() throws IOException {

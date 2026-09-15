@@ -28,6 +28,7 @@ env_map = {
     "GRAVITINO_SERVER_WEBSERVER_THREAD_POOL_WORK_QUEUE_SIZE": "server.webserver.threadPoolWorkQueueSize",
     "GRAVITINO_SERVER_WEBSERVER_REQUEST_HEADER_SIZE": "server.webserver.requestHeaderSize",
     "GRAVITINO_SERVER_WEBSERVER_RESPONSE_HEADER_SIZE": "server.webserver.responseHeaderSize",
+    "GRAVITINO_SERVER_WEBSERVER_INCLUDE_ERROR_STACK_TRACE": "server.webserver.includeErrorStackTrace",
     "GRAVITINO_ENTITY_STORE": "entity.store",
     "GRAVITINO_ENTITY_STORE_RELATIONAL": "entity.store.relational",
     "GRAVITINO_ENTITY_STORE_RELATIONAL_JDBC_URL": "entity.store.relational.jdbcUrl",
@@ -42,6 +43,7 @@ env_map = {
     # Catalog
     "GRAVITINO_ICEBERG_REST_HOST": "iceberg-rest.host",
     "GRAVITINO_ICEBERG_REST_HTTP_PORT": "iceberg-rest.httpPort",
+    "GRAVITINO_ICEBERG_REST_INCLUDE_ERROR_STACK_TRACE": "iceberg-rest.includeErrorStackTrace",
     "GRAVITINO_ICEBERG_REST_URI": "iceberg-rest.uri",
     "GRAVITINO_ICEBERG_REST_CLASSPATH": "iceberg-rest.classpath",
     "GRAVITINO_ICEBERG_REST_IO_IMPL": "iceberg-rest.io-impl",
@@ -89,6 +91,7 @@ init_config = {
     "server.webserver.threadPoolWorkQueueSize": "100",
     "server.webserver.requestHeaderSize": "131072",
     "server.webserver.responseHeaderSize": "131072",
+    "server.webserver.includeErrorStackTrace": "false",
     "entity.store": "relational",
     "entity.store.relational": "JDBCBackend",
     "entity.store.relational.jdbcUrl": "jdbc:h2",
@@ -102,6 +105,7 @@ init_config = {
     "iceberg-rest.classpath": "iceberg-rest-server/libs, iceberg-rest-server/conf",
     "iceberg-rest.host": "0.0.0.0",
     "iceberg-rest.httpPort": "9001",
+    "iceberg-rest.includeErrorStackTrace": "false",
     "iceberg-rest.catalog-backend": "memory",
     "iceberg-rest.warehouse": "/tmp/"
 }

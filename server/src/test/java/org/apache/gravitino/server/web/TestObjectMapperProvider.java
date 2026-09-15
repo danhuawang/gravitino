@@ -44,6 +44,7 @@ public class TestObjectMapperProvider {
         JsonInclude.Include.NON_NULL,
         objectMapper.getSerializationConfig().getDefaultPropertyInclusion().getValueInclusion());
   }
+
   @Test
   public void testErrorResponseStackIsRedactedOnSerialization() throws JsonProcessingException {
     ObjectMapper objectMapper = new ObjectMapperProvider(false).getContext(ErrorResponse.class);
@@ -62,7 +63,7 @@ public class TestObjectMapperProvider {
 
   @Test
   public void testErrorResponseStackCanBeIncludedOnSerialization() throws JsonProcessingException {
-    ObjectMapper objectMapper = new ObjectMapperProvider().getContext(ErrorResponse.class);
+    ObjectMapper objectMapper = new ObjectMapperProvider(true).getContext(ErrorResponse.class);
     ErrorResponse errorResponse =
         ErrorResponse.internalError(
             "public error message", new RuntimeException("private error details"));

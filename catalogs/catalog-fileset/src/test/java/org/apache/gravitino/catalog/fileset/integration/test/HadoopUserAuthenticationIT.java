@@ -49,6 +49,8 @@ import org.apache.gravitino.integration.test.container.ContainerSuite;
 import org.apache.gravitino.integration.test.container.HiveContainer;
 import org.apache.gravitino.integration.test.util.BaseIT;
 import org.apache.gravitino.integration.test.util.GravitinoITUtils;
+import org.apache.gravitino.server.GravitinoServer;
+import org.apache.gravitino.server.web.JettyServerConfig;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
@@ -223,6 +225,11 @@ public class HadoopUserAuthenticationIT extends BaseIT {
   }
 
   private void addKerberosConfig() {
+    // This fixture verifies diagnostic causes propagated from the Fileset connector.
+    customConfigs.put(
+        GravitinoServer.WEBSERVER_CONF_PREFIX
+            + JettyServerConfig.INCLUDE_ERROR_STACK_TRACE.getKey(),
+        "true");
     customConfigs.put(Configs.AUTHENTICATORS.getKey(), "kerberos");
     customConfigs.put("gravitino.authenticator.kerberos.principal", GRAVITINO_SERVER_PRINCIPAL);
     customConfigs.put("gravitino.authenticator.kerberos.keytab", TMP_DIR + GRAVITINO_SERVER_KEYTAB);

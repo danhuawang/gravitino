@@ -156,7 +156,9 @@ public class LanceExceptionMapper implements ExceptionMapper<Throwable> {
     ErrorResponse errResp = new ErrorResponse();
     errResp.setCode(ex.getCode());
     errResp.setError(ex.getMessage());
-    errResp.setDetail(ex.getDetail());
+    // Lance's detail field may contain a stack captured before the exception reaches this mapper,
+    // so apply the policy to native Lance exceptions as well as exceptions converted above.
+    errResp.setDetail(includeErrorStackTrace ? ex.getDetail() : "");
     errResp.setInstance(ex.getInstance());
     return Response.status(toHttpStatus(ex)).entity(errResp).build();
   }

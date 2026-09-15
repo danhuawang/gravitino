@@ -33,6 +33,8 @@ import java.io.Reader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.Optional;
 import javax.servlet.Filter;
 import javax.servlet.Servlet;
 import javax.servlet.http.HttpServlet;
@@ -44,6 +46,7 @@ import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 
 public class TestJettyServer {
@@ -53,6 +56,8 @@ public class TestJettyServer {
       FailingServlet.class.getName() + ".doGet(";
 
   private JettyServer jettyServer;
+
+  @TempDir private Path webAppDirectory;
 
   @BeforeEach
   public void setUp() {
@@ -106,20 +111,40 @@ public class TestJettyServer {
   }
 
   @Test
-  public void testErrorPageIncludesStackTraceByDefault() throws IOException {
+  public void testErrorPageOmitsStackTraceByDefault() throws IOException {
     String errorPage = requestFailingServlet(new Config(false) {});
+
+    assertFalse(errorPage.contains(FAILING_SERVLET_STACK_FRAME), errorPage);
+  }
+
+  @Test
+  public void testErrorPageIncludesStackTraceWhenEnabled() throws IOException {
+    Config config = new Config(false) {};
+    config.set(JettyServerConfig.INCLUDE_ERROR_STACK_TRACE, true);
+
+    String errorPage = requestFailingServlet(config);
 
     assertTrue(errorPage.contains(FAILING_SERVLET_STACK_FRAME), errorPage);
   }
 
   @Test
-  public void testErrorPageOmitsStackTraceWhenDisabled() throws IOException {
-    Config config = new Config(false) {};
-    config.set(JettyServerConfig.INCLUDE_ERROR_STACK_TRACE, false);
+  public void testWebAppErrorPageOmitsStackTraceByDefault() throws IOException {
+    useWebAppContext();
 
-    String errorPage = requestFailingServlet(config);
+    String errorPage = requestFailingServlet(new Config(false) {}, true);
 
     assertFalse(errorPage.contains(FAILING_SERVLET_STACK_FRAME), errorPage);
+  }
+
+  @Test
+  public void testWebAppErrorPageIncludesStackTraceWhenEnabled() throws IOException {
+    useWebAppContext();
+    Config config = new Config(false) {};
+    config.set(JettyServerConfig.INCLUDE_ERROR_STACK_TRACE, true);
+
+    String errorPage = requestFailingServlet(config, true);
+
+    assertTrue(errorPage.contains(FAILING_SERVLET_STACK_FRAME), errorPage);
   }
 
   @Test
@@ -149,10 +174,15 @@ public class TestJettyServer {
 
   /** Starts the server with a servlet that throws, and returns Jetty's error page for it. */
   private String requestFailingServlet(Config config) throws IOException {
+    return requestFailingServlet(config, false);
+  }
+
+  /** Starts the server with a servlet that throws, and returns Jetty's error page for it. */
+  private String requestFailingServlet(Config config, boolean shouldEnableUI) throws IOException {
     int port = RESTUtils.findAvailablePort(5000, 6000);
     config.set(JettyServerConfig.WEBSERVER_HOST, "127.0.0.1");
     config.set(JettyServerConfig.WEBSERVER_HTTP_PORT, port);
-    jettyServer.initialize(JettyServerConfig.fromConfig(config), "test", false);
+    jettyServer.initialize(JettyServerConfig.fromConfig(config), "test", shouldEnableUI);
     jettyServer.addServlet(new FailingServlet(), "/fail");
     jettyServer.start();
 
@@ -167,6 +197,16 @@ public class TestJettyServer {
     } finally {
       connection.disconnect();
     }
+  }
+
+  private void useWebAppContext() {
+    jettyServer =
+        new JettyServer() {
+          @Override
+          Optional<String> resolveWebUiWarPath() {
+            return Optional.of(webAppDirectory.toString());
+          }
+        };
   }
 
   private static class FailingServlet extends HttpServlet {

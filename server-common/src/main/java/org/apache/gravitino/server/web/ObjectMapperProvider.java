@@ -46,9 +46,7 @@ public class ObjectMapperProvider implements ContextResolver<ObjectMapper> {
 
   private final ObjectMapper objectMapper;
 
-  /**
-   * Creates a provider using the configured server default for error stack traces.
-   */
+  /** Creates a provider using the configured server default for error stack traces. */
   public ObjectMapperProvider() {
     this.objectMapper = objectMapper();
   }

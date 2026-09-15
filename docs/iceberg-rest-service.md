@@ -123,7 +123,7 @@ Do not add them to the standalone server configuration.
 | `gravitino.iceberg-rest.idleTimeout`             | The timeout in ms of idle connections.                                                                                                                                                        | `30000`                                                                      | No       |
 | `gravitino.iceberg-rest.requestHeaderSize`       | The maximum size of an HTTP request.                                                                                                                                                          | `131072`                                                                     | No       |
 | `gravitino.iceberg-rest.responseHeaderSize`      | The maximum size of an HTTP response.                                                                                                                                                         | `131072`                                                                     | No       |
-| `gravitino.iceberg-rest.includeErrorStackTrace`  | Whether error responses include server-side stack traces. Set this to `false` in new deployments because responses can expose internal implementation details. | `true`                                                                       | No       |
+| `gravitino.iceberg-rest.includeErrorStackTrace`  | Whether error responses include server-side stack traces. Enterprise disables this by default because responses can expose internal implementation details. Enable it only for controlled diagnostics. | `false`                                                                      | No       |
 | `gravitino.iceberg-rest.customFilters`           | Comma-separated list of filter class names to apply to the APIs.                                                                                                                              | (none)                                                                       | No       |
 
 The filter in `customFilters` should be a standard javax servlet filter.
@@ -777,6 +777,7 @@ For cloud or remote storage, configure the corresponding [storage](#storage) set
 |------------------------------------------------------------|------------------------------------------------------------|
 | `GRAVITINO_ICEBERG_REST_HOST`                              | `gravitino.iceberg-rest.host`                              |
 | `GRAVITINO_ICEBERG_REST_HTTP_PORT`                         | `gravitino.iceberg-rest.httpPort`                          |
+| `GRAVITINO_ICEBERG_REST_INCLUDE_ERROR_STACK_TRACE`         | `gravitino.iceberg-rest.includeErrorStackTrace`            |
 | `GRAVITINO_ICEBERG_REST_URI`                               | `gravitino.iceberg-rest.uri`                               |
 | `GRAVITINO_ICEBERG_REST_IO_IMPL`                           | `gravitino.iceberg-rest.io-impl`                           |
 | `GRAVITINO_ICEBERG_REST_CATALOG_BACKEND`                   | `gravitino.iceberg-rest.catalog-backend`                   |
