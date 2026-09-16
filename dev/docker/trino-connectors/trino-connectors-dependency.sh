@@ -28,7 +28,9 @@
 #   packages/connectors/trino-452-468/
 #   packages/connectors/trino-469-472/
 #   packages/connectors/trino-473-478/
-#   packages/connectors/jdbc-drivers/   (MySQL + PostgreSQL JDBC drivers)
+#
+# Trino ships its own MySQL and PostgreSQL drivers inside its mysql and
+# postgresql plugins, so no JDBC drivers are bundled here.
 
 set -ex
 
@@ -61,17 +63,7 @@ for dir in distribution/gravitino-trino-connector-*; do
   fi
 done
 
-# Download shared JDBC drivers for catalog backends (Iceberg, Hive, etc.)
-mkdir -p "${script_dir}/packages/connectors/jdbc-drivers"
-curl -sSL -o "${script_dir}/packages/connectors/jdbc-drivers/mysql-connector-java-8.0.27.jar" \
-  "https://repo1.maven.org/maven2/mysql/mysql-connector-java/8.0.27/mysql-connector-java-8.0.27.jar"
-curl -sSL -o "${script_dir}/packages/connectors/jdbc-drivers/postgresql-42.7.11.jar" \
-  "https://jdbc.postgresql.org/download/postgresql-42.7.11.jar"
-
 echo ""
 echo "=== Trino connectors prepared ==="
 echo "Output: ${script_dir}/packages/connectors/"
 find "${script_dir}/packages/connectors/" -type d | sort
-echo ""
-echo "JDBC drivers:"
-ls -1 "${script_dir}/packages/connectors/jdbc-drivers/"

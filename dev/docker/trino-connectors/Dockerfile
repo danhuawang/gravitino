@@ -47,13 +47,11 @@ LABEL name="gravitino-trino-connector" \
       version="${IMAGE_VERSION}" \
       release="${IMAGE_RELEASE}" \
       summary="Gravitino Trino/Starburst Connectors (6 version ranges)" \
-      description="All supported Gravitino Trino connector versions for K8s init-container deployment. Supports both open-source Trino (435-478) and Starburst Enterprise. Includes shared JDBC drivers for catalog backends. Version is selected at runtime via TRINO_VERSION environment variable." \
+      description="All supported Gravitino Trino connector versions for K8s init-container deployment. Supports both open-source Trino (435-478) and Starburst Enterprise. Version is selected at runtime via TRINO_VERSION environment variable." \
       maintainer="Datastrato Inc."
 
 # Default Trino version (can be overridden at runtime, e.g. 478, 452, 440)
 ENV TRINO_VERSION=478
-# Whether to copy JDBC drivers to /target/ alongside connector jars
-ENV COPY_JDBC_DRIVERS=true
 
 # Copy pre-built connector jars (prepared by trino-connectors-dependency.sh)
 COPY packages/connectors /connectors

@@ -19,12 +19,10 @@
 #
 
 # Copies the Trino/Starburst connector jars matching TRINO_VERSION to /target/
-# Also copies shared JDBC drivers to the same /target/ directory.
 #
 # Environment variables:
 #   TRINO_VERSION      - Specific Trino version number (default: 478)
 #                        The script automatically resolves to the correct version range.
-#   COPY_JDBC_DRIVERS  - Whether to copy JDBC drivers to /target/ (default: true)
 #
 # Supported Trino versions: 435-439, 440-445, 446-451, 452-468, 469-472, 473-478
 # The connector jars support both open-source Trino and Starburst Enterprise.
@@ -32,7 +30,6 @@
 set -e
 
 TRINO_VERSION="${TRINO_VERSION:-478}"
-COPY_JDBC_DRIVERS="${COPY_JDBC_DRIVERS:-true}"
 
 # Resolve specific Trino version number to the correct connector version range directory.
 resolve_version_range() {
@@ -82,11 +79,6 @@ if [ -d "/target" ]; then
   echo "Copying connector jars to /target/..."
   cp -r "${SOURCE_DIR}"/* /target/
 
-  if [ "${COPY_JDBC_DRIVERS}" = "true" ] && [ -d "/connectors/jdbc-drivers" ]; then
-    cp /connectors/jdbc-drivers/*.jar /target/
-    echo "JDBC drivers copied to /target/."
-  fi
-
   echo ""
   echo "Done. Files in /target/:"
   find /target -name "*.jar" | sort
@@ -96,8 +88,6 @@ else
   echo "Supported Trino versions: 435-478"
   echo "Available connector ranges:"
   ls -1 /connectors/ | grep "^trino-" | sed 's/trino-/  Trino /'
-  echo ""
-  echo "JDBC drivers: /connectors/jdbc-drivers/"
   echo ""
   echo "Usage: Set TRINO_VERSION env var (specific version number) and mount /target volume."
   echo "Example: TRINO_VERSION=478"
