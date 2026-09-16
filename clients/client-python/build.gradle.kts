@@ -299,12 +299,14 @@ tasks {
         if (keepGoing) {
           args += "--keep-going"
         }
-        val proc = ProcessBuilder(args)
-          .inheritIO()
-          .start()
-        val exit = proc.waitFor()
-        if (exit != 0) {
-          throw GradleException("lance-ray matrix failed with exit code $exit")
+        println("Running lance-ray matrix with python: $pythonExecutable")
+        val result = project.exec {
+          commandLine(args)
+          isIgnoreExitValue = true
+          environment("PYTHONUNBUFFERED", "1")
+        }
+        if (result.exitValue != 0) {
+          throw GradleException("lance-ray matrix failed with exit code ${result.exitValue}")
         }
       } finally {
         gravitinoServer("stop")

@@ -74,6 +74,11 @@ jobs:
           distribution: "temurin"
           cache: "gradle"
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Free up disk space
         run: dev/ci/util_free_space.sh
 
@@ -85,6 +90,7 @@ jobs:
         run: |
           ./gradlew :clients:client-python:lanceRayMatrixTest \
             -PlanceRayVersions="${LANCE_RAY_VERSIONS}" \
+            -PlanceRayPython="$(command -v python3)" \
             -PskipDockerTests=true \
             -PskipWeb=true
 
@@ -93,6 +99,7 @@ jobs:
         if: ${{ failure() && steps.lanceRayMatrixTest.outcome == 'failure' }}
         with:
           name: lance-ray-matrix-reports
+          include-hidden-files: true
           path: |
             clients/client-python/build/lance-ray-matrix
             build/reports
