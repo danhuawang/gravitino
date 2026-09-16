@@ -16,14 +16,27 @@ REJECTED=2
 # Prepare credentials for curl
 CREDENTIALS="-u $USERNAME:$PASSWORD -k"
 
-# Test OpenSearch connection
+# Test OpenSearch connection.
+# A single attempt turns any momentary gap into a hard failure that reads like a rejected version,
+# so try for a bounded while before giving up. OpenSearch answers 503 while the cluster is still
+# initializing, which is worth waiting through rather than failing on.
 echo "Testing OpenSearch connection to $OPENSEARCH_URL..."
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" $OPENSEARCH_URL $CREDENTIALS)
-
-if [ "$RESPONSE" != "200" ]; then
-    echo "Error: Failed to connect to OpenSearch (HTTP $RESPONSE)"
-    exit "$REJECTED"
-fi
+CONNECT_ATTEMPTS=30
+CONNECT_INTERVAL_SECONDS=2
+ATTEMPT=1
+while true; do
+    RESPONSE=$(curl -sS -o /dev/null -w "%{http_code}" $OPENSEARCH_URL $CREDENTIALS)
+    if [ "$RESPONSE" = "200" ]; then
+        break
+    fi
+    if [ "$ATTEMPT" -ge "$CONNECT_ATTEMPTS" ]; then
+        echo "Error: Failed to connect to OpenSearch (HTTP $RESPONSE) after $ATTEMPT attempts"
+        exit "$REJECTED"
+    fi
+    echo "OpenSearch is not ready yet (HTTP $RESPONSE), retrying in ${CONNECT_INTERVAL_SECONDS}s..."
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep "$CONNECT_INTERVAL_SECONDS"
+done
 
 echo "Successfully connected to OpenSearch"
 

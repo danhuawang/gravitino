@@ -10,73 +10,40 @@ import static org.testcontainers.containers.output.OutputFrame.OutputType.END;
 import com.google.common.collect.ImmutableMap;
 import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import org.awaitility.Awaitility;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.output.BaseConsumer;
 import org.testcontainers.containers.output.OutputFrame;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.images.builder.ImageFromDockerfile;
+import org.testcontainers.utility.DockerImageName;
 
 public class OpenSearchContainer extends GenericContainer<OpenSearchContainer> {
   public static final Logger LOG = LoggerFactory.getLogger(OpenSearchContainer.class);
 
-  public static final String DEFAULT_IMAGE = "opensearchproject/opensearch:2.17.1";
+  public static final String DEFAULT_IMAGE = "datastratosandbox/opensearch-with-analysis-ik:2.17.1";
   public static final int PORT = 9200;
 
   public static final String DEFAULT_USERNAME = "admin";
   public static final String DEFAULT_PASSWORD = "axzin1S3?@A";
 
   public OpenSearchContainer(String hostName, Map<String, String> envVars) {
-    super(
-        new ImageFromDockerfile()
-            .withDockerfileFromBuilder(
-                builder ->
-                    builder
-                        .from(DEFAULT_IMAGE)
-                        .run(
-                            "opensearch-plugin install --batch https://get.infini.cloud/opensearch/analysis-ik/2.17.1")
-                        .build()));
+    super(DockerImageName.parse(DEFAULT_IMAGE));
     withLogConsumer(new PrintingContainerLog(format("%-15s| ", "Opensearch-Container")));
     withExposedPorts(PORT);
+    // Tarball-based images default to loopback, which Docker's published port cannot reach.
+    withEnv("network.host", "0.0.0.0");
     withEnv(envVars);
     withCreateContainerCmdModifier(c -> c.withHostName(hostName));
-    waitingFor(Wait.forLogMessage(".*Node started.*", 1).withStartupTimeout(Duration.ofMinutes(2)));
-  }
-
-  @Override
-  public void start() {
-    super.start();
-    Awaitility.await()
-        .atMost(120, TimeUnit.SECONDS)
-        .pollInterval(5, TimeUnit.SECONDS)
-        .until(
-            () -> {
-              try {
-                ExecResult curlResult =
-                    execInContainer(
-                        "curl",
-                        "-k",
-                        "-u",
-                        DEFAULT_USERNAME + ":" + DEFAULT_PASSWORD,
-                        "https://localhost:9200/_cluster/health");
-                if (curlResult.getExitCode() == 0) {
-                  LOG.info("OpenSearch Started the mapped port {}", getPort());
-                  return true;
-                }
-                LOG.info(
-                    "Cluster health status: {}, output {}, error: {} ",
-                    curlResult.getExitCode(),
-                    curlResult.getStdout(),
-                    curlResult.getStderr());
-                return false;
-              } catch (Exception e) {
-                LOG.error("Failed to get cluster health", e);
-                return false;
-              }
-            });
+    // Probe the published HTTPS port from the test JVM. A successful request inside the container
+    // does not establish that the template script and Gravitino can reach OpenSearch.
+    waitingFor(
+        Wait.forHttps("/_cluster/health")
+            .forPort(PORT)
+            .allowInsecure()
+            .withBasicCredentials(DEFAULT_USERNAME, DEFAULT_PASSWORD)
+            .forStatusCode(200)
+            .withStartupTimeout(Duration.ofMinutes(2)));
   }
 
   public int getPort() {
@@ -84,7 +51,7 @@ public class OpenSearchContainer extends GenericContainer<OpenSearchContainer> {
   }
 
   public String getOpenSearchUrl() {
-    return String.format("https://%s:%d", "localhost", getPort());
+    return String.format("https://%s:%d", getHost(), getPort());
   }
 
   public static void main(String[] args) {
