@@ -24,6 +24,8 @@ import java.nio.file.Path;
 import java.util.Map;
 import org.apache.gravitino.catalog.lakehouse.paimon.PaimonConstants;
 import org.apache.gravitino.integration.test.container.ContainerSuite;
+import org.apache.gravitino.server.GravitinoServer;
+import org.apache.gravitino.server.web.JettyServerConfig;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -41,6 +43,15 @@ public abstract class FlinkPaimonJdbcBackendIT extends FlinkPaimonCatalogIT {
   private String databaseUrl;
 
   private String mysqlDriver;
+
+  /** Creates the fixture with diagnostic details enabled for inherited rejection assertions. */
+  protected FlinkPaimonJdbcBackendIT() {
+    // The inherited rejection tests verify Paimon's diagnostic cause text.
+    customConfigs.put(
+        GravitinoServer.WEBSERVER_CONF_PREFIX
+            + JettyServerConfig.INCLUDE_ERROR_STACK_TRACE.getKey(),
+        "true");
+  }
 
   @Override
   protected void createGravitinoCatalogByFlinkSql(String catalogName) {

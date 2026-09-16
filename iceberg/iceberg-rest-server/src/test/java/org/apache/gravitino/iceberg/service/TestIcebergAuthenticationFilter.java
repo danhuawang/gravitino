@@ -105,6 +105,25 @@ public class TestIcebergAuthenticationFilter {
     Assertions.assertEquals(401, errorResponse.code());
     Assertions.assertEquals("NotAuthorizedException", errorResponse.type());
     Assertions.assertEquals("The provided credentials did not support", errorResponse.message());
+    Assertions.assertFalse(json.contains("\"stack\""), json);
+  }
+
+  @Test
+  public void testAuthenticationErrorIncludesStackWhenEnabled() throws Exception {
+    IcebergRESTUtils.setIncludeErrorStackTrace(true);
+    try {
+      IcebergAuthenticationFilter filter = new IcebergAuthenticationFilter();
+      HttpServletResponse response = mock(HttpServletResponse.class);
+      StringWriter stringWriter = new StringWriter();
+      when(response.getWriter()).thenReturn(new PrintWriter(stringWriter));
+
+      filter.sendAuthErrorResponse(response, new UnauthorizedException("UNAUTHORIZED"));
+
+      String json = stringWriter.toString();
+      Assertions.assertTrue(json.contains("\"stack\""), json);
+    } finally {
+      IcebergRESTUtils.setIncludeErrorStackTrace(false);
+    }
   }
 
   @Test

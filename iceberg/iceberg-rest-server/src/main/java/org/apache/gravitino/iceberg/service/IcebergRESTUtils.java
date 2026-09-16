@@ -49,6 +49,7 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.credential.Credential;
 import org.apache.gravitino.credential.CredentialPropertyUtils;
 import org.apache.gravitino.iceberg.service.authorization.IcebergRESTServerContext;
+import org.apache.gravitino.server.web.JettyServerConfig;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -90,6 +91,11 @@ public class IcebergRESTUtils {
           "client.refresh-credentials-endpoint",
           "gcs.oauth2.refresh-credentials-endpoint",
           "adls.refresh-credentials-endpoint");
+
+  // Set once at service startup. Only Iceberg REST reads this flag, and its classes are packaged
+  // outside the main server's classpath, so each service loads its own copy.
+  private static volatile boolean includeErrorStackTrace =
+      JettyServerConfig.INCLUDE_ERROR_STACK_TRACE.getDefaultValue();
 
   /** Snapshot modes for the Iceberg loadTable endpoint. */
   public enum SnapshotMode {
@@ -381,14 +387,26 @@ public class IcebergRESTUtils {
     return Response.status(Status.NOT_FOUND).build();
   }
 
+  /**
+   * Sets whether error responses built by {@link #errorResponse(Throwable, int)} include the
+   * exception's stack trace. Called once when the service starts.
+   *
+   * @param include whether to include stack traces
+   */
+  public static void setIncludeErrorStackTrace(boolean include) {
+    includeErrorStackTrace = include;
+  }
+
   public static Response errorResponse(Throwable ex, int httpStatus) {
-    ErrorResponse errorResponse =
+    ErrorResponse.Builder builder =
         ErrorResponse.builder()
             .responseCode(httpStatus)
             .withType(ex.getClass().getSimpleName())
-            .withMessage(ex.getMessage())
-            .withStackTrace(ex)
-            .build();
+            .withMessage(ex.getMessage());
+    if (includeErrorStackTrace) {
+      builder.withStackTrace(ex);
+    }
+    ErrorResponse errorResponse = builder.build();
     return Response.status(httpStatus)
         .entity(errorResponse)
         .type(MediaType.APPLICATION_JSON)
@@ -396,15 +414,22 @@ public class IcebergRESTUtils {
   }
 
   /**
-   * Build an Iceberg {@link ErrorResponse} for a given HTTP status code and message, without an
-   * exception. Used by the Jetty error handler for pre-JAX-RS errors.
+   * Builds an Iceberg error response while applying the configured stack-trace policy.
+   *
+   * @param httpStatus HTTP status code
+   * @param type Iceberg error type
+   * @param message public error message
+   * @param cause failure whose stack trace may be included
+   * @return the configured Iceberg error response
    */
-  public static ErrorResponse errorResponse(int httpStatus, String type, String message) {
-    return ErrorResponse.builder()
-        .responseCode(httpStatus)
-        .withType(type)
-        .withMessage(message)
-        .build();
+  public static ErrorResponse errorResponse(
+      int httpStatus, String type, String message, Throwable cause) {
+    ErrorResponse.Builder builder =
+        ErrorResponse.builder().responseCode(httpStatus).withType(type).withMessage(message);
+    if (includeErrorStackTrace) {
+      builder.withStackTrace(cause);
+    }
+    return builder.build();
   }
 
   public static Instant calculateNewTimestamp(Instant currentTimestamp, int hours) {

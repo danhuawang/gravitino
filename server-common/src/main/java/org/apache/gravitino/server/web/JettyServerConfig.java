@@ -112,6 +112,20 @@ public final class JettyServerConfig {
           .checkValue(value -> value > 0, ConfigConstants.POSITIVE_NUMBER_ERROR_MSG)
           .createWithDefault(128 * 1024);
 
+  /**
+   * Whether HTTP error responses include server-side stack traces. Defaults to {@code false} to
+   * avoid exposing implementation details in public responses.
+   */
+  public static final ConfigEntry<Boolean> INCLUDE_ERROR_STACK_TRACE =
+      new ConfigBuilder("includeErrorStackTrace")
+          .doc(
+              "Whether to include server-side stack traces in HTTP error responses. Stack traces "
+                  + "can expose internal implementation details, so Enterprise disables them by "
+                  + "default. Enable them only for controlled diagnostics")
+          .version(ConfigConstants.VERSION_1_3_0)
+          .booleanConf()
+          .createWithDefault(false);
+
   public static final ConfigEntry<Integer> WEBSERVER_THREAD_POOL_WORK_QUEUE_SIZE =
       new ConfigBuilder("threadPoolWorkQueueSize")
           .doc("The size of the queue in the thread pool used by Jetty webserver")
@@ -313,6 +327,8 @@ public final class JettyServerConfig {
 
   private final int responseHeaderSize;
 
+  private final boolean includeErrorStackTrace;
+
   private final int threadPoolWorkQueueSize;
 
   private final int httpsPort;
@@ -368,6 +384,7 @@ public final class JettyServerConfig {
     this.idleTimeout = internalConfig.get(WEBSERVER_IDLE_TIMEOUT);
     this.requestHeaderSize = internalConfig.get(WEBSERVER_REQUEST_HEADER_SIZE);
     this.responseHeaderSize = internalConfig.get(WEBSERVER_RESPONSE_HEADER_SIZE);
+    this.includeErrorStackTrace = internalConfig.get(INCLUDE_ERROR_STACK_TRACE);
     this.threadPoolWorkQueueSize = internalConfig.get(WEBSERVER_THREAD_POOL_WORK_QUEUE_SIZE);
 
     this.enableHttps = internalConfig.get(ENABLE_HTTPS);
@@ -454,6 +471,15 @@ public final class JettyServerConfig {
 
   public int getResponseHeaderSize() {
     return responseHeaderSize;
+  }
+
+  /**
+   * Returns whether HTTP error responses include server-side stack traces.
+   *
+   * @return {@code true} if HTTP error responses include server-side stack traces
+   */
+  public boolean isIncludeErrorStackTrace() {
+    return includeErrorStackTrace;
   }
 
   public int getThreadPoolWorkQueueSize() {

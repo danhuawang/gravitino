@@ -41,6 +41,9 @@ gravitino.iceberg-rest.threadPoolWorkQueueSize = 100
 gravitino.iceberg-rest.requestHeaderSize = 131072
 # The response header size of the built-in web server
 gravitino.iceberg-rest.responseHeaderSize = 131072
+# Whether to include server-side stack traces in HTTP error responses. Enable this only for
+# controlled diagnostics.
+gravitino.iceberg-rest.includeErrorStackTrace = false
 
 # THE CONFIGURATION FOR Iceberg catalog backend
 # The Iceberg catalog backend, it's recommended to change to hive or jdbc

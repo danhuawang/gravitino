@@ -32,6 +32,7 @@ import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.lance.namespace.errors.InvalidInputException;
 import org.lance.namespace.model.ErrorResponse;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
@@ -112,16 +113,60 @@ public class TestLanceExceptionMapper extends JerseyTest {
   /** Verifies that an uncaught error is converted to a Lance internal error response. */
   @Test
   public void testErrorResponse() {
-    try (Response response = target("error").request(MediaType.APPLICATION_JSON_TYPE).get()) {
-      Assertions.assertEquals(
-          Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), response.getStatus());
-      ErrorResponse entity = response.readEntity(ErrorResponse.class);
-      Assertions.assertEquals("assertion failure", entity.getError());
-      Assertions.assertEquals("", entity.getInstance());
+    LanceExceptionMapper.setIncludeErrorStackTrace(true);
+    try {
+      try (Response response = target("error").request(MediaType.APPLICATION_JSON_TYPE).get()) {
+        Assertions.assertEquals(
+            Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), response.getStatus());
+        ErrorResponse entity = response.readEntity(ErrorResponse.class);
+        Assertions.assertEquals("assertion failure", entity.getError());
+        Assertions.assertEquals("", entity.getInstance());
+        Assertions.assertTrue(
+            entity.getDetail().contains("java.lang.AssertionError: assertion failure"));
+        Assertions.assertTrue(
+            entity.getDetail().contains("Caused by: java.lang.IllegalStateException: root cause"));
+      }
+    } finally {
+      LanceExceptionMapper.setIncludeErrorStackTrace(false);
+    }
+  }
+
+  /** Verifies that the error detail omits the stack trace when disabled. */
+  @Test
+  public void testErrorDetailFollowsSetting() {
+    IllegalStateException failure = new IllegalStateException("failure");
+    try {
+      Assertions.assertEquals("", LanceExceptionMapper.errorDetail(failure));
+      try (Response response = LanceExceptionMapper.toRESTResponse("", failure)) {
+        Assertions.assertEquals(
+            Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), response.getStatus());
+        ErrorResponse entity = (ErrorResponse) response.getEntity();
+        Assertions.assertEquals("failure", entity.getError());
+        Assertions.assertEquals("", entity.getDetail());
+      }
+
+      String capturedStack =
+          "java.lang.RuntimeException: Captured stacktrace\n"
+              + "\tat org.apache.gravitino.lance.common.ops.gravitino.CommonUtil"
+              + ".formatCurrentStackTrace(CommonUtil.java:30)";
+      InvalidInputException nativeFailure =
+          new InvalidInputException("bad input", capturedStack, "instance");
+      try (Response nativeResponse =
+          LanceExceptionMapper.toRESTResponse("instance", nativeFailure)) {
+        Assertions.assertEquals("", ((ErrorResponse) nativeResponse.getEntity()).getDetail());
+      }
+
+      LanceExceptionMapper.setIncludeErrorStackTrace(true);
       Assertions.assertTrue(
-          entity.getDetail().contains("java.lang.AssertionError: assertion failure"));
-      Assertions.assertTrue(
-          entity.getDetail().contains("Caused by: java.lang.IllegalStateException: root cause"));
+          LanceExceptionMapper.errorDetail(failure)
+              .contains("java.lang.IllegalStateException: failure"));
+      try (Response nativeResponse =
+          LanceExceptionMapper.toRESTResponse("instance", nativeFailure)) {
+        Assertions.assertEquals(
+            capturedStack, ((ErrorResponse) nativeResponse.getEntity()).getDetail());
+      }
+    } finally {
+      LanceExceptionMapper.setIncludeErrorStackTrace(false);
     }
   }
 }

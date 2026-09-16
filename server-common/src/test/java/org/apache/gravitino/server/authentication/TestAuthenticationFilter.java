@@ -89,11 +89,27 @@ public class TestAuthenticationFilter {
 
     printWriter.flush();
     String json = stringWriter.toString();
-    ObjectMapper mapper = ObjectMapperProvider.objectMapper();
+    ObjectMapper mapper = ObjectMapperProvider.objectMapper(false);
+    Assertions.assertFalse(mapper.readTree(json).has("stack"));
     ErrorResponse errorResponse = mapper.readValue(json, ErrorResponse.class);
     Assertions.assertEquals(1011, errorResponse.getCode());
     Assertions.assertEquals("UnauthorizedException", errorResponse.getType());
     Assertions.assertEquals("UNAUTHORIZED", errorResponse.getMessage());
+  }
+
+  @Test
+  public void testAuthErrorIncludesStackWhenEnabled() throws Exception {
+    AuthenticationFilter filter = new AuthenticationFilter(Lists.newArrayList(), true);
+    HttpServletResponse response = mock(HttpServletResponse.class);
+    StringWriter stringWriter = new StringWriter();
+    PrintWriter printWriter = new PrintWriter(stringWriter);
+    when(response.getWriter()).thenReturn(printWriter);
+
+    filter.sendAuthErrorResponse(response, new UnauthorizedException("UNAUTHORIZED"));
+
+    printWriter.flush();
+    Assertions.assertTrue(
+        ObjectMapperProvider.objectMapper(true).readTree(stringWriter.toString()).has("stack"));
   }
 
   @Test

@@ -19,25 +19,45 @@
 package org.apache.gravitino.server.web;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 
+import com.google.common.io.CharStreams;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.Optional;
 import javax.servlet.Filter;
 import javax.servlet.Servlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.rest.RESTUtils;
 import org.eclipse.jetty.util.thread.QueuedThreadPool;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 
 public class TestJettyServer {
 
+  // The error page always names the servlet, so match a stack frame rather than the class name.
+  private static final String FAILING_SERVLET_STACK_FRAME =
+      FailingServlet.class.getName() + ".doGet(";
+
   private JettyServer jettyServer;
+
+  @TempDir private Path webAppDirectory;
 
   @BeforeEach
   public void setUp() {
@@ -91,6 +111,43 @@ public class TestJettyServer {
   }
 
   @Test
+  public void testErrorPageOmitsStackTraceByDefault() throws IOException {
+    String errorPage = requestFailingServlet(new Config(false) {});
+
+    assertFalse(errorPage.contains(FAILING_SERVLET_STACK_FRAME), errorPage);
+  }
+
+  @Test
+  public void testErrorPageIncludesStackTraceWhenEnabled() throws IOException {
+    Config config = new Config(false) {};
+    config.set(JettyServerConfig.INCLUDE_ERROR_STACK_TRACE, true);
+
+    String errorPage = requestFailingServlet(config);
+
+    assertTrue(errorPage.contains(FAILING_SERVLET_STACK_FRAME), errorPage);
+  }
+
+  @Test
+  public void testWebAppErrorPageOmitsStackTraceByDefault() throws IOException {
+    useWebAppContext();
+
+    String errorPage = requestFailingServlet(new Config(false) {}, true);
+
+    assertFalse(errorPage.contains(FAILING_SERVLET_STACK_FRAME), errorPage);
+  }
+
+  @Test
+  public void testWebAppErrorPageIncludesStackTraceWhenEnabled() throws IOException {
+    useWebAppContext();
+    Config config = new Config(false) {};
+    config.set(JettyServerConfig.INCLUDE_ERROR_STACK_TRACE, true);
+
+    String errorPage = requestFailingServlet(config, true);
+
+    assertTrue(errorPage.contains(FAILING_SERVLET_STACK_FRAME), errorPage);
+  }
+
+  @Test
   public void testStopWithNullServer() {
     assertDoesNotThrow(() -> jettyServer.stop());
   }
@@ -112,6 +169,50 @@ public class TestJettyServer {
           .getUncaughtExceptionHandler()
           .uncaughtException(worker, new OutOfMemoryError("Metaspace"));
       assertTrue(health.hasOutOfMemoryError());
+    }
+  }
+
+  /** Starts the server with a servlet that throws, and returns Jetty's error page for it. */
+  private String requestFailingServlet(Config config) throws IOException {
+    return requestFailingServlet(config, false);
+  }
+
+  /** Starts the server with a servlet that throws, and returns Jetty's error page for it. */
+  private String requestFailingServlet(Config config, boolean shouldEnableUI) throws IOException {
+    int port = RESTUtils.findAvailablePort(5000, 6000);
+    config.set(JettyServerConfig.WEBSERVER_HOST, "127.0.0.1");
+    config.set(JettyServerConfig.WEBSERVER_HTTP_PORT, port);
+    jettyServer.initialize(JettyServerConfig.fromConfig(config), "test", shouldEnableUI);
+    jettyServer.addServlet(new FailingServlet(), "/fail");
+    jettyServer.start();
+
+    HttpURLConnection connection =
+        (HttpURLConnection) new URL("http://127.0.0.1:" + port + "/fail").openConnection();
+    try {
+      assertEquals(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, connection.getResponseCode());
+      try (Reader errorBody =
+          new InputStreamReader(connection.getErrorStream(), StandardCharsets.UTF_8)) {
+        return CharStreams.toString(errorBody);
+      }
+    } finally {
+      connection.disconnect();
+    }
+  }
+
+  private void useWebAppContext() {
+    jettyServer =
+        new JettyServer() {
+          @Override
+          Optional<String> resolveWebUiWarPath() {
+            return Optional.of(webAppDirectory.toString());
+          }
+        };
+  }
+
+  private static class FailingServlet extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) {
+      throw new IllegalStateException("servlet failure");
     }
   }
 }

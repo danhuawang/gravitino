@@ -129,6 +129,7 @@ To enable the Lance REST service within Gravitino server, configure the followin
 | `gravitino.lance-rest.classpath`          | Classpath for Lance REST service, relative to Gravitino home directory       | lance-rest-server/libs  | Yes      |
 | `gravitino.lance-rest.httpPort`           | Port number for Lance REST service                                           | 9101                    | No       |
 | `gravitino.lance-rest.host`               | Hostname for Lance REST service                                              | 0.0.0.0                 | No       |
+| `gravitino.lance-rest.includeErrorStackTrace` | Whether error responses include diagnostic `detail`, which may contain server-side stack traces. Enterprise omits it by default; enable it only for controlled diagnostics | false | No |
 | `gravitino.lance-rest.namespace-backend`  | Namespace metadata backend (only `gravitino` is supported)                   | gravitino               | Yes      |
 | `gravitino.lance-rest.gravitino-uri`      | Gravitino server URI (required when namespace-backend is `gravitino`)        | http://localhost:8090   | Yes      |
 | `gravitino.lance-rest.gravitino-metalake` | Gravitino metalake name (required when namespace-backend is `gravitino`)     | (none)                  | Yes      |
@@ -180,6 +181,7 @@ Configure the service by editing `{GRAVITINO_HOME}/conf/gravitino-lance-rest-ser
 | `gravitino.lance-rest.gravitino-metalake` | Gravitino metalake name    | (none)                | Yes      |
 | `gravitino.lance-rest.httpPort`           | Service port number        | 9101                  | No       |
 | `gravitino.lance-rest.host`               | Service hostname           | 0.0.0.0               | No       |
+| `gravitino.lance-rest.includeErrorStackTrace` | Whether error responses include diagnostic `detail`, which may contain stack traces | false | No |
 
 :::tip
 In most cases, you only need to configure `gravitino.lance-rest.gravitino-metalake` and other properties can use their default values.
@@ -208,6 +210,7 @@ Access the service at `http://localhost:9101`.
 | `LANCE_REST_GRAVITINO_URI`           | `gravitino.lance-rest.gravitino-uri`      | Yes      | `http://localhost:8090` |
 | `LANCE_REST_HOST`                    | `gravitino.lance-rest.host`               | No       | `0.0.0.0`               |
 | `LANCE_REST_PORT`                    | `gravitino.lance-rest.httpPort`           | No       | `9101`                  |
+| `LANCE_REST_INCLUDE_ERROR_STACK_TRACE` | `gravitino.lance-rest.includeErrorStackTrace` | No | `false` |
 
 :::tip Configuration Tips
 - **Required:** Set `LANCE_REST_GRAVITINO_METALAKE_NAME` to your Gravitino metalake name

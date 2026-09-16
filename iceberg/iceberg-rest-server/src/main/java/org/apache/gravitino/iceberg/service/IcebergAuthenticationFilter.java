@@ -55,7 +55,8 @@ public class IcebergAuthenticationFilter extends AuthenticationFilter {
     }
 
     String type = icebergException.getClass().getSimpleName();
-    ErrorResponse errorResponse = IcebergRESTUtils.errorResponse(status, type, message);
+    ErrorResponse errorResponse =
+        IcebergRESTUtils.errorResponse(status, type, message, icebergException);
 
     response.setStatus(status);
     response.setContentType("application/json");

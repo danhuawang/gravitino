@@ -116,7 +116,7 @@ public class JettyServer {
 
     // Set error handler for Jetty Server
     ErrorHandler errorHandler = new ErrorHandler();
-    errorHandler.setShowStacks(true);
+    errorHandler.setShowStacks(serverConfig.isIncludeErrorStackTrace());
     errorHandler.setServer(server);
     server.addBean(errorHandler);
 
@@ -178,6 +178,12 @@ public class JettyServer {
       initializeBasicServletContextHandler();
       webUiEnabled = false;
     }
+    ErrorHandler contextErrorHandler = servletContextHandler.getErrorHandler();
+    if (contextErrorHandler == null) {
+      contextErrorHandler = new ErrorHandler();
+      servletContextHandler.setErrorHandler(contextErrorHandler);
+    }
+    contextErrorHandler.setShowStacks(serverConfig.isIncludeErrorStackTrace());
 
     // Install before authentication, custom filters, and servlet mappings on every service.
     addFilter(new OutOfMemoryErrorFilter(), "/*");
@@ -293,7 +299,7 @@ public class JettyServer {
     return false;
   }
 
-  private Optional<String> resolveWebUiWarPath() {
+  Optional<String> resolveWebUiWarPath() {
     String warPathFromEnv = System.getenv("GRAVITINO_WAR");
     if (StringUtils.isNotBlank(warPathFromEnv)) {
       File warFile = new File(warPathFromEnv);
@@ -546,6 +552,6 @@ public class JettyServer {
    * custom authentication filter (e.g., one that returns Iceberg-spec JSON error responses).
    */
   protected Filter createAuthenticationFilter() {
-    return new AuthenticationFilter();
+    return new AuthenticationFilter(serverConfig.isIncludeErrorStackTrace());
   }
 }

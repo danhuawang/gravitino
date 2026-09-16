@@ -309,7 +309,9 @@ public class CatalogIT extends BaseIT {
             () ->
                 metalake.testConnection(
                     catalogName, Catalog.Type.FILESET, "hadoop", "catalog comment", illegalProps));
-    Assertions.assertTrue(exception.getMessage().contains("Invalid value [myCloud]"));
+    Assertions.assertTrue(
+        exception.getMessage().contains("Invalid value: 'myCloud' for property: 'cloud.name'"),
+        exception.getMessage());
 
     exception =
         Assertions.assertThrows(
@@ -317,7 +319,9 @@ public class CatalogIT extends BaseIT {
             () ->
                 metalake.createCatalog(
                     catalogName, Catalog.Type.FILESET, "hadoop", "catalog comment", illegalProps));
-    Assertions.assertTrue(exception.getMessage().contains("Invalid value [myCloud]"));
+    Assertions.assertTrue(
+        exception.getMessage().contains("Invalid value: 'myCloud' for property: 'cloud.name'"),
+        exception.getMessage());
 
     ImmutableMap<String, String> props =
         ImmutableMap.of("cloud.name", "aws", "cloud.region-code", "us-west-2");

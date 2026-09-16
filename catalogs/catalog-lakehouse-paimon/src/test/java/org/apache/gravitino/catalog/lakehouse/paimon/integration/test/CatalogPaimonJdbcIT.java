@@ -25,6 +25,8 @@ import org.apache.gravitino.catalog.lakehouse.paimon.PaimonCatalogPropertiesMeta
 import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.integration.test.container.HiveContainer;
 import org.apache.gravitino.integration.test.util.GravitinoITUtils;
+import org.apache.gravitino.server.GravitinoServer;
+import org.apache.gravitino.server.web.JettyServerConfig;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,14 @@ import org.junit.jupiter.api.TestInstance;
 @Tag("gravitino-docker-test")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class CatalogPaimonJdbcIT extends CatalogPaimonBaseIT {
+
+  /** Enables diagnostic error details before the server starts for JDBC failure assertions. */
+  public CatalogPaimonJdbcIT() {
+    customConfigs.put(
+        GravitinoServer.WEBSERVER_CONF_PREFIX
+            + JettyServerConfig.INCLUDE_ERROR_STACK_TRACE.getKey(),
+        "true");
+  }
 
   @Override
   protected Map<String, String> initPaimonCatalogProperties() {
