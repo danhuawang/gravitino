@@ -221,7 +221,8 @@ tasks.clean {
 sourceSets {
   named("test") {
     resources {
-      exclude("**/*")
+      // Keep only SPI registrations; the version modules supply their own test configs and data.
+      exclude { !it.relativePath.pathString.startsWith("META-INF") }
     }
   }
 }
@@ -229,6 +230,8 @@ sourceSets {
 val testJar by tasks.registering(Jar::class) {
   archiveClassifier.set("tests")
   from(sourceSets["test"].output)
+  // The SPI fixture is only for this module's tests; keep it off the version modules' classpath.
+  exclude("META-INF/services/**")
 }
 
 configurations {
