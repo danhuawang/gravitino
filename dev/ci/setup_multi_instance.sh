@@ -18,24 +18,49 @@
 # under the License.
 #
 # Stages two Gravitino distribution instances (A on port 8090, B on 8190)
-# backed by a shared MySQL entity store and starts both servers.
+# backed by a shared entity store and starts both servers.
 # Called by .github/workflows/multi-instance-consistency-test.yml.
+#
+# ENTITY_BACKEND selects the shared entity store: postgresql (default, the
+# backend the enterprise chart ships) or mysql. The caller is responsible for
+# having the matching database up and its schema applied.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
+ENTITY_BACKEND="${ENTITY_BACKEND:-postgresql}"
+
 # ---------------------------------------------------------------------------
-# 1. MySQL JDBC driver
-#    The entity store needs the connector in libs/, not only under
-#    catalogs/jdbc-mysql/libs/ (which is for the JDBC catalog backend).
+# 1. Entity store JDBC driver
+#    The entity store needs the driver in libs/, not only under the JDBC
+#    catalog's own libs/ (which is for the JDBC catalog backend).
 #    mysql-connector-java was renamed to mysql-connector-j starting with
 #    8.0.31 (new Maven group: com.mysql).
 # ---------------------------------------------------------------------------
-JDBC_VERSION=8.0.33
-JDBC_JAR=distribution/package/libs/mysql-connector-j-${JDBC_VERSION}.jar
-JDBC_URL=https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/${JDBC_VERSION}/mysql-connector-j-${JDBC_VERSION}.jar
+case "${ENTITY_BACKEND}" in
+  postgresql)
+    JDBC_VERSION=42.7.11
+    JDBC_JAR_NAME=postgresql-${JDBC_VERSION}.jar
+    JDBC_URL=https://repo1.maven.org/maven2/org/postgresql/postgresql/${JDBC_VERSION}/${JDBC_JAR_NAME}
+    JDBC_DRIVER_CLASS=org.postgresql.Driver
+    ENTITY_JDBC_URL="jdbc:postgresql://127.0.0.1:5432/gravitino"
+    ;;
+  mysql)
+    JDBC_VERSION=8.0.33
+    JDBC_JAR_NAME=mysql-connector-j-${JDBC_VERSION}.jar
+    JDBC_URL=https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/${JDBC_VERSION}/${JDBC_JAR_NAME}
+    JDBC_DRIVER_CLASS=com.mysql.cj.jdbc.Driver
+    ENTITY_JDBC_URL="jdbc:mysql://127.0.0.1:3306/gravitino?useSSL=false&allowPublicKeyRetrieval=true"
+    ;;
+  *)
+    echo "Unsupported ENTITY_BACKEND '${ENTITY_BACKEND}' (expected postgresql or mysql)" >&2
+    exit 1
+    ;;
+esac
+
+JDBC_JAR=distribution/package/libs/${JDBC_JAR_NAME}
 
 curl -fsSL "${JDBC_URL}" -o "${JDBC_JAR}"
 EXPECTED_SHA1="$(curl -fsSL "${JDBC_URL}.sha1")"
@@ -69,17 +94,17 @@ cp -a distribution/package distribution/package-b
 # ---------------------------------------------------------------------------
 configure_instance() {
   local conf="$1" http="$2" iceberg="$3" lance="$4"
-  python3 - "$conf" "$http" "$iceberg" "$lance" <<'PY'
+  python3 - "$conf" "$http" "$iceberg" "$lance" "${ENTITY_JDBC_URL}" "${JDBC_DRIVER_CLASS}" <<'PY'
 import sys, re, pathlib
 conf, http, iceberg, lance = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+entity_jdbc_url, jdbc_driver_class = sys.argv[5], sys.argv[6]
 p = pathlib.Path(conf)
 src = p.read_text()
 subs = [
   (r'^gravitino\.entity\.store\.relational\.jdbcUrl\s*=.*$',
-   'gravitino.entity.store.relational.jdbcUrl = '
-   'jdbc:mysql://127.0.0.1:3306/gravitino?useSSL=false&allowPublicKeyRetrieval=true'),
+   f'gravitino.entity.store.relational.jdbcUrl = {entity_jdbc_url}'),
   (r'^gravitino\.entity\.store\.relational\.jdbcDriver\s*=.*$',
-   'gravitino.entity.store.relational.jdbcDriver = com.mysql.cj.jdbc.Driver'),
+   f'gravitino.entity.store.relational.jdbcDriver = {jdbc_driver_class}'),
   (r'^gravitino\.entity\.store\.relational\.jdbcUser\s*=.*$',
    'gravitino.entity.store.relational.jdbcUser = gravitino'),
   (r'^gravitino\.entity\.store\.relational\.jdbcPassword\s*=.*$',
@@ -101,7 +126,9 @@ subs = [
 ]
 appended = []
 for pat, repl in subs:
-  new_src = re.sub(pat, repl, src, flags=re.MULTILINE)
+  # Substitute literally: the JDBC URL is caller-supplied and may contain
+  # characters re.sub would otherwise read as backreferences.
+  new_src = re.sub(pat, lambda _m, r=repl: r, src, flags=re.MULTILINE)
   if new_src == src:
     appended.append(repl)
   src = new_src

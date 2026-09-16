@@ -136,7 +136,9 @@ public class DatastratoUserMetaBaseSQLProvider {
     return "<script>"
         + "UPDATE "
         + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
-        + " SET enabled = #{enabled},"
+        + " SET enabled = "
+        + scimUserEnabledBindValue("#{enabled}")
+        + ","
         + " last_version = current_version,"
         + " current_version = current_version + 1"
         + " WHERE deleted_at = 0 AND user_name IN "
@@ -713,6 +715,22 @@ public class DatastratoUserMetaBaseSQLProvider {
    */
   protected String scimUserEnabledAsBoolean() {
     return "su.enabled";
+  }
+
+  /**
+   * Expression that binds the Java {@code boolean} {@code enabled} parameter when writing to {@code
+   * scim_user_meta.enabled}.
+   *
+   * <p>MySQL / H2 store SCIM {@code enabled} as {@code TINYINT(1)} and coerce a boolean bind
+   * silently. PostgreSQL uses {@code SMALLINT} and rejects one with {@code 42804}, so it maps the
+   * bind to an integer (see factory override). This is the write-path counterpart of {@link
+   * #scimUserEnabledAsBoolean()}.
+   *
+   * @param enabledParamRef MyBatis parameter reference holding the target enabled value.
+   * @return SQL expression assignable to {@code scim_user_meta.enabled}.
+   */
+  protected String scimUserEnabledBindValue(String enabledParamRef) {
+    return enabledParamRef;
   }
 
   private String idpDirectoryGroupAggregation() {

@@ -99,7 +99,10 @@ jobs:
       matrix:
         architecture: [ linux/amd64 ]
         java-version: [ 17 ]
-        backend: [ mysql ]
+        # PostgreSQL is the entity store the enterprise chart ships by default, so it
+        # gates every merge. MySQL is still a supported backend, so the push job keeps
+        # it as a second combo; PRs run PostgreSQL only to hold CI cost flat.
+        backend: [ postgresql, mysql ]
         test-mode: [ deploy ]
     uses: ./.github/workflows/backend-integration-test-action.yml
     with:
@@ -117,7 +120,9 @@ jobs:
       matrix:
         architecture: [ linux/amd64 ]
         java-version: [ 17 ]
-        backend: [ mysql ]
+        # See BackendIT-on-push: PRs gate on the shipped backend only; MySQL is
+        # covered on push.
+        backend: [ postgresql ]
         test-mode: [ deploy ]
     uses: ./.github/workflows/backend-integration-test-action.yml
     with:

@@ -6,6 +6,8 @@ package com.datastrato.gravitino.authorization.mapper;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.datastrato.gravitino.authorization.mapper.provider.base.DatastratoUserMetaBaseSQLProvider;
+import com.google.common.collect.Lists;
 import org.junit.jupiter.api.Test;
 
 /** Tests for {@link DatastratoUserMetaSQLProviderFactory}. */
@@ -67,6 +69,44 @@ public class TestDatastratoUserMetaSQLProviderFactory {
                   + " END), 1)"));
       assertFalse(s.contains("MAX(COALESCE((su.enabled <> 0), iu.enabled))"));
       assertFalse(s.contains("MAX(COALESCE(su.enabled, iu.enabled))"));
+    }
+  }
+
+  /**
+   * PostgreSQL {@code scim_user_meta.enabled} is {@code SMALLINT}, so binding the Java {@code
+   * boolean} parameter straight into the assignment fails with {@code 42804}. The write path must
+   * encode it as an integer, mirroring what the read path already does.
+   */
+  @Test
+  public void testPostgreSQLBatchUpdateScimUserEnabledEncodesBooleanAsSmallInt() {
+    DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaPostgreSQLProvider provider =
+        new DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaPostgreSQLProvider();
+
+    String sql =
+        provider.batchUpdateScimUserEnabledByUserNames(Lists.newArrayList("alice", "bob"), true);
+
+    assertTrue(sql.contains("UPDATE scim_user_meta"));
+    assertTrue(sql.contains("SET enabled = CASE WHEN #{enabled} THEN 1 ELSE 0 END,"));
+    assertFalse(sql.contains("SET enabled = #{enabled}"));
+  }
+
+  /**
+   * MySQL and H2 store SCIM {@code enabled} as {@code TINYINT(1)} and coerce a boolean bind, so
+   * neither should pay for the PostgreSQL encoding.
+   */
+  @Test
+  public void testMySQLAndH2BatchUpdateScimUserEnabledBindsBooleanDirectly() {
+    DatastratoUserMetaBaseSQLProvider[] providers = {
+      new DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaMySQLProvider(),
+      new DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaH2Provider()
+    };
+
+    for (DatastratoUserMetaBaseSQLProvider provider : providers) {
+      String sql =
+          provider.batchUpdateScimUserEnabledByUserNames(Lists.newArrayList("alice", "bob"), true);
+
+      assertTrue(sql.contains("SET enabled = #{enabled},"));
+      assertFalse(sql.contains("CASE WHEN #{enabled}"));
     }
   }
 

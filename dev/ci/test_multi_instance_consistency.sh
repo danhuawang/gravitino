@@ -1080,7 +1080,8 @@ expect "A: delete role $ROLE_V" 200
 section "W. Bidirectional — grant on B is immediately effective on A"
 # All prior phases propagate A→B. This phase confirms the reverse direction:
 # a role grant written to B propagates to A without a poll wait, because the
-# shared MySQL is written directly and A's per-request version check reloads it.
+# shared entity store is written directly and A's per-request version check
+# reloads it.
 api "$INSTANCE_B" "$USER_ALICE" POST "/api/metalakes/$METALAKE/roles" "$(cat <<EOF
 {"name":"$ROLE_W","properties":{},"securableObjects":[
   {"fullName":"$METALAKE","type":"METALAKE",

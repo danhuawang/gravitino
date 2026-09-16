@@ -86,6 +86,27 @@ INSTANCE_B="${INSTANCE_B:-http://localhost:8190}"
 INSTANCE_B_HOME="${INSTANCE_B_HOME:-distribution/package-b}"
 ADMIN_USER="${ADMIN_USER:-admin}"
 KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
+
+# The Iceberg JDBC catalog shares the database that backs the entity store, so
+# its connection settings follow ENTITY_BACKEND (see setup_multi_instance.sh).
+ENTITY_BACKEND="${ENTITY_BACKEND:-postgresql}"
+case "${ENTITY_BACKEND}" in
+  postgresql)
+    ICEBERG_JDBC_URI="jdbc:postgresql://127.0.0.1:5432/gravitino"
+    ICEBERG_JDBC_DRIVER="org.postgresql.Driver"
+    ;;
+  mysql)
+    # nullCatalogMeansCurrent keeps Iceberg's JDBC catalog scoped to the
+    # connected database; it has no PostgreSQL equivalent and none is needed.
+    ICEBERG_JDBC_URI="jdbc:mysql://127.0.0.1:3306/gravitino?useSSL=false&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true"
+    ICEBERG_JDBC_DRIVER="com.mysql.cj.jdbc.Driver"
+    ;;
+  *)
+    echo "Unsupported ENTITY_BACKEND '${ENTITY_BACKEND}' (expected postgresql or mysql)" >&2
+    exit 1
+    ;;
+esac
+
 # Upper bound for convergence. Generous on purpose: a correct node converges in
 # about one poll interval and never reaches this, while a broken one has to burn
 # the whole budget before failing. Raising it costs nothing on a healthy run.
@@ -818,7 +839,9 @@ ICEBERG_BODY=$(jq -nc \
   --arg name "$ICEBERG_CATALOG" \
   --arg backend_name "multi_instance_${SUFFIX}" \
   --arg warehouse "file:///tmp/gravitino-multi-instance-iceberg-${SUFFIX}" \
-  '{name:$name,type:"RELATIONAL",comment:"Iceberg cache test",provider:"lakehouse-iceberg",properties:{"catalog-backend":"jdbc",uri:"jdbc:mysql://127.0.0.1:3306/gravitino?useSSL=false&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true",warehouse:$warehouse,"catalog-backend-name":$backend_name,"jdbc-driver":"com.mysql.cj.jdbc.Driver","jdbc-user":"gravitino","jdbc-password":"gravitino","jdbc-initialize":"true"}}')
+  --arg jdbc_uri "$ICEBERG_JDBC_URI" \
+  --arg jdbc_driver "$ICEBERG_JDBC_DRIVER" \
+  '{name:$name,type:"RELATIONAL",comment:"Iceberg cache test",provider:"lakehouse-iceberg",properties:{"catalog-backend":"jdbc",uri:$jdbc_uri,warehouse:$warehouse,"catalog-backend-name":$backend_name,"jdbc-driver":$jdbc_driver,"jdbc-user":"gravitino","jdbc-password":"gravitino","jdbc-initialize":"true"}}')
 mutate_a "create Iceberg JDBC catalog" POST "/api/metalakes/${MAIN_METALAKE}/catalogs" "$ICEBERG_BODY"
 
 mutate_a "create fileset catalog" POST "/api/metalakes/${MAIN_METALAKE}/catalogs" \
@@ -1197,7 +1220,9 @@ HIER_RECREATE_BODY=$(jq -nc \
   --arg name "$ICEBERG_CATALOG" \
   --arg backend_name "multi_instance_recreated_${SUFFIX}" \
   --arg warehouse "file:///tmp/gravitino-multi-instance-iceberg-recreated-${SUFFIX}" \
-  '{name:$name,type:"RELATIONAL",comment:"Iceberg empty generation",provider:"lakehouse-iceberg",properties:{"catalog-backend":"jdbc",uri:"jdbc:mysql://127.0.0.1:3306/gravitino?useSSL=false&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true",warehouse:$warehouse,"catalog-backend-name":$backend_name,"jdbc-driver":"com.mysql.cj.jdbc.Driver","jdbc-user":"gravitino","jdbc-password":"gravitino","jdbc-initialize":"true"}}')
+  --arg jdbc_uri "$ICEBERG_JDBC_URI" \
+  --arg jdbc_driver "$ICEBERG_JDBC_DRIVER" \
+  '{name:$name,type:"RELATIONAL",comment:"Iceberg empty generation",provider:"lakehouse-iceberg",properties:{"catalog-backend":"jdbc",uri:$jdbc_uri,warehouse:$warehouse,"catalog-backend-name":$backend_name,"jdbc-driver":$jdbc_driver,"jdbc-user":"gravitino","jdbc-password":"gravitino","jdbc-initialize":"true"}}')
 mutate_a "recreate an empty hierarchical catalog with the same name" POST "/api/metalakes/${MAIN_METALAKE}/catalogs" "$HIER_RECREATE_BODY"
 api "$INSTANCE_B" GET "/api/metalakes/${MAIN_METALAKE}/catalogs/${ICEBERG_CATALOG}"
 expect_value "B loads the empty replacement catalog" '.catalog.comment' "Iceberg empty generation"

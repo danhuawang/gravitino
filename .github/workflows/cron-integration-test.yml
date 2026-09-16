@@ -230,7 +230,13 @@ jobs:
     name: multi-instance
     needs: select-suites
     if: needs.select-suites.outputs.multi-instance == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [ postgresql, mysql ]
     uses: ./.github/workflows/multi-instance-consistency-test-action.yml
+    with:
+      backend: ${{ matrix.backend }}
     secrets: inherit
 
   summary:

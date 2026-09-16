@@ -38,9 +38,10 @@ dependencies {
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.mockito.core)
-  // MySQL driver is needed because BaseIT uses MySQL as Gravitino's metadata backend
-  // in deploy-mysql CI mode, and DriverManager.getConnection requires it on the classpath.
+  // BaseIT opens the entity-store connection from the test JVM, so whichever
+  // backend -PjdbcBackend selects must have its driver on the test classpath.
   testImplementation(libs.mysql.driver)
+  testImplementation(libs.postgresql.driver)
   testImplementation(libs.testcontainers)
 
   testRuntimeOnly(libs.junit.jupiter.engine)

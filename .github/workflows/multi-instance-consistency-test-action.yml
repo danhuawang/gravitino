@@ -2,9 +2,22 @@ name: Multi-Instance Consistency Test Action
 
 on:
   workflow_call:
+    inputs:
+      backend:
+        description: 'Entity-store backend to test'
+        required: true
+        type: string
+    secrets:
+      ENTERPRISE_TEST_PUBLIC_KEY_URI:
+        required: true
+      PRIVATE_REPO_ACCESS_TOKEN:
+        required: true
+      ENTERPRISE_TEST_LICENSE_KEY:
+        required: true
 
 jobs:
   multi-instance-consistency:
+    name: multi-instance-consistency (${{ inputs.backend }})
     runs-on: gcp-arc-runners
     timeout-minutes: 30
     env:
@@ -12,6 +25,21 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
       GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
     services:
+      # `services` cannot be gated on the selected backend, so both databases
+      # start for every run and the unused service simply sits idle.
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_DB: gravitino
+          POSTGRES_USER: gravitino
+          POSTGRES_PASSWORD: gravitino
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U gravitino -d gravitino"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
       mysql:
         image: mysql:8.0.33
         env:
@@ -26,6 +54,23 @@ jobs:
           --health-interval=5s
           --health-timeout=3s
           --health-retries=20
+      kafka:
+        image: apache/kafka:3.9.1
+        env:
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_NODE_ID: 1
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+        ports:
+          - 9092:9092
+        options: >-
+          --health-cmd="/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
+          --health-interval=5s
+          --health-timeout=10s
+          --health-retries=20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,29 +83,78 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           java-version: 17
-          distribution: 'temurin'
-          cache: 'gradle'
+          distribution: "temurin"
+          cache: "gradle"
+          cache-dependency-path: |
+            **/*.gradle*
+            **/gradle-wrapper.properties
+            gradle/libs.versions.toml
+            gradle.properties
 
       - name: Free disk space
         run: dev/ci/util_free_space.sh
 
-      - name: Install MySQL client
-        run: sudo apt-get update -q && sudo apt-get install -y -q default-mysql-client
-
-      - name: Apply Gravitino MySQL schema
+      - name: Install database client
         run: |
-          # Keep in sync with the latest schema file under scripts/mysql/ when the version bumps.
-          mysql -h 127.0.0.1 -P 3306 -ugravitino -pgravitino gravitino \
-            < scripts/mysql/schema-1.3.0-mysql.sql
+          sudo apt-get update -q
+          if [ "${{ inputs.backend }}" = "postgresql" ]; then
+            sudo apt-get install -y -q postgresql-client
+          else
+            sudo apt-get install -y -q default-mysql-client
+          fi
+
+      - name: Apply Gravitino schema
+        env:
+          PGPASSWORD: gravitino
+        run: |
+          # Keep the version in sync with ConfigConstants.CURRENT_SCRIPT_VERSION.
+          # Both the OSS and the enterprise schema are required: the server owns
+          # tables from each, and applying only the OSS half leaves the
+          # enterprise tables missing.
+          VERSION=1.3.0
+          if [ "${{ inputs.backend }}" = "postgresql" ]; then
+            for sql in "scripts/postgresql/schema-${VERSION}-postgresql.sql" \
+                       "scripts/enterprise/postgresql/enterprise-schema-${VERSION}-postgresql.sql"; do
+              echo "Applying ${sql}"
+              psql -h 127.0.0.1 -p 5432 -U gravitino -d gravitino -v ON_ERROR_STOP=1 -f "${sql}"
+            done
+          else
+            for sql in "scripts/mysql/schema-${VERSION}-mysql.sql" \
+                       "scripts/enterprise/mysql/enterprise-schema-${VERSION}-mysql.sql"; do
+              echo "Applying ${sql}"
+              mysql -h 127.0.0.1 -P 3306 -ugravitino -pgravitino gravitino < "${sql}"
+            done
+          fi
 
       - name: Build Gravitino distribution
         run: ./gradlew compileDistribution -PskipWeb=true -x test
 
       - name: Stage and start two instances (A=8090, B=8190)
+        env:
+          ENTITY_BACKEND: ${{ inputs.backend }}
         run: bash dev/ci/setup_multi_instance.sh
 
-      - name: Run multi-instance consistency tests
-        id: consistency
+      - name: Run multi-instance entity cache consistency tests
+        id: entity-cache-consistency
+        env:
+          INSTANCE_A: http://localhost:8090
+          INSTANCE_B: http://localhost:8190
+          INSTANCE_B_HOME: distribution/package-b
+          ADMIN_USER: admin
+          KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+          ENTITY_BACKEND: ${{ inputs.backend }}
+          # Convergence budget for every other case. A healthy node converges in
+          # about a second and never spends this, so a generous value buys
+          # resilience to CI scheduling hiccups at no cost on green runs.
+          AWAIT_TIMEOUT_SECS: 30
+          # Every cacheable entity type must expose a warm stale value in at
+          # least one round before its target converges through the change log.
+          PER_TYPE_STALE_CONTROL_ROUNDS: 3
+          RUN_RESTART_TEST: true
+        run: bash dev/ci/test_multi_instance_entity_cache_consistency.sh
+
+      - name: Run multi-instance authorization consistency tests
+        id: authorization-consistency
         env:
           INSTANCE_A: http://localhost:8090
           INSTANCE_B: http://localhost:8190
@@ -78,7 +172,7 @@ jobs:
         if: ${{ failure() || cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: multi-instance-consistency-logs
+          name: multi-instance-consistency-logs-${{ inputs.backend }}
           path: |
             distribution/package/logs/
             distribution/package-b/logs/

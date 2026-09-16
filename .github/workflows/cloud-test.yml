@@ -63,7 +63,9 @@ jobs:
         architecture: [linux/amd64]
         java-version: [ 17 ]
         test-mode: [ deploy ]
-        backend: [ mysql ]
+        # PostgreSQL is the entity store the enterprise chart ships by default.
+        # Keep this aligned with backend-integration-test.yml.
+        backend: [ postgresql ]
     steps:
       - uses: actions/checkout@v4
 

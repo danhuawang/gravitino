@@ -208,5 +208,15 @@ public class DatastratoUserMetaSQLProviderFactory {
     protected String coalescedEnabled() {
       return "COALESCE(" + scimUserEnabledAsBoolean() + ", iu.enabled)";
     }
+
+    /**
+     * PostgreSQL {@code scim_user_meta.enabled} is {@code SMALLINT}, so binding the Java {@code
+     * boolean} parameter directly fails with {@code 42804: column "enabled" is of type smallint but
+     * expression is of type boolean}. Map it to the stored integer encoding instead.
+     */
+    @Override
+    protected String scimUserEnabledBindValue(String enabledParamRef) {
+      return "CASE WHEN " + enabledParamRef + " THEN 1 ELSE 0 END";
+    }
   }
 }
