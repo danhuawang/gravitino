@@ -32,6 +32,14 @@ The BigQuery JDBC driver is not included in the Gravitino distribution. You must
 The recommended driver version is 1.6.5.1001 or later. Make sure to exclude Jackson-related JARs from the driver package to avoid dependency conflicts with Gravitino.
 :::
 
+:::note
+For container or Kubernetes deployments you cannot copy into
+`${GRAVITINO_HOME}/catalogs/jdbc-bigquery/libs/` directly. Supply the driver
+through your deployment's JDBC driver configuration instead (for the Datastrato
+Enterprise chart, the `jdbcDrivers` values). The catalog fails fast at creation
+time with a clear message if the driver is absent.
+:::
+
 ## Catalog
 
 ### Catalog capabilities

@@ -22,10 +22,6 @@ gravitino_dir="$(dirname "${BASH_SOURCE-$0}")"
 gravitino_dir="$(cd "${gravitino_dir}">/dev/null; pwd)"
 gravitino_home="$(cd "${gravitino_dir}/../../..">/dev/null; pwd)"
 
-MYSQL_JDBC_DRIVER_VERSION=${MYSQL_VERSION:-"8.0.26"}
-MYSQL_JDBC_DRIVER_NAME="mysql-connector-java-${MYSQL_JDBC_DRIVER_VERSION}.jar"
-MYSQL_JDBC_DRIVER_DOWNLOAD_URL="https://repo1.maven.org/maven2/mysql/mysql-connector-java/${MYSQL_JDBC_DRIVER_VERSION}/${MYSQL_JDBC_DRIVER_NAME}"
-
 POSTGRESQL_JDBC_DRIVER_VERSION=${POSTGRESQL_VERSION:-"42.7.0"}
 POSTGRESQL_JDBC_DRIVER_NAME="postgresql-${POSTGRESQL_JDBC_DRIVER_VERSION}.jar"
 POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL="https://jdbc.postgresql.org/download/${POSTGRESQL_JDBC_DRIVER_NAME}"
@@ -35,10 +31,6 @@ GCS_CONNECTOR_VERSION_SHORT=${GCS_CONNECTOR_VERSION_SHORT:-"2.2.18"}
 GCS_CONNECTOR_NAME="gcs-connector-${GCS_CONNECTOR_VERSION}-shaded.jar"
 GCS_CONNECTOR_DOWNLOAD_URL="https://github.com/GoogleCloudDataproc/hadoop-connectors/releases/download/v${GCS_CONNECTOR_VERSION_SHORT}/${GCS_CONNECTOR_NAME}"
 
-SIMBA_BIGQUERY_JDBC_VERSION=${SIMBA_BIGQUERY_JDBC_VERSION:-"1.6.5.1001"}
-SIMBA_BIGQUERY_ZIP_NAME="SimbaJDBCDriverforGoogleBigQuery42_${SIMBA_BIGQUERY_JDBC_VERSION}.zip"
-SIMBA_BIGQUERY_DOWNLOAD_URL="https://storage.googleapis.com/simba-bq-release/jdbc/${SIMBA_BIGQUERY_ZIP_NAME}"
-
 ODPS_JDBC_VERSION=${ODPS_JDBC_VERSION:-"3.8.8"}
 ODPS_JDBC_DRIVER_NAME="odps-jdbc-${ODPS_JDBC_VERSION}-jar-with-dependencies.jar"
 ODPS_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/aliyun/odps/odps-jdbc/${ODPS_JDBC_VERSION}/${ODPS_JDBC_DRIVER_NAME}"
@@ -46,10 +38,6 @@ ODPS_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/aliyun/odps/odps-jdbc
 CLICKHOUSE_JDBC_VERSION=${CLICKHOUSE_JDBC_VERSION:-"0.7.1"}
 CLICKHOUSE_JDBC_DRIVER_NAME="clickhouse-jdbc-${CLICKHOUSE_JDBC_VERSION}-all.jar"
 CLICKHOUSE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/clickhouse/clickhouse-jdbc/${CLICKHOUSE_JDBC_VERSION}/${CLICKHOUSE_JDBC_DRIVER_NAME}"
-
-OCEANBASE_JDBC_VERSION=${OCEANBASE_JDBC_VERSION:-"2.4.18"}
-OCEANBASE_JDBC_DRIVER_NAME="oceanbase-client-${OCEANBASE_JDBC_VERSION}.jar"
-OCEANBASE_JDBC_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/oceanbase/oceanbase-client/${OCEANBASE_JDBC_VERSION}/${OCEANBASE_JDBC_DRIVER_NAME}"
 
 # Paimon filesystem jars. These are self-contained shaded jars (bundle hadoop-aws /
 # hadoop-aliyun and the cloud SDKs internally). The version is read from
@@ -107,28 +95,14 @@ download_file() {
   fi
 }
 
-# Download JDBC drivers to dedicated directory
-download_file "${jdbc_driver_dir}/${MYSQL_JDBC_DRIVER_NAME}" "${MYSQL_JDBC_DRIVER_DOWNLOAD_URL}"
+# Download JDBC drivers to dedicated directory.
+# MySQL Connector/J (GPLv2), Simba BigQuery, and OceanBase drivers are not
+# redistributable in the product image and are supplied by the operator at
+# deploy time (see the chart's jdbcDrivers values and the install docs).
 download_file "${jdbc_driver_dir}/${POSTGRESQL_JDBC_DRIVER_NAME}" "${POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL}"
 
 # Download GCS connector to dedicated directory
 download_file "${gcs_connector_dir}/${GCS_CONNECTOR_NAME}" "${GCS_CONNECTOR_DOWNLOAD_URL}"
-
-# Download and install BigQuery Simba JDBC driver
-gravitino_bigquery_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-bigquery/libs"
-simba_tmp_dir="${gravitino_dir}/packages/simba-bigquery-tmp"
-download_file "${gravitino_dir}/packages/${SIMBA_BIGQUERY_ZIP_NAME}" "${SIMBA_BIGQUERY_DOWNLOAD_URL}"
-if [ -d "${simba_tmp_dir}" ]; then
-  rm -rf "${simba_tmp_dir}"
-fi
-mkdir -p "${simba_tmp_dir}"
-# Use jar to extract ZIP (available via JDK, no unzip dependency needed)
-(cd "${simba_tmp_dir}" && jar xf "${gravitino_dir}/packages/${SIMBA_BIGQUERY_ZIP_NAME}")
-# Copy all JARs except Jackson JARs to avoid dependency conflicts with Gravitino
-find "${simba_tmp_dir}" -name '*.jar' ! -name 'jackson-*.jar' -exec cp -v {} "${gravitino_bigquery_catalog_dir}" \;
-if [ -d "${simba_tmp_dir}" ]; then
-  rm -rf "${simba_tmp_dir}"
-fi
 
 # Download and install MaxCompute ODPS JDBC driver
 gravitino_maxcompute_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-maxcompute/libs"
@@ -139,11 +113,6 @@ cp "${gravitino_dir}/packages/${ODPS_JDBC_DRIVER_NAME}" "${gravitino_maxcompute_
 gravitino_clickhouse_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-clickhouse/libs"
 download_file "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${CLICKHOUSE_JDBC_DOWNLOAD_URL}"
 cp "${gravitino_dir}/packages/${CLICKHOUSE_JDBC_DRIVER_NAME}" "${gravitino_clickhouse_catalog_dir}"
-
-# Download and install OceanBase JDBC driver (supports com.oceanbase.jdbc.Driver)
-gravitino_oceanbase_catalog_dir="${gravitino_dir}/packages/gravitino/catalogs/jdbc-oceanbase/libs"
-download_file "${gravitino_dir}/packages/${OCEANBASE_JDBC_DRIVER_NAME}" "${OCEANBASE_JDBC_DOWNLOAD_URL}"
-cp "${gravitino_dir}/packages/${OCEANBASE_JDBC_DRIVER_NAME}" "${gravitino_oceanbase_catalog_dir}"
 
 # Download and install Paimon S3/OSS FileIO jars so the lakehouse-paimon catalog can
 # access s3:// and oss:// warehouses out of the box. Paimon does not bundle these by
