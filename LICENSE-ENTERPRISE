@@ -1,14 +1,108 @@
 LICENSE-ENTERPRISE
+Datastrato Enterprise - Proprietary Components
 
-This file covers proprietary software in Gravitino Enterprise that is
-owned by Datastrato and is not licensed under the Apache License,
-Version 2.0.
+Copyright (c) 2024-2026 Datastrato Inc. All rights reserved.
 
-Commercial terms for this software will be supplied separately. Until
-those terms are published, the proprietary modules listed below are not
-available under the Apache License 2.0 or any other open-source license.
-This file does not grant a license and does not contain commercial
-contract language.
+1. SCOPE
+
+This file identifies the components of this distribution that are
+proprietary to Datastrato Inc. ("Datastrato") and are NOT licensed under
+the Apache License, Version 2.0, or under any other open source license
+(the "Proprietary Components").
+
+The Apache-licensed and third-party open source components of this
+distribution are identified in the license and notice files shipped
+alongside this one: LICENSE, NOTICE, LICENSE-APACHE, the component files
+LICENSE.iceberg, LICENSE.trino and LICENSE.lance with their corresponding
+NOTICE files, and the licenses/ directory. Nothing in this file applies
+to, modifies, or restricts those components.
+
+2. PERMITTED USE
+
+Use of the Proprietary Components requires a license key issued by
+Datastrato. Subject to that key, and to any written agreement between
+Datastrato and the recipient, the recipient may install, run and operate
+the Proprietary Components for its own internal business purposes; copy
+them as reasonably necessary to do so and for backup and archival
+purposes; and create, modify and maintain the configuration required to
+operate them.
+
+Use is permitted only within the scope, duration, environment and other
+limits that the issued key and any such agreement authorize. Absent a
+valid license key, no use of the Proprietary Components is permitted.
+
+3. PRECEDENCE
+
+Where a written agreement between Datastrato and the recipient exists
+(for example a subscription, evaluation, or proof-of-concept agreement,
+the "Agreement"), that agreement governs. In the event of any conflict
+or inconsistency between this file and the Agreement, the Agreement
+controls in all respects.
+
+4. RESERVATION OF RIGHTS
+
+Except as permitted by Section 2, by an Agreement, by the terms of an
+issued license key, or to the extent a restriction is unenforceable under
+applicable law, the recipient may not distribute, sublicense, rent,
+lease, or otherwise make the Proprietary Components available to any
+third party; modify them or create derivative works of them; or reverse
+engineer, decompile, or disassemble them. Configuration created or
+modified under Section 2 is not a modification for the purposes of this
+section. All rights not expressly granted are reserved by Datastrato.
+
+5. RELATIONSHIP TO THE OPEN SOURCE COMPONENTS
+
+Including the Proprietary Components in the same distribution as open
+source software does not place any open source component under the terms
+of this file, and does not place the Proprietary Components under any
+open source license.
+
+Where a Proprietary Component is derived from, extends or otherwise
+builds on Apache Gravitino, the Apache License, Version 2.0 continues to
+govern the Apache Gravitino code itself, and the notices that license
+requires are preserved in NOTICE. Datastrato's own additions remain
+subject to this file.
+
+Each other open source component included in this distribution remains
+governed solely by its own license, as identified in the files listed in
+Section 1. Datastrato makes no representation or warranty on behalf of
+any third-party open source project, and the licensors of those
+components have no obligation or liability in respect of the Proprietary
+Components.
+
+6. NO WARRANTY
+
+THE PROPRIETARY COMPONENTS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+Subject to Section 3, this section does not limit any express warranty
+given in an Agreement.
+
+7. LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL DATASTRATO OR ITS LICENSORS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE PROPRIETARY
+COMPONENTS OR THE USE OR OTHER DEALINGS IN THEM. This section does not
+limit any liability that cannot be excluded or limited under applicable
+law and, subject to Section 3, does not limit any liability expressly
+accepted by Datastrato in an Agreement.
+
+8. TRADEMARKS
+
+This file grants no rights in any trademark, service mark, trade name, or
+logo of Datastrato Inc. All such rights are reserved.
+
+Trademark attributions for the open source components included in this
+distribution are in LICENSE and README.md.
+
+9. CONTACT
+
+If you have received this distribution and do not have a license key or
+an Agreement, please contact Datastrato Inc. at contact@datastrato.com,
+or via https://datastrato.ai/.
+
+10. THE PROPRIETARY COMPONENTS
 
 The proprietary module set includes, at a high level:
 
@@ -18,9 +112,10 @@ The proprietary module set includes, at a high level:
   - Search and metrics services
   - Additional JDBC catalogs (Oracle, BigQuery, MaxCompute, SQL Server)
   - Secret-backend bundles (Vault, OpenBao, Transit)
+  - Governed Iceberg table encryption and trusted metadata integrity
   - License-management components
   - Enterprise documentation, QA, and supporting scripts and configuration
 
-This list is derived from the enterprise paths in
-datastratoLicenseCheckIncludes. It is not a file inventory and may grow
-as enterprise modules are added.
+This list describes the proprietary module set as of this release. Some
+proprietary components are specified at file rather than module
+granularity in the build configuration.

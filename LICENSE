@@ -1,6 +1,15 @@
-Gravitino Enterprise is a mixed distribution.
+Datastrato Enterprise is a mixed distribution.
 
-This source tree contains three categories of material:
+Copyright 2024-2026 Datastrato Inc. All rights reserved.
+
+Datastrato Enterprise is built on Apache Gravitino. Apache, Apache
+Gravitino, and Gravitino are either registered trademarks or trademarks of
+The Apache Software Foundation in the United States and/or other countries.
+Datastrato Enterprise is a product of Datastrato Inc. and is not endorsed
+by, affiliated with, or a distribution of The Apache Software Foundation.
+
+This source tree contains three categories of material, under different
+licenses:
 
   1. Apache Gravitino-derived code, licensed under the Apache License,
      Version 2.0. The full Apache License 2.0 text, and the source-tree
@@ -11,7 +20,8 @@ This source tree contains three categories of material:
      LICENSE.iceberg, LICENSE.trino, LICENSE.lance, and the licenses/
      directory.
 
-  3. Proprietary Datastrato code, which is not licensed under the Apache
-     License, Version 2.0. See LICENSE-ENTERPRISE.
+  3. Proprietary Datastrato code, owned by Datastrato Inc., which is NOT
+     licensed under the Apache License, Version 2.0. Its use is governed
+     by your written agreement with Datastrato Inc. See LICENSE-ENTERPRISE.
 
 Do not treat this repository as Apache-licensed as a whole.

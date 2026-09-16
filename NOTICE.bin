@@ -7,12 +7,24 @@ The Apache Software Foundation (http://www.apache.org/).
 The initial code for the Gravitino project was donated
 to the ASF by Datastrato (https://datastrato.ai/) copyright 2023-2024.
 
-This distribution also includes proprietary software developed by
-Datastrato Pvt Ltd. That proprietary software is not licensed under
-the Apache License, Version 2.0. See LICENSE-ENTERPRISE.
+This distribution also includes proprietary software owned by
+Datastrato Inc., copyright 2024-2026 Datastrato Inc. That proprietary
+software is not licensed under the Apache License, Version 2.0. Its
+use is governed by your written agreement with Datastrato Inc.
+See LICENSE-ENTERPRISE.
 
 The Web UI also has a NOTICE file please see web/NOTICE
 for it's contents.
+
+Note on inherited notices: as required by the Apache License, Version 2.0,
+section 4(d), this file reproduces the NOTICE text of the third-party works
+redistributed here. Some of those inherited sections describe the upstream
+project's own optional dependencies - marked "This product optionally depends
+on ..." - and point at license files inside that project's distribution rather
+than this one. A license named in such a section does not by itself mean the
+named artifact ships in this package. The "JBoss Logging" entry below is
+inherited from the Netty NOTICE and describes an optional dependency of Netty;
+jboss-logging is not declared in this project's dependencies.
 
 AWS SDK for Java 2.0
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -972,3 +984,12 @@ Copyright 1999-2023 The Apache Software Foundation
 Apache HttpCore
 Copyright 2005-2020 The Apache Software Foundation
 
+Oracle JDBC driver (ojdbc11)
+Copyright (c) Oracle and/or its affiliates.
+Governed by the Oracle Free Distribution, Hosting, and Use Terms and
+Conditions, Version 1.0, 28 June 2022.
+See licenses/oracle-fdhut.txt.
+
+Microsoft JDBC Driver for SQL Server (mssql-jdbc)
+Copyright(c) Microsoft Corporation. All rights reserved.
+Licensed under the MIT License. See licenses/mssql-jdbc-mit.txt.

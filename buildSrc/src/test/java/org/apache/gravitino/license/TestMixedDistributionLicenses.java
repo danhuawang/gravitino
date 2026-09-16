@@ -26,13 +26,13 @@ import org.junit.jupiter.api.Test;
 class TestMixedDistributionLicenses {
 
   private static final String PROPRIETARY_NOTICE =
-      "This distribution also includes proprietary software developed by";
+      "This distribution also includes proprietary software owned by";
 
   @Test
   void rootLicenseIsMixedStatementNotBareApache() throws IOException {
     String license = read("LICENSE");
     assertTrue(
-        license.startsWith("Gravitino Enterprise is a mixed distribution."),
+        license.startsWith("Datastrato Enterprise is a mixed distribution."),
         "root LICENSE must open as the mixed-distribution statement");
     assertFalse(
         license.startsWith("Apache License"),
@@ -59,23 +59,39 @@ class TestMixedDistributionLicenses {
   }
 
   @Test
-  void enterpriseLicenseIsPlaceholderNotContract() throws IOException {
+  void enterpriseLicenseStatesItsScopeAndTerms() throws IOException {
     String enterprise = read("LICENSE-ENTERPRISE");
-    assertContains(enterprise, "not licensed under the Apache License");
-    assertContains(enterprise, "Commercial terms");
+    assertContains(enterprise, "Proprietary Components");
+    assertContains(enterprise, "NOT licensed under");
+    assertContains(enterprise, "the Apache License, Version 2.0");
     assertContains(enterprise, "datastrato-server");
     assertContains(enterprise, "authorization-jdbc-enterprise");
-    assertContains(enterprise, "does not grant a license");
+    assertContains(enterprise, "RESERVATION OF RIGHTS");
+    assertContains(enterprise, "PERMITTED USE");
     assertFalse(
-        enterprise.contains("GRANT OF LICENSE"),
-        "LICENSE-ENTERPRISE must not invent commercial grant language");
+        enterprise.contains("does not grant a license"),
+        "LICENSE-ENTERPRISE must not ship as a file that grants nothing");
+    assertFalse(
+        enterprise.contains("will be supplied separately"),
+        "LICENSE-ENTERPRISE must not ship as a placeholder for terms");
+  }
+
+  @Test
+  void licenseFilesDoNotNameTheProductAfterTheApacheProject() throws IOException {
+    for (String name : List.of("LICENSE", "LICENSE.bin", "NOTICE", "NOTICE.bin",
+        "LICENSE-ENTERPRISE")) {
+      assertFalse(
+          read(name).contains("Gravitino Enterprise"),
+          name + " must not name the product \"Gravitino Enterprise\"; the distribution is "
+              + "Datastrato Enterprise, built on Apache Gravitino");
+    }
   }
 
   @Test
   void licenseBinIsMixedStatementNotBareApache() throws IOException {
     String licenseBin = read("LICENSE.bin");
     assertTrue(
-        licenseBin.startsWith("Gravitino Enterprise is a mixed distribution."),
+        licenseBin.startsWith("Datastrato Enterprise is a mixed distribution."),
         "LICENSE.bin must open as the mixed-distribution statement");
     assertFalse(
         licenseBin.startsWith("Apache License"),
@@ -151,7 +167,7 @@ class TestMixedDistributionLicenses {
     String shippedLicense =
         Files.readString(packageDir.resolve("LICENSE"), StandardCharsets.UTF_8);
     assertTrue(
-        shippedLicense.startsWith("Gravitino Enterprise is a mixed distribution."),
+        shippedLicense.startsWith("Datastrato Enterprise is a mixed distribution."),
         "assembled LICENSE must be the mixed statement, not bare Apache 2.0");
     assertTrue(
         Files.readString(packageDir.resolve("NOTICE"), StandardCharsets.UTF_8)

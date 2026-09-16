@@ -1,6 +1,15 @@
-Gravitino Enterprise is a mixed distribution.
+Datastrato Enterprise is a mixed distribution.
 
-This binary package contains three categories of material:
+Copyright 2024-2026 Datastrato Inc. All rights reserved.
+
+Datastrato Enterprise is built on Apache Gravitino. Apache, Apache
+Gravitino, and Gravitino are either registered trademarks or trademarks of
+The Apache Software Foundation in the United States and/or other countries.
+Datastrato Enterprise is a product of Datastrato Inc. and is not endorsed
+by, affiliated with, or a distribution of The Apache Software Foundation.
+
+This binary package contains three categories of material, under different
+licenses:
 
   1. Apache Gravitino-derived code, licensed under the Apache License,
      Version 2.0. The full Apache License 2.0 text is in LICENSE-APACHE,
@@ -9,9 +18,10 @@ This binary package contains three categories of material:
   2. Bundled third-party open source software. License texts are in the
      licenses/ directory. A catalog of those components follows below.
 
-  3. Proprietary Datastrato code, which is not licensed under the Apache
-     License, Version 2.0. See LICENSE-ENTERPRISE, which is shipped next
-     to this file.
+  3. Proprietary Datastrato code, owned by Datastrato Inc., which is NOT
+     licensed under the Apache License, Version 2.0. Its use is governed
+     by your written agreement with Datastrato Inc. See LICENSE-ENTERPRISE,
+     which is shipped next to this file.
 
 Do not treat this binary package as Apache-licensed as a whole.
 
@@ -254,6 +264,7 @@ Do not treat this binary package as Apache-licensed as a whole.
    Kyligence/kylinpy
    elarivie/pyReaderWriterLock
    tkem/cachetools
+   Microsoft JDBC Driver for SQL Server (mssql-jdbc)
 
    This product bundles various third-party components also under the
    Common Development and Distribution License 1.0
@@ -323,3 +334,14 @@ Do not treat this binary package as Apache-licensed as a whole.
    XZ For Java
    HdrHistogram
    LatencyUtils
+
+   This product bundles the Oracle JDBC driver (ojdbc11). It is governed
+   by the Oracle Free Distribution, Hosting, and Use Terms and Conditions,
+   Version 1.0, 28 June 2022, which is the license text delivered inside
+   the jar and which states that it governs use of the Program. That
+   license requires a copy of its terms to accompany any redistribution;
+   the required copy is in licenses/oracle-fdhut.txt.
+
+   Maven metadata for this artifact labels the license "Oracle Free Use
+   Terms and Conditions (FUTC)". The terms delivered with the jar, and
+   reproduced here, are the ones that apply.
