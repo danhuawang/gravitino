@@ -4,7 +4,9 @@
 
 paths:
 
-  /web/metalakes/{metalake}/connections:
+  /internal/metalakes/{metalake}/connections:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - connection
@@ -36,7 +38,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/metalakes/{metalake}/connections/{connection}:
+  /internal/metalakes/{metalake}/connections/{connection}:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - connection

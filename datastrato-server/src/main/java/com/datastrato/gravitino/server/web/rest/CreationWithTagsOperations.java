@@ -27,6 +27,7 @@ import com.datastrato.gravitino.dto.responses.ModelWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.SchemaWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.TableWithTagsResponse;
 import com.datastrato.gravitino.dto.responses.TopicWithTagsResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.ImmutableMap;
 import java.util.Arrays;
 import java.util.Collections;
@@ -87,7 +88,7 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Path("/web/with-tags/metalakes/{metalake}/catalogs")
+@Path(InternalApiPaths.PREFIX + "/with-tags/metalakes/{metalake}/catalogs")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class CreationWithTagsOperations {

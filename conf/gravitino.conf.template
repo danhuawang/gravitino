@@ -138,6 +138,9 @@ gravitino.lance-rest.gravitino-uri = http://localhost:8090
 # Comma separated list of REST API packages to expand
 gravitino.server.rest.extensionPackages = com.datastrato.gravitino.server.web.rest,com.datastrato.gravitino.search.rest,com.datastrato.gravitino.metrics.rest
 
+# Require the X-Gravitino-Internal-Origin header on internal REST APIs under /api/internal
+# gravitino.datastrato.internalApi.requireOriginHeader = true
+
 # Trino preview configuration
 # Default value of `gravitino.datastrato.preview.jdbcUrl` is null
 gravitino.datastrato.preview.jdbcUrl=jdbc:trino://trino:8080

@@ -37,6 +37,7 @@ import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.datastrato.gravitino.metrics.storage.relational.service.CurrentMetricsSnapshot;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -119,7 +120,7 @@ import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Path("/web/entities")
+@Path(InternalApiPaths.PREFIX + "/entities")
 public class EntityOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(EntityOperations.class);

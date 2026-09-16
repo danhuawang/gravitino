@@ -4,7 +4,9 @@
 
 paths:
 
-  /web/entities:
+  /internal/entities:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - entity

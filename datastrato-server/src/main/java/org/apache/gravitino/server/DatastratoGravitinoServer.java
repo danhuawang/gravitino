@@ -10,12 +10,17 @@ import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.license.rest.LicenseStatusResource;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.datastrato.gravitino.preview.DataPreviewConfig;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
+import com.datastrato.gravitino.server.web.internal.InternalApiConfigs;
+import com.datastrato.gravitino.server.web.internal.InternalApiOriginFilter;
 import java.io.IOException;
 import javax.annotation.Nullable;
+import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
+import org.glassfish.jersey.server.ResourceConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,6 +107,7 @@ public class DatastratoGravitinoServer extends GravitinoServer {
           }
         });
     register(LicenseStatusResource.class);
+    registerInternalApiOriginFilter(this, serverConfig());
   }
 
   @Override
@@ -119,5 +125,24 @@ public class DatastratoGravitinoServer extends GravitinoServer {
       connectionTestGarbageCollector.close();
     }
     super.stop();
+  }
+
+  /**
+   * Registers the filter that requires the internal origin header on internal REST APIs, unless it
+   * is disabled by configuration.
+   *
+   * @param resourceConfig the Jersey resource config of the main REST API
+   * @param config the server configuration
+   */
+  static void registerInternalApiOriginFilter(ResourceConfig resourceConfig, Config config) {
+    if (config.get(InternalApiConfigs.REQUIRE_ORIGIN_HEADER)) {
+      resourceConfig.register(InternalApiOriginFilter.class);
+    } else {
+      LOG.warn(
+          "{} is false: internal REST APIs under /api/internal accept requests without the {}"
+              + " header.",
+          InternalApiConfigs.REQUIRE_ORIGIN_HEADER.getKey(),
+          InternalApiPaths.ORIGIN_HEADER);
+    }
   }
 }

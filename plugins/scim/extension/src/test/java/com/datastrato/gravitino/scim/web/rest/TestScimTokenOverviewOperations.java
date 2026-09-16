@@ -69,7 +69,7 @@ class TestScimTokenOverviewOperations extends JerseyTest {
     doReturn(ScimTokenOverview.of(900L, rows)).when(TOKEN_MANAGER).getScimTokenOverview();
 
     ScimTokenOverviewResponse body =
-        target("/scim/tokens/overview")
+        target("/internal/scim/tokens/overview")
             .request()
             .accept(ACCEPT)
             .get()

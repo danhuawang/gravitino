@@ -7,6 +7,7 @@ import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.dto.policy.ExtendedPolicyDTO;
 import com.datastrato.gravitino.dto.responses.ExtendedPolicyListResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.annotations.VisibleForTesting;
 import java.util.Arrays;
 import java.util.Collections;
@@ -46,7 +47,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** REST operations for extended policy management under a metalake. */
-@Path("web/metalakes/{metalake}/policies")
+@Path(InternalApiPaths.PREFIX + "/metalakes/{metalake}/policies")
 public class ExtendedPolicyOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(ExtendedPolicyOperations.class);

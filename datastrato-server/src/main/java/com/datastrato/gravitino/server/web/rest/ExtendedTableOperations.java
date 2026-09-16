@@ -8,6 +8,7 @@ import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.dto.rel.ExtendedColumnDTO;
 import com.datastrato.gravitino.dto.rel.TableWithColumnTagsDTO;
 import com.datastrato.gravitino.dto.responses.TableWithColumnTagsResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.annotations.VisibleForTesting;
 import java.util.Arrays;
 import java.util.Map;
@@ -45,7 +46,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** REST operations that extend table responses for the Enterprise Web UI. */
-@Path("web/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables")
+@Path(InternalApiPaths.PREFIX + "/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables")
 public class ExtendedTableOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(ExtendedTableOperations.class);

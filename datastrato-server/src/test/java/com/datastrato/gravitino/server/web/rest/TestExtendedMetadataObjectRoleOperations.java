@@ -161,7 +161,7 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
         .thenReturn(new Catalog[] {catalogInfo});
 
     Response resp =
-        target("/web/security/metalakes/metalake1/objects/roles")
+        target("/internal/security/metalakes/metalake1/objects/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -203,7 +203,7 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
         .thenReturn(new Role[0]);
 
     Response resp =
-        target("/web/security/metalakes/metalake1/objects/roles")
+        target("/internal/security/metalakes/metalake1/objects/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -241,7 +241,7 @@ public class TestExtendedMetadataObjectRoleOperations extends JerseyTest {
         .listRolesWithSecurableObjects("metalake1");
 
     Response resp =
-        target("/web/security/metalakes/metalake1/objects/roles")
+        target("/internal/security/metalakes/metalake1/objects/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

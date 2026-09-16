@@ -302,7 +302,7 @@ public class TestMetalakeSummaryOperations extends JerseyTest {
 
   /** Calls the metalake summary endpoint. */
   private Response request() {
-    return target("/web/metalakes/" + METALAKE + "/summary")
+    return target("/internal/metalakes/" + METALAKE + "/summary")
         .request(MediaType.APPLICATION_JSON_TYPE)
         .accept("application/vnd.gravitino.v1+json")
         .get();

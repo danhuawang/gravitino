@@ -7,7 +7,6 @@ import com.datastrato.gravitino.license.LicenseManager;
 import com.datastrato.gravitino.license.dto.LicenseStatusDTO;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.Application;
-import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -17,6 +16,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 class TestLicenseStatusResource extends JerseyTest {
+
+  // The server's VersioningFilter rewrites every Accept header on /api/* to a versioned media
+  // type, so requests reach the resource with this Accept value.
+  private static final String ACCEPT_V1 = "application/vnd.gravitino.v1+json";
 
   private LicenseManager mockManager;
 
@@ -47,7 +50,7 @@ class TestLicenseStatusResource extends JerseyTest {
     Mockito.when(mockManager.getStatus())
         .thenReturn(buildStatus(LicenseManager.StatusCode.VALID, 5));
 
-    Response resp = target("/license/status").request(MediaType.APPLICATION_JSON_TYPE).get();
+    Response resp = target("/license/status").request(ACCEPT_V1).get();
     Assertions.assertEquals(Response.Status.OK, resp.getStatusInfo().toEnum());
     LicenseStatusDTO dto = resp.readEntity(LicenseStatusDTO.class);
     Assertions.assertEquals("Acme Corp", dto.getIssuedTo());
@@ -58,10 +61,21 @@ class TestLicenseStatusResource extends JerseyTest {
   }
 
   @Test
+  void testGetStatusProducesVersionedMediaType() {
+    Mockito.when(mockManager.getStatus())
+        .thenReturn(buildStatus(LicenseManager.StatusCode.VALID, 5));
+
+    Response resp = target("/license/status").request(ACCEPT_V1).get();
+
+    Assertions.assertEquals(Response.Status.OK, resp.getStatusInfo().toEnum());
+    Assertions.assertEquals(ACCEPT_V1, resp.getMediaType().toString());
+  }
+
+  @Test
   void testGetStatusWhenManagerThrows() {
     Mockito.when(mockManager.getStatus()).thenThrow(new RuntimeException("DB unavailable"));
 
-    Response resp = target("/license/status").request(MediaType.APPLICATION_JSON_TYPE).get();
+    Response resp = target("/license/status").request(ACCEPT_V1).get();
     Assertions.assertEquals(Response.Status.INTERNAL_SERVER_ERROR, resp.getStatusInfo().toEnum());
   }
 
@@ -69,20 +83,19 @@ class TestLicenseStatusResource extends JerseyTest {
   void testGetStatusWhenStatusIsNull() {
     Mockito.when(mockManager.getStatus()).thenReturn(null);
 
-    Response resp = target("/license/status").request(MediaType.APPLICATION_JSON_TYPE).get();
+    Response resp = target("/license/status").request(ACCEPT_V1).get();
     Assertions.assertEquals(Response.Status.INTERNAL_SERVER_ERROR, resp.getStatusInfo().toEnum());
   }
 
   @Test
   void testPostMethodNotAllowed() {
-    Response resp =
-        target("/license/status").request(MediaType.APPLICATION_JSON_TYPE).post(Entity.json("{}"));
+    Response resp = target("/license/status").request(ACCEPT_V1).post(Entity.json("{}"));
     Assertions.assertEquals(Response.Status.METHOD_NOT_ALLOWED, resp.getStatusInfo().toEnum());
   }
 
   @Test
   void testUnknownPathReturns404() {
-    Response resp = target("/license/unknown").request(MediaType.APPLICATION_JSON_TYPE).get();
+    Response resp = target("/license/unknown").request(ACCEPT_V1).get();
     Assertions.assertEquals(Response.Status.NOT_FOUND, resp.getStatusInfo().toEnum());
   }
 
@@ -91,7 +104,7 @@ class TestLicenseStatusResource extends JerseyTest {
     Mockito.when(mockManager.getStatus())
         .thenReturn(buildStatus(LicenseManager.StatusCode.EXPIRED, 5));
 
-    Response resp = target("/license/status").request(MediaType.APPLICATION_JSON_TYPE).get();
+    Response resp = target("/license/status").request(ACCEPT_V1).get();
     Assertions.assertEquals(Response.Status.OK, resp.getStatusInfo().toEnum());
     LicenseStatusDTO dto = resp.readEntity(LicenseStatusDTO.class);
     Assertions.assertEquals("EXPIRED", dto.getStatus());
@@ -102,7 +115,7 @@ class TestLicenseStatusResource extends JerseyTest {
     Mockito.when(mockManager.getStatus())
         .thenReturn(buildStatus(LicenseManager.StatusCode.IN_GRACE_PERIOD, 5));
 
-    Response resp = target("/license/status").request(MediaType.APPLICATION_JSON_TYPE).get();
+    Response resp = target("/license/status").request(ACCEPT_V1).get();
     Assertions.assertEquals(Response.Status.OK, resp.getStatusInfo().toEnum());
     LicenseStatusDTO dto = resp.readEntity(LicenseStatusDTO.class);
     Assertions.assertEquals("IN_GRACE_PERIOD", dto.getStatus());
@@ -113,7 +126,7 @@ class TestLicenseStatusResource extends JerseyTest {
     Mockito.when(mockManager.getStatus())
         .thenReturn(buildStatus(LicenseManager.StatusCode.EXPIRING_SOON, 5));
 
-    Response resp = target("/license/status").request(MediaType.APPLICATION_JSON_TYPE).get();
+    Response resp = target("/license/status").request(ACCEPT_V1).get();
     Assertions.assertEquals(Response.Status.OK, resp.getStatusInfo().toEnum());
     LicenseStatusDTO dto = resp.readEntity(LicenseStatusDTO.class);
     Assertions.assertEquals("EXPIRING_SOON", dto.getStatus());
@@ -124,7 +137,7 @@ class TestLicenseStatusResource extends JerseyTest {
     Mockito.when(mockManager.getStatus())
         .thenReturn(buildStatus(LicenseManager.StatusCode.VALID, -1));
 
-    Response resp = target("/license/status").request(MediaType.APPLICATION_JSON_TYPE).get();
+    Response resp = target("/license/status").request(ACCEPT_V1).get();
     Assertions.assertEquals(Response.Status.OK, resp.getStatusInfo().toEnum());
     LicenseStatusDTO dto = resp.readEntity(LicenseStatusDTO.class);
     Assertions.assertEquals(-1, dto.getMaxNodes());

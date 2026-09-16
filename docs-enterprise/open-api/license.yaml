@@ -1,0 +1,98 @@
+# Copyright 2026 Datastrato Inc.
+
+---
+
+paths:
+
+  /license/status:
+    get:
+      tags:
+        - license
+      summary: Get license status
+      operationId: getLicenseStatus
+      description: |
+        Return the status of the Gravitino Enterprise license installed on this server. Any
+        authenticated user can call this endpoint.
+      responses:
+        "200":
+          description: Returns the license status
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/LicenseStatus"
+              examples:
+                LicenseStatus:
+                  $ref: "#/components/examples/LicenseStatus"
+        "401":
+          description: Unauthorized - The request is not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+        "5xx":
+          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+components:
+  schemas:
+    LicenseStatus:
+      type: object
+      required:
+        - issuedTo
+        - licenseId
+        - expiresAt
+        - daysRemaining
+        - gracePeriodDays
+        - status
+        - maxNodes
+        - activeNodes
+      properties:
+        issuedTo:
+          type: string
+          description: The customer the license is issued to
+        licenseId:
+          type: string
+          description: The license identifier
+        expiresAt:
+          type: string
+          format: date-time
+          description: The license expiration time, at the start of the expiration day in UTC
+        daysRemaining:
+          type: integer
+          format: int64
+          description: |
+            Days remaining until the license expires, or until the grace period ends when the
+            status is `IN_GRACE_PERIOD`. Negative when the status is `EXPIRED`: the absolute value
+            is the number of days past the end of the grace period.
+        gracePeriodDays:
+          type: integer
+          format: int32
+          description: The number of days the server keeps working after the license expires
+        status:
+          type: string
+          enum:
+            - VALID
+            - EXPIRING_SOON
+            - IN_GRACE_PERIOD
+            - EXPIRED
+          description: The license status
+        maxNodes:
+          type: integer
+          format: int32
+          description: The maximum number of server nodes allowed by the license; `-1` means unlimited
+        activeNodes:
+          type: integer
+          format: int32
+          description: The number of server nodes currently active
+
+  examples:
+    LicenseStatus:
+      value: {
+        "issuedTo": "Example Corp",
+        "licenseId": "lic-2026-0001",
+        "expiresAt": "2027-06-30T00:00:00Z",
+        "daysRemaining": 288,
+        "gracePeriodDays": 14,
+        "status": "VALID",
+        "maxNodes": 3,
+        "activeNodes": 2
+      }

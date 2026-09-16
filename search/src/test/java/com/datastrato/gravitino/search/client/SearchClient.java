@@ -10,6 +10,7 @@ import com.datastrato.gravitino.search.dto.SearchEntityDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.rest.SyncMetadataResponse;
 import com.datastrato.gravitino.search.rest.TaskStatusResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +28,8 @@ import org.apache.hc.core5.net.URIBuilder;
 
 public class SearchClient {
 
+  private static final String INTERNAL_ORIGIN = "search-it";
+
   private final CloseableHttpClient client;
   private final ObjectMapper mapper;
   private final String url;
@@ -39,7 +42,7 @@ public class SearchClient {
 
   public List<SearchEntitiesDTO> search(String keyword, String metalake) throws Exception {
     URI uri =
-        new URIBuilder(url + "/api/search/query")
+        new URIBuilder(url + "/api/internal/search/query")
             .addParameter("metalake", metalake)
             .addParameter("keyword", keyword)
             .addParameter("pageNumber", "0")
@@ -47,6 +50,7 @@ public class SearchClient {
             .build();
 
     HttpGet get = new HttpGet(uri);
+    get.setHeader(InternalApiPaths.ORIGIN_HEADER, INTERNAL_ORIGIN);
     String json = client.execute(get, response -> EntityUtils.toString(response.getEntity()));
     return parseSearchResponse(mapper, json);
   }
@@ -79,9 +83,11 @@ public class SearchClient {
 
   public String rebuildIndex(String metalake) throws Exception {
     URI uri =
-        new URIBuilder(url + String.format("/api/search/rebuild/metalakes/%s", metalake)).build();
+        new URIBuilder(url + String.format("/api/internal/search/rebuild/metalakes/%s", metalake))
+            .build();
 
     HttpPost post = new HttpPost(uri);
+    post.setHeader(InternalApiPaths.ORIGIN_HEADER, INTERNAL_ORIGIN);
     String json =
         client.execute(
             post,
@@ -96,9 +102,11 @@ public class SearchClient {
   }
 
   public TaskStatusDTO getTaskStatus(String taskId) throws Exception {
-    URI uri = new URIBuilder(url + String.format("/api/search/task/%s/status", taskId)).build();
+    URI uri =
+        new URIBuilder(url + String.format("/api/internal/search/task/%s/status", taskId)).build();
 
     HttpGet get = new HttpGet(uri);
+    get.setHeader(InternalApiPaths.ORIGIN_HEADER, INTERNAL_ORIGIN);
     String json = client.execute(get, response -> EntityUtils.toString(response.getEntity()));
     TaskStatusResponse responseObj = mapper.readValue(json, TaskStatusResponse.class);
     return responseObj.getTaskStatusDTO();

@@ -123,7 +123,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
                     "governance", 2, IdentitySource.LOCAL, List.of("Acme", "Contoso")),
                 new DirectoryGroup("platform", 1, IdentitySource.PROVISIONED, List.of("Contoso"))));
 
-    Response response = get("/web/security/directory/groups");
+    Response response = get("/internal/security/directory/groups");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     DirectoryGroupListResponse body = response.readEntity(DirectoryGroupListResponse.class);
     Assertions.assertEquals(0, body.getCode());
@@ -152,7 +152,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
         .thenReturn(new DirectoryGroup("ops", 2, IdentitySource.LOCAL, List.of()));
 
     Response response =
-        target("/web/security/directory/groups")
+        target("/internal/security/directory/groups")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -175,7 +175,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
         .addDirectoryGroup(eq("ops"), eq(null), eq(List.of()));
 
     Response response =
-        target("/web/security/directory/groups")
+        target("/internal/security/directory/groups")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -197,7 +197,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
         .thenReturn(List.of("governance", "ops"));
 
     Response response =
-        target("/web/security/directory/groups/delete")
+        target("/internal/security/directory/groups/delete")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -220,7 +220,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
   @Test
   public void testDeleteDirectoryGroupsBadRequest() {
     Response response =
-        target("/web/security/directory/groups/delete")
+        target("/internal/security/directory/groups/delete")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -256,7 +256,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
                     "ivanne", false, IdentitySource.PROVISIONED, List.of(), List.of())));
 
     Response response =
-        target("/web/security/directory/groups/governance/users")
+        target("/internal/security/directory/groups/governance/users")
             .queryParam("origin", "Provisioned")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -277,7 +277,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
   @Test
   public void testListDirectoryUsersForGroupBadOrigin() {
     Response response =
-        target("/web/security/directory/groups/governance/users")
+        target("/internal/security/directory/groups/governance/users")
             .queryParam("origin", "Unknown")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")

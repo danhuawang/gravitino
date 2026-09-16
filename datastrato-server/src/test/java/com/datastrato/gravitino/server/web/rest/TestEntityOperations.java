@@ -317,7 +317,7 @@ public class TestEntityOperations extends JerseyTest {
       when(owners.getOwner("c", MetadataObjects.of(null, "c", MetadataObject.Type.METALAKE)))
           .thenReturn(Optional.empty());
       try (Response response =
-          target("/web/entities")
+          target("/internal/entities")
               .queryParam("resultLimit", 3)
               .request()
               .accept("application/vnd.gravitino.v1+json")
@@ -358,7 +358,10 @@ public class TestEntityOperations extends JerseyTest {
       when(metalakeDispatcher.listMetalakes()).thenReturn(new Metalake[] {buildMetalake(1L, "a")});
       when(catalogDispatcher.listCatalogs(any(Namespace.class))).thenReturn(new NameIdentifier[0]);
       try (Response response =
-          target("/web/entities").request().accept("application/vnd.gravitino.v1+json").get()) {
+          target("/internal/entities")
+              .request()
+              .accept("application/vnd.gravitino.v1+json")
+              .get()) {
         Assertions.assertEquals(200, response.getStatus());
         JsonNode entry =
             new ObjectMapper().readTree(response.readEntity(String.class)).get("metalakes").get(0);
@@ -398,7 +401,7 @@ public class TestEntityOperations extends JerseyTest {
         .thenReturn(new NameIdentifier[0]);
 
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("resultLimit", 2)
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -416,7 +419,7 @@ public class TestEntityOperations extends JerseyTest {
     Assertions.assertEquals(0L, metalakes[1].getDirectChildCounts());
 
     Response emptyNamespaceResponse =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "")
             .queryParam("resultLimit", 2)
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -442,7 +445,7 @@ public class TestEntityOperations extends JerseyTest {
         .thenReturn(new NameIdentifier[] {NameIdentifier.of(metalakeBNamespace, "catalog-b")});
 
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -457,7 +460,7 @@ public class TestEntityOperations extends JerseyTest {
   public void testListEntitiesException() {
     // test root-level-only query parameters without a namespace
     Response resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -475,7 +478,7 @@ public class TestEntityOperations extends JerseyTest {
 
     // test parentSchema without a namespace
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("parentSchema", "parent")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -496,7 +499,7 @@ public class TestEntityOperations extends JerseyTest {
         .when(tableDispatcher)
         .listTables(any());
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "metalake.catalog.schema")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -514,7 +517,7 @@ public class TestEntityOperations extends JerseyTest {
 
     // test catalogType error
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.relCatalog")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -529,7 +532,7 @@ public class TestEntityOperations extends JerseyTest {
 
     // test result limit error
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake")
             .queryParam("catalogType", "relational")
             .queryParam("resultLimit", "0")
@@ -546,7 +549,7 @@ public class TestEntityOperations extends JerseyTest {
 
     // test parentSchema with invalid namespace levels (only 2 or 3 levels are allowed)
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake")
             .queryParam("catalogType", "relational")
             .queryParam("parentSchema", "a:b")
@@ -563,7 +566,7 @@ public class TestEntityOperations extends JerseyTest {
 
     // test malformed parentSchema
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.relCatalog")
             .queryParam("catalogType", "relational")
             .queryParam("parentSchema", "A::B")
@@ -590,7 +593,7 @@ public class TestEntityOperations extends JerseyTest {
         .testConnection(catalogIdent);
 
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "metalake.catalog")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -615,7 +618,7 @@ public class TestEntityOperations extends JerseyTest {
         .thenThrow(new IllegalArgumentException("Invalid list request"));
 
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "metalake.catalog")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -642,7 +645,7 @@ public class TestEntityOperations extends JerseyTest {
         .testConnection(catalogIdent);
 
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "metalake.catalog")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -672,7 +675,7 @@ public class TestEntityOperations extends JerseyTest {
         .thenReturn(new NameIdentifier[0]);
 
     Response resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -695,7 +698,7 @@ public class TestEntityOperations extends JerseyTest {
         .thenReturn(mockedCatalogs);
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -718,7 +721,7 @@ public class TestEntityOperations extends JerseyTest {
     when(schemaDispatcher.listEntities(namespace)).thenReturn(buildSchemaEntity(schemaIdents));
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.relCatalog")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -742,7 +745,7 @@ public class TestEntityOperations extends JerseyTest {
     mockViews(namespace);
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.relCatalog.relSchema")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -779,7 +782,7 @@ public class TestEntityOperations extends JerseyTest {
                 null));
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.relCatalog")
             .queryParam("catalogType", "relational")
             .queryParam("parentSchema", "level1:level2")
@@ -809,7 +812,7 @@ public class TestEntityOperations extends JerseyTest {
     // child schemas are already mocked above for parentSchemaNs
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.relCatalog.level1:level2")
             .queryParam("catalogType", "relational")
             .queryParam("parentSchema", "level1:level2")
@@ -838,7 +841,7 @@ public class TestEntityOperations extends JerseyTest {
         .when(tableDispatcher)
         .listEntities(any());
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.relCatalog.relSchema")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -866,7 +869,7 @@ public class TestEntityOperations extends JerseyTest {
         .listEntities(namespace);
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.relCatalog.relSchema")
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -897,7 +900,7 @@ public class TestEntityOperations extends JerseyTest {
     when(functionDispatcher.listFunctionInfos(namespace)).thenReturn(buildFunctionInfos(namespace));
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.messagingCatalog.messagingSchema")
             .queryParam("catalogType", "messaging")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -920,7 +923,7 @@ public class TestEntityOperations extends JerseyTest {
         .when(topicDispatcher)
         .listEntities(any());
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.messagingCatalog.messagingSchema")
             .queryParam("catalogType", "messaging")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -946,7 +949,7 @@ public class TestEntityOperations extends JerseyTest {
     when(functionDispatcher.listFunctionInfos(namespace)).thenReturn(buildFunctionInfos(namespace));
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.filesetCatalog.filesetSchema")
             .queryParam("catalogType", "fileset")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -971,7 +974,7 @@ public class TestEntityOperations extends JerseyTest {
         .thenReturn(buildFunctionInfos(modelNamespace));
 
     resp =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", "testMetalake.modelCatalog.modelSchema")
             .queryParam("catalogType", "model")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1081,7 +1084,7 @@ public class TestEntityOperations extends JerseyTest {
     try {
       FieldUtils.writeField(GravitinoEnv.getInstance(), "config", config, true);
       Response response =
-          target("/web/entities")
+          target("/internal/entities")
               .queryParam("namespace", metalake + "." + catalog)
               .queryParam("catalogType", "relational")
               .queryParam("parentSchema", "a:b")
@@ -1229,7 +1232,7 @@ public class TestEntityOperations extends JerseyTest {
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
 
         Response response =
-            target("/web/entities")
+            target("/internal/entities")
                 .queryParam("namespace", metalake + "." + catalog)
                 .queryParam("catalogType", "relational")
                 .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1297,7 +1300,7 @@ public class TestEntityOperations extends JerseyTest {
                 null));
 
     Response catalogResponse =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", metalake)
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1309,7 +1312,7 @@ public class TestEntityOperations extends JerseyTest {
         catalogListResponse.getCatalogs()[0].getDirectChildCount(), 2L, 1_000L, false);
 
     Response schemaResponse =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", metalake + "." + catalog)
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1328,7 +1331,7 @@ public class TestEntityOperations extends JerseyTest {
         metricDataService, schemaDispatcher, tableDispatcher, functionDispatcher, viewDispatcher);
 
     Response limitedSchemaResponse =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", metalake + "." + catalog)
             .queryParam("catalogType", "relational")
             .queryParam("resultLimit", 1)
@@ -1390,7 +1393,7 @@ public class TestEntityOperations extends JerseyTest {
     Mockito.clearInvocations(metricDataService);
 
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", metalake + "." + catalog)
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1425,7 +1428,7 @@ public class TestEntityOperations extends JerseyTest {
 
     Mockito.clearInvocations(metricDataService);
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", metalake)
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1453,7 +1456,7 @@ public class TestEntityOperations extends JerseyTest {
 
     Mockito.clearInvocations(metricDataService, schemaDispatcher);
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", metalake)
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1484,7 +1487,7 @@ public class TestEntityOperations extends JerseyTest {
 
     Mockito.clearInvocations(metricDataService);
     Response response =
-        target("/web/entities")
+        target("/internal/entities")
             .queryParam("namespace", metalake)
             .queryParam("catalogType", "relational")
             .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1584,7 +1587,7 @@ public class TestEntityOperations extends JerseyTest {
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
 
         Response metalakeResponse =
-            target("/web/entities")
+            target("/internal/entities")
                 .request(MediaType.APPLICATION_JSON_TYPE)
                 .accept("application/vnd.gravitino.v1+json")
                 .get();
@@ -1598,7 +1601,7 @@ public class TestEntityOperations extends JerseyTest {
         Assertions.assertEquals(1L, metalakeDTOs[0].getDirectChildCounts());
 
         Response resp =
-            target("/web/entities")
+            target("/internal/entities")
                 .queryParam("namespace", "testMetalake")
                 .queryParam("catalogType", "relational")
                 .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1710,7 +1713,7 @@ public class TestEntityOperations extends JerseyTest {
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
 
         Response resp =
-            target("/web/entities")
+            target("/internal/entities")
                 .queryParam("namespace", "testMetalake.relCatalog")
                 .queryParam("catalogType", "relational")
                 .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1807,7 +1810,7 @@ public class TestEntityOperations extends JerseyTest {
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
 
         Response resp =
-            target("/web/entities")
+            target("/internal/entities")
                 .queryParam("namespace", "testMetalake")
                 .queryParam("catalogType", "relational")
                 .request(MediaType.APPLICATION_JSON_TYPE)
@@ -1921,7 +1924,7 @@ public class TestEntityOperations extends JerseyTest {
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
 
         Response resp =
-            target("/web/entities")
+            target("/internal/entities")
                 .queryParam("namespace", "testMetalake.relCatalog.relSchema")
                 .queryParam("catalogType", "relational")
                 .request(MediaType.APPLICATION_JSON_TYPE)
@@ -2016,7 +2019,7 @@ public class TestEntityOperations extends JerseyTest {
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
 
         Response resp =
-            target("/web/entities")
+            target("/internal/entities")
                 .queryParam("namespace", "testMetalake.messagingCatalog.messagingSchema")
                 .queryParam("catalogType", "messaging")
                 .request(MediaType.APPLICATION_JSON_TYPE)
@@ -2108,7 +2111,7 @@ public class TestEntityOperations extends JerseyTest {
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
 
         Response resp =
-            target("/web/entities")
+            target("/internal/entities")
                 .queryParam("namespace", "testMetalake.filesetCatalog.filesetSchema")
                 .queryParam("catalogType", "fileset")
                 .request(MediaType.APPLICATION_JSON_TYPE)
@@ -2199,7 +2202,7 @@ public class TestEntityOperations extends JerseyTest {
         principalUtilsStatic.when(() -> PrincipalUtils.doAs(any(), any())).thenCallRealMethod();
 
         Response resp =
-            target("/web/entities")
+            target("/internal/entities")
                 .queryParam("namespace", "testMetalake.modelCatalog.modelSchema")
                 .queryParam("catalogType", "model")
                 .request(MediaType.APPLICATION_JSON_TYPE)

@@ -93,7 +93,7 @@ public class TestMetricOperations extends JerseyTest {
         .getMetricsByNameAndTimestamp(eq("metalake1"), any(), any(), anyLong(), anyLong());
 
     Response resp =
-        target("/web/metrics/metalakes/metalake1")
+        target("/internal/metrics/metalakes/metalake1")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -134,7 +134,7 @@ public class TestMetricOperations extends JerseyTest {
         .thenReturn(metrics);
 
     Response response =
-        target("/web/metrics/metalakes/metalake1")
+        target("/internal/metrics/metalakes/metalake1")
             .queryParam("metrics", "metric1,metric2")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")

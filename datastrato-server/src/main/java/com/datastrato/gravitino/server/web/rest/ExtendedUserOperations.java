@@ -17,6 +17,7 @@ import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryUserDetailResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryUserResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -49,7 +50,7 @@ import org.apache.gravitino.utils.PrincipalUtils;
  * Users APIs live on {@link ExtendedMetalakeUserOperations}.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security")
+@Path(InternalApiPaths.PREFIX + "/security")
 public class ExtendedUserOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

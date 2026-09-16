@@ -16,6 +16,7 @@ import com.datastrato.gravitino.dto.responses.DirectoryGroupDetailResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryGroupListResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryGroupResponse;
 import com.datastrato.gravitino.dto.responses.DirectoryUserListResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import java.util.ArrayList;
 import java.util.List;
 import javax.servlet.http.HttpServletRequest;
@@ -42,7 +43,7 @@ import org.apache.gravitino.server.web.rest.OperationType;
  * security Groups APIs live on {@link ExtendedMetalakeGroupOperations}.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security")
+@Path(InternalApiPaths.PREFIX + "/security")
 public class ExtendedGroupOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

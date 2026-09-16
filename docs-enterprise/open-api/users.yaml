@@ -4,7 +4,9 @@
 
 paths:
 
-  /web/security/idp/users:
+  /internal/security/idp/users:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - users
@@ -29,7 +31,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/idp/users/password:
+  /internal/security/idp/users/password:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     put:
       tags:
         - users
@@ -72,7 +76,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/idp/memberships:
+  /internal/security/idp/memberships:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     post:
       tags:
         - users
@@ -109,7 +115,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/users:
+  /internal/security/directory/users:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - users
@@ -189,7 +197,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/authn/me:
+  /internal/security/authn/me:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - authentication
@@ -226,8 +236,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/users/{user}:
+  /internal/security/directory/users/{user}:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
       - name: origin
         in: query
@@ -277,8 +288,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/users/{user}/groups:
+  /internal/security/directory/users/{user}/groups:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
       - name: origin
         in: query
@@ -326,7 +338,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/users/delete:
+  /internal/security/directory/users/delete:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     post:
       tags:
         - users
@@ -362,7 +376,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/users/enabled:
+  /internal/security/directory/users/enabled:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     put:
       tags:
         - users
@@ -397,8 +413,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/users:
+  /internal/security/metalakes/{metalake}/users:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     get:
       tags:
@@ -487,8 +504,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/users/enabled:
+  /internal/security/metalakes/{metalake}/users/enabled:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     put:
       tags:
@@ -504,7 +522,7 @@ paths:
 
         This does **not** update Directory / identity-store Status (`idp_user_meta` or
         `scim_user_meta`). For Local Directory Suspend / Activate use
-        `PUT /web/security/directory/users/enabled`. Provisioned Status is managed by SCIM /
+        `PUT /internal/security/directory/users/enabled`. Provisioned Status is managed by SCIM /
         the IdP, not this API.
 
         Missing metalake returns 404. Missing users or users with `externalId` return 400.
@@ -537,8 +555,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/users/{user}:
+  /internal/security/metalakes/{metalake}/users/{user}:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
     get:
@@ -580,8 +599,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/users/{user}/groups:
+  /internal/security/metalakes/{metalake}/users/{user}/groups:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
     get:
@@ -626,8 +646,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/users/{user}/roles:
+  /internal/security/metalakes/{metalake}/users/{user}/roles:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
     get:
@@ -662,8 +683,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/users/idp:
+  /internal/security/metalakes/{metalake}/users/idp:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     get:
       tags:

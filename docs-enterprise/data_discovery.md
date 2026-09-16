@@ -165,9 +165,14 @@ Like the View mapping, the Function mapping does not index the `in_use`, `owner`
 | `content`, `content.ngram`                 | `text`           |
 
 
-## Metadata Search API
+## Metadata Search
 
-Gravitino provides a RESTful API for metadata search. The API supports fuzzy search across multiple fields including name, tags, and description.
+The Gravitino Web UI provides metadata search. Search supports fuzzy matching across multiple fields
+including name, tags, and description. The syntax below applies to the search box in the Web UI.
+
+The REST endpoints behind search are internal APIs used by the Web UI. They are served under
+`/api/internal`, require the `X-Gravitino-Internal-Origin` header, are not part of the public
+REST API, and may change without notice.
 
 ### Hyphens and literal search
 
@@ -199,21 +204,6 @@ Ordinary terms without hyphens retain the existing full-text behavior. Literal s
 queries use leading wildcards and require `search.allow_expensive_queries=true` (the default).
 Very short or common fragments can be costly; field filters help narrow such queries.
 
-**Endpoint**
-
-```http
-GET /api/search/query
-```
-
-**Query Parameters**
-
-| Name       | Type   | Required | Description                   | Example |
-|------------|--------|----------|-------------------------------|---------|
-| metalake   | string | Yes      | The name of the Metalake      | `test`  |
-| keyword    | string | No       | Fuzzy search keyword          | `""`    |
-| pageNumber | int    | Yes      | Page number (starting from 0) | `0`     |
-| pageSize   | int    | Yes      | Number of results per page    | `10`    |
-
 Free-text terms separated by whitespace use `AND`: `alpha beta` requires both terms,
 which may match different searchable fields. Use `alpha OR beta` to match either term.
 `AND` takes precedence over `OR`; parentheses control grouping, for example
@@ -221,56 +211,7 @@ which may match different searchable fields. Use `alpha OR beta` to match either
 with field filters. An empty or whitespace-only query returns all matching metadata
 within the requested metalake and page.
 
-**Example**
-
-```bash
-# Search for metadata in the metalake `test` with keyword "demo", returning the first 10 results
-curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo&pageNumber=0&pageSize=10" | jq
-
-# Search for metadata in the metalake `test` with no keyword, returning the first 10 results
-curl -X GET "http://localhost:8090/api/search/query?metalake=test&pageNumber=0&pageSize=10" | jq
-
-# Current we support filtering by catalog name, entity type, and tag name
-# Search for metadata in the metalake `test` with keyword "demo" and filter: catalog_name=test_catalog, returning the first 10 results
-curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20catalog_name:test_catalog&pageNumber=0&pageSize=10" | jq
-
-# Search for metadata in the metalake `test` with keyword "demo" and filter: entity_type=TABLE, returning the first 10 results
-# Support entity type: CATALOG, SCHEMA, TABLE, VIEW, FUNCTION, MODEL, TOPIC, FILESET, TAG, POLICY
-curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20entity_type:TABLE&pageNumber=0&pageSize=10" | jq
-
-# Search for metadata in the metalake `test` with keyword "demo" and filter: tag_name=demo_tag, returning the first 10 results
-curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20tag_name:demo_tag&pageNumber=0&pageSize=10" | jq
-
-# Search for metadata in the metalake `test` with keyword "demo" and filter: catalog_name=test_catalog, entity_type=TABLE, tag_name=demo_tag, returning the first 10 results
-curl -X GET "http://localhost:8090/api/search/query?metalake=test&keyword=demo%20catalog_name:test_catalog%20entity_type:TABLE%20tag_name:demo_tag&pageNumber=0&pageSize=10" | jq
-```
-
 For more advanced search capabilities, you can refer to the syntax of value in filter query parameters location at ${GRAVITINO_SEARCH_MODULE}/src/main/antlr/SearchExpression.g4, which supports logical operators, field filters, and quoted literals.
-
-
-**Sample Response**
-
-```json
-{
-  "code": 0,
-  "entities": [
-    {
-      "totalSize": 1,
-      "type": "catalog",
-      "entities": [
-        {
-          "entityId": 969654441183647900,
-          "entityType": "catalog",
-          ...
-        }
-      ]
-    },
-    ...
-  ]
-}
-```
-
-The response contains a list of entities grouped by entity type, with each entity containing its metadata.
 
 ## Index Management
 
@@ -352,38 +293,8 @@ Gravitino server automatically maintains index synchronization using its event m
 
 Initial Data Sync
 - New deployments: Metadata is synced automatically.
-- Existing deployments: Initial sync must be manually triggered via the API or CLI.
-
-**Sync API**
-
-When you want to manually trigger the Gravitino server metadata sync, you can use the following API:
-
-```http
-POST /api/search/sync/metalakes/{metalake}/objects
-{
-    "metadataFullName": "xxx",
-    "metadataType": "xxx"
-    "cascade": true
-}
-```
-
-**Parameters**
-
-| Name             | Type    | Required | Description                                                                                                                         | Example        |
-|------------------|---------|----------|-------------------------------------------------------------------------------------------------------------------------------------|----------------|
-| metalake         | string  | Yes      | Metalake name                                                                                                                       | `test`         |
-| metadataFullName | string  | No       | Full name of the metadata entity, like <catalog>.<schema>.<table>. If `metadataFullName` is set, `metadataType` should also be set. | `test_catalog` |
-| metadataType     | string  | No       | Type of metadata entity (e.g., `catalog`, `schema`, `table`, `view`, `function`, `model`, `topic`, `fileset`, `tag`, `policy`)                | `catalog`      |
-| cascade          | boolean | No       | Whether to cascade sync to related entities                                                                                         | `true`         |
-
-You can also post an empty body, then the Gravitino server will sync all metadata entities in the specified metalake.
-
-**Example**
-
-```bash
-# sync all metadata entities in the `test` Metalake
-curl -X POST -H "Content-Type: application/json" http://127.0.0.1:8090/api/search/sync/metalakes/test/objects
-```
+- Existing deployments: Run `bin/index.sh rebuild` to index existing metadata. See
+  [Command-Line Index Management](#command-line-index-management).
 
 ## Command-Line Index Management
 
@@ -473,5 +384,5 @@ Job executions are not searchable. They are transient records identified by a ge
 ID, and carry nothing a caller would search for that the template does not already hold.
 
 Template registration, alteration (including rename) and deletion update the search index.
-Install the updated v2 OpenSearch templates before upgrading, and synchronize or rebuild
-existing metalakes to index existing templates.
+Install the updated v2 OpenSearch templates before upgrading, and run `bin/index.sh rebuild`
+to index existing templates.

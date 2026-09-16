@@ -13,6 +13,7 @@ import com.datastrato.gravitino.scim.model.ScimTokenOverview;
 import com.datastrato.gravitino.scim.web.ScimManagement;
 import com.datastrato.gravitino.scim.web.ScimOperationType;
 import com.datastrato.gravitino.scim.web.ScimRESTUtils;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
@@ -26,7 +27,7 @@ import org.apache.gravitino.metrics.MetricNames;
 
 /** REST resource for the SCIM token overview on the main Gravitino server. */
 @ScimManagement
-@Path("/scim/tokens")
+@Path(InternalApiPaths.PREFIX + "/scim/tokens")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class ScimTokenOverviewOperations {

@@ -63,7 +63,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
   private final CatalogDispatcher catalogDispatcher = mock(CatalogDispatcher.class);
 
   /** Simulates the overlapping connection root resource registered by the production server. */
-  @Path("/web/metalakes/{metalake}/connections")
+  @Path("/internal/metalakes/{metalake}/connections")
   public static class CompetingConnectionOperations {
 
     /**
@@ -202,7 +202,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Response response =
         target(
-                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                "/internal/metalakes/metalake/connections/catalog/credential-providers/"
                     + "test-provider/test")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -248,7 +248,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Response response =
         target(
-                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                "/internal/metalakes/metalake/connections/catalog/credential-providers/"
                     + "test-provider/test")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -283,7 +283,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Response response =
         target(
-                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                "/internal/metalakes/metalake/connections/catalog/credential-providers/"
                     + "test-provider/test")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -316,7 +316,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Response response =
         target(
-                "/web/metalakes/metalake/connections/failed-catalog/credential-providers/"
+                "/internal/metalakes/metalake/connections/failed-catalog/credential-providers/"
                     + "test-provider/test")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -362,7 +362,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Response response =
         target(
-                "/web/metalakes/metalake/connections/storage-failure/credential-providers/"
+                "/internal/metalakes/metalake/connections/storage-failure/credential-providers/"
                     + "test-provider/test")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -387,7 +387,8 @@ public class TestCredentialProviderOperations extends JerseyTest {
   @Test
   public void testExistingCredentialProviderValidationAndMissingCatalog() {
     String path =
-        "/web/metalakes/metalake/connections/missing/credential-providers/" + "test-provider/test";
+        "/internal/metalakes/metalake/connections/missing/credential-providers/"
+            + "test-provider/test";
 
     Response invalid =
         target(path)
@@ -413,7 +414,8 @@ public class TestCredentialProviderOperations extends JerseyTest {
   @Test
   public void testProposedCredentialUpdateValidation() {
     String path =
-        "/web/metalakes/metalake/connections/catalog/credential-providers/" + "test-provider/test";
+        "/internal/metalakes/metalake/connections/catalog/credential-providers/"
+            + "test-provider/test";
 
     Response malformed =
         target(path)
@@ -448,7 +450,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Response response =
         target(
-                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                "/internal/metalakes/metalake/connections/catalog/credential-providers/"
                     + "test-provider/test")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -493,7 +495,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Response response =
         target(
-                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                "/internal/metalakes/metalake/connections/catalog/credential-providers/"
                     + "test-provider/test")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -523,7 +525,7 @@ public class TestCredentialProviderOperations extends JerseyTest {
 
     Response response =
         target(
-                "/web/metalakes/metalake/connections/catalog/credential-providers/"
+                "/internal/metalakes/metalake/connections/catalog/credential-providers/"
                     + "test-provider/test")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")

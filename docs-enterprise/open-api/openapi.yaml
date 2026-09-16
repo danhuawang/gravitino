@@ -8,6 +8,11 @@ info:
   description: |
     Defines the specification for the Datastrato Gravitino REST API.
 
+    Paths under `/internal` are **internal APIs** used by the Gravitino Enterprise Web UI and
+    bundled tools. They are not part of the public REST API and may change without notice.
+    Requests to them must include the `X-Gravitino-Internal-Origin` header; requests without
+    it are rejected with HTTP 400. All other paths are public APIs.
+
 
 servers:
   - url: "{scheme}://{host}:{port}/{basePath}"
@@ -31,208 +36,229 @@ security:
   - BasicAuth: []
 
 paths:
-  /search/query:
-    $ref: "./search.yaml#/paths/~1search~1query"
+  /license/status:
+    $ref: "./license.yaml#/paths/~1license~1status"
 
-  /search/rebuild/metalakes/{metalake}:
+  /internal/search/query:
+    $ref: "./search.yaml#/paths/~1internal~1search~1query"
+
+  /internal/search/rebuild/metalakes/{metalake}:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./search.yaml#/paths/~1search~1rebuild~1metalakes~1%7Bmetalake%7D"
+    $ref: "./search.yaml#/paths/~1internal~1search~1rebuild~1metalakes~1%7Bmetalake%7D"
 
-  /search/sync/metalakes/{metalake}/objects:
+  /internal/search/sync/metalakes/{metalake}/objects:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./search.yaml#/paths/~1search~1sync~1metalakes~1%7Bmetalake%7D~1objects"
+    $ref: "./search.yaml#/paths/~1internal~1search~1sync~1metalakes~1%7Bmetalake%7D~1objects"
 
-  /search/task/{taskId}/status:
+  /internal/search/task/{taskId}/status:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./search.yaml#/paths/~1search~1task~1%7BtaskId%7D~1status"
+    $ref: "./search.yaml#/paths/~1internal~1search~1task~1%7BtaskId%7D~1status"
 
-  /web/metalakes/{metalake}/connections/{connection}/credential-providers/{credentialType}/test:
+  /internal/metalakes/{metalake}/connections/{connection}/credential-providers/{credentialType}/test:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./credential-providers.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1connections~1%7Bconnection%7D~1credential-providers~1%7BcredentialType%7D~1test"
+    $ref: "./credential-providers.yaml#/paths/~1internal~1metalakes~1%7Bmetalake%7D~1connections~1%7Bconnection%7D~1credential-providers~1%7BcredentialType%7D~1test"
 
-  /web/metalakes/{metalake}/connections:
+  /internal/metalakes/{metalake}/connections:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./connections.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1connections"
+    $ref: "./connections.yaml#/paths/~1internal~1metalakes~1%7Bmetalake%7D~1connections"
 
-  /web/metalakes/{metalake}/connections/{connection}:
+  /internal/metalakes/{metalake}/connections/{connection}:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./connections.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1connections~1%7Bconnection%7D"
+    $ref: "./connections.yaml#/paths/~1internal~1metalakes~1%7Bmetalake%7D~1connections~1%7Bconnection%7D"
 
-  /web/metalakes/{metalake}/policies:
+  /internal/metalakes/{metalake}/policies:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./policies.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1policies"
+    $ref: "./policies.yaml#/paths/~1internal~1metalakes~1%7Bmetalake%7D~1policies"
 
-  /web/metalakes/{metalake}/summary:
+  /internal/metalakes/{metalake}/summary:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./metalake-summary.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1summary"
+    $ref: "./metalake-summary.yaml#/paths/~1internal~1metalakes~1%7Bmetalake%7D~1summary"
 
-  /web/metalakes/{metalake}/tags:
+  /internal/metalakes/{metalake}/tags:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./tags.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1tags"
+    $ref: "./tags.yaml#/paths/~1internal~1metalakes~1%7Bmetalake%7D~1tags"
 
-  /web/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+  /internal/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./tables.yaml#/paths/~1web~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables~1%7Btable%7D"
+    $ref: "./tables.yaml#/paths/~1internal~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables~1%7Btable%7D"
 
-  /web/entities:
+  /internal/entities:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./entities.yaml#/paths/~1web~1entities"
+    $ref: "./entities.yaml#/paths/~1internal~1entities"
 
-  /web/with-tags/metalakes/{metalake}/catalogs:
+  /internal/with-tags/metalakes/{metalake}/catalogs:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs"
+    $ref: "./creation-with-tags.yaml#/paths/~1internal~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas:
+  /internal/with-tags/metalakes/{metalake}/catalogs/testConnection:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas"
+    $ref: "./creation-with-tags.yaml#/paths/~1internal~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1testConnection"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables"
+    $ref: "./creation-with-tags.yaml#/paths/~1internal~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/filesets:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1filesets"
+    $ref: "./creation-with-tags.yaml#/paths/~1internal~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/topics:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/filesets:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1topics"
+    $ref: "./creation-with-tags.yaml#/paths/~1internal~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1filesets"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/models:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/topics:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./creation-with-tags.yaml#/paths/~1web~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1models"
+    $ref: "./creation-with-tags.yaml#/paths/~1internal~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1topics"
 
-  /web/preview/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/models:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./preview.yaml#/paths/~1web~1preview~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables~1%7Btable%7D"
+    $ref: "./creation-with-tags.yaml#/paths/~1internal~1with-tags~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1models"
 
-  /web/metrics/metalakes/{metalake}:
+  /internal/preview/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./metrics.yaml#/paths/~1web~1metrics~1metalakes~1%7Bmetalake%7D"
+    $ref: "./preview.yaml#/paths/~1internal~1preview~1metalakes~1%7Bmetalake%7D~1catalogs~1%7Bcatalog%7D~1schemas~1%7Bschema%7D~1tables~1%7Btable%7D"
 
-  /web/security/metalakes/{metalake}/roles/{role}:
+  /internal/metrics/metalakes/{metalake}:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D"
+    $ref: "./metrics.yaml#/paths/~1internal~1metrics~1metalakes~1%7Bmetalake%7D"
 
-  /web/security/metalakes/{metalake}/assignments/roles:
+  /internal/security/metalakes/{metalake}/roles/{role}:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1assignments~1roles"
+    $ref: "./permission.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D"
 
-  /web/security/metalakes/{metalake}/roles/{role}/users:
+  /internal/security/metalakes/{metalake}/assignments/roles:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D~1users"
+    $ref: "./permission.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1assignments~1roles"
 
-  /web/security/metalakes/{metalake}/roles/{role}/groups:
+  /internal/security/metalakes/{metalake}/roles/{role}/users:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./permission.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D~1groups"
+    $ref: "./permission.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D~1users"
 
-  /web/security/metalakes/{metalake}/roles:
+  /internal/security/metalakes/{metalake}/roles/{role}/groups:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./authorization.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1roles"
+    $ref: "./permission.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1roles~1%7Brole%7D~1groups"
 
-  /web/security/metalakes/{metalake}/objects/roles:
+  /internal/security/metalakes/{metalake}/roles:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./authorization.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1objects~1roles"
+    $ref: "./authorization.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1roles"
 
-  /web/security/metalakes/{metalake}/authorization/overview:
+  /internal/security/metalakes/{metalake}/objects/roles:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./authorization.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1authorization~1overview"
+    $ref: "./authorization.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1objects~1roles"
 
-  /web/security/metalakes/{metalake}/users/{user}/roles:
+  /internal/security/metalakes/{metalake}/authorization/overview:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./users.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1users~1%7Buser%7D~1roles"
+    $ref: "./authorization.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1authorization~1overview"
 
-  /web/security/metalakes/{metalake}/groups/{group}/roles:
+  /internal/security/metalakes/{metalake}/users/{user}/roles:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./groups.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1groups~1%7Bgroup%7D~1roles"
+    $ref: "./users.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1users~1%7Buser%7D~1roles"
 
-  /web/security/metalakes/{metalake}/users:
+  /internal/security/metalakes/{metalake}/groups/{group}/roles:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./users.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1users"
+    $ref: "./groups.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1groups~1%7Bgroup%7D~1roles"
 
-  /web/security/identity/users/{username}/groups:
+  /internal/security/metalakes/{metalake}/users:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./identity-lookups.yaml#/paths/~1web~1security~1identity~1users~1%7Busername%7D~1groups"
+    $ref: "./users.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1users"
 
-  /web/security/identity/groups/{groupName}:
+  /internal/security/identity/users/{username}/groups:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./identity-lookups.yaml#/paths/~1web~1security~1identity~1groups~1%7BgroupName%7D"
+    $ref: "./identity-lookups.yaml#/paths/~1internal~1security~1identity~1users~1%7Busername%7D~1groups"
 
-  /web/security/idp/users:
-    $ref: "./users.yaml#/paths/~1web~1security~1idp~1users"
-
-  /web/security/idp/users/password:
-    $ref: "./users.yaml#/paths/~1web~1security~1idp~1users~1password"
-
-  /web/security/idp/memberships:
-    $ref: "./users.yaml#/paths/~1web~1security~1idp~1memberships"
-
-  /web/security/authn/me:
-    $ref: "./users.yaml#/paths/~1web~1security~1authn~1me"
-
-  /web/security/idp/groups:
-    $ref: "./groups.yaml#/paths/~1web~1security~1idp~1groups"
-
-  /web/security/directory/users:
-    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users"
-
-  /web/security/directory/users/{user}:
-    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1%7Buser%7D"
-
-  /web/security/directory/users/{user}/groups:
-    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1%7Buser%7D~1groups"
-
-  /web/security/directory/users/delete:
-    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1delete"
-
-  /web/security/directory/users/enabled:
-    $ref: "./users.yaml#/paths/~1web~1security~1directory~1users~1enabled"
-
-  /web/security/directory/groups:
-    $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups"
-
-  /web/security/directory/groups/{group}:
-    $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups~1%7Bgroup%7D"
-
-  /web/security/directory/groups/{group}/users:
-    $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups~1%7Bgroup%7D~1users"
-
-  /web/security/directory/groups/delete:
-    $ref: "./groups.yaml#/paths/~1web~1security~1directory~1groups~1delete"
-
-  /web/security/metalakes/{metalake}/users/enabled:
+  /internal/security/identity/groups/{groupName}:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./users.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1users~1enabled"
+    $ref: "./identity-lookups.yaml#/paths/~1internal~1security~1identity~1groups~1%7BgroupName%7D"
 
-  /web/security/metalakes/{metalake}/users/{user}:
-    # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./users.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1users~1%7Buser%7D"
+  /internal/security/idp/users:
+    $ref: "./users.yaml#/paths/~1internal~1security~1idp~1users"
 
-  /web/security/metalakes/{metalake}/users/{user}/groups:
-    # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./users.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1users~1%7Buser%7D~1groups"
+  /internal/security/idp/users/password:
+    $ref: "./users.yaml#/paths/~1internal~1security~1idp~1users~1password"
 
-  /web/security/metalakes/{metalake}/users/idp:
-    # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./users.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1users~1idp"
+  /internal/security/idp/memberships:
+    $ref: "./users.yaml#/paths/~1internal~1security~1idp~1memberships"
 
-  /web/security/metalakes/{metalake}/groups/idp:
-    # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./groups.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1groups~1idp"
+  /internal/security/authn/me:
+    $ref: "./users.yaml#/paths/~1internal~1security~1authn~1me"
 
-  /web/security/metalakes/{metalake}/groups:
-    # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./groups.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1groups"
+  /internal/security/idp/groups:
+    $ref: "./groups.yaml#/paths/~1internal~1security~1idp~1groups"
 
-  /web/security/metalakes/{metalake}/groups/{group}:
-    # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./groups.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1groups~1%7Bgroup%7D"
+  /internal/security/directory/users:
+    $ref: "./users.yaml#/paths/~1internal~1security~1directory~1users"
 
-  /web/security/metalakes/{metalake}/groups/{group}/users:
+  /internal/security/directory/users/{user}:
+    $ref: "./users.yaml#/paths/~1internal~1security~1directory~1users~1%7Buser%7D"
+
+  /internal/security/directory/users/{user}/groups:
+    $ref: "./users.yaml#/paths/~1internal~1security~1directory~1users~1%7Buser%7D~1groups"
+
+  /internal/security/directory/users/delete:
+    $ref: "./users.yaml#/paths/~1internal~1security~1directory~1users~1delete"
+
+  /internal/security/directory/users/enabled:
+    $ref: "./users.yaml#/paths/~1internal~1security~1directory~1users~1enabled"
+
+  /internal/security/directory/groups:
+    $ref: "./groups.yaml#/paths/~1internal~1security~1directory~1groups"
+
+  /internal/security/directory/groups/{group}:
+    $ref: "./groups.yaml#/paths/~1internal~1security~1directory~1groups~1%7Bgroup%7D"
+
+  /internal/security/directory/groups/{group}/users:
+    $ref: "./groups.yaml#/paths/~1internal~1security~1directory~1groups~1%7Bgroup%7D~1users"
+
+  /internal/security/directory/groups/delete:
+    $ref: "./groups.yaml#/paths/~1internal~1security~1directory~1groups~1delete"
+
+  /internal/security/metalakes/{metalake}/users/enabled:
     # escape the path name by replacing `{ }` with `%7B %7D`
-    $ref: "./groups.yaml#/paths/~1web~1security~1metalakes~1%7Bmetalake%7D~1groups~1%7Bgroup%7D~1users"
+    $ref: "./users.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1users~1enabled"
+
+  /internal/security/metalakes/{metalake}/users/{user}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./users.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1users~1%7Buser%7D"
+
+  /internal/security/metalakes/{metalake}/users/{user}/groups:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./users.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1users~1%7Buser%7D~1groups"
+
+  /internal/security/metalakes/{metalake}/users/idp:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./users.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1users~1idp"
+
+  /internal/security/metalakes/{metalake}/groups/idp:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./groups.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1groups~1idp"
+
+  /internal/security/metalakes/{metalake}/groups:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./groups.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1groups"
+
+  /internal/security/metalakes/{metalake}/groups/{group}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./groups.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1groups~1%7Bgroup%7D"
+
+  /internal/security/metalakes/{metalake}/groups/{group}/users:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./groups.yaml#/paths/~1internal~1security~1metalakes~1%7Bmetalake%7D~1groups~1%7Bgroup%7D~1users"
 
 components:
+  parameters:
+    InternalOriginHeader:
+      name: X-Gravitino-Internal-Origin
+      in: header
+      required: true
+      description: >
+        Required on internal APIs under `/internal`. Any non-empty value is accepted. Requests
+        without it are rejected with HTTP 400, unless the server sets
+        `gravitino.datastrato.internalApi.requireOriginHeader = false`.
+      schema:
+        type: string
+        minLength: 1
+      example: gravitino-web
+
   securitySchemes:
 
     OAuth2WithJWT:

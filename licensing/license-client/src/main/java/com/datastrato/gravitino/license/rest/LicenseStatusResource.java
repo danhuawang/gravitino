@@ -10,7 +10,6 @@ import com.datastrato.gravitino.license.dto.LicenseStatusDTO;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
-import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.web.Utils;
@@ -18,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Path("/license")
-@Produces(MediaType.APPLICATION_JSON)
 public class LicenseStatusResource {
 
   private static final Logger LOG = LoggerFactory.getLogger(LicenseStatusResource.class);
@@ -35,6 +33,7 @@ public class LicenseStatusResource {
 
   @GET
   @Path("/status")
+  @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "get-license-status." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "get-license-status", absolute = true)
   public Response getStatus() {

@@ -55,6 +55,7 @@ public class TestIndexScriptRebuild {
   private int tokenStatus;
   private List<String> issuedTokens;
   private List<String> authorizationHeaders;
+  private List<String> internalOriginHeaders;
   private List<Map<String, String>> oauthRequestForms;
   private AtomicInteger apiRequestCount;
   private AtomicInteger listRequestCount;
@@ -81,6 +82,7 @@ public class TestIndexScriptRebuild {
     tokenStatus = 200;
     issuedTokens = List.of("oauth-token");
     authorizationHeaders = Collections.synchronizedList(new ArrayList<>());
+    internalOriginHeaders = Collections.synchronizedList(new ArrayList<>());
     oauthRequestForms = Collections.synchronizedList(new ArrayList<>());
     apiRequestCount = new AtomicInteger();
     listRequestCount = new AtomicInteger();
@@ -114,6 +116,7 @@ public class TestIndexScriptRebuild {
                 .encodeToString(("admin:" + password).getBytes(StandardCharsets.UTF_8));
     assertEquals(List.of(expected, expected), authorizationHeaders);
     assertEquals(1, rebuildRequestCount.get());
+    assertEquals(List.of("index.sh"), internalOriginHeaders);
     assertCurlArgumentsDoNotContain("admin", password);
   }
 
@@ -419,7 +422,9 @@ public class TestIndexScriptRebuild {
         body = listResponse;
       }
     } else if ("POST".equals(exchange.getRequestMethod())
-        && "/api/search/rebuild/metalakes/metalake1".equals(path)) {
+        && "/api/internal/search/rebuild/metalakes/metalake1".equals(path)) {
+      String origin = exchange.getRequestHeaders().getFirst("X-Gravitino-Internal-Origin");
+      internalOriginHeaders.add(origin);
       int requestNumber = rebuildRequestCount.incrementAndGet();
       if (rejectFirstRebuildRequest && requestNumber == 1) {
         status = 401;

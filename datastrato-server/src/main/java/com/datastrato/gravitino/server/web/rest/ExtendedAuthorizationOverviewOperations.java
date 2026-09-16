@@ -15,6 +15,7 @@ import com.datastrato.gravitino.dto.authorization.ObjectAuthorizationDTO;
 import com.datastrato.gravitino.dto.authorization.RoleMembershipDTO;
 import com.datastrato.gravitino.dto.authorization.RolePrivilegeDTO;
 import com.datastrato.gravitino.dto.responses.AuthorizationOverviewResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -60,7 +61,7 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 
 /** REST operations for loading a metalake authorization overview. */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/metalakes/{metalake}/authorization/overview")
+@Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/authorization/overview")
 public class ExtendedAuthorizationOverviewOperations {
 
   private static final Set<Privilege.Name> WRITE_OR_ADMIN_PRIVILEGES =

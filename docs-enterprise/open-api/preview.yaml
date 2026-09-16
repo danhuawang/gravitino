@@ -4,8 +4,9 @@
 
 paths:
 
-  /web/preview/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
+  /internal/preview/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables/{table}:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"

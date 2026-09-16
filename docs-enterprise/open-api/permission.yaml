@@ -4,8 +4,9 @@
 
 paths:
 
-  /web/security/metalakes/{metalake}/roles/{role}:
+  /internal/security/metalakes/{metalake}/roles/{role}:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/role"
     put:
@@ -45,8 +46,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/assignments/roles:
+  /internal/security/metalakes/{metalake}/assignments/roles:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     put:
       tags:
@@ -82,8 +84,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/roles/{role}/users:
+  /internal/security/metalakes/{metalake}/roles/{role}/users:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/role"
     get:
@@ -118,8 +121,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/roles/{role}/groups:
+  /internal/security/metalakes/{metalake}/roles/{role}/groups:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/role"
     get:

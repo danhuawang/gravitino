@@ -8,6 +8,7 @@ import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.datastrato.gravitino.dto.responses.DataPreviewResponse;
 import com.datastrato.gravitino.preview.DataPreviewSensitiveTableException;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.Sets;
 import java.sql.SQLException;
 import java.util.Map;
@@ -40,7 +41,7 @@ import org.apache.gravitino.server.authorization.expression.AuthorizationExpress
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 
-@Path("/web/preview/metalakes/{metalake}/catalogs/{catalog}/")
+@Path(InternalApiPaths.PREFIX + "/preview/metalakes/{metalake}/catalogs/{catalog}/")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class DataPreviewOperations {

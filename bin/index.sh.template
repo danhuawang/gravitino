@@ -411,8 +411,9 @@ rebuild_index() {
       continue
     fi
     echo "Rebuilding search index for metalake: $name"
-    if ! gravitino_request POST "$GRAVITINO_URI/api/search/rebuild/metalakes/$name" \
-        -H "Content-Type: application/json"; then
+    if ! gravitino_request POST "$GRAVITINO_URI/api/internal/search/rebuild/metalakes/$name" \
+        -H "Content-Type: application/json" \
+        -H "X-Gravitino-Internal-Origin: index.sh"; then
       echo "Failed to rebuild index for metalake $name: request failed."
       ((failed++))
       echo

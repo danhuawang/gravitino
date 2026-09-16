@@ -91,7 +91,7 @@ public class TestExtendedIdentityOperations extends JerseyTest {
         .thenReturn(List.of("contractors", "analysts"));
 
     Response response =
-        target("/web/security/identity/users/alice/groups")
+        target("/internal/security/identity/users/alice/groups")
             .queryParam("type", "local")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -112,7 +112,7 @@ public class TestExtendedIdentityOperations extends JerseyTest {
         .thenReturn(Collections.emptyList());
 
     Response response =
-        target("/web/security/identity/users/dana.k/groups")
+        target("/internal/security/identity/users/dana.k/groups")
             .queryParam("type", "provisioned")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -135,7 +135,7 @@ public class TestExtendedIdentityOperations extends JerseyTest {
                 "contractors", "External analysts on time-boxed access", List.of("alice", "bob")));
 
     Response response =
-        target("/web/security/identity/groups/contractors")
+        target("/internal/security/identity/groups/contractors")
             .queryParam("type", "local")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -157,7 +157,7 @@ public class TestExtendedIdentityOperations extends JerseyTest {
         .thenReturn(new GroupLookupInfo("scim-team", "", Collections.emptyList()));
 
     Response response =
-        target("/web/security/identity/groups/scim-team")
+        target("/internal/security/identity/groups/scim-team")
             .queryParam("type", "provisioned")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")

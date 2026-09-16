@@ -8,6 +8,7 @@ import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.metrics.dto.MetricDTO;
 import com.datastrato.gravitino.metrics.dto.MetricsResponse;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.Maps;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -31,7 +32,7 @@ import org.apache.logging.log4j.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Path("/web/metrics/metalakes/{metalake}")
+@Path(InternalApiPaths.PREFIX + "/metrics/metalakes/{metalake}")
 public class MetricOperations {
   private static final Logger LOG = LoggerFactory.getLogger(MetricOperations.class);
 

@@ -70,7 +70,7 @@ class TestScimProvisioningOperations extends JerseyTest {
                 .build());
 
     ScimProvisioningListResponse body =
-        target("/scim/provisioning")
+        target("/internal/scim/provisioning")
             .request()
             .accept(ACCEPT)
             .get()

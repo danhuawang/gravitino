@@ -16,6 +16,7 @@ import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
 import com.datastrato.gravitino.dto.responses.IdpUserNameListResponse;
 import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.Lists;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
@@ -48,7 +49,7 @@ import org.apache.gravitino.server.web.rest.OperationType;
  * Instance-scoped Directory / IdP APIs stay on {@link ExtendedUserOperations}.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/metalakes/{metalake}/users")
+@Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/users")
 public class ExtendedMetalakeUserOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

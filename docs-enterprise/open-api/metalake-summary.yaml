@@ -4,7 +4,9 @@
 
 paths:
 
-  /web/metalakes/{metalake}/summary:
+  /internal/metalakes/{metalake}/summary:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - metalake

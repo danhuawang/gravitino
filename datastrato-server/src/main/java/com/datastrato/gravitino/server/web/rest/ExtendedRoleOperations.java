@@ -12,6 +12,7 @@ import com.datastrato.gravitino.dto.authorization.RoleUserAssignmentDTO;
 import com.datastrato.gravitino.dto.requests.PermissionUpdateRequest;
 import com.datastrato.gravitino.dto.responses.RoleGroupAssignmentListResponse;
 import com.datastrato.gravitino.dto.responses.RoleUserAssignmentListResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.Lists;
 import java.util.Arrays;
 import java.util.List;
@@ -46,7 +47,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/metalakes/{metalake}/roles/{role}/")
+@Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/roles/{role}/")
 public class ExtendedRoleOperations {
   private static final Logger LOG = LoggerFactory.getLogger(ExtendedRoleOperations.class);
 

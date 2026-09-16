@@ -40,7 +40,7 @@ import org.junit.jupiter.api.Test;
 class TestScimTokenOperations extends JerseyTest {
 
   private static final String ACCEPT = "application/vnd.gravitino.v1+json";
-  private static final String TOKENS = "/scim/tokens";
+  private static final String TOKENS = "/internal/scim/tokens";
   private static final ScimTokenManager TOKEN_MANAGER = mock(ScimTokenManager.class);
 
   @BeforeEach

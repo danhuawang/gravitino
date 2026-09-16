@@ -149,7 +149,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
             Lists.newArrayList("analysts", "admins"));
 
     Response response =
-        target("/web/security/metalakes/metalake1/assignments/roles")
+        target("/internal/security/metalakes/metalake1/assignments/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(entity(request, MediaType.APPLICATION_JSON_TYPE));
@@ -172,7 +172,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
         new RoleAssignmentRequest(Collections.emptyList(), Lists.newArrayList("alice"), null);
 
     Response response =
-        target("/web/security/metalakes/metalake1/assignments/roles")
+        target("/internal/security/metalakes/metalake1/assignments/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(entity(request, MediaType.APPLICATION_JSON_TYPE));
@@ -194,7 +194,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
         .assignRolesToPrincipals(any(), any(), any(), any());
 
     Response response =
-        target("/web/security/metalakes/metalake1/assignments/roles")
+        target("/internal/security/metalakes/metalake1/assignments/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(entity(request, MediaType.APPLICATION_JSON_TYPE));
@@ -237,7 +237,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
         .thenReturn(Lists.newArrayList(ownerRelation, groupOwnerRelation));
 
     Response response =
-        target("/web/security/metalakes/metalake1/roles")
+        target("/internal/security/metalakes/metalake1/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -270,7 +270,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
     when(ACCESS_CONTROL_DISPATCHER.listGroups("metalake1")).thenReturn(new Group[0]);
 
     Response response =
-        target("/web/security/metalakes/metalake1/roles")
+        target("/internal/security/metalakes/metalake1/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -290,7 +290,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
         .listRolesWithSecurableObjects("metalake1");
 
     Response response =
-        target("/web/security/metalakes/metalake1/roles")
+        target("/internal/security/metalakes/metalake1/roles")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

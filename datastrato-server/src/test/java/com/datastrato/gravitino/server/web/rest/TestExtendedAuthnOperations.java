@@ -114,7 +114,7 @@ public class TestExtendedAuthnOperations extends JerseyTest {
         .thenReturn(Map.of("metalake1", List.of(admin), "metalake2", List.of()));
 
     Response response =
-        target("/web/security/authn/me")
+        target("/internal/security/authn/me")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -151,7 +151,7 @@ public class TestExtendedAuthnOperations extends JerseyTest {
     when(accessControlDispatcher.listUserRolesByMetalake(eq(TEST_PRINCIPAL))).thenReturn(Map.of());
 
     Response response =
-        target("/web/security/authn/me")
+        target("/internal/security/authn/me")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

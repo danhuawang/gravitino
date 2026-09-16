@@ -4,7 +4,9 @@
 
 paths:
 
-  /web/security/identity/users/{username}/groups:
+  /internal/security/identity/users/{username}/groups:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - identity
@@ -52,7 +54,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/identity/groups/{groupName}:
+  /internal/security/identity/groups/{groupName}:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - identity

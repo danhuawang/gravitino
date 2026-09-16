@@ -185,7 +185,7 @@ public class TestConnectionOperations extends JerseyTest {
             new NameIdentifier[] {NameIdentifier.of(metalake, "mysql_billing", "billing_schema")});
 
     Response resp =
-        target(String.format("/web/metalakes/%s/connections", metalake))
+        target(String.format("/internal/metalakes/%s/connections", metalake))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -265,7 +265,7 @@ public class TestConnectionOperations extends JerseyTest {
     // Repeated list requests must retain the stored result without running a new probe.
     for (int request = 0; request < 2; request++) {
       try (Response response =
-          target("/web/metalakes/" + metalake + "/connections")
+          target("/internal/metalakes/" + metalake + "/connections")
               .request(MediaType.APPLICATION_JSON_TYPE)
               .accept("application/vnd.gravitino.v1+json")
               .get()) {
@@ -318,7 +318,7 @@ public class TestConnectionOperations extends JerseyTest {
     when(schemaDispatcher.listSchemas(any()))
         .thenThrow(new ConnectionFailedException("Backend is unavailable"));
     try (Response response =
-        target("/web/metalakes/" + metalake + "/connections")
+        target("/internal/metalakes/" + metalake + "/connections")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get()) {
@@ -366,7 +366,7 @@ public class TestConnectionOperations extends JerseyTest {
         .thenReturn(new NameIdentifier[0]);
 
     Response resp =
-        target(String.format("/web/metalakes/%s/connections", metalake))
+        target(String.format("/internal/metalakes/%s/connections", metalake))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -409,7 +409,7 @@ public class TestConnectionOperations extends JerseyTest {
         .thenReturn(new NameIdentifier[0]);
 
     Response resp =
-        target(String.format("/web/metalakes/%s/connections", metalake))
+        target(String.format("/internal/metalakes/%s/connections", metalake))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -461,7 +461,7 @@ public class TestConnectionOperations extends JerseyTest {
     when(schemaDispatcher.listSchemas(any())).thenReturn(new NameIdentifier[0]);
 
     Response resp =
-        target(String.format("/web/metalakes/%s/connections", metalake))
+        target(String.format("/internal/metalakes/%s/connections", metalake))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -480,7 +480,7 @@ public class TestConnectionOperations extends JerseyTest {
     when(catalogDispatcher.listCatalogsInfo(catalogNS)).thenReturn(new Catalog[0]);
 
     Response resp =
-        target(String.format("/web/metalakes/%s/connections", metalake))
+        target(String.format("/internal/metalakes/%s/connections", metalake))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -495,7 +495,7 @@ public class TestConnectionOperations extends JerseyTest {
   @Test
   public void testListConnectionsBlankMetalake() {
     Response resp =
-        target("/web/metalakes/ /connections")
+        target("/internal/metalakes/ /connections")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -571,7 +571,7 @@ public class TestConnectionOperations extends JerseyTest {
                     "Failed to test the credential provider")));
 
     Response response =
-        target(String.format("/web/metalakes/%s/connections/%s", metalake, catalogName))
+        target(String.format("/internal/metalakes/%s/connections/%s", metalake, catalogName))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -591,7 +591,7 @@ public class TestConnectionOperations extends JerseyTest {
     ConnectionOverviewResponse overview =
         ObjectMapperProvider.objectMapper().readValue(body, ConnectionOverviewResponse.class);
     try (Response listResponse =
-        target("/web/metalakes/" + metalake + "/connections")
+        target("/internal/metalakes/" + metalake + "/connections")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get()) {
@@ -657,7 +657,7 @@ public class TestConnectionOperations extends JerseyTest {
                     "Failed to connect to the catalog")));
 
     Response response =
-        target(String.format("/web/metalakes/%s/connections/%s", metalake, catalogName))
+        target(String.format("/internal/metalakes/%s/connections/%s", metalake, catalogName))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -688,7 +688,7 @@ public class TestConnectionOperations extends JerseyTest {
         .thenReturn(Optional.empty());
 
     String notTestedBody =
-        target("/web/metalakes/nullable_metalake/connections/hive")
+        target("/internal/metalakes/nullable_metalake/connections/hive")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get()
@@ -710,7 +710,7 @@ public class TestConnectionOperations extends JerseyTest {
     when(catalogDispatcher.loadCatalog(modelIdentifier)).thenReturn(model);
 
     String unsupportedBody =
-        target("/web/metalakes/nullable_metalake/connections/model")
+        target("/internal/metalakes/nullable_metalake/connections/model")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get()
@@ -741,7 +741,7 @@ public class TestConnectionOperations extends JerseyTest {
     when(catalogDispatcher.loadCatalog(identifier)).thenReturn(catalog);
 
     try (Response response =
-        target("/web/metalakes/" + metalake + "/connections")
+        target("/internal/metalakes/" + metalake + "/connections")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get()) {
@@ -755,7 +755,7 @@ public class TestConnectionOperations extends JerseyTest {
     }
 
     try (Response response =
-        target("/web/metalakes/" + metalake + "/connections/" + catalogName)
+        target("/internal/metalakes/" + metalake + "/connections/" + catalogName)
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get()) {
@@ -780,7 +780,7 @@ public class TestConnectionOperations extends JerseyTest {
         .thenThrow(new NoSuchCatalogException("Catalog does not exist"));
 
     Response missing =
-        target(String.format("/web/metalakes/%s/connections/%s", metalake, catalogName))
+        target(String.format("/internal/metalakes/%s/connections/%s", metalake, catalogName))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -788,7 +788,7 @@ public class TestConnectionOperations extends JerseyTest {
 
     when(catalogDispatcher.listCatalogsInfo(Namespace.of(metalake))).thenReturn(new Catalog[0]);
     String listBody =
-        target(String.format("/web/metalakes/%s/connections", metalake))
+        target(String.format("/internal/metalakes/%s/connections", metalake))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get()
@@ -1053,7 +1053,7 @@ public class TestConnectionOperations extends JerseyTest {
           .thenReturn(catalog);
       for (boolean detail : new boolean[] {false, true}) {
         try (Response response =
-            target("/web/metalakes/contract/connections" + (detail ? "/jdbc_demo" : ""))
+            target("/internal/metalakes/contract/connections" + (detail ? "/jdbc_demo" : ""))
                 .request(MediaType.APPLICATION_JSON_TYPE)
                 .accept("application/vnd.gravitino.v1+json")
                 .get()) {
@@ -1081,7 +1081,7 @@ public class TestConnectionOperations extends JerseyTest {
 
   private void assertListJsonContract(String expectedJson) throws JsonProcessingException {
     try (Response response =
-        target("/web/metalakes/contract/connections")
+        target("/internal/metalakes/contract/connections")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get()) {

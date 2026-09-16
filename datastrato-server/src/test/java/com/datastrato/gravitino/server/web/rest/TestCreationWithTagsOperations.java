@@ -173,7 +173,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(catalogDispatcher.createCatalog(any(), any(), any(), any(), any())).thenReturn(catalog);
 
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs")
+        target("/internal/with-tags/metalakes/metalake1/catalogs")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -206,7 +206,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(tagDispatcher.associateTagsForMetadataObject(any(), any(), any(), any())).thenReturn(tags);
 
     resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs")
+        target("/internal/with-tags/metalakes/metalake1/catalogs")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -227,7 +227,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(catalogDispatcher)
         .createCatalog(any(), any(), any(), any(), any());
     Response errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs")
+        target("/internal/with-tags/metalakes/metalake1/catalogs")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -247,7 +247,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs")
+        target("/internal/with-tags/metalakes/metalake1/catalogs")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -291,7 +291,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
               .thenReturn(buildCatalog("metalake", "catalog"));
 
           Response response =
-              target("/web/with-tags/metalakes/metalake/catalogs")
+              target("/internal/with-tags/metalakes/metalake/catalogs")
                   .request(MediaType.APPLICATION_JSON_TYPE)
                   .accept("application/vnd.gravitino.v1+json")
                   .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
@@ -322,7 +322,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .thenReturn(buildCatalog("metalake", "catalog"));
 
     Response response =
-        target("/web/with-tags/metalakes/metalake/catalogs")
+        target("/internal/with-tags/metalakes/metalake/catalogs")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
@@ -352,7 +352,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .thenReturn(buildCatalog("metalake", "catalog"));
 
     Response response =
-        target("/web/with-tags/metalakes/metalake/catalogs")
+        target("/internal/with-tags/metalakes/metalake/catalogs")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE));
@@ -387,7 +387,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
       when(catalogDispatcher.createCatalog(any(), any(), any(), any(), any())).thenReturn(catalog);
 
       Response resp =
-          target("/web/with-tags/metalakes/metalake1/catalogs")
+          target("/internal/with-tags/metalakes/metalake1/catalogs")
               .request(MediaType.APPLICATION_JSON_TYPE)
               .accept("application/vnd.gravitino.v1+json")
               .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -419,7 +419,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(schemaDispatcher.createSchema(any(), any(), any())).thenReturn(schema);
 
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -445,7 +445,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     when(tagDispatcher.associateTagsForMetadataObject(any(), any(), any(), any())).thenReturn(tags);
 
     resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -466,7 +466,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(schemaDispatcher)
         .createSchema(any(), any(), any());
     Response errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -486,7 +486,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -509,7 +509,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
           new SchemaWithTagsCreateRequest("schema4", "comment", null, tags);
 
       Response resp =
-          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
+          target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas")
               .request(MediaType.APPLICATION_JSON_TYPE)
               .accept("application/vnd.gravitino.v1+json")
               .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -553,7 +553,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .thenReturn(table);
 
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -598,7 +598,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .thenReturn(col2Tags);
 
     resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -620,7 +620,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(tableDispatcher)
         .createTable(any(), any(), any(), any(), any(), any(), any(), any());
     Response errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -641,7 +641,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -677,7 +677,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
               Collections.emptyMap());
 
       Response resp =
-          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
+          target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
               .request(MediaType.APPLICATION_JSON_TYPE)
               .accept("application/vnd.gravitino.v1+json")
               .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -722,7 +722,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
               ImmutableMap.of("col1", new String[] {"tag1"}));
 
       Response resp =
-          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
+          target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables")
               .request(MediaType.APPLICATION_JSON_TYPE)
               .accept("application/vnd.gravitino.v1+json")
               .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -760,7 +760,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         new FilesetWithTagsCreateRequest("fileset1", null, null, "/tmp/1/", null, null);
 
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -794,7 +794,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
             "fileset1_1", "mock comment", Fileset.Type.MANAGED, null, storageLocations, null);
 
     resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -827,7 +827,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .thenReturn(tags);
 
     resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -856,7 +856,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .thenReturn(tags);
 
     resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -877,7 +877,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(filesetDispatcher)
         .createMultipleLocationFileset(any(), any(), any(), any(), any());
     Response errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -904,7 +904,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -927,7 +927,8 @@ public class TestCreationWithTagsOperations extends JerseyTest {
               "fileset4", null, null, null, null, new String[] {"tag1"});
 
       Response resp =
-          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
+          target(
+                  "/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/filesets")
               .request(MediaType.APPLICATION_JSON_TYPE)
               .accept("application/vnd.gravitino.v1+json")
               .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -957,7 +958,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     TopicWithTagsCreateRequest req =
         new TopicWithTagsCreateRequest("topic1", "comment", null, null);
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -982,7 +983,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .thenReturn(tags);
 
     resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1002,7 +1003,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(topicDispatcher)
         .createTopic(any(), any(), any(), any());
     Response errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1022,7 +1023,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1044,7 +1045,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
           new TopicWithTagsCreateRequest("topic4", "comment", null, new String[] {"tag1"});
 
       Response resp =
-          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
+          target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/topics")
               .request(MediaType.APPLICATION_JSON_TYPE)
               .accept("application/vnd.gravitino.v1+json")
               .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1074,7 +1075,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         new ModelWithTagsCreateRequest("model1", "comment", null, null);
 
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1099,7 +1100,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .thenReturn(tags);
 
     resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1119,7 +1120,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(modelDispatcher)
         .registerModel(any(), any(), any());
     Response errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1139,7 +1140,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .when(tagDispatcher)
         .associateTagsForMetadataObject(any(), any(), any(), any());
     errorResp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1161,7 +1162,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
           new ModelWithTagsCreateRequest("model4", "comment", null, new String[] {"tag1"});
 
       Response resp =
-          target("/web/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
+          target("/internal/with-tags/metalakes/metalake1/catalogs/catalog1/schemas/schema1/models")
               .request(MediaType.APPLICATION_JSON_TYPE)
               .accept("application/vnd.gravitino.v1+json")
               .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1307,7 +1308,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     doNothing().when(catalogDispatcher).testConnection(any(), any(), any(), any(), any());
 
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/testConnection")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/testConnection")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1342,7 +1343,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
     doNothing().when(catalogDispatcher).testConnection(any(), any(), any(), any(), any());
 
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/testConnection")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/testConnection")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -1376,7 +1377,7 @@ public class TestCreationWithTagsOperations extends JerseyTest {
         .testConnection(any(), any(), any(), any(), any());
 
     Response resp =
-        target("/web/with-tags/metalakes/metalake1/catalogs/testConnection")
+        target("/internal/with-tags/metalakes/metalake1/catalogs/testConnection")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));

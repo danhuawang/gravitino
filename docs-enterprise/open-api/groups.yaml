@@ -4,7 +4,9 @@
 
 paths:
 
-  /web/security/idp/groups:
+  /internal/security/idp/groups:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - groups
@@ -29,7 +31,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/groups:
+  /internal/security/directory/groups:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - groups
@@ -109,8 +113,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/groups/{group}:
+  /internal/security/directory/groups/{group}:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
       - name: origin
         in: query
@@ -159,8 +164,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/groups/{group}/users:
+  /internal/security/directory/groups/{group}/users:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
       - name: origin
         in: query
@@ -209,7 +215,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/directory/groups/delete:
+  /internal/security/directory/groups/delete:
+    parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
     post:
       tags:
         - groups
@@ -245,8 +253,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/groups:
+  /internal/security/metalakes/{metalake}/groups:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     get:
       tags:
@@ -333,8 +342,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/groups/{group}:
+  /internal/security/metalakes/{metalake}/groups/{group}:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
     get:
@@ -374,8 +384,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/groups/{group}/users:
+  /internal/security/metalakes/{metalake}/groups/{group}/users:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
     get:
@@ -421,8 +432,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/groups/{group}/roles:
+  /internal/security/metalakes/{metalake}/groups/{group}/roles:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
     get:
@@ -457,8 +469,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/security/metalakes/{metalake}/groups/idp:
+  /internal/security/metalakes/{metalake}/groups/idp:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     get:
       tags:

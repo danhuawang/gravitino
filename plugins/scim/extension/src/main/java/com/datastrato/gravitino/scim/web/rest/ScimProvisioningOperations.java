@@ -12,6 +12,7 @@ import com.datastrato.gravitino.scim.dto.responses.ScimProvisioningListResponse;
 import com.datastrato.gravitino.scim.web.ScimManagement;
 import com.datastrato.gravitino.scim.web.ScimOperationType;
 import com.datastrato.gravitino.scim.web.ScimRESTUtils;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import java.util.List;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -26,7 +27,7 @@ import org.apache.gravitino.metrics.MetricNames;
 
 /** REST resource for the SCIM provisioning overview. */
 @ScimManagement
-@Path("/scim/provisioning")
+@Path(InternalApiPaths.PREFIX + "/scim/provisioning")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class ScimProvisioningOperations {

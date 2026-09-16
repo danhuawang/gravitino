@@ -10,6 +10,7 @@ import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.AuthMeRoleDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.datastrato.gravitino.dto.responses.ExtendedAuthMeResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import java.util.List;
 import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
@@ -32,7 +33,7 @@ import org.apache.gravitino.utils.PrincipalUtils;
  * with ALLOW privilege names) keyed by metalake.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/authn")
+@Path(InternalApiPaths.PREFIX + "/security/authn")
 public class ExtendedAuthnOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

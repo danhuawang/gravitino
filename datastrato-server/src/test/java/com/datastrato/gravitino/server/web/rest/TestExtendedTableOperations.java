@@ -216,7 +216,7 @@ public class TestExtendedTableOperations extends JerseyTest {
 
   private Response request() {
     return target(
-            "/web/metalakes/"
+            "/internal/metalakes/"
                 + METALAKE
                 + "/catalogs/"
                 + CATALOG

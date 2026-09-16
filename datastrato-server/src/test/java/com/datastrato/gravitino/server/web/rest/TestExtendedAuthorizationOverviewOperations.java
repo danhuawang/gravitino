@@ -174,7 +174,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         .thenReturn(new Catalog[] {catalogInfo1, catalogInfo2});
 
     Response response =
-        target("/web/security/metalakes/metalake1/authorization/overview")
+        target("/internal/security/metalakes/metalake1/authorization/overview")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -236,7 +236,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         .thenReturn(new ExtendedGroupDTO[0]);
 
     Response response =
-        target("/web/security/metalakes/metalake1/authorization/overview")
+        target("/internal/security/metalakes/metalake1/authorization/overview")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -281,7 +281,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
         .listRolesWithSecurableObjects("metalake1");
 
     Response response =
-        target("/web/security/metalakes/metalake1/authorization/overview")
+        target("/internal/security/metalakes/metalake1/authorization/overview")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

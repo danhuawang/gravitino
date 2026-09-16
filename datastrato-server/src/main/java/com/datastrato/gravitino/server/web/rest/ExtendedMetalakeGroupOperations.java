@@ -15,6 +15,7 @@ import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.IdpGroupNameListResponse;
 import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -44,7 +45,7 @@ import org.apache.gravitino.server.web.rest.OperationType;
  * {@link ExtendedGroupOperations}.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/metalakes/{metalake}/groups")
+@Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/groups")
 public class ExtendedMetalakeGroupOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

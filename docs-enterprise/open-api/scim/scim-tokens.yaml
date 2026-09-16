@@ -4,17 +4,17 @@
 
 paths:
 
-  /scim/provisioning:
+  /internal/scim/provisioning:
+    parameters:
+      - $ref: "../openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - SCIM Token
-      summary: List metalake SCIM provisioning overview
+      summary: List SCIM provisioning overview
       description: >
-        Returns every metalake the caller owns (`METALAKE::OWNER`) with its SCIM
-        endpoint path, active token count, and most recent token activity
-        (`lastUsedAt`). Metalakes the caller does not own are omitted. Metalakes
-        with no tokens are included with `tokenCount: 0` and `lastUsedAt: 0`
-        (Never).
+        Returns the SCIM provisioning summary: SCIM endpoint path, active token
+        count, and most recent token activity (`lastUsedAt`). Requires a service
+        admin.
       operationId: listScimProvisioning
       responses:
         "200":
@@ -35,17 +35,15 @@ paths:
         "5xx":
           $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /metalakes/{metalake}/scim/tokens:
+  /internal/scim/tokens:
     parameters:
-      - $ref: "../../../docs/open-api/openapi.yaml#/components/parameters/metalake"
-
+      - $ref: "../openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - SCIM Token
       summary: List SCIM integration tokens
       description: >
-        Lists active SCIM tokens for the specified metalake. Requires
-        `METALAKE::OWNER` on `{metalake}`. Plaintext token values are never
+        Lists active SCIM tokens. Requires a service admin. Plaintext token values are never
         returned. Rows past `expiresAt` but not yet processed by the expiry task
         appear with `status: expired`.
       operationId: listScimTokens
@@ -61,15 +59,6 @@ paths:
                   $ref: "#/components/examples/ScimTokenListResponse"
         "403":
           $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
-        "404":
-          description: Not Found - The specified metalake does not exist
-          content:
-            application/vnd.gravitino.v1+json:
-              schema:
-                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
-              examples:
-                NoSuchMetalakeException:
-                  $ref: "../../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
         "5xx":
           $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
@@ -78,8 +67,7 @@ paths:
         - SCIM Token
       summary: Create SCIM integration token
       description: >
-        Creates a new opaque SCIM bearer token for the specified metalake.
-        Requires `METALAKE::OWNER` on `{metalake}`. The plaintext `tokenValue`
+        Creates a new opaque SCIM bearer token. Requires a service admin. The plaintext `tokenValue`
         is returned only in this response.
       operationId: createScimToken
       requestBody:
@@ -112,15 +100,6 @@ paths:
                   $ref: "#/components/examples/ScimTokenIllegalArgumentException"
         "403":
           $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
-        "404":
-          description: Not Found - The specified metalake does not exist
-          content:
-            application/vnd.gravitino.v1+json:
-              schema:
-                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
-              examples:
-                NoSuchMetalakeException:
-                  $ref: "../../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
         "409":
           description: Conflict - A token with the same name already exists
           content:
@@ -133,7 +112,9 @@ paths:
         "5xx":
           $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /scim/tokens/overview:
+  /internal/scim/tokens/overview:
+    parameters:
+      - $ref: "../openapi.yaml#/components/parameters/InternalOriginHeader"
     get:
       tags:
         - SCIM Token
@@ -164,9 +145,9 @@ paths:
         "5xx":
           $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /metalakes/{metalake}/scim/tokens/{tokenName}/rotate:
+  /internal/scim/tokens/{tokenName}/rotate:
     parameters:
-      - $ref: "../../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "#/components/parameters/tokenName"
 
     post:
@@ -174,8 +155,8 @@ paths:
         - SCIM Token
       summary: Rotate SCIM integration token
       description: >
-        Rotates the bearer secret for an existing named token. Requires
-        `METALAKE::OWNER` on `{metalake}`. The new plaintext `tokenValue` is
+        Rotates the bearer secret for an existing named token. Requires a service
+        admin. The new plaintext `tokenValue` is
         returned only in this response.
       operationId: rotateScimToken
       requestBody:
@@ -209,7 +190,7 @@ paths:
         "403":
           $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
         "404":
-          description: Not Found - The token or metalake does not exist
+          description: Not Found - The token does not exist
           content:
             application/vnd.gravitino.v1+json:
               schema:
@@ -220,9 +201,9 @@ paths:
         "5xx":
           $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /metalakes/{metalake}/scim/tokens/{tokenName}:
+  /internal/scim/tokens/{tokenName}:
     parameters:
-      - $ref: "../../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+      - $ref: "../openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "#/components/parameters/tokenName"
 
     delete:
@@ -230,8 +211,7 @@ paths:
         - SCIM Token
       summary: Delete SCIM integration token
       description: >
-        Soft-deletes the named SCIM token for the specified metalake. Requires
-        `METALAKE::OWNER` on `{metalake}`.
+        Soft-deletes the named SCIM token. Requires a service admin.
       operationId: deleteScimToken
       responses:
         "200":
@@ -296,14 +276,10 @@ components:
     ScimToken:
       type: object
       required:
-        - metalake
         - tokenName
         - tokenValue
         - expiresAt
       properties:
-        metalake:
-          type: string
-          description: Target metalake name
         tokenName:
           type: string
           description: Operator-readable token name
@@ -438,17 +414,13 @@ components:
     ScimProvisioning:
       type: object
       required:
-        - metalake
         - endpoint
         - tokenCount
         - lastUsedAt
       properties:
-        metalake:
-          type: string
-          description: Metalake name
         endpoint:
           type: string
-          description: SCIM base path for the metalake (for example `/scim/v2/metalakes/acme/`)
+          description: SCIM base path served on the SCIM listener port (`/scim/v2/`)
         tokenCount:
           type: integer
           format: int64
@@ -469,16 +441,16 @@ components:
           description: Status code of the response
           enum:
             - 0
-        metalakes:
+        provisioning:
           type: array
+          description: The instance-level SCIM provisioning summary (one entry)
           items:
             $ref: "#/components/schemas/ScimProvisioning"
 
   responses:
     ScimTokenForbiddenErrorResponse:
       description: >
-        Forbidden - Caller lacks `METALAKE::OWNER` on `{metalake}` or is not a
-        metalake member.
+        Forbidden - Caller is not a service admin.
       content:
         application/vnd.gravitino.v1+json:
           schema:
@@ -503,7 +475,6 @@ components:
       value: {
         "code": 0,
         "token": {
-          "metalake": "my_metalake",
           "tokenName": "prod",
           "tokenValue": "gravitino_scim_abc123",
           "expiresAt": 0
@@ -562,7 +533,6 @@ components:
       value: {
         "code": 0,
         "token": {
-          "metalake": "my_metalake",
           "tokenName": "prod",
           "tokenValue": "gravitino_scim_xyz789",
           "expiresAt": 0
@@ -607,24 +577,17 @@ components:
       value: {
         "code": 1008,
         "type": "ForbiddenException",
-        "message": "Current user is not authorized to perform the operation"
+        "message": "Only service admins can manage SCIM tokens and provisioning."
       }
 
     ScimProvisioningListResponse:
       value: {
         "code": 0,
-        "metalakes": [
+        "provisioning": [
           {
-            "metalake": "acme",
-            "endpoint": "/scim/v2/metalakes/acme/",
+            "endpoint": "/scim/v2/",
             "tokenCount": 1,
             "lastUsedAt": 1710000000000
-          },
-          {
-            "metalake": "sandbox",
-            "endpoint": "/scim/v2/metalakes/sandbox/",
-            "tokenCount": 0,
-            "lastUsedAt": 0
           }
         ]
       }

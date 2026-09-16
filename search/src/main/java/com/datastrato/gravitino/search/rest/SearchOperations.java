@@ -12,6 +12,7 @@ import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.TaskStatusDTO;
 import com.datastrato.gravitino.search.service.SearchService;
 import com.datastrato.gravitino.search.service.SyncTask;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import java.util.List;
 import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
@@ -43,7 +44,7 @@ import org.apache.gravitino.utils.PrincipalUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Path("/search")
+@Path(InternalApiPaths.PREFIX + "/search")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class SearchOperations {

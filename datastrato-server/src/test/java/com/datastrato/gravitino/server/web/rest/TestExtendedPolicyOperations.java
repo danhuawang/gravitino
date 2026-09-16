@@ -111,7 +111,7 @@ public class TestExtendedPolicyOperations extends JerseyTest {
     when(policyDispatcher.listPolicies("testMetalake")).thenReturn(new String[] {"p1", "p2"});
 
     Response resp =
-        target("/web/metalakes/testMetalake/policies")
+        target("/internal/metalakes/testMetalake/policies")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -140,7 +140,7 @@ public class TestExtendedPolicyOperations extends JerseyTest {
                 List.of()));
 
     Response resp =
-        target("/web/metalakes/testMetalake/policies")
+        target("/internal/metalakes/testMetalake/policies")
             .queryParam("details", "true")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -217,7 +217,7 @@ public class TestExtendedPolicyOperations extends JerseyTest {
         .thenThrow(new NoSuchMetalakeException("Metalake testMetalake does not exist"));
 
     Response resp =
-        target("/web/metalakes/testMetalake/policies")
+        target("/internal/metalakes/testMetalake/policies")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

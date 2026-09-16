@@ -165,7 +165,7 @@ public class TestExtendedTagOperations extends JerseyTest {
   }
 
   private Response request(boolean details) {
-    return target("/web/metalakes/" + METALAKE + "/tags")
+    return target("/internal/metalakes/" + METALAKE + "/tags")
         .queryParam("details", details)
         .request(MediaType.APPLICATION_JSON_TYPE)
         .accept("application/vnd.gravitino.v1+json")

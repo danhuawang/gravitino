@@ -159,7 +159,7 @@ public class TestExtendedUserOperations extends JerseyTest {
                     List.of("governance", "ops"),
                     List.of("Contoso"))));
 
-    Response response = get("/web/security/directory/users");
+    Response response = get("/internal/security/directory/users");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     DirectoryUserListResponse body = response.readEntity(DirectoryUserListResponse.class);
     Assertions.assertEquals(0, body.getCode());
@@ -218,7 +218,7 @@ public class TestExtendedUserOperations extends JerseyTest {
         .thenReturn(List.of("sam.o", "lee.p"));
 
     Response response =
-        target("/web/security/directory/users/enabled")
+        target("/internal/security/directory/users/enabled")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(
@@ -242,7 +242,7 @@ public class TestExtendedUserOperations extends JerseyTest {
   @Test
   public void testBatchUpdateDirectoryUserEnabledBadRequest() {
     Response response =
-        target("/web/security/directory/users/enabled")
+        target("/internal/security/directory/users/enabled")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(
@@ -278,7 +278,7 @@ public class TestExtendedUserOperations extends JerseyTest {
                 "jordan.m", true, IdentitySource.LOCAL, List.of("governance", "ops"), List.of()));
 
     Response response =
-        target("/web/security/directory/users")
+        target("/internal/security/directory/users")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -302,7 +302,7 @@ public class TestExtendedUserOperations extends JerseyTest {
         .addDirectoryUser(eq("jordan.m"), eq("ChangeMe-2026!"), eq(List.of()));
 
     Response response =
-        target("/web/security/directory/users")
+        target("/internal/security/directory/users")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -323,7 +323,7 @@ public class TestExtendedUserOperations extends JerseyTest {
         .thenReturn(List.of("sam.o", "lee.p"));
 
     Response response =
-        target("/web/security/directory/users/delete")
+        target("/internal/security/directory/users/delete")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -346,7 +346,7 @@ public class TestExtendedUserOperations extends JerseyTest {
   @Test
   public void testDeleteDirectoryUsersBadRequest() {
     Response response =
-        target("/web/security/directory/users/delete")
+        target("/internal/security/directory/users/delete")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -381,7 +381,7 @@ public class TestExtendedUserOperations extends JerseyTest {
                 new DirectoryGroup("platform", 1, IdentitySource.PROVISIONED, List.of())));
 
     Response response =
-        target("/web/security/directory/users/dana.k/groups")
+        target("/internal/security/directory/users/dana.k/groups")
             .queryParam("origin", "Provisioned")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
@@ -401,7 +401,7 @@ public class TestExtendedUserOperations extends JerseyTest {
   @Test
   public void testListDirectoryGroupsForUserBadOrigin() {
     Response response =
-        target("/web/security/directory/users/dana.k/groups")
+        target("/internal/security/directory/users/dana.k/groups")
             .queryParam("origin", "Unknown")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")

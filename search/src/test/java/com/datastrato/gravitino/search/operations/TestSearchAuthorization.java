@@ -130,7 +130,7 @@ public class TestSearchAuthorization extends JerseyTest {
             });
     when(searchService.queryVisible("lake", "table", 2, 7)).thenReturn(Collections.emptyList());
     try (Response response =
-        target("search/query")
+        target("internal/search/query")
             .queryParam("metalake", "lake")
             .queryParam("keyword", "table")
             .queryParam("pageNumber", 2)
@@ -290,7 +290,7 @@ public class TestSearchAuthorization extends JerseyTest {
         .thenAnswer(
             call -> ((MetadataObject) call.getArgument(2)).type() == MetadataObject.Type.TABLE);
     try (Response response =
-        target("search/sync/metalakes/lake/objects")
+        target("internal/search/sync/metalakes/lake/objects")
             .request()
             .post(
                 Entity.entity(
@@ -310,7 +310,7 @@ public class TestSearchAuthorization extends JerseyTest {
     when(authorizer.isServiceAdmin()).thenReturn(true);
     mockMaintenanceTasks();
     try (Response response =
-        target("search/sync/metalakes/lake/objects")
+        target("internal/search/sync/metalakes/lake/objects")
             .request()
             .post(
                 Entity.entity(
@@ -333,8 +333,10 @@ public class TestSearchAuthorization extends JerseyTest {
   void testInvalidPaginationIsRejectedBeforeAuthorization() {
     for (WebTarget endpoint :
         new WebTarget[] {
-          target("search/query").queryParam("metalake", "lake").queryParam("pageNumber", -1),
-          target("search/query").queryParam("metalake", "lake").queryParam("pageSize", 0)
+          target("internal/search/query")
+              .queryParam("metalake", "lake")
+              .queryParam("pageNumber", -1),
+          target("internal/search/query").queryParam("metalake", "lake").queryParam("pageSize", 0)
         }) {
       try (Response response = endpoint.request().get()) {
         assertEquals(400, response.getStatus());
@@ -358,7 +360,7 @@ public class TestSearchAuthorization extends JerseyTest {
     when(searchService.getTaskStatus("task")).thenReturn(taskStatus());
     when(authorizer.isMetalakeUser(eq("lake"), any())).thenReturn(true);
 
-    try (Response response = target("search/task/task/status").request().get()) {
+    try (Response response = target("internal/search/task/task/status").request().get()) {
       assertEquals(403, response.getStatus());
     }
   }
@@ -368,7 +370,7 @@ public class TestSearchAuthorization extends JerseyTest {
     when(searchService.getTaskStatus("task")).thenReturn(taskStatus());
     when(authorizer.isOwner(any(), eq("lake"), any(), any())).thenReturn(true);
 
-    try (Response response = target("search/task/task/status").request().get()) {
+    try (Response response = target("internal/search/task/task/status").request().get()) {
       assertEquals(200, response.getStatus());
     }
   }
@@ -391,16 +393,18 @@ public class TestSearchAuthorization extends JerseyTest {
 
   private void assertMaintenanceStatus(int status) {
     try (Response rebuild =
-            target("search/rebuild/metalakes/lake").request().post(Entity.json("{}"));
+            target("internal/search/rebuild/metalakes/lake").request().post(Entity.json("{}"));
         Response sync =
-            target("search/sync/metalakes/lake/objects").request().post(Entity.json("{}"))) {
+            target("internal/search/sync/metalakes/lake/objects")
+                .request()
+                .post(Entity.json("{}"))) {
       assertEquals(status, rebuild.getStatus());
       assertEquals(status, sync.getStatus());
     }
   }
 
   private Response query(String metalake) {
-    WebTarget endpoint = target("search/query");
+    WebTarget endpoint = target("internal/search/query");
     if (metalake != null) {
       endpoint = endpoint.queryParam("metalake", metalake);
     }

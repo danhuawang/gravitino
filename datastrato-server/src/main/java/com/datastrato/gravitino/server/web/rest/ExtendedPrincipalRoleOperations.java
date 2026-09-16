@@ -10,6 +10,7 @@ import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.RoleSummaryDTO;
 import com.datastrato.gravitino.dto.requests.RoleAssignmentRequest;
 import com.datastrato.gravitino.dto.responses.RoleSummaryListResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.base.Preconditions;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -53,7 +54,7 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 
 /** REST operations for listing roles and their principal assignments. */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/metalakes/{metalake}")
+@Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}")
 public class ExtendedPrincipalRoleOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

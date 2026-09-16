@@ -12,6 +12,7 @@ import com.datastrato.gravitino.dto.authorization.IdentityLookupValidator;
 import com.datastrato.gravitino.dto.authorization.IdentityType;
 import com.datastrato.gravitino.dto.responses.GroupInfoResponse;
 import com.datastrato.gravitino.dto.responses.UserGroupNamesResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -34,7 +35,7 @@ import org.apache.gravitino.server.web.rest.OperationType;
  * metadata before writing metalake {@code user_meta} / {@code group_meta}.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/identity")
+@Path(InternalApiPaths.PREFIX + "/security/identity")
 public class ExtendedIdentityOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

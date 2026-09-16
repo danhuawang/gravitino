@@ -7,6 +7,7 @@ import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.dto.responses.ExtendedTagListResponse;
 import com.datastrato.gravitino.dto.tag.ExtendedTagDTO;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.annotations.VisibleForTesting;
 import java.io.IOException;
 import java.util.Arrays;
@@ -50,7 +51,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** REST operations for listing tags with enterprise-only information. */
-@Path("web/metalakes/{metalake}/tags")
+@Path(InternalApiPaths.PREFIX + "/metalakes/{metalake}/tags")
 public class ExtendedTagOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(ExtendedTagOperations.class);

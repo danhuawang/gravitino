@@ -151,7 +151,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
             });
 
     Response response =
-        target("/web/security/metalakes/" + metalake + "/groups")
+        target("/internal/security/metalakes/" + metalake + "/groups")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -177,7 +177,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
     when(accessControlDispatcher.getExtendedGroup("metalake", "governance"))
         .thenReturn(ExtendedGroupDTO.from(governance, IdentitySource.PROVISIONED, 2));
 
-    Response response = get("/web/security/metalakes/metalake/groups/governance");
+    Response response = get("/internal/security/metalakes/metalake/groups/governance");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     ExtendedGroupResponse body = response.readEntity(ExtendedGroupResponse.class);
     Assertions.assertEquals("governance", body.getGroup().name());
@@ -220,7 +220,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
                     "role1",
                     buildGroup(3L, "owner-group", Collections.emptyList()))));
 
-    Response response = get("/web/security/metalakes/metalake/groups/group1/roles");
+    Response response = get("/internal/security/metalakes/metalake/groups/group1/roles");
 
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     RoleAssignmentDetailsListResponse result =
@@ -257,7 +257,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
     when(accessControlDispatcher.listExtendedUsersForGroup("metalake", "contractors"))
         .thenReturn(new ExtendedUserDTO[] {user});
     ExtendedUserListResponse body =
-        get("/web/security/metalakes/metalake/groups/contractors/users")
+        get("/internal/security/metalakes/metalake/groups/contractors/users")
             .readEntity(ExtendedUserListResponse.class);
     Assertions.assertEquals(1, body.getUsers().length);
     Assertions.assertEquals("alice", body.getUsers()[0].name());
@@ -270,7 +270,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
         .thenReturn(new IdpNameStatus[] {new IdpNameStatus("contractors", false)});
 
     IdpGroupNameListResponse body =
-        get("/web/security/metalakes/metalake/groups/idp")
+        get("/internal/security/metalakes/metalake/groups/idp")
             .readEntity(IdpGroupNameListResponse.class);
     Assertions.assertEquals("contractors", body.getGroups()[0].getName());
     Assertions.assertFalse(body.getGroups()[0].isStatus());
@@ -285,7 +285,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
         .thenReturn(added);
 
     Response response =
-        target("/web/security/metalakes/" + metalake + "/groups")
+        target("/internal/security/metalakes/" + metalake + "/groups")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -302,7 +302,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
   public void testAddLocalGroupBadRequest() {
     String metalake = "metalake";
     Response response =
-        target("/web/security/metalakes/" + metalake + "/groups")
+        target("/internal/security/metalakes/" + metalake + "/groups")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(entity(new LocalGroupAddRequest(" ", null), MediaType.APPLICATION_JSON_TYPE));

@@ -17,6 +17,7 @@ import com.datastrato.gravitino.dto.ConnectionTestStatusDTO;
 import com.datastrato.gravitino.dto.CredentialProviderStatusDTO;
 import com.datastrato.gravitino.dto.responses.ConnectionListResponse;
 import com.datastrato.gravitino.dto.responses.ConnectionOverviewResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.datastrato.gravitino.server.web.rest.converter.ConnectionConverter;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -62,7 +63,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** REST operations for listing connections in Web Connect UI. */
-@Path("/web/metalakes/{metalake}/connections")
+@Path(InternalApiPaths.PREFIX + "/metalakes/{metalake}/connections")
 public class ConnectionOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(ConnectionOperations.class);

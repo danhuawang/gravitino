@@ -111,7 +111,7 @@ public class TestExtendedIdpOperations extends JerseyTest {
   public void testListIdpUserNames() {
     when(ACCESS_CONTROL_DISPATCHER.listIdpUserNames()).thenReturn(new String[] {"alice", "bob"});
 
-    Response response = get("/web/security/idp/users");
+    Response response = get("/internal/security/idp/users");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     NameListResponse body = response.readEntity(NameListResponse.class);
     Assertions.assertEquals(0, body.getCode());
@@ -123,7 +123,7 @@ public class TestExtendedIdpOperations extends JerseyTest {
   public void testListIdpGroupNames() {
     when(ACCESS_CONTROL_DISPATCHER.listIdpGroupNames()).thenReturn(new String[] {"ops", "eng"});
 
-    Response response = get("/web/security/idp/groups");
+    Response response = get("/internal/security/idp/groups");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     NameListResponse body = response.readEntity(NameListResponse.class);
     Assertions.assertEquals(0, body.getCode());
@@ -134,7 +134,7 @@ public class TestExtendedIdpOperations extends JerseyTest {
   @Test
   public void testAddIdpUserGroupMemberships() {
     Response response =
-        target("/web/security/idp/memberships")
+        target("/internal/security/idp/memberships")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -155,7 +155,7 @@ public class TestExtendedIdpOperations extends JerseyTest {
   @Test
   public void testChangeIdpUserPassword() {
     Response response =
-        target("/web/security/idp/users/password")
+        target("/internal/security/idp/users/password")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(
@@ -178,7 +178,7 @@ public class TestExtendedIdpOperations extends JerseyTest {
         .changeIdpUserPassword(eq("dana.k"), eq("wrong-password"), eq("ChangeMe-2027!"));
 
     Response response =
-        target("/web/security/idp/users/password")
+        target("/internal/security/idp/users/password")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(
@@ -193,7 +193,7 @@ public class TestExtendedIdpOperations extends JerseyTest {
   @Test
   public void testAddIdpUserGroupMembershipsBadRequest() {
     Response response =
-        target("/web/security/idp/memberships")
+        target("/internal/security/idp/memberships")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(

@@ -131,7 +131,8 @@ public class TestDataPreviewOperations extends JerseyTest {
     when(tableDispatcher.preview(any(), any(), anyInt(), any())).thenReturn(new Map[0]);
     when(table.columns()).thenReturn(new Column[0]);
     Response resp =
-        target("/web/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
+        target(
+                "/internal/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -147,7 +148,8 @@ public class TestDataPreviewOperations extends JerseyTest {
         .when(tableDispatcher)
         .preview(any(), any(), anyInt(), any());
     resp =
-        target("/web/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
+        target(
+                "/internal/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -163,7 +165,8 @@ public class TestDataPreviewOperations extends JerseyTest {
         .when(tableDispatcher)
         .preview(any(), any(), anyInt(), any());
     Response errorResp =
-        target("/web/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
+        target(
+                "/internal/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -179,7 +182,8 @@ public class TestDataPreviewOperations extends JerseyTest {
         .when(tableDispatcher)
         .preview(any(), any(), anyInt(), any());
     errorResp =
-        target("/web/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
+        target(
+                "/internal/preview/metalakes/metalake1/catalogs/catalog1/schemas/schema1/tables/table1")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();

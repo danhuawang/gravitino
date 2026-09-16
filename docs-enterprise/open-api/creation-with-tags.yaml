@@ -4,8 +4,9 @@
 
 paths:
 
-  /web/with-tags/metalakes/{metalake}/catalogs:
+  /internal/with-tags/metalakes/{metalake}/catalogs:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
     post:
       tags:
@@ -36,8 +37,31 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas:
+  /internal/with-tags/metalakes/{metalake}/catalogs/testConnection:
     parameters:
+      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
+      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
+    post:
+      tags:
+        - catalog
+      summary: Test catalog connection
+      description: >
+        Tests a catalog connection before creating a catalog with tags. It has the same request,
+        response, and authorization as the public `POST /metalakes/{metalake}/catalogs/testConnection`.
+      operationId: testConnectionWithTags
+      requestBody:
+        $ref: "../../docs/open-api/catalogs.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1catalogs~1testConnection/post/requestBody"
+      responses:
+        "200":
+          $ref: "../../docs/open-api/catalogs.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1catalogs~1testConnection/post/responses/200"
+        "400":
+          $ref: "../../docs/open-api/catalogs.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1catalogs~1testConnection/post/responses/400"
+        "5xx":
+          $ref: "../../docs/open-api/catalogs.yaml#/paths/~1metalakes~1%7Bmetalake%7D~1catalogs~1testConnection/post/responses/5xx"
+
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas:
+    parameters:
+        - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
     post:
@@ -69,8 +93,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/tables:
     parameters:
+        - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"
@@ -102,8 +127,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/filesets:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/filesets:
     parameters:
+        - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"
@@ -135,8 +161,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/topics:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/topics:
     parameters:
+        - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"
@@ -168,8 +195,9 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /web/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/models:
+  /internal/with-tags/metalakes/{metalake}/catalogs/{catalog}/schemas/{schema}/models:
     parameters:
+        - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/catalog"
         - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/schema"

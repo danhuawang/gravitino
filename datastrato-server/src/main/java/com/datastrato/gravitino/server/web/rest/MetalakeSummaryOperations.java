@@ -8,6 +8,7 @@ import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.dto.responses.MetalakeSummaryResponse;
 import com.datastrato.gravitino.metalake.MetalakeSummaryCounts;
 import com.datastrato.gravitino.metalake.MetalakeSummaryMetaService;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.base.Preconditions;
 import javax.annotation.Nullable;
 import javax.servlet.http.HttpServletRequest;
@@ -42,7 +43,7 @@ import org.slf4j.LoggerFactory;
  * LOAD_ROLE_AUTHORIZATION_EXPRESSION} accept {@code METALAKE::OWNER} for every object, which every
  * caller of this endpoint has.
  */
-@Path("/web/metalakes/{metalake}/summary")
+@Path(InternalApiPaths.PREFIX + "/metalakes/{metalake}/summary")
 public class MetalakeSummaryOperations {
 
   private static final Logger LOG = LoggerFactory.getLogger(MetalakeSummaryOperations.class);

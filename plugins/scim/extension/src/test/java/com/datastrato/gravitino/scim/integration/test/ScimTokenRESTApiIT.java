@@ -14,6 +14,7 @@ import com.datastrato.gravitino.scim.dto.responses.ScimTokenListResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenOverviewResponse;
 import com.datastrato.gravitino.scim.dto.responses.ScimTokenResponse;
 import com.datastrato.gravitino.scim.web.rest.feature.ScimTokenRESTFeature;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.Maps;
 import java.io.IOException;
 import java.net.URI;
@@ -93,7 +94,7 @@ class ScimTokenRESTApiIT extends BaseIT {
     createToken("provisioning-a", null);
     createToken("provisioning-b", null);
     ScimProvisioningListResponse list =
-        read(get("/scim/provisioning", OWNER), ScimProvisioningListResponse.class);
+        read(get("/internal/scim/provisioning", OWNER), ScimProvisioningListResponse.class);
     Assertions.assertEquals(1, list.getProvisioning().size());
     Assertions.assertEquals(ScimUtils.scimBasePath(), list.getProvisioning().get(0).getEndpoint());
     Assertions.assertTrue(list.getProvisioning().get(0).getTokenCount() >= 2L);
@@ -105,7 +106,8 @@ class ScimTokenRESTApiIT extends BaseIT {
     createToken("list-a", null);
     createToken("list-b", 30);
 
-    ScimTokenListResponse list = read(get("/scim/tokens", OWNER), ScimTokenListResponse.class);
+    ScimTokenListResponse list =
+        read(get("/internal/scim/tokens", OWNER), ScimTokenListResponse.class);
     list.validate();
     var byName = index(list.getTokens(), t -> t.getTokenName());
     Assertions.assertTrue(byName.containsKey("list-a"));
@@ -121,7 +123,7 @@ class ScimTokenRESTApiIT extends BaseIT {
     createToken("overview-b", null);
 
     ScimTokenOverviewResponse overview =
-        read(get("/scim/tokens/overview", OWNER), ScimTokenOverviewResponse.class);
+        read(get("/internal/scim/tokens/overview", OWNER), ScimTokenOverviewResponse.class);
     overview.validate();
     Assertions.assertTrue(overview.getTokenCount() >= 2L);
     Assertions.assertEquals(overview.getTokenCount(), overview.getTokens().size());
@@ -140,11 +142,11 @@ class ScimTokenRESTApiIT extends BaseIT {
 
     assertError(
         400,
-        post("/scim/tokens", new CreateScimTokenRequest("", null), OWNER),
+        post("/internal/scim/tokens", new CreateScimTokenRequest("", null), OWNER),
         ErrorConstants.ILLEGAL_ARGUMENTS_CODE);
     assertError(
         409,
-        post("/scim/tokens", new CreateScimTokenRequest(TOKEN_NAME, null), OWNER),
+        post("/internal/scim/tokens", new CreateScimTokenRequest(TOKEN_NAME, null), OWNER),
         ErrorConstants.ALREADY_EXISTS_CODE);
 
     ScimTokenResponse rotated = rotateToken(TOKEN_NAME, new RotateScimTokenRequest(30));
@@ -155,20 +157,27 @@ class ScimTokenRESTApiIT extends BaseIT {
 
     assertError(
         400,
-        post("/scim/tokens/" + TOKEN_NAME + "/rotate", new RotateScimTokenRequest(0), OWNER),
+        post(
+            "/internal/scim/tokens/" + TOKEN_NAME + "/rotate",
+            new RotateScimTokenRequest(0),
+            OWNER),
         ErrorConstants.ILLEGAL_ARGUMENTS_CODE);
 
     ScimTokenDeleteResponse deleted = deleteToken(TOKEN_NAME);
     Assertions.assertTrue(deleted.getDeleted());
 
-    assertError(404, delete("/scim/tokens/" + TOKEN_NAME, OWNER), ErrorConstants.NOT_FOUND_CODE);
-    assertError(404, delete("/scim/tokens/" + MISSING_TOKEN, OWNER), ErrorConstants.NOT_FOUND_CODE);
+    assertError(
+        404, delete("/internal/scim/tokens/" + TOKEN_NAME, OWNER), ErrorConstants.NOT_FOUND_CODE);
+    assertError(
+        404,
+        delete("/internal/scim/tokens/" + MISSING_TOKEN, OWNER),
+        ErrorConstants.NOT_FOUND_CODE);
   }
 
   private static ScimTokenResponse createToken(String tokenName, Integer expiresInDays)
       throws Exception {
     HttpResponse<String> response =
-        post("/scim/tokens", new CreateScimTokenRequest(tokenName, expiresInDays), OWNER);
+        post("/internal/scim/tokens", new CreateScimTokenRequest(tokenName, expiresInDays), OWNER);
     Assertions.assertEquals(200, response.statusCode(), response.body());
     ScimTokenResponse tokenResponse =
         JsonUtils.objectMapper().readValue(response.body(), ScimTokenResponse.class);
@@ -178,7 +187,8 @@ class ScimTokenRESTApiIT extends BaseIT {
 
   private static ScimTokenResponse rotateToken(String tokenName, RotateScimTokenRequest request)
       throws Exception {
-    HttpResponse<String> response = post("/scim/tokens/" + tokenName + "/rotate", request, OWNER);
+    HttpResponse<String> response =
+        post("/internal/scim/tokens/" + tokenName + "/rotate", request, OWNER);
     Assertions.assertEquals(200, response.statusCode(), response.body());
     ScimTokenResponse tokenResponse =
         JsonUtils.objectMapper().readValue(response.body(), ScimTokenResponse.class);
@@ -187,7 +197,7 @@ class ScimTokenRESTApiIT extends BaseIT {
   }
 
   private static ScimTokenDeleteResponse deleteToken(String tokenName) throws Exception {
-    HttpResponse<String> response = delete("/scim/tokens/" + tokenName, OWNER);
+    HttpResponse<String> response = delete("/internal/scim/tokens/" + tokenName, OWNER);
     Assertions.assertEquals(200, response.statusCode(), response.body());
     ScimTokenDeleteResponse deleteResponse =
         JsonUtils.objectMapper().readValue(response.body(), ScimTokenDeleteResponse.class);
@@ -221,6 +231,7 @@ class ScimTokenRESTApiIT extends BaseIT {
   private static HttpRequest.Builder authorized(String username) {
     return HttpRequest.newBuilder()
         .header("Accept", ACCEPT)
+        .header(InternalApiPaths.ORIGIN_HEADER, "scim-token-it")
         .header("Authorization", simpleAuth(username));
   }
 

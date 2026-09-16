@@ -135,7 +135,7 @@ public class TestSearchOperations extends JerseyTest {
   @Test
   void testSearchOperations() {
     Response resp =
-        target("/search/sync/metalakes/metalake1/objects")
+        target("/internal/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -146,7 +146,7 @@ public class TestSearchOperations extends JerseyTest {
     Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
 
     resp =
-        target("/search/sync/metalakes/metalake1/objects")
+        target("/internal/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -160,7 +160,7 @@ public class TestSearchOperations extends JerseyTest {
     Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
 
     resp =
-        target("/search/sync/metalakes/metalake1/objects")
+        target("/internal/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -176,7 +176,7 @@ public class TestSearchOperations extends JerseyTest {
 
     // The following are wrong examples
     resp =
-        target("/search/sync/metalakes/metalake1/objects")
+        target("/internal/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -193,7 +193,7 @@ public class TestSearchOperations extends JerseyTest {
         "Metadata full name is required when metadata type is provided", errorResp.getMessage());
 
     resp =
-        target("/search/sync/metalakes/metalake1/objects")
+        target("/internal/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -211,7 +211,7 @@ public class TestSearchOperations extends JerseyTest {
         "Metadata type is required when metadata full name is provided", errorResp.getMessage());
 
     resp =
-        target("/search/sync/metalakes/metalake1/objects")
+        target("/internal/search/sync/metalakes/metalake1/objects")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -330,7 +330,7 @@ public class TestSearchOperations extends JerseyTest {
     searchService.getTaskStatusStorage().save(taskStatus, false);
 
     Response resp =
-        target(String.format("/search/task/%s/status", taskId))
+        target(String.format("/internal/search/task/%s/status", taskId))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -353,7 +353,7 @@ public class TestSearchOperations extends JerseyTest {
     searchService.getTaskStatusStorage().update(taskStatus);
 
     resp =
-        target(String.format("/search/task/%s/status/", taskId))
+        target(String.format("/internal/search/task/%s/status/", taskId))
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -385,7 +385,7 @@ public class TestSearchOperations extends JerseyTest {
   }
 
   private Response query(String metalake, String keyword, String pageNumber, String pageSize) {
-    WebTarget target = target("/search/query").queryParam("metalake", metalake);
+    WebTarget target = target("/internal/search/query").queryParam("metalake", metalake);
     if (keyword != null) {
       target = target.queryParam("keyword", keyword);
     }

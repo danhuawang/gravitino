@@ -10,6 +10,7 @@ import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.authorization.ObjectRolePrivilegeDTO;
 import com.datastrato.gravitino.dto.authorization.RolePrivilegeDTO;
 import com.datastrato.gravitino.dto.responses.ObjectRolePrivilegeListResponse;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -52,7 +53,7 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 
 /** REST operations for listing metadata objects with their associated role privileges. */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security/metalakes/{metalake}/objects/roles")
+@Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/objects/roles")
 public class ExtendedMetadataObjectRoleOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

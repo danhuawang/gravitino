@@ -158,7 +158,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
                 new UserWithGroups(buildUser("jordan.m"), List.of(), null)));
 
     Response response =
-        target("/web/security/metalakes/" + metalake + "/users")
+        target("/internal/security/metalakes/" + metalake + "/users")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -182,7 +182,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
         .thenReturn(users);
 
     Response response =
-        target("/web/security/metalakes/" + metalake + "/users/enabled")
+        target("/internal/security/metalakes/" + metalake + "/users/enabled")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(
@@ -206,7 +206,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
                     + " exist and must not have an externalId"));
 
     Response response =
-        target("/web/security/metalakes/" + metalake + "/users/enabled")
+        target("/internal/security/metalakes/" + metalake + "/users/enabled")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(
@@ -226,7 +226,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
         .thenThrow(new NoSuchEntityException("metalake does not exist"));
 
     Response response =
-        target("/web/security/metalakes/" + metalake + "/users/enabled")
+        target("/internal/security/metalakes/" + metalake + "/users/enabled")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(
@@ -245,7 +245,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     ExtendedUserDTO user =
         ExtendedUserDTO.from(buildUser("dana.k"), IdentitySource.PROVISIONED, null);
     when(accessControlDispatcher.getExtendedUser("metalake", "dana.k")).thenReturn(user);
-    Response response = get("/web/security/metalakes/metalake/users/dana.k");
+    Response response = get("/internal/security/metalakes/metalake/users/dana.k");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     ExtendedUserResponse body = response.readEntity(ExtendedUserResponse.class);
     Assertions.assertEquals("dana.k", body.getUser().name());
@@ -304,7 +304,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
                 roleRelation(
                     SupportsRelationOperations.Type.OWNER_REL, "role1", buildUser("owner1"))));
 
-    Response response = get("/web/security/metalakes/metalake/users/user1/roles");
+    Response response = get("/internal/security/metalakes/metalake/users/user1/roles");
 
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     RoleAssignmentDetailsListResponse result =
@@ -327,7 +327,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     when(accessControlDispatcher.listRoleAssignmentsByUser("metalake", "user1"))
         .thenReturn(new RoleAssignment[0]);
 
-    Response response = get("/web/security/metalakes/metalake/users/user1/roles");
+    Response response = get("/internal/security/metalakes/metalake/users/user1/roles");
 
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     RoleAssignmentDetailsListResponse result =
@@ -343,7 +343,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
         .when(accessControlDispatcher)
         .listRoleAssignmentsByUser("metalake", "user1");
 
-    Response response = get("/web/security/metalakes/metalake/users/user1/roles");
+    Response response = get("/internal/security/metalakes/metalake/users/user1/roles");
 
     Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), response.getStatus());
     ErrorResponse error = response.readEntity(ErrorResponse.class);
@@ -375,7 +375,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     when(accessControlDispatcher.listExtendedGroupsForUser("metalake", "alice"))
         .thenReturn(new ExtendedGroupDTO[] {group});
     ExtendedGroupListResponse body =
-        get("/web/security/metalakes/metalake/users/alice/groups")
+        get("/internal/security/metalakes/metalake/users/alice/groups")
             .readEntity(ExtendedGroupListResponse.class);
     Assertions.assertEquals(1, body.getGroups().length);
     Assertions.assertEquals("contractors", body.getGroups()[0].name());
@@ -391,7 +391,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
         .thenReturn(added);
 
     Response response =
-        target("/web/security/metalakes/" + metalake + "/users")
+        target("/internal/security/metalakes/" + metalake + "/users")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(
@@ -414,7 +414,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
               new IdpNameStatus("alice", true), new IdpNameStatus("bob", false)
             });
 
-    Response response = get("/web/security/metalakes/metalake/users/idp");
+    Response response = get("/internal/security/metalakes/metalake/users/idp");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
     IdpUserNameListResponse body = response.readEntity(IdpUserNameListResponse.class);
     Assertions.assertEquals("alice", body.getUsers()[0].getName());
@@ -427,7 +427,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
   public void testAddLocalUserBadRequest() {
     String metalake = "metalake";
     Response response =
-        target("/web/security/metalakes/" + metalake + "/users")
+        target("/internal/security/metalakes/" + metalake + "/users")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .post(

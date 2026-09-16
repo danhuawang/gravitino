@@ -132,7 +132,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
             });
 
     Response resp =
-        target("/web/security/metalakes/testMetalake/roles/testRole/users")
+        target("/internal/security/metalakes/testMetalake/roles/testRole/users")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -157,7 +157,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
     when(accessControlDispatcher.listUserAssignmentsByRole(any(), any()))
         .thenThrow(new NoSuchRoleException("Role testRole does not exist"));
     Response errorResp =
-        target("/web/security/metalakes/testMetalake/roles/testRole/users")
+        target("/internal/security/metalakes/testMetalake/roles/testRole/users")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -178,7 +178,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
             });
 
     Response resp =
-        target("/web/security/metalakes/testMetalake/roles/testRole/groups")
+        target("/internal/security/metalakes/testMetalake/roles/testRole/groups")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -200,7 +200,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
     when(accessControlDispatcher.listGroupAssignmentsByRole(any(), any()))
         .thenThrow(new RuntimeException("Test exception"));
     Response errorResp =
-        target("/web/security/metalakes/testMetalake/roles/testRole/groups")
+        target("/internal/security/metalakes/testMetalake/roles/testRole/groups")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .get();
@@ -236,7 +236,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
     when(tableDispatcher.tableExists(any())).thenReturn(true);
 
     Response resp =
-        target("/web/security/metalakes/testMetalake/roles/testRole/")
+        target("/internal/security/metalakes/testMetalake/roles/testRole/")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -264,7 +264,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
     // Throw no found exception
     when(tableDispatcher.tableExists(any())).thenReturn(false);
     Response resp1 =
-        target("/web/security/metalakes/testMetalake/roles/testRole/")
+        target("/internal/security/metalakes/testMetalake/roles/testRole/")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
@@ -281,7 +281,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
     when(accessControlDispatcher.updatePrivilegesForRole(any(), any(), any()))
         .thenThrow(new RuntimeException("Test exception"));
     Response resp2 =
-        target("/web/security/metalakes/testMetalake/roles/testRole/")
+        target("/internal/security/metalakes/testMetalake/roles/testRole/")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
             .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));

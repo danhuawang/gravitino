@@ -9,6 +9,7 @@ import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.dto.requests.IdpMembershipAddRequest;
 import com.datastrato.gravitino.dto.requests.IdpPasswordChangeRequest;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -39,7 +40,7 @@ import org.apache.gravitino.server.web.rest.OperationType;
  * and {@link ExtendedGroupOperations}.
  */
 @NameBindings.AccessControlInterfaces
-@Path("/web/security")
+@Path(InternalApiPaths.PREFIX + "/security")
 public class ExtendedIdpOperations {
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;

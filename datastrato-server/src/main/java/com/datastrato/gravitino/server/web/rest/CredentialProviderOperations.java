@@ -9,6 +9,7 @@ import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestType;
 import com.datastrato.gravitino.dto.requests.CredentialProviderTestRequest;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.annotations.VisibleForTesting;
 import java.time.Clock;
 import java.util.Collections;
@@ -52,7 +53,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Provides enterprise REST APIs for credential providers. */
-@Path("/web/metalakes/{metalake}/connections/{connection}/credential-providers")
+@Path(
+    InternalApiPaths.PREFIX + "/metalakes/{metalake}/connections/{connection}/credential-providers")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces("application/vnd.gravitino.v1+json")
 public class CredentialProviderOperations {
