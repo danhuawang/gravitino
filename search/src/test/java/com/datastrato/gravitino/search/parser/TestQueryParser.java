@@ -11,10 +11,19 @@ import com.datastrato.gravitino.search.parser.Condition.NotCondition;
 import com.datastrato.gravitino.search.parser.Condition.OrCondition;
 import com.datastrato.gravitino.search.parser.Condition.TermCondition;
 import com.datastrato.gravitino.search.parser.ConditionBuilderVisitor.QueryCondition;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 public class TestQueryParser {
 
@@ -40,6 +49,135 @@ public class TestQueryParser {
     Assertions.assertTrue(quoted.isLiteral());
     Assertions.assertNull(buildQueryCondition(null).getCondition());
     Assertions.assertNull(buildQueryCondition(" \t").getCondition());
+  }
+
+  @Test
+  void testQuotedSpecialCharactersRemainValid() {
+    Condition.KeywordCondition term =
+        Assertions.assertInstanceOf(
+            Condition.KeywordCondition.class, buildQueryCondition("\"a+b\"").getCondition());
+    Assertions.assertEquals("a+b", term.getKeyword());
+    Assertions.assertTrue(term.isLiteral());
+  }
+
+  @Test
+  void testSyntaxErrorsExplainTheActualInput() {
+    String[][] cases = {
+      {"a+b", "Remove the unsupported character '+' or put the search term in double quotes."},
+      {"a @ b", "Remove the unsupported character '@' or put the search term in double quotes."},
+      {"a / b", "Remove the unsupported character '/' or put the search term in double quotes."},
+      {"a🙂b", "Remove the unsupported character '🙂' or put the search term in double quotes."},
+      {"a\n#b", "Remove the unsupported character '#' or put the search term in double quotes."},
+      {
+        "a\u00a0b",
+        "Remove the unsupported character 'U+00A0' or put the search term in double quotes."
+      },
+      {
+        "a\u200bb",
+        "Remove the unsupported character 'U+200B' or put the search term in double quotes."
+      },
+      {
+        "a\u0378b",
+        "Remove the unsupported character 'U+0378' or put the search term in double quotes."
+      },
+      {
+        "a\ue000b",
+        "Remove the unsupported character 'U+E000' or put the search term in double quotes."
+      },
+      {"name:", "Enter a search value after ':'."},
+      {"name:a,", "Enter a search value after ','."},
+      {"a AND", "Enter a search term after 'AND'."},
+      {"a OR OR b", "Enter a search term after 'OR'."},
+      {"(a", "Add the missing closing parenthesis ')'."},
+      {
+        "a)",
+        "Check the closing parenthesis ')'. Each parenthesis must enclose a search expression."
+      },
+      {"(", "Complete the search expression before running it again."},
+      {"OR a", "Check the search syntax near 'OR'."},
+      {"\"unterminated", "Close the quoted search term with a double quote."},
+      {"\"a\nb\"", "Remove the line break inside the quoted search term."},
+      {"\"a\\\\\nb\"", "Remove the line break inside the quoted search term."},
+      {"\"a\\\\", "Close the quoted search term with a double quote."},
+      {
+        "\"abc\\",
+        "Invalid escape in a quoted search term. Only double quotes and backslashes can be escaped."
+      },
+      {
+        "\"a\\\nb\"",
+        "Invalid escape in a quoted search term. Only double quotes and backslashes can be escaped."
+      },
+      {
+        "\"a\\q\"",
+        "Invalid escape in a quoted search term. Only double quotes and backslashes can be escaped."
+      }
+    };
+    for (String[] testCase : cases) {
+      IllegalArgumentException error =
+          Assertions.assertThrows(
+              IllegalArgumentException.class, () -> buildQueryCondition(testCase[0]));
+      Assertions.assertEquals(
+          "The search could not be run. " + testCase[1], error.getMessage(), testCase[0]);
+    }
+  }
+
+  @Test
+  void testSyntaxDiagnosticsAreLoggedSeparately() {
+    LoggerContext context =
+        (LoggerContext)
+            LogManager.getContext(ConditionBuilderVisitor.class.getClassLoader(), false);
+    Configuration configuration = context.getConfiguration();
+    String loggerName = ConditionBuilderVisitor.class.getName();
+    LoggerConfig previousConfig = configuration.getLoggers().get(loggerName);
+    Appender appender = Mockito.mock(Appender.class);
+    Mockito.when(appender.getName()).thenReturn("searchSyntaxCapture");
+    Mockito.when(appender.isStarted()).thenReturn(true);
+    List<LogEvent> events = new ArrayList<>();
+    Mockito.doAnswer(
+            invocation -> {
+              events.add(((LogEvent) invocation.getArgument(0)).toImmutable());
+              return null;
+            })
+        .when(appender)
+        .append(Mockito.any(LogEvent.class));
+    LoggerConfig loggerConfig = new LoggerConfig(loggerName, Level.WARN, false);
+    loggerConfig.addAppender(appender, Level.WARN, null);
+    configuration.removeLogger(loggerName);
+    configuration.addLogger(loggerName, loggerConfig);
+    context.updateLoggers();
+    try {
+      IllegalArgumentException lexicalError =
+          Assertions.assertThrows(
+              IllegalArgumentException.class, () -> buildQueryCondition("a\n  #b"));
+      Assertions.assertEquals(
+          "The search could not be run. Remove the unsupported character '#' or put the search term in double quotes.",
+          lexicalError.getMessage());
+      Assertions.assertEquals(1, events.size());
+      Assertions.assertEquals(
+          "Invalid search syntax at line 2, column 3: token recognition error at: '#'",
+          events.get(0).getMessage().getFormattedMessage());
+      Assertions.assertNotNull(lexicalError.getCause());
+      Assertions.assertSame(lexicalError.getCause(), events.get(0).getThrown());
+
+      IllegalArgumentException parserError =
+          Assertions.assertThrows(
+              IllegalArgumentException.class, () -> buildQueryCondition("a\n )"));
+      Assertions.assertEquals(
+          "The search could not be run. Check the closing parenthesis ')'. Each parenthesis must enclose a search expression.",
+          parserError.getMessage());
+      Assertions.assertNull(parserError.getCause());
+      Assertions.assertEquals(2, events.size());
+      Assertions.assertEquals(
+          "Invalid search syntax at line 2, column 2: extraneous input ')' expecting <EOF>",
+          events.get(1).getMessage().getFormattedMessage());
+      Assertions.assertNull(events.get(1).getThrown());
+    } finally {
+      configuration.removeLogger(loggerName);
+      if (previousConfig != null) {
+        configuration.addLogger(loggerName, previousConfig);
+      }
+      context.updateLoggers();
+    }
   }
 
   @Test

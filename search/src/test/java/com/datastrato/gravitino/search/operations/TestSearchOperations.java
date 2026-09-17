@@ -41,6 +41,7 @@ import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.web.ObjectMapperProvider;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -85,6 +86,7 @@ public class TestSearchOperations extends JerseyTest {
 
     ResourceConfig resourceConfig = new ResourceConfig();
     resourceConfig.register(SearchOperations.class);
+    resourceConfig.register(new ObjectMapperProvider());
     resourceConfig.register(
         new AbstractBinder() {
           @Override
@@ -243,7 +245,15 @@ public class TestSearchOperations extends JerseyTest {
 
   @Test
   void testParserFailuresReturnBadRequest() {
-    for (String input : ImmutableList.of("-", "name:", "a @ b", "(a", "\"unterminated")) {
+    String[][] cases = {
+      {"+", "Remove the unsupported character '+' or put the search term in double quotes."},
+      {"a @ b", "Remove the unsupported character '@' or put the search term in double quotes."},
+      {"name:", "Enter a search value after ':'."},
+      {"(a", "Add the missing closing parenthesis ')'."},
+      {"\"unterminated", "Close the quoted search term with a double quote."}
+    };
+    for (String[] testCase : cases) {
+      String input = testCase[0];
       Mockito.doAnswer(
               call -> {
                 ConditionBuilderVisitor.buildQueryCondition(input);
@@ -253,6 +263,42 @@ public class TestSearchOperations extends JerseyTest {
           .query("metalake1", input, 0, 10);
       try (Response response = query("metalake1", input, null, null)) {
         Assertions.assertEquals(400, response.getStatus(), input);
+        ErrorResponse error = response.readEntity(ErrorResponse.class);
+        Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, error.getCode());
+        Assertions.assertEquals("QueryParseException", error.getType());
+        Assertions.assertEquals(
+            "The search could not be run. " + testCase[1], error.getMessage(), input);
+        Assertions.assertNull(error.getStack(), input);
+      }
+    }
+  }
+
+  @Test
+  void testParserFailureRespectsStackTraceConfiguration() throws Exception {
+    String input = "name:";
+    Mockito.doAnswer(
+            call -> {
+              ConditionBuilderVisitor.buildQueryCondition(input);
+              throw new AssertionError("Malformed query was accepted");
+            })
+        .when(searchService)
+        .query("metalake1", input, 0, 10);
+    SearchOperations operations = new SearchOperations();
+    FieldUtils.writeField(operations, "httpRequest", new MockServletRequestFactory().get(), true);
+    try (Response response = operations.query("metalake1", input, 0, 10)) {
+      Assertions.assertEquals(400, response.getStatus());
+      for (boolean includeStack : new boolean[] {false, true}) {
+        var mapper = new ObjectMapperProvider(includeStack).getContext(ErrorResponse.class);
+        String json = mapper.writeValueAsString(response.getEntity());
+        ErrorResponse error = mapper.readValue(json, ErrorResponse.class);
+        Assertions.assertEquals(ErrorConstants.ILLEGAL_ARGUMENTS_CODE, error.getCode());
+        Assertions.assertEquals("QueryParseException", error.getType());
+        Assertions.assertEquals(
+            "The search could not be run. Enter a search value after ':'.", error.getMessage());
+        Assertions.assertEquals(includeStack, mapper.readTree(json).has("stack"));
+        if (includeStack) {
+          Assertions.assertFalse(error.getStack().isEmpty());
+        }
       }
     }
   }
