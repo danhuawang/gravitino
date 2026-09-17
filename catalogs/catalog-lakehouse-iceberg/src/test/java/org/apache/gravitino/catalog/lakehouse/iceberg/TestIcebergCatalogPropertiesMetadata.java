@@ -47,6 +47,7 @@ public class TestIcebergCatalogPropertiesMetadata {
   }
 
   @Test
+<<<<<<< HEAD
   void testCloudAccessKeyIdsAreVisibleAndSecretsAreHidden() {
     Assertions.assertFalse(metadata.isHiddenProperty(S3Properties.GRAVITINO_S3_ACCESS_KEY_ID));
     Assertions.assertTrue(metadata.isHiddenProperty(S3Properties.GRAVITINO_S3_SECRET_ACCESS_KEY));
@@ -55,6 +56,8 @@ public class TestIcebergCatalogPropertiesMetadata {
   }
 
   @Test
+=======
+>>>>>>> upstream/branch-1.3
   void testTableMetadataCacheImplDefaultValue() {
     Assertions.assertEquals(
         LocalTableMetadataCache.class.getName(),

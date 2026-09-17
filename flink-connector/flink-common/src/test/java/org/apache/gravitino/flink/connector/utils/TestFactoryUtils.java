@@ -46,7 +46,12 @@ public class TestFactoryUtils {
 
   @Test
   void testTypeWithoutCatalogFactoryIsNotGravitinoManaged() {
+<<<<<<< HEAD
     // No jar on this classpath registers a factory for this type.
+=======
+    // No jar on this classpath registers a factory for these types.
+    Assertions.assertFalse(FactoryUtils.isGravitinoManagedCatalogType("gravitino-jdbc-oracle"));
+>>>>>>> upstream/branch-1.3
     Assertions.assertFalse(FactoryUtils.isGravitinoManagedCatalogType("gravitino-jdbc-custom"));
     Assertions.assertFalse(FactoryUtils.isGravitinoManagedCatalogType(null));
   }
