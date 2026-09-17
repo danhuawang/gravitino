@@ -23,6 +23,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 import javax.annotation.Nullable;
+import org.apache.gravitino.connector.PropertiesMetadata;
+import org.apache.gravitino.connector.PropertyEntry;
 
 /**
  * Helpers for secret-related entity property handling.
@@ -40,6 +42,15 @@ public final class SecretPropertyUtils {
    */
   private static final Pattern SENSITIVE_PROPERTY_KEY_PATTERN =
       Pattern.compile(".*(secret|password|token|credential|access|account).*");
+
+  /** Empty metadata: every property key is undeclared (used for historical fuzzy recovery). */
+  private static final PropertiesMetadata EMPTY_PROPERTIES_METADATA =
+      new PropertiesMetadata() {
+        @Override
+        public Map<String, PropertyEntry<?>> propertyEntries() {
+          return Map.of();
+        }
+      };
 
   private SecretPropertyUtils() {}
 
@@ -62,21 +73,75 @@ public final class SecretPropertyUtils {
   }
 
   /**
-   * Builds a map of plaintext secret properties for {@code getSecrets}.
+   * Returns whether a sensitive-named inline property should be recovered via {@code getSecrets}.
    *
-   * <p>Includes every entry whose key matches {@link #isSensitivePropertyKey}. Declared {@code
-   * hidden} properties are <strong>not</strong> included merely because they are hidden. A hidden
-   * key is recovered only when its name matches {@link #isSensitivePropertyKey} (for example {@code
-   * jdbc-password}). A hidden key whose name does not look sensitive (for example a path-like
-   * {@code auth-file}) stays masked as {@code ******} on list/get and is absent from this map.
+   * <p>For inline plaintext:
    *
-   * <p>Normal non-sensitive properties are not included. Clients merge this map over masked {@code
-   * properties()} so undeclared credential keys remain usable without leaking on list/get.
+   * <ul>
+   *   <li>{@code metadata == null}: do <strong>not</strong> recover. Used when properties metadata
+   *       is unavailable.
+   *   <li>otherwise: recover only undeclared keys or declared {@code hidden} keys. Declared
+   *       non-hidden configuration (for example {@code credential-providers}, {@code
+   *       s3-access-key-id}) stays in {@code properties()} and is excluded here.
+   * </ul>
+   *
+   * <p>Callers that need historical fuzzy recovery without real metadata should pass an empty
+   * {@link PropertiesMetadata} (every key is undeclared) — see the one-argument {@link
+   * #buildSecrets(Map)}.
+   *
+   * @param key the property key
+   * @param metadata entity properties metadata, or null when unavailable
+   * @return true when the inline plaintext should be included in {@code getSecrets}
+   */
+  public static boolean shouldRecoverSensitiveNamedSecret(
+      String key, @Nullable PropertiesMetadata metadata) {
+    if (!isSensitivePropertyKey(key)) {
+      return false;
+    }
+    if (metadata == null) {
+      return false;
+    }
+    return !metadata.containsProperty(key) || metadata.isHiddenProperty(key);
+  }
+
+  /**
+   * Builds a map of plaintext secret properties for {@code getSecrets} with historical fuzzy
+   * recovery for sensitive-named keys.
+   *
+   * <p>Delegates to {@link #buildSecrets(Map, PropertiesMetadata)} with an empty properties
+   * metadata so every key is treated as undeclared. Prefer the two-argument overload when real
+   * entity metadata is available.
    *
    * @param rawProperties raw entity properties (may be null)
    * @return a new secret plaintext property map; never null
    */
   public static Map<String, String> buildSecrets(@Nullable Map<String, String> rawProperties) {
+    return buildSecrets(rawProperties, EMPTY_PROPERTIES_METADATA);
+  }
+
+  /**
+   * Builds a map of plaintext secret properties for {@code getSecrets}.
+   *
+   * <p>Starting from raw entity properties, include every entry whose key matches {@link
+   * #isSensitivePropertyKey} when {@link #shouldRecoverSensitiveNamedSecret} is true (undeclared or
+   * declared hidden). Declared non-hidden keys are excluded even when the name looks sensitive.
+   * When {@code metadata} is {@code null}, sensitive-named plaintext is not recovered.
+   *
+   * <p>Declared {@code hidden} properties are <strong>not</strong> included merely because they are
+   * hidden. A hidden key is recovered only when its name matches {@link #isSensitivePropertyKey}
+   * (for example {@code jdbc-password}). A hidden key whose name does not look sensitive (for
+   * example a path-like {@code auth-file}) stays masked as {@code ******} on list/get and is absent
+   * from this map.
+   *
+   * <p>Normal non-sensitive properties are not included. Clients merge this map over masked {@code
+   * properties()} so undeclared credential keys remain usable without leaking on list/get.
+   *
+   * @param rawProperties raw entity properties (may be null)
+   * @param metadata entity properties metadata, or null when unavailable (no recovery)
+   * @return a new secret plaintext property map; never null
+   */
+  public static Map<String, String> buildSecrets(
+      @Nullable Map<String, String> rawProperties, @Nullable PropertiesMetadata metadata) {
     if (rawProperties == null || rawProperties.isEmpty()) {
       return Map.of();
     }
@@ -87,7 +152,7 @@ public final class SecretPropertyUtils {
       if (key == null || value == null) {
         continue;
       }
-      if (isSensitivePropertyKey(key)) {
+      if (shouldRecoverSensitiveNamedSecret(key, metadata)) {
         secrets.put(key, value);
       }
     }

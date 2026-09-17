@@ -25,8 +25,9 @@ import java.util.Map;
  *
  * <p>Returns stored plaintext for property keys whose names look sensitive (contain {@code secret},
  * {@code password}, {@code token}, {@code credential}, {@code access}, or {@code account},
- * case-insensitive), so mistyped / undeclared credential properties remain usable after API
- * responses mask them as {@code ******}.
+ * case-insensitive) when the key is undeclared or declared {@code hidden}, so mistyped / undeclared
+ * credential properties remain usable after API responses mask them as {@code ******}. Declared
+ * non-hidden configuration keys are not returned even when the name matches.
  *
  * <p>Properties that are only declared {@code hidden} in property metadata, and whose names do
  * <em>not</em> match the sensitive-name pattern above, are masked as {@code ******} on list/get but

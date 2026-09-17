@@ -108,7 +108,8 @@ public final class HiddenPropertyMaskUtils {
       boolean reserved = metadata.isReservedProperty(key);
       if (hidden && reserved) {
         keysToOmit.add(key);
-      } else if (hidden || SecretPropertyUtils.isSensitivePropertyKey(key)) {
+      } else if (hidden
+          || (!metadata.containsProperty(key) && SecretPropertyUtils.isSensitivePropertyKey(key))) {
         keysToMask.add(key);
       }
     }
