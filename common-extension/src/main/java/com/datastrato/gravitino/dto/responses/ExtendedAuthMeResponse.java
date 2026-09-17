@@ -18,8 +18,9 @@ import org.apache.gravitino.dto.responses.BaseResponse;
 
 /**
  * Enterprise extension of OSS {@code /authn/me}: authenticated principal, service-admin flag, all
- * identity-store origins for the user, metalakes owned by the user, and lightweight direct roles
- * (name + securable objects with ALLOW privilege names) keyed by metalake.
+ * identity-store origins for the user, metalakes owned by the user, and lightweight roles (name +
+ * securable objects with ALLOW privilege names) keyed by metalake. Roles include both direct user
+ * grants and group-inherited grants.
  */
 @Getter
 @EqualsAndHashCode(callSuper = true)

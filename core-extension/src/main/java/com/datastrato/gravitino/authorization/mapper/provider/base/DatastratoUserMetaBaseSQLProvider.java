@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino.authorization.mapper.provider.base;
 
+import static org.apache.gravitino.storage.relational.mapper.GroupMetaMapper.GROUP_ROLE_RELATION_TABLE_NAME;
+import static org.apache.gravitino.storage.relational.mapper.GroupMetaMapper.GROUP_TABLE_NAME;
 import static org.apache.gravitino.storage.relational.mapper.OwnerMetaMapper.OWNER_TABLE_NAME;
 import static org.apache.gravitino.storage.relational.mapper.RoleMetaMapper.ROLE_TABLE_NAME;
 import static org.apache.gravitino.storage.relational.mapper.UserMetaMapper.USER_ROLE_RELATION_TABLE_NAME;
@@ -233,30 +235,87 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Lists metalake membership and direct role metadata for a username across all metalakes.
+   * Lists metalake membership plus direct and group-inherited roles for a username across all
+   * metalakes.
    *
-   * <p>Role columns are null when the user exists in the metalake but has no direct {@code
-   * user_role_rel} rows.
+   * <p>The first branch keeps every metalake where the user has an active {@code user_meta} row and
+   * LEFT JOINs direct {@code user_role_rel} rows (role columns are null when there is no direct
+   * grant). The second branch adds roles inherited through identity-store group membership joined
+   * to metalake {@code group_meta} and {@code group_role_rel}, using the same SCIM → IdP → JIT
+   * origin priority as metalake group listing.
    *
    * @param userName Username.
    * @return MyBatis SQL selecting metalake name and role_meta columns.
    */
   public String listUserRolesByMetalake(@Param("userName") String userName) {
-    return "SELECT mt.metalake_name AS metalakeName,"
-        + " rot.role_id AS roleId, rot.role_name AS roleName"
-        + " FROM "
-        + USER_TABLE_NAME
-        + " ut JOIN "
-        + MetalakeMetaMapper.TABLE_NAME
-        + " mt ON ut.metalake_id = mt.metalake_id AND mt.deleted_at = 0"
-        + " LEFT JOIN "
-        + USER_ROLE_RELATION_TABLE_NAME
-        + " urr ON urr.user_id = ut.user_id AND urr.deleted_at = 0"
-        + " LEFT JOIN "
-        + ROLE_TABLE_NAME
-        + " rot ON rot.role_id = urr.role_id AND rot.deleted_at = 0"
-        + " WHERE ut.deleted_at = 0 AND ut.user_name = #{userName}"
-        + " ORDER BY mt.metalake_name, rot.role_name";
+    String directRoles =
+        "SELECT mt.metalake_name AS metalakeName,"
+            + " rot.role_id AS roleId, rot.role_name AS roleName"
+            + " FROM "
+            + USER_TABLE_NAME
+            + " ut JOIN "
+            + MetalakeMetaMapper.TABLE_NAME
+            + " mt ON ut.metalake_id = mt.metalake_id AND mt.deleted_at = 0"
+            + " LEFT JOIN "
+            + USER_ROLE_RELATION_TABLE_NAME
+            + " urr ON urr.user_id = ut.user_id AND urr.deleted_at = 0"
+            + " LEFT JOIN "
+            + ROLE_TABLE_NAME
+            + " rot ON rot.role_id = urr.role_id AND rot.deleted_at = 0"
+            + " WHERE ut.deleted_at = 0 AND ut.user_name = #{userName}";
+
+    String groupInheritedRoles =
+        "SELECT mt.metalake_name AS metalakeName,"
+            + " rot.role_id AS roleId, rot.role_name AS roleName"
+            + " FROM "
+            + USER_TABLE_NAME
+            + " ut JOIN "
+            + MetalakeMetaMapper.TABLE_NAME
+            + " mt ON ut.metalake_id = mt.metalake_id AND mt.deleted_at = 0"
+            + " LEFT JOIN "
+            + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+            + " su ON su.user_name = ut.user_name AND su.deleted_at = 0"
+            + " LEFT JOIN "
+            + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+            + " iu ON iu.user_name = ut.user_name AND iu.deleted_at = 0 AND su.user_id IS NULL"
+            + " LEFT JOIN "
+            + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+            + " ju ON ju.user_name = ut.user_name AND ju.deleted_at = 0 AND su.user_id IS NULL"
+            + " AND iu.user_id IS NULL"
+            + " LEFT JOIN "
+            + DatastratoGroupMetaMapper.IDP_USER_GROUP_REL_TABLE_NAME
+            + " iugr ON iugr.user_id = iu.user_id AND iugr.deleted_at = 0"
+            + " LEFT JOIN "
+            + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+            + " igm ON igm.group_id = iugr.group_id AND igm.deleted_at = 0"
+            + " LEFT JOIN "
+            + DatastratoGroupMetaMapper.SCIM_USER_GROUP_REL_TABLE_NAME
+            + " sur ON sur.user_id = su.user_id AND sur.deleted_at = 0"
+            + " LEFT JOIN "
+            + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+            + " sgm ON sgm.group_id = sur.group_id AND sgm.deleted_at = 0"
+            + " LEFT JOIN "
+            + DatastratoGroupMetaMapper.JIT_USER_GROUP_REL_TABLE_NAME
+            + " jugr ON jugr.user_id = ju.user_id AND jugr.deleted_at = 0"
+            + " LEFT JOIN "
+            + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+            + " jgm ON jgm.group_id = jugr.group_id AND jgm.deleted_at = 0"
+            + " JOIN "
+            + GROUP_TABLE_NAME
+            + " gt ON gt.metalake_id = mt.metalake_id AND gt.deleted_at = 0"
+            + " AND ((su.user_id IS NOT NULL AND gt.group_name = sgm.group_name)"
+            + " OR (su.user_id IS NULL AND iu.user_id IS NOT NULL AND gt.group_name ="
+            + " igm.group_name)"
+            + " OR (su.user_id IS NULL AND iu.user_id IS NULL AND gt.group_name = jgm.group_name))"
+            + " JOIN "
+            + GROUP_ROLE_RELATION_TABLE_NAME
+            + " grr ON grr.group_id = gt.group_id AND grr.deleted_at = 0"
+            + " JOIN "
+            + ROLE_TABLE_NAME
+            + " rot ON rot.role_id = grr.role_id AND rot.deleted_at = 0"
+            + " WHERE ut.deleted_at = 0 AND ut.user_name = #{userName}";
+
+    return directRoles + " UNION " + groupInheritedRoles + " ORDER BY metalakeName, roleName";
   }
 
   /**

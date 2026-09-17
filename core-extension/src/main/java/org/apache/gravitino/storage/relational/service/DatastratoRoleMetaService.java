@@ -110,9 +110,11 @@ public class DatastratoRoleMetaService {
   /**
    * Lists lightweight roles for a username, keyed by metalake.
    *
-   * <p>Includes every metalake where the user has an active {@code user_meta} row. Metalakes with
-   * no direct {@code user_role_rel} rows map to an empty role list. Each role carries securable
-   * objects ({@code fullName}, {@code type}) with distinct ALLOW privilege names.
+   * <p>Includes every metalake where the user has an active {@code user_meta} row. Roles come from
+   * direct {@code user_role_rel} grants and from group-inherited {@code group_role_rel} grants
+   * (identity-store membership joined to metalake {@code group_meta}). Metalakes with neither map
+   * to an empty role list. Each role carries securable objects ({@code fullName}, {@code type})
+   * with distinct ALLOW privilege names.
    *
    * @param userName Username (current authenticated principal for auth/me).
    * @return Metalake name → lightweight roles; empty when the user is in no metalake.

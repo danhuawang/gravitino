@@ -115,6 +115,15 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
               + "role_id BIGINT NOT NULL,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
+          "CREATE TABLE group_role_rel ("
+              + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+              + "group_id BIGINT NOT NULL,"
+              + "role_id BIGINT NOT NULL,"
+              + "audit_info CLOB,"
+              + "current_version BIGINT NOT NULL DEFAULT 1,"
+              + "last_version BIGINT NOT NULL DEFAULT 1,"
+              + "deleted_at BIGINT NOT NULL DEFAULT 0)");
+      statement.execute(
           "CREATE TABLE role_meta_securable_object ("
               + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
               + "role_id BIGINT NOT NULL,"
@@ -223,8 +232,10 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
       statement.execute("DELETE FROM idp_user_group_rel");
       statement.execute("DELETE FROM owner_meta");
       statement.execute("DELETE FROM user_role_rel");
+      statement.execute("DELETE FROM group_role_rel");
       statement.execute("DELETE FROM role_meta_securable_object");
       statement.execute("DELETE FROM role_meta");
+      statement.execute("DELETE FROM group_meta");
       statement.execute("DELETE FROM scim_user_meta");
       statement.execute("DELETE FROM scim_group_meta");
       statement.execute("DELETE FROM jit_user_meta");
@@ -559,6 +570,32 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(1, leeRoles.size());
     assertTrue(leeRoles.containsKey("Acme"));
     assertTrue(leeRoles.get("Acme").isEmpty());
+
+    // lee.p is IdP-only; add IdP membership + metalake group role grant for analyst.
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "INSERT INTO idp_user_group_rel (user_id, group_id, audit_info, deleted_at)"
+              + " VALUES (101, 200, '{\"creator\":\"test\"}', 0)");
+      statement.execute(
+          "INSERT INTO group_meta (group_id, group_name, metalake_id, deleted_at)"
+              + " VALUES (300, 'governance', 1, 0)");
+      statement.execute(
+          "INSERT INTO group_role_rel (group_id, role_id, deleted_at) VALUES (300, 502, 0)");
+      statement.execute(
+          "INSERT INTO role_meta_securable_object (role_id, metadata_object_id, type,"
+              + " privilege_names, privilege_conditions, deleted_at)"
+              + " VALUES (502, 1, 'METALAKE', '[\"USE_CATALOG\"]', '[\"ALLOW\"]', 0)");
+    }
+    Map<String, List<AuthMeRoleDTO>> leeRolesWithGroup =
+        DatastratoRoleMetaService.getInstance().listUserRolesWithPrivileges("lee.p");
+    assertEquals(1, leeRolesWithGroup.size());
+    assertEquals(1, leeRolesWithGroup.get("Acme").size());
+    assertEquals("analyst", leeRolesWithGroup.get("Acme").get(0).getName());
+    assertEquals(
+        Set.of("USE_CATALOG"),
+        new HashSet<>(
+            leeRolesWithGroup.get("Acme").get(0).getSecurableObjects().get(0).getPrivileges()));
 
     try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
         Statement statement = connection.createStatement()) {

@@ -109,7 +109,8 @@ public interface DatastratoUserMetaMapper {
   List<Integer> selectUserOriginCodes(@Param("userName") String userName);
 
   /**
-   * Lists metalake membership and direct role names for a username across all metalakes.
+   * Lists metalake membership plus direct and group-inherited role names for a username across all
+   * metalakes.
    *
    * @param userName Username.
    * @return Rows of metalake name and optional role name.

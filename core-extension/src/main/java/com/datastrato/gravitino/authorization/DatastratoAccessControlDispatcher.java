@@ -380,7 +380,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Lists lightweight roles for a username, keyed by metalake.
    *
    * <p>Each role includes securable objects ({@code fullName}, {@code type}) with ALLOW privilege
-   * names only.
+   * names only. Results include both direct user grants and group-inherited grants.
    *
    * @param userName Username.
    * @return Metalake name → lightweight roles; empty when the user is in no metalake.

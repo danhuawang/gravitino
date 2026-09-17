@@ -380,9 +380,15 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertFalse(sql.contains("properties AS properties"));
     assertTrue(sql.contains("user_meta"));
     assertTrue(sql.contains("user_role_rel"));
+    assertTrue(sql.contains("group_meta"));
+    assertTrue(sql.contains("group_role_rel"));
+    assertTrue(sql.contains("idp_user_group_rel"));
+    assertTrue(sql.contains("scim_user_group_rel"));
+    assertTrue(sql.contains("jit_user_group_rel"));
     assertTrue(sql.contains("role_meta"));
+    assertTrue(sql.contains("UNION"));
     assertTrue(sql.contains("user_name = #{userName}"));
-    assertTrue(sql.contains("ORDER BY mt.metalake_name, rot.role_name"));
+    assertTrue(sql.contains("ORDER BY metalakeName, roleName"));
   }
 
   @Test

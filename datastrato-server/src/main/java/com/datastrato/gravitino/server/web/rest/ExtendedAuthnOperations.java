@@ -29,8 +29,9 @@ import org.apache.gravitino.utils.PrincipalUtils;
  * Enterprise authenticated-user endpoint, analogous to OSS {@code GET /authn/me}.
  *
  * <p>Returns the same principal / serviceAdmin fields plus every identity-store {@code origin} for
- * the user, metalakes owned by the user, and lightweight direct roles (name + securable objects
- * with ALLOW privilege names) keyed by metalake.
+ * the user, metalakes owned by the user, and lightweight roles (name + securable objects with ALLOW
+ * privilege names) keyed by metalake. Roles include both direct user grants and group-inherited
+ * grants.
  */
 @NameBindings.AccessControlInterfaces
 @Path(InternalApiPaths.PREFIX + "/security/authn")
