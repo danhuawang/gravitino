@@ -72,11 +72,8 @@ import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.exceptions.NoSuchJobException;
 import org.apache.gravitino.exceptions.NoSuchJobTemplateException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
-<<<<<<< HEAD
-import org.apache.gravitino.json.JsonUtils;
-=======
 import org.apache.gravitino.job.local.LocalJobExecutor;
->>>>>>> upstream/branch-1.3
+import org.apache.gravitino.json.JsonUtils;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
@@ -531,16 +528,11 @@ public class TestJobManager {
   }
 
   @Test
-<<<<<<< HEAD
   public void testRunJobPopulatesResolvedRuntimeJobTemplate() throws IOException {
-=======
-  public void testRunJobPropagatesJobExecutorRejection() throws IOException {
->>>>>>> upstream/branch-1.3
     mockedMetalake
         .when(() -> MetalakeManager.checkMetalake(metalakeIdent, entityStore))
         .thenAnswer(a -> null);
 
-<<<<<<< HEAD
     ShellJobTemplate templateWithPlaceholder =
         ShellJobTemplate.builder()
             .withName("shell_job_with_placeholder")
@@ -586,7 +578,14 @@ public class TestJobManager {
     Assertions.assertTrue(
         runtimeJobTemplateDTO.executable().endsWith("echo"),
         () -> "Unexpected resolved executable: " + runtimeJobTemplateDTO.executable());
-=======
+  }
+
+  @Test
+  public void testRunJobPropagatesJobExecutorRejection() throws IOException {
+    mockedMetalake
+        .when(() -> MetalakeManager.checkMetalake(metalakeIdent, entityStore))
+        .thenAnswer(a -> null);
+
     JobTemplateEntity shellJobTemplate =
         newShellJobTemplateEntity("shell_job", "A shell job template");
     when(jobManager.getJobTemplate(metalake, shellJobTemplate.name())).thenReturn(shellJobTemplate);
@@ -611,7 +610,6 @@ public class TestJobManager {
         new File(testStagingDir, metalake + File.separator + shellJobTemplate.name());
     String[] jobStagingDirs = templateStagingDir.list();
     Assertions.assertTrue(jobStagingDirs == null || jobStagingDirs.length == 0);
->>>>>>> upstream/branch-1.3
   }
 
   @Test
@@ -1816,6 +1814,7 @@ public class TestJobManager {
         .withNamespace(NamespaceUtil.ofJob(metalake))
         .withJobTemplateName("shell_job")
         .withStatus(status)
+        .withStartedAt(0L)
         .withFinishedAt(0L)
         .withAuditInfo(
             AuditInfo.builder()

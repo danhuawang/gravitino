@@ -55,11 +55,8 @@ public class TestPaimonCatalogPropertiesMetadata {
     assertFalse(metadata.isHiddenProperty(PaimonCatalogPropertiesMetadata.URI));
     // jdbc-user identifies the account rather than a secret — align with JDBC catalogs.
     assertFalse(metadata.isHiddenProperty(PaimonCatalogPropertiesMetadata.GRAVITINO_JDBC_USER));
-<<<<<<< HEAD
     assertFalse(metadata.isHiddenProperty(AzureProperties.GRAVITINO_AZURE_STORAGE_ACCOUNT_NAME));
     assertFalse(metadata.isHiddenProperty(GCSProperties.GRAVITINO_GCS_SERVICE_ACCOUNT_FILE));
-=======
->>>>>>> upstream/branch-1.3
     // DLF token metadata (provider type, path, loader) is not a credential — stays visible.
     assertFalse(metadata.isHiddenProperty(PaimonConstants.GRAVITINO_TOKEN_PROVIDER));
     assertFalse(metadata.isHiddenProperty(PaimonConstants.GRAVITINO_DLF_TOKEN_PATH));

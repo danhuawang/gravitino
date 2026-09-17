@@ -42,10 +42,5 @@ sources:
   - https://github.com/apache/gravitino
   - https://github.com/apache/gravitino/tree/main/dev/charts/gravitino-iceberg-rest-server
 
-<<<<<<< HEAD
 appVersion: 1.3.1-SNAPSHOT
 version: 1.3.2
-=======
-appVersion: 1.3.2-SNAPSHOT
-version: 1.3.14
->>>>>>> upstream/branch-1.3

@@ -205,7 +205,6 @@ uv run mcp_server --metalake test --gravitino-uri http://127.0.0.1:8090 \
   --tls-cert /path/to/cert.pem --tls-key /path/to/key.pem
 ```
 
-<<<<<<< HEAD
 ## Selecting a metalake
 
 A metalake is Gravitino's top-level tenant boundary, and every tool operates inside one. `--metalake` sets the **default**: the metalake used by any tool call that does not name one itself. It is optional on every transport.
@@ -247,13 +246,10 @@ No default at all, every call chooses:
 ```bash
 uv run mcp_server --transport http --mcp-url http://0.0.0.0:8000/mcp
 ```
-=======
+
 ## Statistics tool parameters
 
-The statistic tools (`list_statistics_for_metadata`, `list_statistics_for_partition`) require `metalake_name` to identify the metalake.
-
-These tools use `metadata_full_name` for the metadata object name, consistent with the tag and policy tools. The previous spelling, `metadata_fullname`, is accepted as a deprecated input alias but is not advertised in the tool schema. Supply only one spelling per call; passing both is rejected. New callers should use `metadata_full_name`.
->>>>>>> upstream/branch-1.3
+The statistic tools (`list_statistics_for_metadata`, `list_statistics_for_partition`) use `metadata_full_name` for the metadata object name, consistent with the tag and policy tools. The previous spelling, `metadata_fullname`, is accepted as a deprecated input alias but is not advertised in the tool schema. Supply only one spelling per call; passing both is rejected. New callers should use `metadata_full_name`.
 
 ## Audit Logging
 

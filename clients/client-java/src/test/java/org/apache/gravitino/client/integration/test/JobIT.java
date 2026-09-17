@@ -620,6 +620,7 @@ public class JobIT extends BaseIT {
             .withNamespace(NamespaceUtil.ofJob(METALAKE_NAME))
             .withAuditInfo(
                 AuditInfo.builder().withCreator("test").withCreateTime(createTime).build())
+            .withStartedAt(0L)
             .withFinishedAt(0L)
             .build();
     GravitinoEnv.getInstance().entityStore().put(job, false /* overwrite */);

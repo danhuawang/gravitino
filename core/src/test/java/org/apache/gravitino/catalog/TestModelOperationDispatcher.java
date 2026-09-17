@@ -1291,12 +1291,12 @@ public class TestModelOperationDispatcher extends TestOperationDispatcher {
     return "model_" + UUID.randomUUID().toString().replace("-", "");
   }
 
-<<<<<<< HEAD
   private static void assertPropertiesContain(
       Map<String, String> expectedUserProps, Map<String, String> actual) {
     expectedUserProps.forEach((k, v) -> Assertions.assertEquals(v, actual.get(k)));
     Assertions.assertFalse(actual.containsKey(ID_KEY));
-=======
+  }
+
   @Test
   public void testRegisterModelRunsConcurrentlyWithRegisterModelOfAnotherModel() throws Exception {
     NameIdentifier schemaIdent = NameIdentifier.of(metalake, catalog, "schema_model_lock_1");
@@ -1361,6 +1361,5 @@ public class TestModelOperationDispatcher extends TestOperationDispatcher {
   private static Model registerModelForLockTest(NameIdentifier ident) {
     return modelOperationDispatcher.registerModel(
         ident, "comment", ImmutableMap.of("k1", "v1", "k2", "v2"));
->>>>>>> upstream/branch-1.3
   }
 }

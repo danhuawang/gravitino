@@ -257,7 +257,9 @@ public class TestJobManagerMultiNode extends TestJDBCBackend {
                                 ? null
                                 : job.auditInfo().lastModifiedTime().minusMillis(offsetInMs))
                         .build())
+                .withStartedAt(job.startedAt() > 0 ? job.startedAt() - offsetInMs : 0L)
                 .withFinishedAt(job.finishedAt() > 0 ? job.finishedAt() - offsetInMs : 0L)
+                .withRuntimeJobTemplate(job.runtimeJobTemplate())
                 .build());
   }
 
