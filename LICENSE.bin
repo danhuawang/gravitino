@@ -26,12 +26,16 @@ licenses:
 Do not treat this binary package as Apache-licensed as a whole.
 
    The Web UI also bundles various third-party components also under
-   different licenses, please see web/LICENSE.bin for these.
+   different licenses, please see web/LICENSE and web-v2/LICENSE for these.
 
    This product bundles various third-party components also under the
    Apache Software License 2.0 from:
 
    Apache Hive
+   Apache Paimon
+   FastDoubleParser (older Jackson copy shaded in paimon-format 1.2.0)
+   Apache DataSketches Java
+   Apache DataSketches Memory
    Apache Iceberg
    Apache Kafka
    Apache Spark
@@ -55,6 +59,13 @@ Do not treat this binary package as Apache-licensed as a whole.
    Jackson Xml Compatibility Extensions
    Caffeine
    Dropwizard Hadoop Metrics
+   Dropwizard Metrics Annotation
+   Dropwizard Metrics Core
+   Dropwizard Metrics Healthchecks
+   Dropwizard Metrics JMX
+   Dropwizard Metrics JSON
+   Dropwizard Metrics JVM
+   Dropwizard Metrics Servlets
    GSON
    Error Prone Annotations
    Failure Access
@@ -130,6 +141,8 @@ Do not treat this binary package as Apache-licensed as a whole.
    Apache HTrace
    Google HTTP Client
    Google HTTP Client GSON
+   gRPC API
+   gRPC Context
    Apache HttpCore
    Apache HttpClient
    Apache Iceberg
@@ -244,6 +257,8 @@ Do not treat this binary package as Apache-licensed as a whole.
    String Template 4
    JSch
    ASM
+   OGNL (shaded in MyBatis 3.5.6)
+   bigint
    Protobuf
    ParaNamer
    RE2/J
@@ -263,6 +278,9 @@ Do not treat this binary package as Apache-licensed as a whole.
    SLF4J
    SLF4J-API
    Checker Framework
+   FastDoubleParser
+   fast_float
+   Schubfach
    Janino Common Compiler
    Protocol Buffers
    Treelayout
@@ -271,6 +289,11 @@ Do not treat this binary package as Apache-licensed as a whole.
    tkem/cachetools
    Microsoft JDBC Driver for SQL Server (mssql-jdbc)
    FastDoubleParser
+
+   This product bundles various third-party components also under the
+   Boost Software License 1.0
+
+   fast_double_parser
 
    This product bundles various third-party components also under the
    Common Development and Distribution License 1.0
@@ -341,6 +364,7 @@ Do not treat this binary package as Apache-licensed as a whole.
    HdrHistogram
    LatencyUtils
 
+<<<<<<< HEAD
    This product bundles the Oracle JDBC driver (ojdbc11). It is governed
    by the Oracle Free Distribution, Hosting, and Use Terms and Conditions,
    Version 1.0, 28 June 2022, which is the license text delivered inside
@@ -351,3 +375,15 @@ Do not treat this binary package as Apache-licensed as a whole.
    Maven metadata for this artifact labels the license "Oracle Free Use
    Terms and Conditions (FUTC)". The terms delivered with the jar, and
    reproduced here, are the ones that apply.
+=======
+
+   For the FastDoubleParser license text, see licenses/FastDoubleParser.txt.
+   Third-party license texts for code included in FastDoubleParser are in
+   licenses/FastDoubleParser-thirdparty.txt.
+   For the Schubfach license text, see licenses/Schubfach.txt.
+
+For the BSD license of OGNL shaded in MyBatis, see licenses/mybatis-ognl.txt.
+
+For the license texts of code included in Apache Commons Math 3.1.1,
+   see licenses/commons-math3.txt.
+>>>>>>> upstream/branch-1.3

@@ -7,6 +7,7 @@ The Apache Software Foundation (http://www.apache.org/).
 The initial code for the Gravitino project was donated
 to the ASF by Datastrato (https://datastrato.ai/) copyright 2023-2024.
 
+<<<<<<< HEAD
 This distribution also includes proprietary software owned by
 Datastrato Inc., copyright 2024-2026 Datastrato Inc. That proprietary
 software is not licensed under the Apache License, Version 2.0. Its
@@ -15,6 +16,10 @@ See LICENSE-ENTERPRISE.
 
 The Web UI also has a NOTICE file please see web/web/NOTICE
 for it's contents.
+=======
+The Web UI also has NOTICE files, please see web/web/NOTICE and
+web-v2/web/NOTICE for their contents.
+>>>>>>> upstream/branch-1.3
 
 Apache Iceberg
 Copyright 2017-2022 The Apache Software Foundation
