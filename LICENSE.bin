@@ -218,6 +218,10 @@ Do not treat this binary package as Apache-licensed as a whole.
    IPAddress
    Aliyun SDK OSS
    QLExpress
+   Aliyun MaxCompute ODPS JDBC Driver
+   ClickHouse JDBC Driver
+   Apache Paimon S3 FileIO
+   Apache Paimon OSS FileIO
 
    This product bundles various third-party components also under the
    Apache Software Foundation License 1.1
@@ -251,6 +255,7 @@ Do not treat this binary package as Apache-licensed as a whole.
    Apache HttpComponents Core5
    Helger Profiler
    OpenAPI Tools Jackson Databind Nullable
+   PostgreSQL JDBC Driver
 
    This product bundles various third-party components also under the
    MIT license
@@ -265,6 +270,7 @@ Do not treat this binary package as Apache-licensed as a whole.
    elarivie/pyReaderWriterLock
    tkem/cachetools
    Microsoft JDBC Driver for SQL Server (mssql-jdbc)
+   FastDoubleParser
 
    This product bundles various third-party components also under the
    Common Development and Distribution License 1.0

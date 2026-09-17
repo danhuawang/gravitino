@@ -26,6 +26,16 @@ named artifact ships in this package. The "JBoss Logging" entry below is
 inherited from the Netty NOTICE and describes an optional dependency of Netty;
 jboss-logging is not declared in this project's dependencies.
 
+Note on relocated classes: some jars in this distribution are shaded jars
+that bundle third-party classes under a renamed package prefix, for example
+org.apache.gravitino.shaded.com.google for Google Guava. Renaming a class's
+package changes the file, so a relocated copy is a modified version of the
+original, redistributed under the original component's own license; the
+attributions that license requires are the entries in this file and the
+license texts in licenses/. Shaded jars here include the Java client
+runtime, the Hadoop filesystem runtime, the Spark and Flink connector
+runtimes, the maintenance jobs jar and the cloud and secret-backend bundles.
+
 AWS SDK for Java 2.0
 Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
@@ -66,6 +76,15 @@ Copyright 2016-2023 The Apache Software Foundation
 
 Apache Ranger
 Copyright 2014-2024 The Apache Software Foundation
+
+Kyuubi Spark Hive Connector
+Copyright 2024 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+The Kyuubi Spark Hive Connector jar bundles its own copy of Google Guava
+33.4.8-jre, relocated by Kyuubi to org.apache.kyuubi.shade.com.google.
 
 Micrometer
 Copyright (c) 2017-Present VMware, Inc. All Rights Reserved.
