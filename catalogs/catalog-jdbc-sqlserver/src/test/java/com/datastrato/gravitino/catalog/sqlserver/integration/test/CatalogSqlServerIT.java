@@ -30,6 +30,7 @@ import org.apache.gravitino.SupportsSchemas;
 import org.apache.gravitino.catalog.jdbc.config.JdbcConfig;
 import org.apache.gravitino.client.GravitinoMetalake;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
+import org.apache.gravitino.exceptions.NonEmptySchemaException;
 import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
 import org.apache.gravitino.exceptions.TableAlreadyExistsException;
 import org.apache.gravitino.integration.test.container.ContainerSuite;
@@ -234,13 +235,93 @@ public class CatalogSqlServerIT extends BaseIT {
     catalog.asTableCatalog().createTable(tableIdent, columns, null, ImmutableMap.of());
 
     // Drop non-empty schema without cascade should fail
-    // SQL Server does not support CASCADE, so the native error is surfaced
     Assertions.assertThrows(
-        Exception.class, () -> catalog.asSchemas().dropSchema(testSchemaName, false));
+        NonEmptySchemaException.class, () -> catalog.asSchemas().dropSchema(testSchemaName, false));
 
-    // Cleanup: drop table first, then schema
-    catalog.asTableCatalog().dropTable(tableIdent);
-    catalog.asSchemas().dropSchema(testSchemaName, false);
+    // A refused non-cascading drop must preserve both the schema and its table.
+    Assertions.assertNotNull(catalog.asTableCatalog().loadTable(tableIdent));
+    Assertions.assertTrue(catalog.asSchemas().dropSchema(testSchemaName, true));
+    Assertions.assertThrows(
+        NoSuchSchemaException.class, () -> catalog.asSchemas().loadSchema(testSchemaName));
+    Assertions.assertFalse(catalog.asSchemas().dropSchema(testSchemaName, true));
+  }
+
+  @Test
+  void testCascadeSchemaWithDependencies() throws SQLException {
+    String name = GravitinoITUtils.genRandomName("cascade_dependencies");
+    catalog.asSchemas().createSchema(name, null, Collections.emptyMap());
+    try (Connection connection =
+            DriverManager.getConnection(
+                jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
+        Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE [" + name + "].parent (id int PRIMARY KEY)");
+      statement.execute(
+          "CREATE TABLE [" + name + "].child (id int REFERENCES [" + name + "].parent(id))");
+      statement.execute(
+          "CREATE VIEW ["
+              + name
+              + "].v1 WITH SCHEMABINDING AS SELECT id FROM ["
+              + name
+              + "].parent");
+      statement.execute(
+          "CREATE VIEW [" + name + "].v2 WITH SCHEMABINDING AS SELECT id FROM [" + name + "].v1");
+      statement.execute("CREATE SEQUENCE [" + name + "].seq START WITH 1");
+      statement.execute("CREATE SYNONYM [" + name + "].syn FOR [" + name + "].parent");
+      statement.execute("CREATE TYPE [" + name + "].inttype FROM int");
+      statement.execute("CREATE TYPE [" + name + "].tabletype AS TABLE(id [" + name + "].inttype)");
+      statement.execute(
+          "CREATE PROCEDURE ["
+              + name
+              + "].proc1 @rows ["
+              + name
+              + "].tabletype READONLY AS SELECT 1");
+      statement.execute(
+          "CREATE FUNCTION [" + name + "].fn1(@i int) RETURNS int AS BEGIN RETURN @i END");
+      // Create referenced objects first so catalog enumeration cannot accidentally mask bad
+      // ordering.
+      statement.execute(
+          "CREATE TABLE ["
+              + name
+              + "].defaults (id int DEFAULT (NEXT VALUE FOR ["
+              + name
+              + "].seq), value int CONSTRAINT ck_fn CHECK (["
+              + name
+              + "].fn1(value) >= 0))");
+      // Table-type CHECK constraints cannot invoke user-defined functions.
+      statement.execute(
+          "CREATE TYPE [" + name + "].checkedtype AS TABLE (value int CHECK (value >= 0))");
+    }
+    Assertions.assertTrue(catalog.asSchemas().dropSchema(name, true));
+    Assertions.assertFalse(catalog.asSchemas().schemaExists(name));
+  }
+
+  @Test
+  void testCascadeSchemaRollsBackForExternalReference() throws SQLException {
+    String name = GravitinoITUtils.genRandomName("cascade_rollback");
+    String external = GravitinoITUtils.genRandomName("external_ref");
+    catalog.asSchemas().createSchema(name, null, Collections.emptyMap());
+    try (Connection connection =
+            DriverManager.getConnection(
+                jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
+        Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE [" + name + "].first_table (id int)");
+      statement.execute("INSERT INTO [" + name + "].first_table VALUES (7)");
+      statement.execute("CREATE TABLE [" + name + "].parent (id int PRIMARY KEY)");
+      statement.execute(
+          "CREATE TABLE [dbo].[" + external + "] (id int REFERENCES [" + name + "].parent(id))");
+      try {
+        Assertions.assertThrows(
+            NonEmptySchemaException.class, () -> catalog.asSchemas().dropSchema(name, true));
+        try (ResultSet result =
+            statement.executeQuery("SELECT id FROM [" + name + "].first_table")) {
+          Assertions.assertTrue(result.next());
+          Assertions.assertEquals(7, result.getInt(1));
+        }
+      } finally {
+        statement.execute("DROP TABLE [dbo].[" + external + "]");
+        catalog.asSchemas().dropSchema(name, true);
+      }
+    }
   }
 
   @Test

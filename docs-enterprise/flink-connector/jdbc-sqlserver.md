@@ -13,8 +13,9 @@ license: "Copyright 2026 Datastrato Inc."
 Apache Gravitino Flink connector supports SQL Server as a JDBC catalog. This document describes how to configure and use the SQL Server JDBC catalog with Flink.
 
 :::note
+- Cascade schema deletion is supported by the catalog; blocking external dependencies cause a rollback.
 - SQL Server supports schema, table, primary key, comment, default value, and column operations through the Flink connector.
-- SQL Server does not support schema comments/options, table properties, partitioning, distribution, purge, drop schema cascade, or column position changes.
+- SQL Server does not support schema comments/options, table properties, partitioning, distribution, purge, or column position changes.
 :::
 
 :::caution

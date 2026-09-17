@@ -93,7 +93,7 @@ Please refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#c
 - Supports creating schema.
 - Supports dropping schema.
 - Schema comments are unsupported. Creating a schema with a non-empty comment throws `UnsupportedOperationException`.
-- Doesn't support cascade dropping schema (SQL Server does not support `DROP SCHEMA ... CASCADE`). If the schema contains objects, the drop will fail with a native SQL Server error.
+- Cascade schema deletion is implemented by the catalog in a transaction. It drops tables, views, routines, synonyms, sequences, and user-defined types in dependency order. References from other schemas are preserved; blocking dependencies or unsupported objects cause the deletion to fail and roll back. A non-empty schema dropped without cascade returns HTTP 409.
 
 :::info
 The built-in `dbo` schema is always visible in `listSchemas`. System schemas (`guest`, `INFORMATION_SCHEMA`, `sys`, `db_owner`, `db_accessadmin`, `db_securityadmin`, `db_ddladmin`, `db_backupoperator`, `db_datareader`, `db_datawriter`, `db_denydatareader`, `db_denydatawriter`) are filtered out.
@@ -267,7 +267,6 @@ The following features are not supported in the current version:
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | View support                                 | Gravitino `ViewCatalog` interface is `@Unstable`, no JDBC catalog implements it yet.                                                                                             |
 | Schema comments                              | Non-empty comments are rejected with `UnsupportedOperationException`.                                                                                                    |
-| Cascade drop schema                          | SQL Server does not support `DROP SCHEMA ... CASCADE`. Native error is surfaced.                                                                                                 |
 | `datetimeoffset` native mapping              | No Gravitino equivalent. Use `ExternalType`.                                                                                                                                     |
 | `TimestampType.withTimeZone`                 | SQL Server uses `datetimeoffset` which is offset-based, not timezone-based. Use `ExternalType`.                                                                                  |
 | Partitioned table creation                   | SQL Server partitioning requires a multi-step process (PARTITION FUNCTION → PARTITION SCHEME → CREATE TABLE ON) that doesn't fit Gravitino's single-statement Transform model.   |
