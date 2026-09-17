@@ -18,13 +18,16 @@
 #
 
 # ==============================================================================
-# Flink Connectors — Red Hat UBI 10 Certified Image
-# Contains all supported Gravitino Flink connector versions (Scala 2.12 only).
-# Used as K8s init-container to inject connector jars into Flink pods.
+# Datastrato Enterprise Spark Connectors — Red Hat UBI 10 Certified Image
+# Contains all supported Gravitino Spark connector versions (Scala 2.12/2.13),
+# built from gravitino-enterprise, including the Datastrato Enterprise adapters
+# (for example Oracle and SQL Server).
+# Used as K8s init-container to inject connector jars into Spark pods.
 #
-# Flink version is selected at runtime via FLINK_VERSION env var.
-# Note: Flink only supports Scala 2.12; all scala API will be removed
-#       in a future Flink version.
+# For the open source connector, see the Apache Gravitino image built from
+# apache/gravitino (dev/docker/spark-connectors).
+#
+# Spark version is selected at runtime via SPARK_VERSION env var.
 #
 # Red Hat Certification Compliance:
 #   - Based on UBI 10 (registry.access.redhat.com)
@@ -43,18 +46,19 @@ ARG IMAGE_VERSION
 ARG IMAGE_RELEASE
 
 # --- Red Hat certification required LABELs ---
-LABEL name="gravitino-flink-connector" \
+LABEL name="enterprise-spark-connector" \
       vendor="Datastrato Inc." \
       version="${IMAGE_VERSION}" \
       release="${IMAGE_RELEASE}" \
-      summary="Gravitino Flink Connectors (Flink 1.18, 1.19, 1.20 / Scala 2.12)" \
-      description="All supported Gravitino Flink connector versions for K8s init-container deployment. Supports Flink 1.18, 1.19, and 1.20 with Scala 2.12. Version is selected at runtime via FLINK_VERSION environment variable." \
+      summary="Datastrato Enterprise Spark Connectors (Spark 3.3/3.4/3.5, Scala 2.12/2.13)" \
+      description="All supported Datastrato Enterprise Spark connector versions for K8s init-container deployment, including Enterprise adapters (for example Oracle and SQL Server). Supports Spark 3.3 (Scala 2.12), Spark 3.4 and 3.5 (Scala 2.12 + 2.13). Version is selected at runtime via SPARK_VERSION and SCALA_VERSION environment variables." \
       maintainer="Datastrato Inc."
 
-# Default Flink version (can be overridden at runtime)
-ENV FLINK_VERSION=1.20
+# Default Spark and Scala version (can be overridden at runtime)
+ENV SPARK_VERSION=3.5
+ENV SCALA_VERSION=2.12
 
-# Copy pre-built connector jars (prepared by flink-connectors-dependency.sh)
+# Copy pre-built connector jars (prepared by spark-connectors-dependency.sh)
 COPY packages/connectors /connectors
 
 # Entrypoint script for version selection

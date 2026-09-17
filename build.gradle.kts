@@ -910,6 +910,9 @@ tasks.rat {
     "dev/charts/gravitino/README.md",
     "dev/charts/gravitino-iceberg-rest-server/README.md",
     "dev/charts/gravitino-lance-rest-server/README.md",
+    // Operator-facing connector image READMEs; markdown docs don't need headers.
+    "dev/docker/*-connectors/README.md",
+    "dev/docker/*-connectors-enterprise/README.md",
     "dev/docker/**/*.xml",
     "dev/docker/**/*.conf",
     "dev/docker/opensearch/opensearch-docker-entrypoint.sh",

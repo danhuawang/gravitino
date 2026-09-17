@@ -18,12 +18,18 @@
 #
 
 # ==============================================================================
-# Trino/Starburst Connectors — Red Hat UBI 10 Certified Image
-# Contains all 6 supported Gravitino Trino connector version ranges.
-# Supports both open-source Trino and Starburst Enterprise.
-# Used as K8s init-container to inject connector jars into Trino/Starburst pods.
+# Datastrato Enterprise Flink Connectors — Red Hat UBI 10 Certified Image
+# Contains all supported Gravitino Flink connector versions (Scala 2.12 only),
+# built from gravitino-enterprise, including the Datastrato Enterprise adapters
+# (for example Oracle and SQL Server).
+# Used as K8s init-container to inject connector jars into Flink pods.
 #
-# Trino version range is selected at runtime via TRINO_VERSION env var.
+# For the open source connector, see the Apache Gravitino image built from
+# apache/gravitino (dev/docker/flink-connectors).
+#
+# Flink version is selected at runtime via FLINK_VERSION env var.
+# Note: Flink only supports Scala 2.12; all scala API will be removed
+#       in a future Flink version.
 #
 # Red Hat Certification Compliance:
 #   - Based on UBI 10 (registry.access.redhat.com)
@@ -42,18 +48,18 @@ ARG IMAGE_VERSION
 ARG IMAGE_RELEASE
 
 # --- Red Hat certification required LABELs ---
-LABEL name="gravitino-trino-connector" \
+LABEL name="enterprise-flink-connector" \
       vendor="Datastrato Inc." \
       version="${IMAGE_VERSION}" \
       release="${IMAGE_RELEASE}" \
-      summary="Gravitino Trino/Starburst Connectors (6 version ranges)" \
-      description="All supported Gravitino Trino connector versions for K8s init-container deployment. Supports both open-source Trino (435-478) and Starburst Enterprise. Version is selected at runtime via TRINO_VERSION environment variable." \
+      summary="Datastrato Enterprise Flink Connectors (Flink 1.18, 1.19, 1.20 / Scala 2.12)" \
+      description="All supported Datastrato Enterprise Flink connector versions for K8s init-container deployment, including Enterprise adapters (for example Oracle and SQL Server). Supports Flink 1.18, 1.19, and 1.20 with Scala 2.12. Version is selected at runtime via FLINK_VERSION environment variable." \
       maintainer="Datastrato Inc."
 
-# Default Trino version (can be overridden at runtime, e.g. 478, 452, 440)
-ENV TRINO_VERSION=478
+# Default Flink version (can be overridden at runtime)
+ENV FLINK_VERSION=1.20
 
-# Copy pre-built connector jars (prepared by trino-connectors-dependency.sh)
+# Copy pre-built connector jars (prepared by flink-connectors-dependency.sh)
 COPY packages/connectors /connectors
 
 # Entrypoint script for version selection

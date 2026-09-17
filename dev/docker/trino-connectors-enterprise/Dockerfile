@@ -18,11 +18,17 @@
 #
 
 # ==============================================================================
-# Spark Connectors — Red Hat UBI 10 Certified Image
-# Contains all supported Gravitino Spark connector versions (Scala 2.12).
-# Used as K8s init-container to inject connector jars into Spark pods.
+# Datastrato Enterprise Trino/Starburst Connectors — Red Hat UBI 10 Certified Image
+# Contains all 6 supported Gravitino Trino connector version ranges, built from
+# gravitino-enterprise, including the Datastrato Enterprise adapters (for
+# example Oracle and SQL Server).
+# Supports both open-source Trino and Starburst Enterprise.
+# Used as K8s init-container to inject connector jars into Trino/Starburst pods.
 #
-# Spark version is selected at runtime via SPARK_VERSION env var.
+# For the open source connector, see the Apache Gravitino image built from
+# apache/gravitino (dev/docker/trino-connectors).
+#
+# Trino version range is selected at runtime via TRINO_VERSION env var.
 #
 # Red Hat Certification Compliance:
 #   - Based on UBI 10 (registry.access.redhat.com)
@@ -41,19 +47,18 @@ ARG IMAGE_VERSION
 ARG IMAGE_RELEASE
 
 # --- Red Hat certification required LABELs ---
-LABEL name="gravitino-spark-connector" \
+LABEL name="enterprise-trino-connector" \
       vendor="Datastrato Inc." \
       version="${IMAGE_VERSION}" \
       release="${IMAGE_RELEASE}" \
-      summary="Gravitino Spark Connectors (Spark 3.3/3.4/3.5, Scala 2.12/2.13)" \
-      description="All supported Gravitino Spark connector versions for K8s init-container deployment. Supports Spark 3.3 (Scala 2.12), Spark 3.4 and 3.5 (Scala 2.12 + 2.13). Version is selected at runtime via SPARK_VERSION and SCALA_VERSION environment variables." \
+      summary="Datastrato Enterprise Trino/Starburst Connectors (6 version ranges)" \
+      description="All supported Datastrato Enterprise Trino connector versions for K8s init-container deployment, including Enterprise adapters (for example Oracle and SQL Server). Supports both open-source Trino (435-478) and Starburst Enterprise. Version is selected at runtime via TRINO_VERSION environment variable." \
       maintainer="Datastrato Inc."
 
-# Default Spark and Scala version (can be overridden at runtime)
-ENV SPARK_VERSION=3.5
-ENV SCALA_VERSION=2.12
+# Default Trino version (can be overridden at runtime, e.g. 478, 452, 440)
+ENV TRINO_VERSION=478
 
-# Copy pre-built connector jars (prepared by spark-connectors-dependency.sh)
+# Copy pre-built connector jars (prepared by trino-connectors-dependency.sh)
 COPY packages/connectors /connectors
 
 # Entrypoint script for version selection
