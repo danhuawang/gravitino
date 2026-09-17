@@ -114,8 +114,8 @@ class TestStatisticTool(unittest.TestCase):
                             "from_inclusive": False,
                             "to_inclusive": True,
                         },
-                        "mock_statistics_for_partition: table, catalog.schema.table, "
-                        "p1, p2, False, True",
+                        "mock_statistics_for_partition: table, "
+                        "catalog.schema.table, p1, p2, False, True",
                     ),
                 ):
                     with self.subTest(tool=name):
