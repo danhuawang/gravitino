@@ -96,6 +96,8 @@ function start() {
     mkdir -p "${GRAVITINO_LOG_DIR}"
   fi
 
+  rotate_out_file "${GRAVITINO_OUTFILE}"
+
   nohup ${JAVA_RUNNER} ${JAVA_OPTS} ${GRAVITINO_DEBUG_OPTS} -cp ${GRAVITINO_CLASSPATH} ${GRAVITINO_SERVER_NAME} >> "${GRAVITINO_OUTFILE}" 2>&1 &
 
   pid=$!
@@ -131,7 +133,14 @@ GRAVITINO_SERVER_NAME=com.datastrato.gravitino.metrics.GravitinoMetricsService
 GRAVITINO_SIMPLE_SERVER_NAME=gravitino-metrics-service
 
 JAVA_OPTS+=" -Dfile.encoding=UTF-8"
-JAVA_OPTS+=" -Dlog4j2.configurationFile=file://${GRAVITINO_CONF_DIR}/log4j2.properties"
+# The metrics service has its own log4j2 configuration, so it does not open the server's audit,
+# lineage, and search logs. Fall back to log4j2.properties for a conf dir from an older release.
+GRAVITINO_METRICS_LOG4J2_CONF="${GRAVITINO_CONF_DIR}/gravitino-metrics-service-log4j2.properties"
+if [[ ! -f "${GRAVITINO_METRICS_LOG4J2_CONF}" ]]; then
+  echo "${GRAVITINO_METRICS_LOG4J2_CONF} not found, use ${GRAVITINO_CONF_DIR}/log4j2.properties instead"
+  GRAVITINO_METRICS_LOG4J2_CONF="${GRAVITINO_CONF_DIR}/log4j2.properties"
+fi
+JAVA_OPTS+=" -Dlog4j2.configurationFile=file://${GRAVITINO_METRICS_LOG4J2_CONF}"
 JAVA_OPTS+=" -Dgravitino.log.path=${GRAVITINO_LOG_DIR} ${GRAVITINO_MEM}"
 JAVA_OPTS+=" -Dgravitino.server.name=${GRAVITINO_SIMPLE_SERVER_NAME}"
 if [ "$JVM_VERSION" -eq 17 ]; then
