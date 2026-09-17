@@ -28,7 +28,11 @@ version, or keep it lower.
 | 3.4   | 2.12, 2.13 | `/connectors/spark-3.4_2.12`, `/connectors/spark-3.4_2.13` |
 | 3.5   | 2.12, 2.13 | `/connectors/spark-3.5_2.12`, `/connectors/spark-3.5_2.13` |
 
-Each directory contains one shaded runtime JAR. `LICENSE` and `NOTICE` are in
+Each directory contains the open source runtime JAR
+(`gravitino-spark-connector-runtime-<spark>_<scala>-<version>.jar`) and the
+Enterprise extension JAR (`datastrato-spark-connector-ext-<spark>_<scala>-<version>.jar`),
+which adds the Oracle and SQL Server catalogs. Both must be on the classpath;
+the extension is discovered automatically. `LICENSE` and `NOTICE` are in
 `/licenses` in the image.
 
 ## Install
@@ -36,10 +40,11 @@ Each directory contains one shaded runtime JAR. `LICENSE` and `NOTICE` are in
 Mount `/target` and set the Spark and Scala versions. The entrypoint copies
 the matching JAR into that directory.
 
-| Variable        | Default | Description                               |
-|-----------------|---------|-------------------------------------------|
-| `SPARK_VERSION` | `3.5`   | `3.3`, `3.4`, or `3.5`.                   |
-| `SCALA_VERSION` | `2.12`  | `2.12` or `2.13`. Spark 3.3 is 2.12 only. |
+| Variable              | Default | Description                                              |
+|-----------------------|---------|----------------------------------------------------------|
+| `SPARK_VERSION`       | `3.5`   | `3.3`, `3.4`, or `3.5`.                                  |
+| `SCALA_VERSION`       | `2.12`  | `2.12` or `2.13`. Spark 3.3 is 2.12 only.                |
+| `COPY_ENTERPRISE_EXT` | `true`  | Set to `false` to copy only the open source runtime JAR. |
 
 ### Kubernetes
 

@@ -23,6 +23,7 @@
 # Environment variables:
 #   TRINO_VERSION      - Specific Trino version number (default: 478)
 #                        The script automatically resolves to the correct version range.
+#   COPY_ENTERPRISE_EXT - Whether to copy the Enterprise extension jar (Oracle / SQL Server) to /target/ (default: true)
 #
 # Supported Trino versions: 435-439, 440-445, 446-451, 452-468, 469-472, 473-478
 # The connector jars support both open-source Trino and Starburst Enterprise.
@@ -30,6 +31,7 @@
 set -e
 
 TRINO_VERSION="${TRINO_VERSION:-478}"
+COPY_ENTERPRISE_EXT="${COPY_ENTERPRISE_EXT:-true}"
 
 # Resolve specific Trino version number to the correct connector version range directory.
 resolve_version_range() {
@@ -78,6 +80,10 @@ if [ -d "/target" ]; then
   echo "Trino version ${TRINO_VERSION} resolved to connector range: ${VERSION_RANGE}"
   echo "Copying connector jars to /target/..."
   cp -r "${SOURCE_DIR}"/* /target/
+  if [ "${COPY_ENTERPRISE_EXT}" != "true" ]; then
+    rm -f /target/datastrato-trino-connector-ext-*.jar
+    echo "Enterprise extension jar skipped (COPY_ENTERPRISE_EXT=${COPY_ENTERPRISE_EXT})."
+  fi
 
   echo ""
   echo "Done. Files in /target/:"

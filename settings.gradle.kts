@@ -79,6 +79,7 @@ val skipTrinoConnector: Boolean =
 if (!skipTrinoConnector) {
   include(
     "trino-connector:trino-connector",
+    "trino-connector:trino-connector-ext",
     "trino-connector:trino-connector-435-439",
     "trino-connector:trino-connector-440-445",
     "trino-connector:trino-connector-446-451",
@@ -111,10 +112,25 @@ if (scalaVersion == "2.12") {
   project(":flink-connector:flink-1.20").projectDir = file("flink-connector/v1.20/flink")
   project(":flink-connector:flink-runtime-1.20").projectDir =
     file("flink-connector/v1.20/flink-runtime")
+  include(
+    "flink-connector:flink-ext-common",
+    "flink-connector:flink-ext-1.18",
+    "flink-connector:flink-ext-1.19",
+    "flink-connector:flink-ext-1.20"
+  )
+  project(":flink-connector:flink-ext-common").projectDir = file("flink-connector/ext/flink-common")
+  project(":flink-connector:flink-ext-1.18").projectDir = file("flink-connector/ext/v1.18/flink")
+  project(":flink-connector:flink-ext-1.19").projectDir = file("flink-connector/ext/v1.19/flink")
+  project(":flink-connector:flink-ext-1.20").projectDir = file("flink-connector/ext/v1.20/flink")
 }
 include("spark-connector:spark-3.3", "spark-connector:spark-runtime-3.3")
 project(":spark-connector:spark-3.3").projectDir = file("spark-connector/v3.3/spark")
 project(":spark-connector:spark-runtime-3.3").projectDir = file("spark-connector/v3.3/spark-runtime")
+include("spark-connector:spark-ext-common", "spark-connector:spark-ext-3.3", "spark-connector:spark-ext-3.4", "spark-connector:spark-ext-3.5")
+project(":spark-connector:spark-ext-common").projectDir = file("spark-connector/ext/spark-common")
+project(":spark-connector:spark-ext-3.3").projectDir = file("spark-connector/ext/v3.3/spark")
+project(":spark-connector:spark-ext-3.4").projectDir = file("spark-connector/ext/v3.4/spark")
+project(":spark-connector:spark-ext-3.5").projectDir = file("spark-connector/ext/v3.5/spark")
 include("spark-connector:spark-3.4", "spark-connector:spark-runtime-3.4", "spark-connector:spark-3.5", "spark-connector:spark-runtime-3.5")
 project(":spark-connector:spark-3.4").projectDir = file("spark-connector/v3.4/spark")
 project(":spark-connector:spark-runtime-3.4").projectDir = file("spark-connector/v3.4/spark-runtime")

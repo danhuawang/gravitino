@@ -28,7 +28,11 @@ server version, or keep it lower.
 | 1.19   | 2.12   | `/connectors/flink-1.19` |
 | 1.20   | 2.12   | `/connectors/flink-1.20` |
 
-Each directory contains one shaded runtime JAR. Do not mix JARs from
+Each directory contains the open source runtime JAR
+(`gravitino-flink-connector-runtime-<flink>_2.12-<version>.jar`) and the
+Enterprise extension JAR (`datastrato-flink-connector-ext-<flink>_2.12-<version>.jar`),
+which adds the Oracle and SQL Server catalogs. Both go into Flink's `lib/`;
+the extension is discovered automatically. Do not mix JARs from
 different Flink minor versions. `LICENSE` and `NOTICE` are in `/licenses` in
 the image.
 
@@ -37,9 +41,10 @@ the image.
 Mount `/target` and set `FLINK_VERSION`. The entrypoint copies the matching
 JAR into that directory.
 
-| Variable        | Default  | Description                |
-|-----------------|----------|----------------------------|
-| `FLINK_VERSION` | `1.20`   | `1.18`, `1.19`, or `1.20`. |
+| Variable              | Default | Description                                              |
+|-----------------------|---------|----------------------------------------------------------|
+| `FLINK_VERSION`       | `1.20`  | `1.18`, `1.19`, or `1.20`.                               |
+| `COPY_ENTERPRISE_EXT` | `true`  | Set to `false` to copy only the open source runtime JAR. |
 
 ### Kubernetes
 

@@ -21,6 +21,7 @@
 # Copies the Flink connector jar matching FLINK_VERSION to /target/
 #
 # Environment variables:
+#   COPY_ENTERPRISE_EXT - Whether to copy the Enterprise extension jar (Oracle / SQL Server) to /target/ (default: true)
 #   FLINK_VERSION  - Flink major version (default: 1.20)
 #
 # Supported versions: 1.18, 1.19, 1.20
@@ -29,6 +30,7 @@
 set -e
 
 FLINK_VERSION="${FLINK_VERSION:-1.20}"
+COPY_ENTERPRISE_EXT="${COPY_ENTERPRISE_EXT:-true}"
 SOURCE_DIR="/connectors/flink-${FLINK_VERSION}"
 
 if [ ! -d "$SOURCE_DIR" ]; then
@@ -42,6 +44,10 @@ fi
 if [ -d "/target" ]; then
   echo "Copying Flink ${FLINK_VERSION} connector (Scala 2.12) to /target/..."
   cp "${SOURCE_DIR}"/*.jar /target/
+  if [ "${COPY_ENTERPRISE_EXT}" != "true" ]; then
+    rm -f /target/datastrato-*-connector-ext-*.jar
+    echo "Enterprise extension jar skipped (COPY_ENTERPRISE_EXT=${COPY_ENTERPRISE_EXT})."
+  fi
   echo "Done. Jars copied to /target/:"
   ls -1 /target/*.jar 2>/dev/null
 else

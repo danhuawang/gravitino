@@ -20,6 +20,15 @@ To connect to SQL Server, you need:
 - SQL Server 2008, 2016, 2017, 2019, or 2022.
 - Network access from the Trino coordinator and workers to SQL Server. Port 1433 is the default port.
 
+## Installation
+
+The SQL Server catalog is not part of the open source Trino connector. It ships as the Datastrato
+Enterprise extension jar `datastrato-trino-connector-ext-<version>.jar`, which must be placed in the
+same plugin directory as the open source connector jars, `plugin/gravitino/`. A separate plugin
+directory does not work, since Trino loads each plugin directory in its own class loader. No further
+configuration is needed: the connector discovers the extension
+automatically through the Java service loader.
+
 ## Create Table
 
 At present, the Apache Gravitino Trino connector only supports basic SQL Server table creation statements, which involve fields, null allowances, and comments. It does not support advanced features like primary keys, indexes, default values, and auto-increment.

@@ -32,6 +32,7 @@ if [ -d $LOG_DIR ]; then
 fi
 
 export GRAVITINO_TRINO_CONNECTOR_DIR=/dev/null
+export GRAVITINO_TRINO_CONNECTOR_EXT_JAR=/dev/null
 for compose_file in docker-compose*.yaml; do
   docker compose -f "$compose_file" down --remove-orphans
 done

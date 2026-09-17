@@ -39,6 +39,9 @@ cd "${gravitino_home}"
   :flink-connector:flink-runtime-1.18:shadowJar \
   :flink-connector:flink-runtime-1.19:shadowJar \
   :flink-connector:flink-runtime-1.20:shadowJar \
+  :flink-connector:flink-ext-1.18:shadowJar \
+  :flink-connector:flink-ext-1.19:shadowJar \
+  :flink-connector:flink-ext-1.20:shadowJar \
   -x test
 
 # Clean old packages
@@ -54,6 +57,16 @@ find flink-connector/v1.19/flink-runtime/build/libs/ -name "*.jar" ! -name "*-em
   -exec cp {} "${script_dir}/packages/connectors/flink-1.19/" \;
 find flink-connector/v1.20/flink-runtime/build/libs/ -name "*.jar" ! -name "*-empty*" \
   -exec cp {} "${script_dir}/packages/connectors/flink-1.20/" \;
+
+# Enterprise extension jars (Oracle / SQL Server) are shipped next to the open source connector
+for v in 1.18 1.19 1.20; do
+  find "flink-connector/ext/v${v}/flink/build/libs/" -name "datastrato-*.jar" ! -name "*-thin*" \
+    -exec cp {} "${script_dir}/packages/connectors/flink-${v}/" \;
+  if ! ls "${script_dir}/packages/connectors/flink-${v}"/datastrato-flink-connector-ext-*.jar >/dev/null 2>&1; then
+    echo "ERROR: Enterprise extension jar missing in ${script_dir}/packages/connectors/flink-${v}"
+    exit 1
+  fi
+done
 
 echo ""
 echo "=== Flink connectors prepared ==="

@@ -392,6 +392,24 @@ fun excludePackagesForSparkConnector(project: Project) {
 
 val commonsBeanutilsVersion: String = libs.versions.commons.beanutils.get()
 
+// The enterprise path list decides which jars carry LICENSE-ENTERPRISE, so it must be
+// known before the subprojects block below configures their Jar tasks.
+apply(from = "enterprise-licensing/shared-paths.gradle.kts")
+
+/**
+ * Whether any enterprise file pattern falls inside the project directory. A pattern's literal
+ * prefix (up to its first wildcard) either lies under the project, or the project lies under it.
+ */
+fun shipsEnterpriseCode(project: Project): Boolean {
+  val enterpriseFilePatterns: List<String> by rootProject.extra
+  val projectPath = rootDir.toPath().relativize(project.projectDir.toPath()).toString()
+    .replace(File.separatorChar, '/') + "/"
+  return enterpriseFilePatterns.any { pattern ->
+    val literalPrefix = pattern.substringBefore('*')
+    projectPath.startsWith(literalPrefix) || literalPrefix.startsWith(projectPath)
+  }
+}
+
 subprojects {
   // Gravitino Python client project didn't need to apply the java plugin
   if (project.name == "client-python") {
@@ -600,26 +618,42 @@ subprojects {
     from(tasks["javadoc"])
   }
 
+  // Only a module that ships Datastrato proprietary code carries the mixed-distribution
+  // LICENSE/NOTICE and LICENSE-ENTERPRISE. Every other jar keeps the Apache license files
+  // so it stays interchangeable with the upstream artifact of the same name.
+  val shipsEnterpriseCode = shipsEnterpriseCode(project)
   tasks.withType<Jar> {
     into("META-INF") {
       from(rootDir) {
         if (name == "sourcesJar") {
-          include("LICENSE")
-          include("NOTICE")
-          include("LICENSE-APACHE")
-          include("LICENSE-ENTERPRISE")
+          if (shipsEnterpriseCode) {
+            include("LICENSE")
+            include("NOTICE")
+            include("LICENSE-APACHE")
+            include("LICENSE-ENTERPRISE")
+          } else {
+            include("LICENSE-APACHE")
+            rename("LICENSE-APACHE", "LICENSE")
+            include("NOTICE-APACHE.bin")
+            rename("NOTICE-APACHE.bin", "NOTICE")
+          }
         } else if (project.name == "web") {
           include("web/web/LICENSE.bin")
           rename("LICENSE.bin", "LICENSE")
           include("web/web/NOTICE.bin")
           rename("NOTICE.bin", "NOTICE")
-        } else {
+        } else if (shipsEnterpriseCode) {
           include("LICENSE.bin")
           rename("LICENSE.bin", "LICENSE")
           include("NOTICE.bin")
           rename("NOTICE.bin", "NOTICE")
           include("LICENSE-APACHE")
           include("LICENSE-ENTERPRISE")
+        } else {
+          include("LICENSE-APACHE.bin")
+          rename("LICENSE-APACHE.bin", "LICENSE")
+          include("NOTICE-APACHE.bin")
+          rename("NOTICE-APACHE.bin", "NOTICE")
         }
       }
     }
@@ -654,26 +688,51 @@ subprojects {
 
         artifactId = "${rootProject.name.lowercase()}-${project.name}"
 
+        // POM metadata must agree with the license files inside the jar: a module that ships
+        // Datastrato proprietary code is published under LICENSE-ENTERPRISE, not Apache 2.0.
         pom {
-          name.set("Gravitino")
-          description.set("Gravitino is a high-performance, geo-distributed and federated metadata lake.")
-          url.set("https://gravitino.apache.org")
-          licenses {
-            license {
-              name.set("The Apache Software License, Version 2.0")
-              url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+          if (shipsEnterpriseCode) {
+            name.set("Gravitino Enterprise")
+            description.set("Datastrato proprietary extensions for Gravitino.")
+            url.set("https://datastrato.ai/")
+            licenses {
+              license {
+                name.set("Datastrato Enterprise - Proprietary Components")
+                url.set("https://github.com/datastrato/gravitino-enterprise/blob/main/LICENSE-ENTERPRISE")
+              }
             }
-          }
-          developers {
-            developer {
-              id.set("The Gravitino community")
-              name.set("support")
-              email.set("dev@gravitino.apache.org")
+            developers {
+              developer {
+                id.set("Datastrato")
+                name.set("Datastrato Inc.")
+                email.set("contact@datastrato.com")
+              }
             }
-          }
-          scm {
-            url.set("https://github.com/apache/gravitino")
-            connection.set("scm:git:git://github.com/apache/gravitino.git")
+            scm {
+              url.set("https://github.com/datastrato/gravitino-enterprise")
+              connection.set("scm:git:git://github.com/datastrato/gravitino-enterprise.git")
+            }
+          } else {
+            name.set("Gravitino")
+            description.set("Gravitino is a high-performance, geo-distributed and federated metadata lake.")
+            url.set("https://gravitino.apache.org")
+            licenses {
+              license {
+                name.set("The Apache Software License, Version 2.0")
+                url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+              }
+            }
+            developers {
+              developer {
+                id.set("The Gravitino community")
+                name.set("support")
+                email.set("dev@gravitino.apache.org")
+              }
+            }
+            scm {
+              url.set("https://github.com/apache/gravitino")
+              connection.set("scm:git:git://github.com/apache/gravitino.git")
+            }
           }
         }
       }
@@ -895,6 +954,8 @@ tasks.rat {
     "**/licenses/*.md",
     "**/LICENSE.*",
     "**/NOTICE.*",
+    "LICENSE-*.bin",
+    "NOTICE-*.bin",
     "**/trino-ci-testset",
     "ROADMAP.md",
     "GETTING_STARTED.md",
@@ -1216,6 +1277,7 @@ tasks {
 
   val compileTrinoConnector by registering {
     dependsOn("trino-connector:trino-connector-473-478:copyLibs")
+    dependsOn("trino-connector:trino-connector-ext:copyLibs")
     group = "gravitino distribution"
   }
 
@@ -1228,6 +1290,7 @@ tasks {
       ":trino-connector:trino-connector-452-468:assembleTrinoConnector",
       ":trino-connector:trino-connector-469-472:assembleTrinoConnector",
       ":trino-connector:trino-connector-473-478:assembleTrinoConnector",
+      ":trino-connector:trino-connector-ext:assembleTrinoConnectorExt",
       "assembleIcebergRESTServer",
       "assembleLanceRESTServer"
     )

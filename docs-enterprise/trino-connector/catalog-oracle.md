@@ -20,6 +20,15 @@ To connect to Oracle, you need:
 - Oracle 11g Release 2 (11.2.x). Oracle 12c+ may also work but is not tested.
 - Network access from the Trino coordinator and workers to Oracle. Port 1521 is the default port.
 
+## Installation
+
+The Oracle catalog is not part of the open source Trino connector. It ships as the Datastrato
+Enterprise extension jar `datastrato-trino-connector-ext-<version>.jar`, which must be placed in the
+same plugin directory as the open source connector jars, `plugin/gravitino/`. A separate plugin
+directory does not work, since Trino loads each plugin directory in its own class loader. No further
+configuration is needed: the connector discovers the extension
+automatically through the Java service loader.
+
 ## Case sensitivity
 
 The Oracle catalog follows Oracle's own native case-folding rule: an unquoted identifier folds to

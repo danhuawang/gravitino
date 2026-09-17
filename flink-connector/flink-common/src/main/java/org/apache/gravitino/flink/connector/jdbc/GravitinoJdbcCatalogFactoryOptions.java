@@ -30,12 +30,6 @@ public class GravitinoJdbcCatalogFactoryOptions {
   /** Identifier for the {@link GravitinoJdbcCatalog}. */
   public static final String POSTGRESQL_IDENTIFIER = "gravitino-jdbc-postgresql";
 
-  /** Identifier for the {@link GravitinoJdbcCatalog}. */
-  public static final String ORACLE_IDENTIFIER = "gravitino-jdbc-oracle";
-
-  /** Identifier for the {@link GravitinoJdbcCatalog}. */
-  public static final String SQLSERVER_IDENTIFIER = "gravitino-jdbc-sqlserver";
-
   public static final ConfigOption<String> DEFAULT_DATABASE =
       ConfigOptions.key(JdbcPropertiesConstants.FLINK_JDBC_DEFAULT_DATABASE)
           .stringType()

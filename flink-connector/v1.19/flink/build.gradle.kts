@@ -78,10 +78,8 @@ dependencies {
   testImplementation(libs.metrics.core)
   testImplementation(libs.minikdc)
   testImplementation(libs.mockito.core)
-  testImplementation(libs.mssql.jdbc)
   testImplementation(libs.mysql.driver)
   testImplementation(libs.postgresql.driver)
-  testImplementation(libs.oracle.driver)
   testImplementation(libs.sqlite.jdbc)
   testImplementation(libs.testcontainers)
   testImplementation(libs.testcontainers.junit.jupiter)
@@ -196,10 +194,6 @@ tasks.test {
     dependsOn(":catalogs:catalog-jdbc-mysql:runtimeJars")
     dependsOn(":catalogs:catalog-jdbc-postgresql:jar")
     dependsOn(":catalogs:catalog-jdbc-postgresql:runtimeJars")
-    dependsOn(":catalogs:catalog-jdbc-oracle:jar")
-    dependsOn(":catalogs:catalog-jdbc-oracle:runtimeJars")
-    dependsOn(":catalogs:catalog-jdbc-sqlserver:jar")
-    dependsOn(":catalogs:catalog-jdbc-sqlserver:runtimeJars")
   }
 }
 

@@ -29,3 +29,19 @@ if [ ! -f "$COMPOSE_FILE" ]; then
   echo "ERROR: Unsupported TEST_CONTAINERS value: $TEST_CONTAINERS (expected compose file $COMPOSE_FILE not found)."
   exit 1
 fi
+
+# The Oracle and SQL Server adapters ship in the Datastrato ext jar, which the Trino container
+# loads next to the open source connector. Build it with `./gradlew :trino-connector:trino-connector-ext:copyLibs`.
+case "$TEST_CONTAINERS" in
+  oracle|sqlserver)
+    if [ -z "$GRAVITINO_TRINO_CONNECTOR_EXT_JAR" ]; then
+      ext_lib_dir=${GRAVITINO_TRINO_CONNECTOR_EXTRA_LIBS:-../../distribution/datastrato-trino-connector-ext}
+      GRAVITINO_TRINO_CONNECTOR_EXT_JAR=$(ls "$ext_lib_dir"/*.jar 2>/dev/null | head -n 1)
+    fi
+    if [ ! -f "$GRAVITINO_TRINO_CONNECTOR_EXT_JAR" ]; then
+      echo "ERROR: Trino connector ext jar not found, set GRAVITINO_TRINO_CONNECTOR_EXT_JAR or build it with :trino-connector:trino-connector-ext:copyLibs."
+      exit 1
+    fi
+    export GRAVITINO_TRINO_CONNECTOR_EXT_JAR
+    ;;
+esac

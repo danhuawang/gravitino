@@ -59,6 +59,9 @@ LABEL name="enterprise-flink-connector" \
 # Default Flink version (can be overridden at runtime)
 ENV FLINK_VERSION=1.20
 
+# Set to false at runtime to copy only the open source connector jars
+ENV COPY_ENTERPRISE_EXT=true
+
 # Copy pre-built connector jars (prepared by flink-connectors-dependency.sh)
 COPY packages/connectors /connectors
 

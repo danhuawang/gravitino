@@ -106,7 +106,9 @@ jobs:
             -x :spark-connector:spark-common:test \
             -x :spark-connector:spark-3.3:test -x :spark-connector:spark-3.4:test -x :spark-connector:spark-3.5:test \
             -x :spark-connector:spark-runtime-3.3:test -x :spark-connector:spark-runtime-3.4:test -x :spark-connector:spark-runtime-3.5:test \
-            -x :trino-connector:integration-test:test -x :trino-connector:trino-connector:test \
+            -x :spark-connector:spark-ext-common:test -x :spark-connector:spark-ext-3.3:test -x :spark-connector:spark-ext-3.4:test -x :spark-connector:spark-ext-3.5:test \
+            -x :flink-connector:flink-ext-common:test -x :flink-connector:flink-ext-1.18:test -x :flink-connector:flink-ext-1.19:test -x :flink-connector:flink-ext-1.20:test \
+            -x :trino-connector:integration-test:test -x :trino-connector:trino-connector:test -x :trino-connector:trino-connector-ext:test \
             -x :iceberg:iceberg-rest-trino-it:test \
             -x :plugins:idp-basic:test \
             -x :plugins:scim:test \

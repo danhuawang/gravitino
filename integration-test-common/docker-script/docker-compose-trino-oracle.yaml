@@ -49,6 +49,7 @@ services:
     volumes:
       - ./init/trino:/tmp/trino
       - ${GRAVITINO_TRINO_CONNECTOR_DIR:-../../trino-connector/trino-connector-473-478/build/libs}:/usr/lib/trino/plugin/gravitino
+      - ${GRAVITINO_TRINO_CONNECTOR_EXT_JAR:-/dev/null}:/usr/lib/trino/plugin/gravitino/datastrato-trino-connector-ext.jar
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

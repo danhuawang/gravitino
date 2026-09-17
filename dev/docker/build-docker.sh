@@ -27,7 +27,7 @@ usage() {
   cat << EOF
 Usage:
 
-./build-docker.sh --platform [all|linux/amd64|linux/arm64] --type [gravitino|hive|kerberos-hive|trino|doris|ranger|iceberg-rest-server|lance-rest-server|mcp-server|datastrato-gravitino] --image {image_name} --tag {tag_name} --latest
+./build-docker.sh --platform [all|linux/amd64|linux/arm64] --type [gravitino|hive|kerberos-hive|trino|doris|ranger|iceberg-rest-server|lance-rest-server|mcp-server|datastrato-gravitino|spark-connectors|flink-connectors|trino-connectors] --image {image_name} --tag {tag_name} --latest
 
 Notice: You shouldn't use 'all' for the platform if you don't use the Github action to publish the Docker image.
 EOF
@@ -124,6 +124,17 @@ elif [ "${component_type}" == "datastrato-gravitino" ]; then
   if [ -n "${IMAGE_VERSION:-}" ]; then
     build_args="${build_args} --build-arg IMAGE_VERSION=${IMAGE_VERSION}"
   fi
+elif [[ "${component_type}" == "spark-connectors" || "${component_type}" == "flink-connectors" || "${component_type}" == "trino-connectors" ]]; then
+  # The Enterprise connector images live in the *-connectors-enterprise directories.
+  component_dir="${component_type}-enterprise"
+  # Run in a subshell: the connector dependency scripts redefine script_dir and change directory.
+  (. ${script_dir}/${component_dir}/${component_type}-dependency.sh) || {
+    echo "ERROR : preparing ${component_type} packages failed"
+    exit 1
+  }
+  if [ -n "${IMAGE_VERSION:-}" ]; then
+    build_args="${build_args} --build-arg IMAGE_VERSION=${IMAGE_VERSION}"
+  fi
 else
   echo "ERROR : ${component_type} is not a valid component type"
   usage
@@ -142,7 +153,7 @@ else
   docker buildx create --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=10000000 --platform linux/amd64,linux/arm64 --name ${BUILDER_NAME}
 fi
 
-cd ${script_dir}/${component_type}
+cd ${script_dir}/${component_dir:-${component_type}}
 if [[ "${platform_type}" == "all" ]]; then
   if [ ${build_latest} -eq 1 ]; then
     docker buildx build --builder ${BUILDER_NAME} --no-cache --pull --platform=linux/amd64,linux/arm64 ${build_args} --push --progress plain -f Dockerfile -t ${image_name}:latest -t ${image_name}:${tag_name} .

@@ -11,6 +11,9 @@ on:
         options:
           - 'enterprise-gravitino'
           - 'enterprise-trino'
+          - 'enterprise-spark-connectors'
+          - 'enterprise-flink-connectors'
+          - 'enterprise-trino-connectors'
       version:
         description: 'The tag to apply to this image. The format is: {OSS-version}-{enterprise-version}.'
         required: true
@@ -87,6 +90,13 @@ jobs:
             echo "image_type=trino" >> $GITHUB_ENV
             echo "image_name=datastratosandbox/enterprise" >> $GITHUB_ENV
             echo "tag_name=enterprise-trino" >> $GITHUB_ENV  
+          elif [[ "${{ github.event.inputs.image }}" == enterprise-*-connectors ]]; then
+            # Connector images ship the open source connector jar plus the Enterprise ext jar
+            engine="${{ github.event.inputs.image }}"
+            engine="${engine#enterprise-}"
+            echo "image_type=${engine}" >> $GITHUB_ENV
+            echo "image_name=datastratosandbox/enterprise" >> $GITHUB_ENV
+            echo "tag_name=enterprise-${engine}" >> $GITHUB_ENV
           fi
 
           if [ "${{ github.event.inputs.publish-latest-tag }}" == "true" ]; then

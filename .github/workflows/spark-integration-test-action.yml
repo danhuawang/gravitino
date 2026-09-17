@@ -77,10 +77,10 @@ jobs:
         id: integrationTest
         run: |
           if [ "${{ inputs.scala-version }}" == "2.12" ];then 
-            ./gradlew -PskipTests -PtestMode=${{ inputs.test-mode }} -PscalaVersion=${{ inputs.scala-version }} -PskipDockerTests=false -PskipWeb=true :spark-connector:spark-3.3:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
+            ./gradlew -PskipTests -PtestMode=${{ inputs.test-mode }} -PscalaVersion=${{ inputs.scala-version }} -PskipDockerTests=false -PskipWeb=true :spark-connector:spark-3.3:test :spark-connector:spark-ext-3.3:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
           fi
-          ./gradlew -PskipTests -PtestMode=${{ inputs.test-mode }} -PscalaVersion=${{ inputs.scala-version }} -PskipDockerTests=false -PskipWeb=true :spark-connector:spark-3.4:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
-          ./gradlew -PskipTests -PtestMode=${{ inputs.test-mode }} -PscalaVersion=${{ inputs.scala-version }} -PskipDockerTests=false -PskipWeb=true :spark-connector:spark-3.5:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
+          ./gradlew -PskipTests -PtestMode=${{ inputs.test-mode }} -PscalaVersion=${{ inputs.scala-version }} -PskipDockerTests=false -PskipWeb=true :spark-connector:spark-3.4:test :spark-connector:spark-ext-3.4:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
+          ./gradlew -PskipTests -PtestMode=${{ inputs.test-mode }} -PscalaVersion=${{ inputs.scala-version }} -PskipDockerTests=false -PskipWeb=true :spark-connector:spark-3.5:test :spark-connector:spark-ext-3.5:test --tests "org.apache.gravitino.spark.connector.integration.test.**"
 
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v7
@@ -92,5 +92,8 @@ jobs:
             spark-connector/v3.3/spark/build/spark-3.3-integration-test.log
             spark-connector/v3.4/spark/build/spark-3.4-integration-test.log
             spark-connector/v3.5/spark/build/spark-3.5-integration-test.log
+            spark-connector/ext/v3.3/spark/build/*.log
+            spark-connector/ext/v3.4/spark/build/*.log
+            spark-connector/ext/v3.5/spark/build/*.log
             distribution/package/logs/*.out
             distribution/package/logs/*.log

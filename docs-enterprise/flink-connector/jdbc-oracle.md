@@ -22,6 +22,15 @@ Apache Gravitino Flink connector supports Oracle as a JDBC catalog. This documen
 Place the Oracle JDBC driver (`ojdbc8-23.x.x.x.jar`) in the Flink `lib` directory. The driver is available from the [Oracle Maven repository](https://mvnrepository.com/artifact/com.oracle.database.jdbc/ojdbc8).
 :::
 
+## Installation
+
+The Oracle catalog is not part of the open source Flink connector. It ships as the Datastrato
+Enterprise extension jar `datastrato-flink-connector-ext-<flink-version>_2.12-<version>.jar`, which
+must be placed in the Flink `lib` directory next to the open source connector jar
+`gravitino-flink-connector-runtime-<flink-version>_2.12-<version>.jar`. No further configuration is
+needed: the connector discovers the extension
+automatically through the Java service loader.
+
 ## Catalog properties
 
 | Gravitino catalog property name | Description                                                    | Since Version    |

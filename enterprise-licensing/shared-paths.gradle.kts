@@ -8,10 +8,12 @@
  * Not: header predicates, tasks, or per-job waivers.
  *
  * To: extra.enterpriseFilePatterns, extra.generatedFilePatterns.
- *     Parent applies this first; the three jobs read them with `by extra`.
+ *     Parent applies this first; the check-*.gradle.kts jobs read them with `by extra`,
+ *     and build.gradle.kts shipsEnterpriseCode() reads enterpriseFilePatterns to pick
+ *     the license files a jar carries.
  */
 
-// To extra. Read by the three check-*.gradle.kts jobs.
+// To extra. Read by the check-*.gradle.kts jobs and by build.gradle.kts shipsEnterpriseCode().
 val enterpriseFilePatterns: List<String> by extra(
   listOf(
     // keep-sorted start name=enterprise-includes
@@ -44,6 +46,7 @@ val enterpriseFilePatterns: List<String> by extra(
     "docs-enterprise/**",
     "enterprise-licensing.gradle.kts",
     "enterprise-licensing/**",
+    "flink-connector/ext/**",
     "integration-test-common/src/test/java/org/apache/gravitino/integration/test/container/OracleContainer.java",
     "licensing/**",
     "lineage-extension/**",
@@ -54,10 +57,10 @@ val enterpriseFilePatterns: List<String> by extra(
     "search/**",
     "server/src/test/java/org/apache/gravitino/server/TestLog4j2RollingConfiguration.java",
     "server/src/test/java/org/apache/gravitino/server/TestOutFileRotation.java",
-    "spark-connector/**/jdbc/oracle/*TypeConverter*",
-    "spark-connector/**/jdbc/sqlserver/*TypeConverter*",
+    "spark-connector/ext/**",
     "src/test/java/com/datastrato/gravitino/transit/packaging/TransitProviderDiscoveryProbe.java",
-    "test/test-common/**"
+    "test/test-common/**",
+    "trino-connector/trino-connector-ext/**"
     // keep-sorted end
   )
 )

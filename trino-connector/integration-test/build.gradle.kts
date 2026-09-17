@@ -93,6 +93,7 @@ tasks.register("setupDependencies") {
   dependsOn(":trino-connector:trino-connector-452-468:copyLibs")
   dependsOn(":trino-connector:trino-connector-469-472:copyLibs")
   dependsOn(":trino-connector:trino-connector-473-478:copyLibs")
+  dependsOn(":trino-connector:trino-connector-ext:copyLibs")
   dependsOn(":catalogs:catalog-lakehouse-iceberg:jar", ":catalogs:catalog-lakehouse-iceberg:runtimeJars")
   dependsOn(":catalogs:catalog-jdbc-mysql:jar", ":catalogs:catalog-jdbc-mysql:runtimeJars")
   dependsOn(":catalogs:catalog-jdbc-oracle:jar", ":catalogs:catalog-jdbc-oracle:runtimeJars")
@@ -105,12 +106,16 @@ tasks.build {
   dependsOn("setupDependencies")
 }
 
+// Jars the Trino container loads next to the open source connector, see ContainerSuite.
+val trinoConnectorExtraLibs = rootProject.layout.projectDirectory.dir("distribution/datastrato-trino-connector-ext")
+
 tasks.test {
   val skipITs = project.hasProperty("skipITs")
   if (skipITs) {
     exclude("**/integration/test/**")
   } else {
     dependsOn("setupDependencies")
+    environment("GRAVITINO_TRINO_CONNECTOR_EXTRA_LIBS", trinoConnectorExtraLibs.asFile.absolutePath)
     doFirst {
       copy {
         from("${project.rootDir}/dev/docker/trino/conf")
@@ -143,7 +148,9 @@ tasks.test {
 }
 
 tasks.register<JavaExec>("TrinoTest") {
+  dependsOn(":trino-connector:trino-connector-ext:copyLibs")
   classpath = sourceSets["test"].runtimeClasspath
+  environment("GRAVITINO_TRINO_CONNECTOR_EXTRA_LIBS", trinoConnectorExtraLibs.asFile.absolutePath)
   mainClass.set("org.apache.gravitino.trino.connector.integration.test.TrinoQueryTestTool")
 
   if (JavaVersion.current() > JavaVersion.VERSION_1_8) {

@@ -22,6 +22,15 @@ Apache Gravitino Flink connector supports SQL Server as a JDBC catalog. This doc
 Place the SQL Server JDBC driver (`mssql-jdbc-12.x.x.jreX.jar`) in the Flink `lib` directory. The driver is available from the [Microsoft Maven repository](https://mvnrepository.com/artifact/com.microsoft.sqlserver/mssql-jdbc).
 :::
 
+## Installation
+
+The SQL Server catalog is not part of the open source Flink connector. It ships as the Datastrato
+Enterprise extension jar `datastrato-flink-connector-ext-<flink-version>_2.12-<version>.jar`, which
+must be placed in the Flink `lib` directory next to the open source connector jar
+`gravitino-flink-connector-runtime-<flink-version>_2.12-<version>.jar`. No further configuration is
+needed: the connector discovers the extension
+automatically through the Java service loader.
+
 ## Catalog properties
 
 Gravitino Flink connector transforms the Flink `CREATE CATALOG WITH (...)` option names below to the Gravitino catalog property names used to persist the catalog.

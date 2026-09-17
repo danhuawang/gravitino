@@ -1,0 +1,2 @@
+com.datastrato.gravitino.spark.connector.jdbc.OracleSparkCatalogExtension
+com.datastrato.gravitino.spark.connector.jdbc.SqlServerSparkCatalogExtension

@@ -48,6 +48,7 @@ cd "${gravitino_home}"
   :trino-connector:trino-connector-452-468:assembleTrinoConnector \
   :trino-connector:trino-connector-469-472:assembleTrinoConnector \
   :trino-connector:trino-connector-473-478:assembleTrinoConnector \
+  :trino-connector:trino-connector-ext:copyLibs \
   -x test
 
 # Clean old packages
@@ -60,6 +61,15 @@ for dir in distribution/gravitino-trino-connector-*; do
     version=$(basename "$dir" | sed 's/gravitino-trino-connector-//')
     mkdir -p "${script_dir}/packages/connectors/trino-${version}"
     cp -r "$dir"/* "${script_dir}/packages/connectors/trino-${version}/"
+  fi
+done
+
+# Enterprise extension jar (Oracle / SQL Server) is loaded from the same plugin directory
+for dir in "${script_dir}"/packages/connectors/trino-*; do
+  cp distribution/datastrato-trino-connector-ext/datastrato-trino-connector-ext-*.jar "$dir/"
+  if ! ls "${dir}"/datastrato-trino-connector-ext-*.jar >/dev/null 2>&1; then
+    echo "ERROR: Enterprise extension jar missing in ${dir}"
+    exit 1
   fi
 done
 

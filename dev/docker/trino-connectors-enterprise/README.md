@@ -39,7 +39,10 @@ Trino and Starburst **435–478**:
 | 473–478       | `/connectors/trino-473-478` |
 
 Each band is a full plugin directory: the connector JAR, its dependencies,
-`LICENSE`, `NOTICE`, and this README. Install **exactly one** band.
+the Enterprise extension JAR (`datastrato-trino-connector-ext-<version>.jar`,
+which adds the Oracle and SQL Server catalogs and is discovered automatically
+from the same plugin directory), `LICENSE`, `NOTICE`, and this README. Install
+**exactly one** band.
 
 ## JDBC drivers
 
@@ -59,9 +62,10 @@ plugin directory would not be used, as Trino isolates each plugin's classpath.
 Mount `/target` and set `TRINO_VERSION`. The entrypoint copies the matching
 band into that directory.
 
-| Variable        | Default | Description                                             |
-|-----------------|---------|---------------------------------------------------------|
-| `TRINO_VERSION` | `478`   | Trino server version. Resolved to a band automatically. |
+| Variable              | Default | Description                                             |
+|-----------------------|---------|---------------------------------------------------------|
+| `TRINO_VERSION`       | `478`   | Trino server version. Resolved to a band automatically. |
+| `COPY_ENTERPRISE_EXT` | `true`  | Set to `false` to copy only the open source connector.  |
 
 ### Kubernetes
 

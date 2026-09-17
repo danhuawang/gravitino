@@ -1,0 +1,2 @@
+com.datastrato.gravitino.flink.connector.jdbc.oracle.GravitinoOracleJdbcCatalogFactoryFlink119
+com.datastrato.gravitino.flink.connector.jdbc.sqlserver.GravitinoSqlServerJdbcCatalogFactoryFlink119

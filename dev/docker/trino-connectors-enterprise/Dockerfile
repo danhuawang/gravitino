@@ -58,6 +58,9 @@ LABEL name="enterprise-trino-connector" \
 # Default Trino version (can be overridden at runtime, e.g. 478, 452, 440)
 ENV TRINO_VERSION=478
 
+# Set to false at runtime to copy only the open source connector jars
+ENV COPY_ENTERPRISE_EXT=true
+
 # Copy pre-built connector jars (prepared by trino-connectors-dependency.sh)
 COPY packages/connectors /connectors
 

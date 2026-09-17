@@ -21,6 +21,7 @@
 # Copies the Spark connector jar matching SPARK_VERSION and SCALA_VERSION to /target/
 #
 # Environment variables:
+#   COPY_ENTERPRISE_EXT - Whether to copy the Enterprise extension jar (Oracle / SQL Server) to /target/ (default: true)
 #   SPARK_VERSION  - Spark major version (default: 3.5)
 #   SCALA_VERSION  - Scala version (default: 2.12)
 #
@@ -33,6 +34,7 @@ set -e
 
 SPARK_VERSION="${SPARK_VERSION:-3.5}"
 SCALA_VERSION="${SCALA_VERSION:-2.12}"
+COPY_ENTERPRISE_EXT="${COPY_ENTERPRISE_EXT:-true}"
 SOURCE_DIR="/connectors/spark-${SPARK_VERSION}_${SCALA_VERSION}"
 
 if [ ! -d "$SOURCE_DIR" ]; then
@@ -46,6 +48,10 @@ fi
 if [ -d "/target" ]; then
   echo "Copying Spark ${SPARK_VERSION} connector (Scala ${SCALA_VERSION}) to /target/..."
   cp "${SOURCE_DIR}"/*.jar /target/
+  if [ "${COPY_ENTERPRISE_EXT}" != "true" ]; then
+    rm -f /target/datastrato-*-connector-ext-*.jar
+    echo "Enterprise extension jar skipped (COPY_ENTERPRISE_EXT=${COPY_ENTERPRISE_EXT})."
+  fi
   echo "Done. Jars copied to /target/:"
   ls -1 /target/*.jar 2>/dev/null
 else

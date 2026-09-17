@@ -303,7 +303,11 @@ public class ContainerSuite implements Closeable {
     String extraLibDir = System.getenv("GRAVITINO_TRINO_CONNECTOR_EXTRA_LIBS");
     if (extraLibDir != null && !extraLibDir.isEmpty()) {
       File[] jars = new File(extraLibDir).listFiles((dir, name) -> name.endsWith(".jar"));
-      for (File jar : jars == null ? new File[0] : jars) {
+      if (jars == null || jars.length == 0) {
+        throw new IllegalStateException(
+            "GRAVITINO_TRINO_CONNECTOR_EXTRA_LIBS=" + extraLibDir + " contains no jars");
+      }
+      for (File jar : jars) {
         files.put(
             TrinoContainer.TRINO_CONTAINER_PLUGIN_GRAVITINO_DIR + "/" + jar.getName(),
             jar.getAbsolutePath());

@@ -21,9 +21,7 @@ package org.apache.gravitino.spark.connector.version;
 import org.apache.gravitino.spark.connector.hive.GravitinoHiveCatalogSpark35;
 import org.apache.gravitino.spark.connector.iceberg.GravitinoIcebergCatalogSpark35;
 import org.apache.gravitino.spark.connector.jdbc.GravitinoJdbcCatalogSpark35;
-import org.apache.gravitino.spark.connector.jdbc.oracle.GravitinoOracleCatalogSpark35;
 import org.apache.gravitino.spark.connector.jdbc.postgresql.GravitinoPostgreSqlCatalogSpark35;
-import org.apache.gravitino.spark.connector.jdbc.sqlserver.GravitinoSqlServerCatalogSpark35;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -40,12 +38,6 @@ public class TestCatalogNameAdaptor {
     Assertions.assertEquals(
         "org.apache.gravitino.spark.connector.paimon.GravitinoPaimonCatalogSpark35",
         paimonCatalogName);
-
-    String sqlServerCatalogName = CatalogNameAdaptor.getCatalogName("jdbc-sqlserver");
-    Assertions.assertEquals(GravitinoSqlServerCatalogSpark35.class.getName(), sqlServerCatalogName);
-
-    String oracleCatalogName = CatalogNameAdaptor.getCatalogName("jdbc-oracle");
-    Assertions.assertEquals(GravitinoOracleCatalogSpark35.class.getName(), oracleCatalogName);
 
     String pgCatalogName = CatalogNameAdaptor.getCatalogName("jdbc-postgresql");
     Assertions.assertEquals(GravitinoPostgreSqlCatalogSpark35.class.getName(), pgCatalogName);

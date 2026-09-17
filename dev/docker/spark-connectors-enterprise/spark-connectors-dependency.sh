@@ -37,6 +37,9 @@ cd "${gravitino_home}"
   :spark-connector:spark-runtime-3.3:shadowJar \
   :spark-connector:spark-runtime-3.4:shadowJar \
   :spark-connector:spark-runtime-3.5:shadowJar \
+  :spark-connector:spark-ext-3.3:shadowJar \
+  :spark-connector:spark-ext-3.4:shadowJar \
+  :spark-connector:spark-ext-3.5:shadowJar \
   -PscalaVersion=2.12 \
   -x test
 
@@ -44,6 +47,8 @@ cd "${gravitino_home}"
 ./gradlew \
   :spark-connector:spark-runtime-3.4:shadowJar \
   :spark-connector:spark-runtime-3.5:shadowJar \
+  :spark-connector:spark-ext-3.4:shadowJar \
+  :spark-connector:spark-ext-3.5:shadowJar \
   -PscalaVersion=2.13 \
   -x test
 
@@ -66,6 +71,24 @@ find spark-connector/v3.5/spark-runtime/build/libs/ -name "*_2.12-*.jar" ! -name
   -exec cp {} "${script_dir}/packages/connectors/spark-3.5_2.12/" \;
 find spark-connector/v3.5/spark-runtime/build/libs/ -name "*_2.13-*.jar" ! -name "*-empty*" \
   -exec cp {} "${script_dir}/packages/connectors/spark-3.5_2.13/" \;
+
+# Enterprise extension jars (Oracle / SQL Server) are shipped next to the open source connector
+find spark-connector/ext/v3.3/spark/build/libs/ -name "datastrato-*_2.12-*.jar" ! -name "*-thin*" \
+  -exec cp {} "${script_dir}/packages/connectors/spark-3.3_2.12/" \;
+find spark-connector/ext/v3.4/spark/build/libs/ -name "datastrato-*_2.12-*.jar" ! -name "*-thin*" \
+  -exec cp {} "${script_dir}/packages/connectors/spark-3.4_2.12/" \;
+find spark-connector/ext/v3.4/spark/build/libs/ -name "datastrato-*_2.13-*.jar" ! -name "*-thin*" \
+  -exec cp {} "${script_dir}/packages/connectors/spark-3.4_2.13/" \;
+find spark-connector/ext/v3.5/spark/build/libs/ -name "datastrato-*_2.12-*.jar" ! -name "*-thin*" \
+  -exec cp {} "${script_dir}/packages/connectors/spark-3.5_2.12/" \;
+find spark-connector/ext/v3.5/spark/build/libs/ -name "datastrato-*_2.13-*.jar" ! -name "*-thin*" \
+  -exec cp {} "${script_dir}/packages/connectors/spark-3.5_2.13/" \;
+for dir in "${script_dir}"/packages/connectors/spark-*; do
+  if ! ls "${dir}"/datastrato-spark-connector-ext-*.jar >/dev/null 2>&1; then
+    echo "ERROR: Enterprise extension jar missing in ${dir}"
+    exit 1
+  fi
+done
 
 echo ""
 echo "=== Spark connectors prepared ==="

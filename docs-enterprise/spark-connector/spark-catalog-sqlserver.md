@@ -12,6 +12,15 @@ license: "Copyright 2026 Datastrato Inc."
 
 The Apache Gravitino Spark connector offers the capability to read SQL Server tables, with the metadata managed by the Gravitino server.
 
+## Installation
+
+The SQL Server catalog is not part of the open source Spark connector. It ships as the Datastrato
+Enterprise extension jar `datastrato-spark-connector-ext-<spark-version>_<scala-version>-<version>.jar`,
+which must be placed next to the open source connector jar
+`gravitino-spark-connector-runtime-<spark-version>_<scala-version>-<version>.jar`, for example
+with `--jars`. No further configuration is needed: the connector discovers the extension
+automatically through the Java service loader, and `spark.plugins` stays `org.apache.gravitino.spark.connector.plugin.GravitinoSparkPlugin`.
+
 ## Preparation
 
 Download the [Microsoft JDBC Driver for SQL Server](https://learn.microsoft.com/en-us/sql/connect/jdbc/download-microsoft-jdbc-driver-for-sql-server) (`mssql-jdbc`) jar to the Spark classpath.

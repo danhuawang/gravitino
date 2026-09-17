@@ -70,7 +70,7 @@ jobs:
         run: |
           for v in 1.18 1.19 1.20; do
             ./gradlew -PskipTests -PtestMode=deploy -PskipDockerTests=false -PskipWeb=true \
-              :flink-connector:flink-$v:test \
+              :flink-connector:flink-$v:test :flink-connector:flink-ext-$v:test \
               --tests "org.apache.gravitino.flink.connector.integration.test.**"
           done
 
@@ -87,6 +87,9 @@ jobs:
             flink-connector/v1.19/flink/build/*.tar
             flink-connector/v1.20/flink/build/*.log
             flink-connector/v1.20/flink/build/*.tar
+            flink-connector/ext/v1.18/flink/build/*.log
+            flink-connector/ext/v1.19/flink/build/*.log
+            flink-connector/ext/v1.20/flink/build/*.log
             distribution/package/logs/gravitino-server.out
             distribution/package/logs/gravitino-server.log
             catalogs/**/*.log

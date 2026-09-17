@@ -28,6 +28,15 @@ Quoted, case-sensitive identifiers (such as `"MyTable"`) are not supported throu
 Place the Oracle JDBC driver (`ojdbc8-23.x.x.x.jar`) on the Spark classpath. The driver is available from the [Oracle Maven repository](https://mvnrepository.com/artifact/com.oracle.database.jdbc/ojdbc8).
 :::
 
+## Installation
+
+The Oracle catalog is not part of the open source Spark connector. It ships as the Datastrato
+Enterprise extension jar `datastrato-spark-connector-ext-<spark-version>_<scala-version>-<version>.jar`,
+which must be placed next to the open source connector jar
+`gravitino-spark-connector-runtime-<spark-version>_<scala-version>-<version>.jar`, for example
+with `--jars`. No further configuration is needed: the connector discovers the extension
+automatically through the Java service loader, and `spark.plugins` stays `org.apache.gravitino.spark.connector.plugin.GravitinoSparkPlugin`.
+
 ## Catalog properties
 
 Gravitino Spark connector transforms the following catalog property names to Spark JDBC connector configuration:

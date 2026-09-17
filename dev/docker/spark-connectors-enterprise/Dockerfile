@@ -58,6 +58,9 @@ LABEL name="enterprise-spark-connector" \
 ENV SPARK_VERSION=3.5
 ENV SCALA_VERSION=2.12
 
+# Set to false at runtime to copy only the open source connector jars
+ENV COPY_ENTERPRISE_EXT=true
+
 # Copy pre-built connector jars (prepared by spark-connectors-dependency.sh)
 COPY packages/connectors /connectors
 
