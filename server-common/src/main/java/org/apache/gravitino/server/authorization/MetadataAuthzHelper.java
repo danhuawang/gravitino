@@ -369,22 +369,19 @@ public class MetadataAuthzHelper {
         return entities;
       }
     }
-<<<<<<< HEAD
     // Preloads need a live EntityStore. When authorization is off (including Jersey unit tests
     // that never initialize GravitinoEnv), skip them: doFilter already no-ops without auth, and
     // cacheEnabled() defaults to true when config is null so preloadOwner would otherwise throw
     // "GravitinoEnv is not initialized" from entityStore().
     if (enableAuthorization()) {
       preloadToCache(entityType, nameIdentifiers);
-=======
-    preloadToCache(entityType, nameIdentifiers);
-    // Ownership is defined on metadata objects, independently of the filter expression.
-    // Users/groups are not metadata objects. OwnerMetaService.batchGetOwner resolves IDs per
-    // identifier, so calling it for users/groups would still perform two SELECTs per entry
-    // before the batched owner-relation queries.
-    if (isMetadataObject) {
->>>>>>> upstream/branch-1.3
-      preloadOwner(entityType, nameIdentifiers);
+      // Ownership is defined on metadata objects, independently of the filter expression.
+      // Users/groups are not metadata objects. OwnerMetaService.batchGetOwner resolves IDs per
+      // identifier, so calling it for users/groups would still perform two SELECTs per entry
+      // before the batched owner-relation queries.
+      if (isMetadataObject) {
+        preloadOwner(entityType, nameIdentifiers);
+      }
     }
 
     GravitinoAuthorizer authorizer =

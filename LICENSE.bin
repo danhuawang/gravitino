@@ -364,7 +364,6 @@ Do not treat this binary package as Apache-licensed as a whole.
    HdrHistogram
    LatencyUtils
 
-<<<<<<< HEAD
    This product bundles the Oracle JDBC driver (ojdbc11). It is governed
    by the Oracle Free Distribution, Hosting, and Use Terms and Conditions,
    Version 1.0, 28 June 2022, which is the license text delivered inside
@@ -375,7 +374,6 @@ Do not treat this binary package as Apache-licensed as a whole.
    Maven metadata for this artifact labels the license "Oracle Free Use
    Terms and Conditions (FUTC)". The terms delivered with the jar, and
    reproduced here, are the ones that apply.
-=======
 
    For the FastDoubleParser license text, see licenses/FastDoubleParser.txt.
    Third-party license texts for code included in FastDoubleParser are in
@@ -386,4 +384,3 @@ For the BSD license of OGNL shaded in MyBatis, see licenses/mybatis-ognl.txt.
 
 For the license texts of code included in Apache Commons Math 3.1.1,
    see licenses/commons-math3.txt.
->>>>>>> upstream/branch-1.3
