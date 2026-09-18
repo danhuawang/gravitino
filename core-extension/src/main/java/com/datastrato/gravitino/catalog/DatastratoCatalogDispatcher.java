@@ -8,10 +8,16 @@ import com.datastrato.gravitino.catalog.connection.ConnectionPropertyClassifier;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestResult;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestStore;
 import com.datastrato.gravitino.catalog.connection.ConnectionTestType;
+import java.io.IOException;
 import java.time.Clock;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import javax.annotation.Nullable;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.CatalogChange;
+import org.apache.gravitino.Entity.EntityType;
+import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.CatalogDispatcher;
@@ -22,16 +28,21 @@ import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.exceptions.NonEmptyEntityException;
+import org.apache.gravitino.meta.BaseMetalake;
+import org.apache.gravitino.meta.CatalogEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Enterprise Catalog dispatcher that persists existing-Catalog connection test results. */
+/**
+ * Enterprise Catalog dispatcher that enforces unique names and persists connection test results.
+ */
 public class DatastratoCatalogDispatcher implements CatalogDispatcher {
   private static final Logger LOG = LoggerFactory.getLogger(DatastratoCatalogDispatcher.class);
   private static final String SAFE_CONNECTION_FAILURE_MESSAGE = "Failed to connect to the catalog";
 
   private final CatalogDispatcher delegate;
   private final ConnectionTestStore connectionTestStore;
+  private final EntityStore entityStore;
   private final ConnectionPropertyClassifier propertyClassifier;
   private final Clock clock;
 
@@ -40,10 +51,18 @@ public class DatastratoCatalogDispatcher implements CatalogDispatcher {
    *
    * @param delegate The OSS Catalog dispatcher.
    * @param connectionTestStore The persistent connection test store.
+   * @param entityStore The entity store used to enforce global Catalog name uniqueness.
    */
   public DatastratoCatalogDispatcher(
-      CatalogDispatcher delegate, ConnectionTestStore connectionTestStore) {
-    this(delegate, connectionTestStore, new ConnectionPropertyClassifier(), Clock.systemUTC());
+      CatalogDispatcher delegate,
+      ConnectionTestStore connectionTestStore,
+      EntityStore entityStore) {
+    this(
+        delegate,
+        connectionTestStore,
+        entityStore,
+        new ConnectionPropertyClassifier(),
+        Clock.systemUTC());
   }
 
   /**
@@ -51,16 +70,19 @@ public class DatastratoCatalogDispatcher implements CatalogDispatcher {
    *
    * @param delegate The OSS Catalog dispatcher.
    * @param connectionTestStore The persistent connection test store.
+   * @param entityStore The entity store used to enforce global Catalog name uniqueness.
    * @param propertyClassifier The connection property classifier.
    * @param clock The completion clock.
    */
   public DatastratoCatalogDispatcher(
       CatalogDispatcher delegate,
       ConnectionTestStore connectionTestStore,
+      EntityStore entityStore,
       ConnectionPropertyClassifier propertyClassifier,
       Clock clock) {
     this.delegate = delegate;
     this.connectionTestStore = connectionTestStore;
+    this.entityStore = entityStore;
     this.propertyClassifier = propertyClassifier;
     this.clock = clock;
   }
@@ -92,6 +114,7 @@ public class DatastratoCatalogDispatcher implements CatalogDispatcher {
       String comment,
       Map<String, String> properties)
       throws NoSuchMetalakeException, CatalogAlreadyExistsException {
+    checkCatalogNameAvailable(ident.name(), null);
     return delegate.createCatalog(ident, type, provider, comment, properties);
   }
 
@@ -100,7 +123,14 @@ public class DatastratoCatalogDispatcher implements CatalogDispatcher {
   public Catalog alterCatalog(NameIdentifier ident, CatalogChange... changes)
       throws NoSuchCatalogException, IllegalArgumentException {
     CatalogConnectionSnapshot before = bestEffortSnapshot(ident, "alter");
-    Catalog altered = delegate.alterCatalog(ident, changes);
+    String renamedCatalogName = renamedCatalogName(changes);
+    Catalog altered;
+    if (renamedCatalogName == null) {
+      altered = delegate.alterCatalog(ident, changes);
+    } else {
+      checkCatalogNameAvailable(renamedCatalogName, ident);
+      altered = delegate.alterCatalog(ident, changes);
+    }
     if (before != null) {
       NameIdentifier currentIdentifier = NameIdentifier.of(ident.namespace(), altered.name());
       CatalogConnectionSnapshot after = bestEffortSnapshot(currentIdentifier, "alter");
@@ -148,14 +178,10 @@ public class DatastratoCatalogDispatcher implements CatalogDispatcher {
     }
   }
 
-  /**
-   * {@inheritDoc}
-   *
-   * <p>Proposed changes are tested against a temporary effective configuration and are never
-   * persisted, so this does not touch the stored connection test result for the existing Catalog.
-   */
+  /** {@inheritDoc} */
   @Override
   public void testConnection(NameIdentifier ident, CatalogChange... changes) throws Exception {
+    // Proposed changes are not persisted; only probe connectivity with the temporary config.
     delegate.testConnection(ident, changes);
   }
 
@@ -174,6 +200,39 @@ public class DatastratoCatalogDispatcher implements CatalogDispatcher {
     CatalogConnectionSnapshot before = bestEffortSnapshot(ident, "disable");
     delegate.disableCatalog(ident);
     reconcilePreservingResult(ident, before, "disable");
+  }
+
+  // Trino exposes Catalogs without their Metalake prefix and treats identifiers case-insensitively,
+  // so Enterprise Catalog names must be globally unique ignoring case.
+  private void checkCatalogNameAvailable(
+      String catalogName, @Nullable NameIdentifier excludedIdentifier) {
+    try {
+      List<BaseMetalake> metalakes =
+          entityStore.list(Namespace.empty(), BaseMetalake.class, EntityType.METALAKE);
+      for (BaseMetalake metalake : metalakes) {
+        List<CatalogEntity> catalogs =
+            entityStore.list(
+                Namespace.of(metalake.name()), CatalogEntity.class, EntityType.CATALOG);
+        for (CatalogEntity catalog : catalogs) {
+          if (catalog.name().equalsIgnoreCase(catalogName)
+              && !catalog.nameIdentifier().equals(excludedIdentifier)) {
+            throw new CatalogAlreadyExistsException(
+                "Catalog name %s already exists in metalake %s", catalogName, metalake.name());
+          }
+        }
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to validate Catalog name uniqueness", e);
+    }
+  }
+
+  private static String renamedCatalogName(CatalogChange... changes) {
+    return Arrays.stream(changes)
+        .filter(CatalogChange.RenameCatalog.class::isInstance)
+        .map(CatalogChange.RenameCatalog.class::cast)
+        .map(CatalogChange.RenameCatalog::getNewName)
+        .reduce((first, second) -> second)
+        .orElse(null);
   }
 
   /**

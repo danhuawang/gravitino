@@ -32,6 +32,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.gravitino.storage.relational.TestJDBCBackend;
@@ -41,6 +42,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.TestTemplate;
 
 public class TestSQLScripts extends TestJDBCBackend {
+
+  private static final Set<String> CATALOG_NAME_UNIQUE_SCHEMA_VERSIONS = Set.of("1.3.0");
 
   @TestTemplate
   public void testSQLScripts() throws SQLException, IOException {
@@ -88,23 +91,56 @@ public class TestSQLScripts extends TestJDBCBackend {
       }
     }
 
-    for (List<File> scripts : versionScrips.values()) {
+    for (Map.Entry<String, List<File>> versionScripts : versionScrips.entrySet()) {
       dropAllTables();
-      for (File scriptFile : scripts) {
-        List<String> ddls = extractStatements(scriptFile.toPath());
+      for (File scriptFile : versionScripts.getValue()) {
+        executeScript(scriptFile);
+      }
+      if (CATALOG_NAME_UNIQUE_SCHEMA_VERSIONS.contains(versionScripts.getKey())) {
+        assertCatalogNameUniqueAcrossMetalakes();
+      }
+    }
+  }
 
-        try (SqlSession sqlSession =
-            SqlSessionFactoryHelper.getInstance().getSqlSessionFactory().openSession(true)) {
-          try (Connection connection = sqlSession.getConnection()) {
-            try (Statement statement = connection.createStatement()) {
-              for (String ddl : ddls) {
-                Assertions.assertDoesNotThrow(
-                    () -> statement.execute(ddl),
-                    "Failed to execute DDL in file " + scriptFile.getName() + "ddl: " + ddl);
-              }
-            }
-          }
-        }
+  private void assertCatalogNameUniqueAcrossMetalakes() throws SQLException {
+    try (SqlSession sqlSession =
+            SqlSessionFactoryHelper.getInstance().getSqlSessionFactory().openSession(true);
+        Connection connection = sqlSession.getConnection();
+        Statement statement = connection.createStatement()) {
+      statement.executeUpdate(
+          "INSERT INTO metalake_meta "
+              + "(metalake_id, metalake_name, audit_info, schema_version) "
+              + "VALUES (99101, 'catalog_constraint_metalake_1', '{}', '{}')");
+      statement.executeUpdate(
+          "INSERT INTO metalake_meta "
+              + "(metalake_id, metalake_name, audit_info, schema_version) "
+              + "VALUES (99102, 'catalog_constraint_metalake_2', '{}', '{}')");
+      statement.executeUpdate(
+          "INSERT INTO catalog_meta "
+              + "(catalog_id, catalog_name, metalake_id, type, provider, audit_info) "
+              + "VALUES (99101, 'shared_catalog', 99101, 'RELATIONAL', 'test', '{}')");
+
+      Assertions.assertThrows(
+          SQLException.class,
+          () ->
+              statement.executeUpdate(
+                  "INSERT INTO catalog_meta "
+                      + "(catalog_id, catalog_name, metalake_id, type, provider, audit_info) "
+                      + "VALUES (99102, 'shared_catalog', 99102, "
+                      + "'RELATIONAL', 'test', '{}')"));
+    }
+  }
+
+  private void executeScript(File scriptFile) throws IOException, SQLException {
+    List<String> ddls = extractStatements(scriptFile.toPath());
+    try (SqlSession sqlSession =
+            SqlSessionFactoryHelper.getInstance().getSqlSessionFactory().openSession(true);
+        Connection connection = sqlSession.getConnection();
+        Statement statement = connection.createStatement()) {
+      for (String ddl : ddls) {
+        Assertions.assertDoesNotThrow(
+            () -> statement.execute(ddl),
+            "Failed to execute DDL in file " + scriptFile.getName() + " ddl: " + ddl);
       }
     }
   }

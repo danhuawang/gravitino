@@ -17,6 +17,9 @@
 -- under the License.
 --
 
+ALTER TABLE `catalog_meta`
+    ADD UNIQUE INDEX `uk_cn_del` (`catalog_name`, `deleted_at`);
+
 ALTER TABLE `user_meta`
     ADD COLUMN `updated_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0
     COMMENT 'updated at';

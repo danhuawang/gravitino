@@ -340,6 +340,7 @@ public class CatalogIcebergKerberosHiveIT extends BaseIT {
     adminClient = GravitinoAdminClient.builder(serverUri).withKerberosAuth(provider).build();
 
     String metalakeName = GravitinoITUtils.genRandomName("test_metalake");
+    String catalogName = GravitinoITUtils.genRandomName("test_catalog");
     GravitinoMetalake gravitinoMetalake =
         adminClient.createMetalake(metalakeName, null, ImmutableMap.of());
 
@@ -363,7 +364,7 @@ public class CatalogIcebergKerberosHiveIT extends BaseIT {
 
     Catalog catalog =
         gravitinoMetalake.createCatalog(
-            CATALOG_NAME, Catalog.Type.RELATIONAL, "lakehouse-iceberg", "comment", properties);
+            catalogName, Catalog.Type.RELATIONAL, "lakehouse-iceberg", "comment", properties);
 
     // Test create schema
     Exception exception =

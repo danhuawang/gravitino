@@ -951,12 +951,13 @@ class TestOwnerMetaService extends TestJDBCBackend {
   @TestTemplate
   void testBatchSetOwnersRequiresSingleMetalake() throws IOException {
     String ml2 = METALAKE_NAME + "_other";
+    String catalog2 = CATALOG_NAME + "_other";
     createAndInsertMakeLake(METALAKE_NAME);
     createAndInsertMakeLake(ml2);
     createAndInsertCatalog(METALAKE_NAME, CATALOG_NAME);
-    createAndInsertCatalog(ml2, CATALOG_NAME);
+    createAndInsertCatalog(ml2, catalog2);
     createAndInsertSchema(METALAKE_NAME, CATALOG_NAME, SCHEMA_NAME);
-    createAndInsertSchema(ml2, CATALOG_NAME, SCHEMA_NAME);
+    createAndInsertSchema(ml2, catalog2, SCHEMA_NAME);
     TableEntity table1 =
         createTableEntity(
             RandomIdGenerator.INSTANCE.nextId(),
@@ -966,7 +967,7 @@ class TestOwnerMetaService extends TestJDBCBackend {
     TableEntity table2 =
         createTableEntity(
             RandomIdGenerator.INSTANCE.nextId(),
-            Namespace.of(ml2, CATALOG_NAME, SCHEMA_NAME),
+            Namespace.of(ml2, catalog2, SCHEMA_NAME),
             TABLE_NAME,
             AUDIT_INFO);
     backend.insert(table1, false);

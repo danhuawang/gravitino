@@ -17,6 +17,8 @@
 -- under the License.
 --
 
+CREATE UNIQUE INDEX uk_cn_del ON catalog_meta (catalog_name, deleted_at);
+
 ALTER TABLE user_meta  ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE role_meta ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE owner_meta ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0;

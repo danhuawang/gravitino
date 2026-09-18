@@ -27,11 +27,17 @@ import java.time.ZoneOffset;
 import java.util.Collections;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.CatalogChange;
+import org.apache.gravitino.Entity.EntityType;
+import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.Namespace;
 import org.apache.gravitino.catalog.CatalogDispatcher;
+import org.apache.gravitino.exceptions.CatalogAlreadyExistsException;
 import org.apache.gravitino.exceptions.CatalogNotInUseException;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
+import org.apache.gravitino.meta.BaseMetalake;
+import org.apache.gravitino.meta.CatalogEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -41,16 +47,21 @@ class TestDatastratoCatalogDispatcher {
 
   private CatalogDispatcher delegate;
   private ConnectionTestStore store;
+  private EntityStore entityStore;
   private DatastratoCatalogDispatcher dispatcher;
   private CatalogConnectionSnapshot before;
 
   @BeforeEach
-  void setUp() {
+  void setUp() throws Exception {
     delegate = mock(CatalogDispatcher.class);
     store = mock(ConnectionTestStore.class);
+    entityStore = mock(EntityStore.class);
+    when(entityStore.list(Namespace.empty(), BaseMetalake.class, EntityType.METALAKE))
+        .thenReturn(Collections.emptyList());
     Clock clock = Clock.fixed(Instant.ofEpochMilli(COMPLETED_AT), ZoneOffset.UTC);
     dispatcher =
-        new DatastratoCatalogDispatcher(delegate, store, new ConnectionPropertyClassifier(), clock);
+        new DatastratoCatalogDispatcher(
+            delegate, store, entityStore, new ConnectionPropertyClassifier(), clock);
     before =
         new CatalogConnectionSnapshot(
             10L, 1L, "catalog", "jdbc-mysql", ImmutableMap.of("jdbc-url", "jdbc:mysql://host/db"));
@@ -81,17 +92,6 @@ class TestDatastratoCatalogDispatcher {
             ConnectionTestResult.Status.FAILED,
             COMPLETED_AT,
             "Failed to connect to the catalog");
-  }
-
-  @Test
-  void testConnectionWithProposedChangesDoesNotTouchStore() throws Exception {
-    CatalogChange change = CatalogChange.setProperty("jdbc-url", "jdbc:mysql://other-host/db");
-
-    dispatcher.testConnection(IDENTIFIER, change);
-
-    verify(delegate).testConnection(IDENTIFIER, change);
-    verify(store, never()).loadCatalogConnectionSnapshot(any());
-    verify(store, never()).recordTestResult(any(), any(), any(), anyLong(), any());
   }
 
   @Test
@@ -151,6 +151,56 @@ class TestDatastratoCatalogDispatcher {
             IDENTIFIER, Catalog.Type.RELATIONAL, "jdbc-mysql", "comment", properties));
     verify(delegate)
         .createCatalog(IDENTIFIER, Catalog.Type.RELATIONAL, "jdbc-mysql", "comment", properties);
+  }
+
+  @Test
+  void testCreateCatalogRejectsDuplicateNameAcrossMetalakes() throws Exception {
+    mockExistingCatalog("other_metalake", "CATALOG");
+
+    assertThrows(
+        CatalogAlreadyExistsException.class,
+        () ->
+            dispatcher.createCatalog(
+                IDENTIFIER,
+                Catalog.Type.RELATIONAL,
+                "jdbc-mysql",
+                "comment",
+                Collections.emptyMap()));
+
+    verify(delegate, never())
+        .createCatalog(
+            eq(IDENTIFIER), eq(Catalog.Type.RELATIONAL), eq("jdbc-mysql"), eq("comment"), any());
+  }
+
+  @Test
+  void testRenameCatalogRejectsDuplicateNameAcrossMetalakes() throws Exception {
+    mockExistingCatalog("other_metalake", "renamed");
+
+    assertThrows(
+        CatalogAlreadyExistsException.class,
+        () -> dispatcher.alterCatalog(IDENTIFIER, CatalogChange.rename("renamed")));
+
+    verify(delegate, never()).alterCatalog(eq(IDENTIFIER), any(CatalogChange[].class));
+  }
+
+  @Test
+  void testRenameCatalogAllowsCurrentCatalogName() throws Exception {
+    BaseMetalake metalake = mock(BaseMetalake.class);
+    CatalogEntity catalog = mock(CatalogEntity.class);
+    when(metalake.name()).thenReturn("metalake");
+    when(catalog.name()).thenReturn("catalog");
+    when(catalog.nameIdentifier()).thenReturn(IDENTIFIER);
+    when(entityStore.list(Namespace.empty(), BaseMetalake.class, EntityType.METALAKE))
+        .thenReturn(Collections.singletonList(metalake));
+    when(entityStore.list(Namespace.of("metalake"), CatalogEntity.class, EntityType.CATALOG))
+        .thenReturn(Collections.singletonList(catalog));
+    Catalog alteredCatalog = mock(Catalog.class);
+    when(alteredCatalog.name()).thenReturn("catalog");
+    when(delegate.alterCatalog(eq(IDENTIFIER), any(CatalogChange[].class)))
+        .thenReturn(alteredCatalog);
+
+    assertSame(
+        alteredCatalog, dispatcher.alterCatalog(IDENTIFIER, CatalogChange.rename("catalog")));
   }
 
   @Test
@@ -244,5 +294,17 @@ class TestDatastratoCatalogDispatcher {
     doThrow(failure).when(delegate).testConnection(IDENTIFIER);
     assertSame(
         failure, assertThrows(failure.getClass(), () -> dispatcher.testConnection(IDENTIFIER)));
+  }
+
+  private void mockExistingCatalog(String metalakeName, String catalogName) throws Exception {
+    BaseMetalake metalake = mock(BaseMetalake.class);
+    CatalogEntity catalog = mock(CatalogEntity.class);
+    when(metalake.name()).thenReturn(metalakeName);
+    when(catalog.name()).thenReturn(catalogName);
+    when(catalog.nameIdentifier()).thenReturn(NameIdentifier.of(metalakeName, catalogName));
+    when(entityStore.list(Namespace.empty(), BaseMetalake.class, EntityType.METALAKE))
+        .thenReturn(Collections.singletonList(metalake));
+    when(entityStore.list(Namespace.of(metalakeName), CatalogEntity.class, EntityType.CATALOG))
+        .thenReturn(Collections.singletonList(catalog));
   }
 }

@@ -113,7 +113,8 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
     this.datastratoCatalogDispatcher =
         new DatastratoCatalogDispatcher(
             GravitinoEnv.getInstance().catalogDispatcher(),
-            CatalogConnectionTestMetaService.getInstance());
+            CatalogConnectionTestMetaService.getInstance(),
+            entityStore());
 
     // initialize schema dispatcher
     DatastratoSchemaDispatcher schemaOperationDispatcher =

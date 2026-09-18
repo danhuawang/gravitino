@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS `catalog_meta` (
     `last_version` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT 'catalog last version',
     `deleted_at` BIGINT(20) UNSIGNED NOT NULL DEFAULT 0 COMMENT 'catalog deleted at',
     PRIMARY KEY (`catalog_id`),
-    UNIQUE KEY `uk_mid_cn_del` (`metalake_id`, `catalog_name`, `deleted_at`)
+    UNIQUE KEY `uk_mid_cn_del` (`metalake_id`, `catalog_name`, `deleted_at`),
+    UNIQUE KEY `uk_cn_del` (`catalog_name`, `deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT 'catalog metadata';
 
 CREATE TABLE IF NOT EXISTS `schema_meta` (

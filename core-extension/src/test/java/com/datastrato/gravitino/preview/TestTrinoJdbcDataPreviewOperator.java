@@ -101,7 +101,7 @@ public class TestTrinoJdbcDataPreviewOperator {
   }
 
   @Test
-  public void testGeneratePreviewSQLForMultiMetalakeCatalog() {
+  public void testGeneratePreviewSQLWithoutMetalakeName() {
     Config config = mock(Config.class);
     TagDispatcher dispatcher = mock(TagDispatcher.class);
     when(config.get(DataPreviewConfig.JDBC_URL_CONFIG)).thenReturn("jdbc://xxx");
@@ -114,7 +114,7 @@ public class TestTrinoJdbcDataPreviewOperator {
         .thenReturn(Lists.newArrayList("test1", "test2"));
     TrinoJdbcDataPreviewOperator operator = new TrinoJdbcDataPreviewOperator(config, dispatcher);
     Assertions.assertEquals(
-        "SELECT * FROM \"test.catalog_postgres\".\"public\".\"my_table\" LIMIT 10",
+        "SELECT * FROM \"catalog_postgres\".\"public\".\"my_table\" LIMIT 10",
         operator.generatePreviewSQL(
             NameIdentifier.of("test", "catalog_postgres", "public", "my_table"), 10));
   }

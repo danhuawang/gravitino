@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
     last_version INT NOT NULL DEFAULT 1,
     deleted_at BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (catalog_id),
-    UNIQUE (metalake_id, catalog_name, deleted_at)
+    UNIQUE (metalake_id, catalog_name, deleted_at),
+    CONSTRAINT uk_cn_del UNIQUE (catalog_name, deleted_at)
 );
 
 COMMENT ON TABLE catalog_meta IS 'catalog metadata';
