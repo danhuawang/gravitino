@@ -23,12 +23,8 @@ import static org.apache.gravitino.catalog.CapabilityHelpers.applyCaseSensitive;
 import static org.apache.gravitino.catalog.CapabilityHelpers.getCapability;
 
 import java.util.Map;
-<<<<<<< HEAD
-=======
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityFieldLimits;
->>>>>>> upstream/branch-1.3
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.connector.capability.Capability;
@@ -113,23 +109,11 @@ public class TopicNormalizeDispatcher implements TopicDispatcher {
     return applyCaseSensitive(topicIdent, Capability.Scope.TOPIC, capabilities);
   }
 
-<<<<<<< HEAD
-=======
-  private NameIdentifier[] normalizeCaseSensitive(NameIdentifier[] topicIdents) {
-    if (ArrayUtils.isEmpty(topicIdents)) {
-      return topicIdents;
-    }
-
-    Capability capabilities = getCapability(topicIdents[0], catalogManager);
-    return applyCaseSensitive(topicIdents, Capability.Scope.TOPIC, capabilities);
-  }
-
   private static void checkCommentLength(String comment) {
     EntityFieldLimits.checkMaxLength(
         comment, EntityFieldLimits.MAX_COMMENT_LENGTH, "comment", Entity.EntityType.TOPIC);
   }
 
->>>>>>> upstream/branch-1.3
   private NameIdentifier normalizeNameIdentifier(NameIdentifier topicIdent) {
     Capability capability = getCapability(topicIdent, catalogManager);
     return applyCapabilities(topicIdent, Capability.Scope.TOPIC, capability);

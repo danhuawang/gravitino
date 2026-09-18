@@ -1260,12 +1260,6 @@ public class ModelCatalogOperationsIT extends BaseIT {
         "u2", gravitinoCatalog.asModelCatalog().getModelVersionUri(modelIdent1, "alias3", null));
   }
 
-<<<<<<< HEAD
-  private static void assertPropertiesEqual(
-      Map<String, String> expectedUserProps, Map<String, String> actual) {
-    Assertions.assertFalse(actual.containsKey(StringIdentifier.ID_KEY));
-    Assertions.assertEquals(expectedUserProps, actual);
-=======
   @Test
   public void testRenameModelWithIllegalName() {
     String modelName = RandomNameUtils.genRandomName("model_rename_spec");
@@ -1329,7 +1323,12 @@ public class ModelCatalogOperationsIT extends BaseIT {
     Assertions.assertArrayEquals(
         new String[] {maxLengthAlias},
         gravitinoCatalog.asModelCatalog().getModelVersion(modelIdent, 0).aliases());
->>>>>>> upstream/branch-1.3
+  }
+
+  private static void assertPropertiesEqual(
+      Map<String, String> expectedUserProps, Map<String, String> actual) {
+    Assertions.assertFalse(actual.containsKey(StringIdentifier.ID_KEY));
+    Assertions.assertEquals(expectedUserProps, actual);
   }
 
   private void createMetalake() {

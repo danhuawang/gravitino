@@ -371,7 +371,6 @@ public abstract class TestGravitinoConnector extends AbstractGravitinoConnectorT
       assertThat(computeActual("show catalogs").getOnlyColumnAsSet())
           .doesNotContain("memory_failed");
 
-<<<<<<< HEAD
       MaterializedResult result =
           computeActual(
               "select status, last_error, failure_count from gravitino.system.catalog_status"
@@ -380,6 +379,8 @@ public abstract class TestGravitinoConnector extends AbstractGravitinoConnectorT
       MaterializedRow row = result.getMaterializedRows().get(0);
       assertEquals("FAILED", row.getField(0));
       assertThat((String) row.getField(1)).contains("unknown-direct-key");
+      // The load loop retries failed catalogs on every metadata refresh, so a refresh that lands
+      // between the procedure call and this query bumps the count past the initial failure.
       assertThat((Long) row.getField(2)).isGreaterThanOrEqualTo(1L);
     } finally {
       // Leave the shared query runner as it was found, or the load loop keeps retrying this catalog
@@ -393,30 +394,6 @@ public abstract class TestGravitinoConnector extends AbstractGravitinoConnectorT
                       + " where catalog_name = 'memory_failed'")
               .getRowCount());
     }
-=======
-    MaterializedResult result =
-        computeActual(
-            "select status, last_error, failure_count from gravitino.system.catalog_status"
-                + " where catalog_name = 'memory_failed'");
-    assertEquals(result.getRowCount(), 1);
-    MaterializedRow row = result.getMaterializedRows().get(0);
-    assertEquals(row.getField(0), "FAILED");
-    assertThat((String) row.getField(1)).contains("unknown-direct-key");
-    // The load loop retries failed catalogs on every metadata refresh, so a refresh that lands
-    // between the procedure call and this query bumps the count past the initial failure.
-    assertThat((Long) row.getField(2)).isGreaterThanOrEqualTo(1L);
-
-    // Leave the shared query runner as it was found, or the load loop keeps retrying this catalog
-    // and the other status table tests see an extra row.
-    assertUpdate(
-        "call gravitino.system.drop_catalog(catalog => 'memory_failed', ignore_not_exist => true)");
-    assertEquals(
-        computeActual(
-                "select 1 from gravitino.system.catalog_status"
-                    + " where catalog_name = 'memory_failed'")
-            .getRowCount(),
-        0);
->>>>>>> upstream/branch-1.3
   }
 
   @Test

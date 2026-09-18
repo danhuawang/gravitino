@@ -37,11 +37,8 @@ import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetalakeChange;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
-<<<<<<< HEAD
-import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
-=======
 import org.apache.gravitino.catalog.CatalogManager;
->>>>>>> upstream/branch-1.3
+import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
 import org.apache.gravitino.exceptions.AlreadyExistsException;
 import org.apache.gravitino.exceptions.MetalakeAlreadyExistsException;
 import org.apache.gravitino.exceptions.MetalakeInUseException;
