@@ -430,7 +430,28 @@ public class TestEntityOperations extends JerseyTest {
     MetalakeListResponse emptyNamespaceMetalakeResponse =
         emptyNamespaceResponse.readEntity(MetalakeListResponse.class);
     Assertions.assertArrayEquals(metalakes, emptyNamespaceMetalakeResponse.getMetalakes());
+    // resultLimit excludes metalake-z, so its catalogs must not be listed.
     Mockito.verify(catalogDispatcher, Mockito.never()).listCatalogs(Namespace.of("metalake-z"));
+
+    when(catalogDispatcher.listCatalogs(Namespace.of("metalake-z")))
+        .thenReturn(new NameIdentifier[0]);
+
+    Response defaultLimitResponse =
+        target("/internal/entities")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get();
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), defaultLimitResponse.getStatus());
+    MetalakeListResponse defaultLimitMetalakeResponse =
+        defaultLimitResponse.readEntity(MetalakeListResponse.class);
+    Assertions.assertEquals(3, defaultLimitMetalakeResponse.getMetalakes().length);
+    Assertions.assertEquals("metalake-a", defaultLimitMetalakeResponse.getMetalakes()[0].name());
+    Assertions.assertEquals("metalake-m", defaultLimitMetalakeResponse.getMetalakes()[1].name());
+    Assertions.assertEquals("metalake-z", defaultLimitMetalakeResponse.getMetalakes()[2].name());
+    Assertions.assertEquals(
+        0L, defaultLimitMetalakeResponse.getMetalakes()[2].getDirectChildCounts());
+
+    Mockito.verify(catalogDispatcher, Mockito.times(1)).listCatalogs(Namespace.of("metalake-z"));
   }
 
   @Test

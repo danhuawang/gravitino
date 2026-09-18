@@ -47,13 +47,14 @@ paths:
             type: string
         - name: resultLimit
           in: query
-          description: The maximum number of entities to return. It must be greater than 0.
+          description: |
+            Optional maximum number of entities to return. It must be greater than 0.
+            When omitted, all visible authorized entities are returned (no practical limit).
           required: false
           schema:
             type: integer
             format: int32
             minimum: 1
-            default: 1000
       responses:
         "200":
           description: |

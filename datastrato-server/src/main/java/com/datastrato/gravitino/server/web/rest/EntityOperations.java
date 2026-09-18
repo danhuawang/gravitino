@@ -171,7 +171,8 @@ public class EntityOperations {
       @QueryParam("namespace") Namespace namespace,
       @QueryParam("catalogType") Catalog.Type catalogType,
       @DefaultValue("") @QueryParam("parentSchema") String parentSchema,
-      @QueryParam("resultLimit") @DefaultValue("1000") int resultLimit) {
+      @QueryParam("resultLimit") Integer resultLimitParam) {
+    int resultLimit = resultLimitParam == null ? Integer.MAX_VALUE : resultLimitParam;
     LOG.info(
         "Received request to list entities for namespace: {}, parentSchema: {}",
         namespace,
