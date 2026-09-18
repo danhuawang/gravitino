@@ -4,6 +4,7 @@
 
 package com.datastrato.gravitino.scim.dto.requests;
 
+import com.datastrato.gravitino.scim.ScimFieldLimits;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import javax.annotation.Nullable;
@@ -50,6 +51,7 @@ public class CreateScimTokenRequest implements RESTRequest {
   public void validate() throws IllegalArgumentException {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(tokenName), "tokenName must not be null or empty");
+    ScimFieldLimits.checkToken(tokenName);
     if (expiresInDays != null) {
       Preconditions.checkArgument(expiresInDays > 0, "expiresInDays must be positive");
     }

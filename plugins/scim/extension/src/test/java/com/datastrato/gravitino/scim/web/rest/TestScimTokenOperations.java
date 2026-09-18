@@ -11,6 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
+import com.datastrato.gravitino.scim.ScimFieldLimits;
 import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.dto.requests.CreateScimTokenRequest;
 import com.datastrato.gravitino.scim.dto.requests.RotateScimTokenRequest;
@@ -132,6 +133,13 @@ class TestScimTokenOperations extends JerseyTest {
   @Test
   void testCreateBadRequest() {
     assertStatus(Response.Status.BAD_REQUEST, post(TOKENS, new CreateScimTokenRequest("", 30)));
+  }
+
+  @Test
+  void testCreateTooLongTokenName() {
+    String tokenName = "t".repeat(ScimFieldLimits.MAX_TOKEN_NAME_LENGTH + 1);
+    assertStatus(
+        Response.Status.BAD_REQUEST, post(TOKENS, new CreateScimTokenRequest(tokenName, 30)));
   }
 
   private static ScimTokenSummary summary(

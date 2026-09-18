@@ -66,6 +66,8 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       return ScimResourceConverter.toScimUser(user);
     } catch (AlreadyExistsException e) {
       throw new ResourceException(409, "User already exists: userName=" + userName, e);
+    } catch (IllegalArgumentException e) {
+      throw new ResourceException(400, e.getMessage(), e);
     } catch (Exception e) {
       LOG.error("SCIM user create failed: userName={}", userName, e);
       throw new ResourceException(500, "Failed to create user", e);
@@ -279,6 +281,8 @@ public class ScimUserRepositoryAdapter implements Repository<ScimUser> {
       return userManager.updateExternalId(user.getUserId(), normalized);
     } catch (AlreadyExistsException e) {
       throw new ResourceException(409, "User already exists: externalId=" + normalized, e);
+    } catch (IllegalArgumentException e) {
+      throw new ResourceException(400, e.getMessage(), e);
     } catch (NotFoundException e) {
       throw new ResourceException(404, "User not found: " + user.getUserId(), e);
     }

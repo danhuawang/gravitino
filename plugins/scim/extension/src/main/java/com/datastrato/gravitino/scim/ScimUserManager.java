@@ -78,6 +78,7 @@ public class ScimUserManager implements Closeable {
       throws IOException {
     validateUserName(userName);
     String resolvedExternalId = ScimUtils.blankToNull(externalId);
+    ScimFieldLimits.checkUser(userName, resolvedExternalId);
     if (USER_META_SERVICE.getScimUserByUserNameIgnoreCase(userName) != null) {
       throw new AlreadyExistsException("SCIM user %s already exists", userName);
     }
@@ -187,6 +188,7 @@ public class ScimUserManager implements Closeable {
    */
   public ScimUserMeta updateExternalId(long userId, @Nullable String externalId) {
     String resolvedExternalId = ScimUtils.blankToNull(externalId);
+    ScimFieldLimits.checkExternalId(resolvedExternalId, "user");
     ScimUserMeta existing = USER_META_SERVICE.requireScimUserByUserId(userId);
     if (Objects.equals(resolvedExternalId, existing.getExternalId())) {
       return existing;
@@ -229,5 +231,6 @@ public class ScimUserManager implements Closeable {
   private static void validateUserName(String userName) {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(userName), "userName must not be null or empty");
+    ScimFieldLimits.checkMaxLength(userName, ScimFieldLimits.MAX_NAME_LENGTH, "userName", "user");
   }
 }

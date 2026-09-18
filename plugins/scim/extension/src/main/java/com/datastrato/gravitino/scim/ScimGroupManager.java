@@ -77,6 +77,8 @@ public class ScimGroupManager implements Closeable {
       throws IOException {
     validateGroupName(groupName);
     String resolvedExternalId = ScimUtils.blankToNull(externalId);
+    String groupComment = "";
+    ScimFieldLimits.checkGroup(groupName, resolvedExternalId, groupComment);
     if (GROUP_META_SERVICE.getScimGroupByGroupNameIgnoreCase(groupName) != null) {
       throw new AlreadyExistsException("SCIM group %s already exists", groupName);
     }
@@ -89,7 +91,7 @@ public class ScimGroupManager implements Closeable {
         ScimGroupMetaPO.builder()
             .withGroupId(idGenerator.nextId())
             .withGroupName(groupName)
-            .withGroupComment("")
+            .withGroupComment(groupComment)
             .withExternalId(resolvedExternalId)
             .withAuditInfo(ScimPOConverters.newCreateAuditInfo())
             .withCurrentVersion(POConverters.INIT_VERSION)
@@ -162,6 +164,7 @@ public class ScimGroupManager implements Closeable {
    */
   public ScimGroupMeta updateExternalId(long groupId, @Nullable String externalId) {
     String resolvedExternalId = ScimUtils.blankToNull(externalId);
+    ScimFieldLimits.checkExternalId(resolvedExternalId, "group");
     ScimGroupMeta existing = GROUP_META_SERVICE.requireScimGroupByGroupId(groupId);
     if (Objects.equals(resolvedExternalId, existing.getExternalId())) {
       return existing;
@@ -204,5 +207,7 @@ public class ScimGroupManager implements Closeable {
   private static void validateGroupName(String groupName) {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(groupName), "groupName must not be null or empty");
+    ScimFieldLimits.checkMaxLength(
+        groupName, ScimFieldLimits.MAX_NAME_LENGTH, "displayName", "group");
   }
 }

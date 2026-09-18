@@ -126,6 +126,22 @@ class TestScimUserRepositoryAdapter {
   }
 
   @Test
+  void testCreateTooLongUserName400() throws Exception {
+    when(userManager.createUser("alice", USER_EXT_ID, true))
+        .thenThrow(
+            new IllegalArgumentException(
+                "The userName of the SCIM user must not exceed 128 characters"));
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () -> adapter.create(new ScimUser().setExternalId(USER_EXT_ID).setUserName("alice")));
+    assertEquals(400, exception.getStatus());
+    assertEquals(
+        "The userName of the SCIM user must not exceed 128 characters", exception.getMessage());
+  }
+
+  @Test
   void testCreateConflictIgnoreCase409() throws Exception {
     when(userManager.createUser("Alice", "ext-2", true))
         .thenThrow(new AlreadyExistsException("Alice"));

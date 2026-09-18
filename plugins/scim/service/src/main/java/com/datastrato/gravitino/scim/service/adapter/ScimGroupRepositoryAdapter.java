@@ -83,6 +83,8 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       throw e;
     } catch (AlreadyExistsException e) {
       throw new ResourceException(409, "Group already exists: displayName=" + groupName, e);
+    } catch (IllegalArgumentException e) {
+      throw new ResourceException(400, e.getMessage(), e);
     } catch (Exception e) {
       throw new ResourceException(500, "Failed to create group", e);
     }
@@ -253,6 +255,8 @@ public class ScimGroupRepositoryAdapter implements Repository<ScimGroup> {
       return groupManager.updateExternalId(group.getGroupId(), normalized);
     } catch (AlreadyExistsException e) {
       throw new ResourceException(409, "Group already exists: externalId=" + normalized, e);
+    } catch (IllegalArgumentException e) {
+      throw new ResourceException(400, e.getMessage(), e);
     } catch (NotFoundException e) {
       throw new ResourceException(404, "Group not found: " + group.getGroupId(), e);
     }

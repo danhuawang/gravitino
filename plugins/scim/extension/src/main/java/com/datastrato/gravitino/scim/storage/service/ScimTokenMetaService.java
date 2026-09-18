@@ -6,6 +6,7 @@ package com.datastrato.gravitino.scim.storage.service;
 
 import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATIONAL_STORE_METRIC_NAME;
 
+import com.datastrato.gravitino.scim.ScimFieldLimits;
 import com.datastrato.gravitino.scim.model.ScimToken;
 import com.datastrato.gravitino.scim.storage.mapper.ScimTokenMetaMapper;
 import com.datastrato.gravitino.scim.storage.po.ScimProvisioningStatsPO;
@@ -97,6 +98,7 @@ public class ScimTokenMetaService {
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "insertScimToken")
   public void insertScimToken(ScimTokenMetaPO tokenMeta) throws IOException {
+    ScimFieldLimits.checkToken(tokenMeta.getTokenName());
     try {
       SessionUtils.doWithCommit(ScimTokenMetaMapper.class, mapper -> mapper.insert(tokenMeta));
     } catch (RuntimeException re) {
@@ -110,6 +112,7 @@ public class ScimTokenMetaService {
       baseMetricName = "updateScimTokenOnRotate")
   public boolean updateScimTokenOnRotate(ScimTokenMetaPO newTokenMeta, ScimTokenMetaPO oldTokenMeta)
       throws IOException {
+    ScimFieldLimits.checkToken(newTokenMeta.getTokenName());
     try {
       Integer updated =
           SessionUtils.doWithCommitAndFetchResult(

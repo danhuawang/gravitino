@@ -6,6 +6,7 @@ package com.datastrato.gravitino.scim.storage.service;
 
 import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATIONAL_STORE_METRIC_NAME;
 
+import com.datastrato.gravitino.scim.ScimFieldLimits;
 import com.datastrato.gravitino.scim.model.ScimGroupMeta;
 import com.datastrato.gravitino.scim.storage.mapper.ScimGroupMetaMapper;
 import com.datastrato.gravitino.scim.storage.po.ScimGroupMetaPO;
@@ -34,6 +35,8 @@ public class ScimGroupMetaService {
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "insertScimGroup")
   public void insertScimGroup(ScimGroupMetaPO groupMeta) throws IOException {
+    ScimFieldLimits.checkGroup(
+        groupMeta.getGroupName(), groupMeta.getExternalId(), groupMeta.getGroupComment());
     try {
       SessionUtils.doWithCommit(ScimGroupMetaMapper.class, mapper -> mapper.insert(groupMeta));
     } catch (RuntimeException re) {
@@ -136,10 +139,16 @@ public class ScimGroupMetaService {
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "updateScimGroupExternalId")
   public boolean updateScimGroupExternalId(long groupId, String externalId) {
-    Integer updated =
-        SessionUtils.doWithCommitAndFetchResult(
-            ScimGroupMetaMapper.class, mapper -> mapper.updateExternalId(groupId, externalId));
-    return updated != null && updated > 0;
+    ScimFieldLimits.checkExternalId(externalId, "group");
+    try {
+      Integer updated =
+          SessionUtils.doWithCommitAndFetchResult(
+              ScimGroupMetaMapper.class, mapper -> mapper.updateExternalId(groupId, externalId));
+      return updated != null && updated > 0;
+    } catch (RuntimeException re) {
+      ScimExceptionUtils.checkSQLExceptionUnchecked(re, "group", externalId);
+      throw re;
+    }
   }
 
   @Monitored(

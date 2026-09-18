@@ -255,6 +255,7 @@ public class ScimTokenManager implements Closeable {
   private static void validateTokenName(String tokenName) {
     Preconditions.checkArgument(
         StringUtils.isNotBlank(tokenName), "tokenName must not be null or empty");
+    ScimFieldLimits.checkToken(tokenName);
   }
 
   private static void validateExpiresInDays(@Nullable Integer expiresInDays) {

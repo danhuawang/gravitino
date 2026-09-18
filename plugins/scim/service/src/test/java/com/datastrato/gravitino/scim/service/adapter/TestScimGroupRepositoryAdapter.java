@@ -116,6 +116,24 @@ class TestScimGroupRepositoryAdapter {
   }
 
   @Test
+  void testCreateTooLongDisplayName400() throws Exception {
+    when(groupManager.createGroup("engineers", GROUP_EXT_G1))
+        .thenThrow(
+            new IllegalArgumentException(
+                "The displayName of the SCIM group must not exceed 128 characters"));
+
+    ResourceException exception =
+        assertThrows(
+            ResourceException.class,
+            () ->
+                adapter.create(
+                    new ScimGroup().setExternalId(GROUP_EXT_G1).setDisplayName("engineers")));
+    assertEquals(400, exception.getStatus());
+    assertEquals(
+        "The displayName of the SCIM group must not exceed 128 characters", exception.getMessage());
+  }
+
+  @Test
   void testCreateConflictIgnoreCase409() throws Exception {
     when(groupManager.createGroup("Engineers", "ext-g2"))
         .thenThrow(new AlreadyExistsException("Engineers"));

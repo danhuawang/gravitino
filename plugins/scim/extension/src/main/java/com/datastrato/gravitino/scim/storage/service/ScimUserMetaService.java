@@ -6,6 +6,7 @@ package com.datastrato.gravitino.scim.storage.service;
 
 import static org.apache.gravitino.metrics.source.MetricsSource.GRAVITINO_RELATIONAL_STORE_METRIC_NAME;
 
+import com.datastrato.gravitino.scim.ScimFieldLimits;
 import com.datastrato.gravitino.scim.model.ScimUserMeta;
 import com.datastrato.gravitino.scim.storage.mapper.ScimUserMetaMapper;
 import com.datastrato.gravitino.scim.storage.po.ScimUserMetaPO;
@@ -35,6 +36,7 @@ public class ScimUserMetaService {
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "insertScimUser")
   public void insertScimUser(ScimUserMetaPO userMeta) throws IOException {
+    ScimFieldLimits.checkUser(userMeta.getUserName(), userMeta.getExternalId());
     try {
       SessionUtils.doWithCommit(ScimUserMetaMapper.class, mapper -> mapper.insert(userMeta));
     } catch (RuntimeException re) {
@@ -169,10 +171,16 @@ public class ScimUserMetaService {
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "updateScimUserExternalId")
   public boolean updateScimUserExternalId(long userId, String externalId) {
-    Integer updated =
-        SessionUtils.doWithCommitAndFetchResult(
-            ScimUserMetaMapper.class, mapper -> mapper.updateExternalId(userId, externalId));
-    return updated != null && updated > 0;
+    ScimFieldLimits.checkExternalId(externalId, "user");
+    try {
+      Integer updated =
+          SessionUtils.doWithCommitAndFetchResult(
+              ScimUserMetaMapper.class, mapper -> mapper.updateExternalId(userId, externalId));
+      return updated != null && updated > 0;
+    } catch (RuntimeException re) {
+      ScimExceptionUtils.checkSQLExceptionUnchecked(re, "user", externalId);
+      throw re;
+    }
   }
 
   @Monitored(
