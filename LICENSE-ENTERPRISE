@@ -8,7 +8,13 @@ Copyright (c) 2024-2026 Datastrato Inc. All rights reserved.
 This file identifies the components of this distribution that are
 proprietary to Datastrato Inc. ("Datastrato") and are NOT licensed under
 the Apache License, Version 2.0, or under any other open source license
-(the "Proprietary Components").
+(the "Proprietary Components"). A Proprietary Component is any source
+file carrying the copyright-only Datastrato header under the
+dev/headers/ policy (`Copyright YYYY Datastrato Inc.`, with no Apache
+License grant sentence), verified by the
+`checkEnterpriseFilesHaveEnterpriseOnlyHeader` build check; Section 10
+lists the current proprietary modules as illustration, not as the
+operative definition.
 
 The Apache-licensed and third-party open source components of this
 distribution are identified in the license and notice files shipped
@@ -104,7 +110,8 @@ or via https://datastrato.ai/.
 
 10. THE PROPRIETARY COMPONENTS
 
-The proprietary module set includes, at a high level:
+Section 1 defines a Proprietary Component by its header, not by this
+list. The proprietary module set includes, at a high level:
 
   - Enterprise server and extensions (datastrato-server, common-extension,
     core-extension, lineage-extension)
@@ -116,6 +123,7 @@ The proprietary module set includes, at a high level:
   - License-management components
   - Enterprise documentation, QA, and supporting scripts and configuration
 
-This list describes the proprietary module set as of this release. Some
-proprietary components are specified at file rather than module
-granularity in the build configuration.
+This list illustrates the proprietary module set as of this release; it
+is not exhaustive and does not itself define scope. Some proprietary
+components are specified at file rather than module granularity in the
+build configuration.
