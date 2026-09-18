@@ -37,7 +37,11 @@ import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetalakeChange;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+<<<<<<< HEAD
 import org.apache.gravitino.connector.HiddenPropertyMaskUtils;
+=======
+import org.apache.gravitino.catalog.CatalogManager;
+>>>>>>> upstream/branch-1.3
 import org.apache.gravitino.exceptions.AlreadyExistsException;
 import org.apache.gravitino.exceptions.MetalakeAlreadyExistsException;
 import org.apache.gravitino.exceptions.MetalakeInUseException;
@@ -70,6 +74,8 @@ public class MetalakeManager implements MetalakeDispatcher, Closeable {
 
   private final IdGenerator idGenerator;
 
+  private final CatalogManager catalogManager;
+
   @Override
   public void close() {
     // do nothing
@@ -82,8 +88,24 @@ public class MetalakeManager implements MetalakeDispatcher, Closeable {
    * @param idGenerator The IdGenerator to use for generating Metalake identifiers.
    */
   public MetalakeManager(EntityStore store, IdGenerator idGenerator) {
+    this(store, idGenerator, null);
+  }
+
+  /**
+   * Constructs a MetalakeManager instance.
+   *
+   * @param store The EntityStore to use for managing Metalakes.
+   * @param idGenerator The IdGenerator to use for generating Metalake identifiers.
+   * @param catalogManager Used on force-drop to drop child catalogs via {@link
+   *     CatalogManager#dropCatalog}, which evicts them from the catalog cache and closes their
+   *     resources (for example JDBC connection pools); may be null in tests that do not exercise
+   *     force-drop with catalogs.
+   */
+  public MetalakeManager(
+      EntityStore store, IdGenerator idGenerator, CatalogManager catalogManager) {
     this.store = store;
     this.idGenerator = idGenerator;
+    this.catalogManager = catalogManager;
 
     // preload all metalakes and put them into cache, this is useful when user load schema/table
     // directly without list/get metalake first.
@@ -339,6 +361,14 @@ public class MetalakeManager implements MetalakeDispatcher, Closeable {
   @Override
   public boolean dropMetalake(NameIdentifier ident, boolean force)
       throws NonEmptyEntityException, MetalakeInUseException {
+    // Force-drop child catalogs through CatalogManager.dropCatalog so each one is evicted from
+    // the catalog cache and closed. Deleting only the metalake entity leaves the cached catalog
+    // instances (and their source connections) alive until cache expiry. Do this before the
+    // metalake root lock to avoid nesting tree locks.
+    if (force) {
+      dropCatalogsUnderMetalake(ident);
+    }
+
     return TreeLockUtils.doWithRootTreeLock(
         LockType.WRITE,
         () -> {
@@ -364,6 +394,36 @@ public class MetalakeManager implements MetalakeDispatcher, Closeable {
             throw new RuntimeException(e);
           }
         });
+  }
+
+  /**
+   * Force-drop child catalogs via {@link CatalogManager#dropCatalog} so they are removed from the
+   * catalog cache and closed on the same path as a normal catalog force-drop.
+   *
+   * <p>Callers typically {@code disableMetalake} before force-drop. {@link
+   * CatalogManager#dropCatalog} requires catalog {@code metalake-in-use=true}, so a disabled
+   * metalake is briefly re-enabled for child cleanup. The metalake entity is deleted immediately
+   * afterward, so the temporary enable is not restored.
+   */
+  private void dropCatalogsUnderMetalake(NameIdentifier metalakeIdent) {
+    if (catalogManager == null) {
+      return;
+    }
+    try {
+      if (!metalakeInUse(store, metalakeIdent)) {
+        enableMetalake(metalakeIdent);
+      }
+      List<CatalogEntity> catalogs =
+          store.list(Namespace.of(metalakeIdent.name()), CatalogEntity.class, EntityType.CATALOG);
+      for (CatalogEntity catalog : catalogs) {
+        catalogManager.dropCatalog(
+            NameIdentifier.of(metalakeIdent.name(), catalog.name()), true /* force */);
+      }
+    } catch (NoSuchMetalakeException e) {
+      // Metalake is already gone; dropMetalake will return false.
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @Override

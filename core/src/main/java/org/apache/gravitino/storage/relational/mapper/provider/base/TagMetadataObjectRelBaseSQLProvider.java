@@ -130,6 +130,14 @@ public class TagMetadataObjectRelBaseSQLProvider {
         + "</script>";
   }
 
+  public String softDeleteTagMetadataObjectRelsByTagId(@Param("tagId") Long tagId) {
+    return "UPDATE "
+        + TagMetadataObjectRelMapper.TAG_METADATA_OBJECT_RELATION_TABLE_NAME
+        + " SET deleted_at = (UNIX_TIMESTAMP() * 1000.0)"
+        + " + EXTRACT(MICROSECOND FROM CURRENT_TIMESTAMP(3)) / 1000"
+        + " WHERE tag_id = #{tagId} AND deleted_at = 0";
+  }
+
   public String softDeleteTagMetadataObjectRelsByMetalakeAndTagName(
       @Param("metalakeName") String metalakeName, @Param("tagName") String tagName) {
     return "UPDATE "
@@ -164,6 +172,23 @@ public class TagMetadataObjectRelBaseSQLProvider {
         + " + EXTRACT(MICROSECOND FROM CURRENT_TIMESTAMP(3)) / 1000"
         + " WHERE metadata_object_id = #{metadataObjectId} AND deleted_at = 0"
         + " AND metadata_object_type = #{metadataObjectType}";
+  }
+
+  public String softDeleteTagMetadataObjectRelsByMetadataObjects(
+      @Param("metadataObjectIds") List<Long> metadataObjectIds,
+      @Param("metadataObjectType") String metadataObjectType) {
+    return "<script>"
+        + "UPDATE "
+        + TagMetadataObjectRelMapper.TAG_METADATA_OBJECT_RELATION_TABLE_NAME
+        + " SET deleted_at = (UNIX_TIMESTAMP() * 1000.0)"
+        + " + EXTRACT(MICROSECOND FROM CURRENT_TIMESTAMP(3)) / 1000"
+        + " WHERE deleted_at = 0 AND metadata_object_type = #{metadataObjectType}"
+        + " AND metadata_object_id IN ("
+        + "<foreach collection='metadataObjectIds' item='metadataObjectId' separator=','>"
+        + "#{metadataObjectId}"
+        + "</foreach>"
+        + ")"
+        + "</script>";
   }
 
   public String softDeleteTagMetadataObjectRelsByCatalogId(@Param("catalogId") Long catalogId) {
