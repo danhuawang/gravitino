@@ -15,6 +15,8 @@ import static org.mockito.Mockito.when;
 import com.datastrato.gravitino.authorization.DirectoryUser;
 import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.authorization.mapper.DatastratoUserMetaMapper;
+import com.datastrato.gravitino.authorization.po.DirectoryUserDetailPO;
+import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.datastrato.gravitino.dto.authorization.AuthMeRoleDTO;
 import com.datastrato.gravitino.dto.authorization.AuthMeSecurableObjectDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
@@ -22,6 +24,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +34,7 @@ import java.util.stream.Collectors;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.exceptions.NoSuchUserException;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
 import org.junit.jupiter.api.AfterAll;
@@ -288,7 +292,7 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     }
   }
 
-  /** Verifies Add-role user picker names are SCIM ∪ IdP ∪ JIT without duplicates. */
+  /** Verifies Add-role user picker names include identity stores and metalake-only users. */
   @Test
   public void testListIdpUserNamesUnionsIdentityStores() throws Exception {
     try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
@@ -303,7 +307,7 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
         SessionUtils.getWithoutCommit(
             DatastratoUserMetaMapper.class, DatastratoUserMetaMapper::listIdpUserNames);
 
-    assertEquals(List.of("dana.k", "jwt.user", "lee.p", "sam.o"), names);
+    assertEquals(List.of("dana.k", "jordan.m", "jwt.user", "lee.p", "sam.o"), names);
 
     List<String> requestedNames =
         SessionUtils.getWithoutCommit(
@@ -314,13 +318,13 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(Set.of("dana.k", "jwt.user", "lee.p"), Set.copyOf(requestedNames));
   }
 
-  /** Verifies Local / Provisioned / JIT Directory Users without cross-store merging. */
+  /** Verifies Local / Provisioned / metalake-only Directory Users without cross-store merging. */
   @Test
   public void testListDirectoryUsers() {
     List<DirectoryUser> users = DatastratoUserMetaService.getInstance().listDirectoryUsers();
 
-    // dana.k (Provisioned), lee.p (Local), sam.o (Provisioned + Local) — no merge.
-    assertEquals(4, users.size());
+    // dana.k (Provisioned), jordan.m (metalake-only), lee.p (Local), sam.o (Provisioned + Local).
+    assertEquals(5, users.size());
 
     DirectoryUser dana = users.get(0);
     assertEquals("dana.k", dana.name());
@@ -329,7 +333,14 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(List.of("finance"), dana.groups());
     assertEquals(List.of("Acme", "Contoso"), dana.metalakes());
 
-    DirectoryUser lee = users.get(1);
+    DirectoryUser jordan = users.get(1);
+    assertEquals("jordan.m", jordan.name());
+    assertTrue(jordan.enabled());
+    assertNull(jordan.origin());
+    assertTrue(jordan.groups().isEmpty());
+    assertEquals(List.of("Contoso", "Northwind"), jordan.metalakes());
+
+    DirectoryUser lee = users.get(2);
     assertEquals("lee.p", lee.name());
     assertFalse(lee.enabled());
     assertEquals(IdentitySource.LOCAL, lee.origin());
@@ -337,19 +348,51 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
     assertEquals(List.of("Acme"), lee.metalakes());
 
     // ORIGIN_CODE_PROVISIONED (0) sorts before LOCAL (1) for the same username.
-    DirectoryUser samProvisioned = users.get(2);
+    DirectoryUser samProvisioned = users.get(3);
     assertEquals("sam.o", samProvisioned.name());
     assertTrue(samProvisioned.enabled());
     assertEquals(IdentitySource.PROVISIONED, samProvisioned.origin());
     assertTrue(samProvisioned.groups().isEmpty());
     assertEquals(List.of("Contoso"), samProvisioned.metalakes());
 
-    DirectoryUser samLocal = users.get(3);
+    DirectoryUser samLocal = users.get(4);
     assertEquals("sam.o", samLocal.name());
     assertTrue(samLocal.enabled());
     assertEquals(IdentitySource.LOCAL, samLocal.origin());
     assertEquals(List.of("governance", "ops"), samLocal.groups());
     assertEquals(List.of("Contoso"), samLocal.metalakes());
+  }
+
+  /** Verifies metalake-only User Overview uses the earliest user_meta createTime. */
+  @Test
+  public void testGetMetalakeOnlyDirectoryUserUsesEarliestCreateTime() throws Exception {
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "UPDATE user_meta SET audit_info ="
+              + " '{\"createTime\":\"2026-09-18T05:46:00Z\"}' WHERE user_id = 1004");
+      statement.execute(
+          "UPDATE user_meta SET audit_info ="
+              + " '{\"createTime\":\"2026-01-01T00:00:00Z\"}' WHERE user_id = 1005");
+    }
+
+    DirectoryUserDetailPO jordan =
+        DatastratoUserMetaService.getInstance().getDirectoryUser("jordan.m", null);
+    assertEquals("jordan.m", jordan.getUserName());
+    assertTrue(jordan.enabledOrDefault());
+    assertNull(jordan.origin());
+    assertNull(jordan.getExternalId());
+    assertEquals(
+        Instant.parse("2026-01-01T00:00:00Z"),
+        DatastratoPOConverters.parseCreateTime(jordan.getAuditInfo()));
+
+    assertThrows(
+        NoSuchUserException.class,
+        () -> DatastratoUserMetaService.getInstance().getDirectoryUser("sam.o", null));
+    assertTrue(
+        DatastratoGroupMetaService.getInstance()
+            .listDirectoryGroupsForUser("jordan.m", null)
+            .isEmpty());
   }
 
   /** Verifies metalake Users list origin (Local/Provisioned; unknown is null). */

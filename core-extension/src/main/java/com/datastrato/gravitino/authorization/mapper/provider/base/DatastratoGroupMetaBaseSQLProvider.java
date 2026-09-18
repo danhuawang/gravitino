@@ -45,10 +45,12 @@ public class DatastratoGroupMetaBaseSQLProvider {
   }
 
   /**
-   * Lists distinct active group names from identity stores ({@code scim_group_meta}, {@code
-   * idp_group_meta}, {@code jit_group_meta}).
+   * Lists distinct active group names from identity stores and metalake-only {@code group_meta}
+   * rows.
    *
-   * <p>Used by Add-role member pickers. Names present in more than one table appear once.
+   * <p>Used by Add-role member pickers. Identity-store names come from {@code scim_group_meta},
+   * {@code idp_group_meta}, and {@code jit_group_meta}. Metalake-only names (in {@code group_meta}
+   * but none of those stores) are included once. Names present in more than one source appear once.
    *
    * @return MyBatis SQL ordered by group name.
    */
@@ -65,7 +67,19 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " SELECT group_name FROM "
         + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
         + " WHERE deleted_at = 0"
-        + ") identity_groups ORDER BY group_name";
+        + " UNION"
+        + " SELECT DISTINCT gt.group_name FROM "
+        + GROUP_TABLE_NAME
+        + " gt WHERE gt.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg WHERE jg.group_name = gt.group_name AND jg.deleted_at = 0)"
+        + ") principal_groups ORDER BY group_name";
   }
 
   /**
@@ -151,9 +165,10 @@ public class DatastratoGroupMetaBaseSQLProvider {
    *
    * <p>Rows come from each identity store without merging: {@code idp_group_meta} → Local, {@code
    * scim_group_meta} → Provisioned, {@code jit_group_meta} → JIT. The same group name may appear
-   * more than once when it exists in multiple stores. {@code memberCount} is the identity-store
-   * membership count for that row's origin. Metalakes are distinct {@code metalake_meta} names that
-   * contain the group name in {@code group_meta}.
+   * more than once when it exists in multiple stores. Metalake-only names (in {@code group_meta}
+   * but none of those stores) are included with {@code origin} null and {@code memberCount} 0.
+   * {@code memberCount} is the identity-store membership count for that row's origin. Metalakes are
+   * distinct {@code metalake_meta} names that contain the group name in {@code group_meta}.
    *
    * @return MyBatis SQL ordered by group name, then origin.
    */
@@ -326,7 +341,29 @@ public class DatastratoGroupMetaBaseSQLProvider {
         + " as scimGroupId, jg.group_id as jitGroupId"
         + " FROM "
         + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
-        + " jg WHERE jg.deleted_at = 0";
+        + " jg WHERE jg.deleted_at = 0"
+        + " UNION ALL "
+        + "SELECT DISTINCT gt.group_name as groupName, "
+        + nullOriginCodeLiteral()
+        + " as originCode,"
+        + " "
+        + nullLongLiteral()
+        + " as idpGroupId, "
+        + nullLongLiteral()
+        + " as scimGroupId, "
+        + nullLongLiteral()
+        + " as jitGroupId"
+        + " FROM "
+        + GROUP_TABLE_NAME
+        + " gt WHERE gt.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg WHERE jg.group_name = gt.group_name AND jg.deleted_at = 0)";
   }
 
   /**
@@ -390,6 +427,29 @@ public class DatastratoGroupMetaBaseSQLProvider {
     }
     throw new IllegalArgumentException(
         "Directory group detail originCode must be Local, Provisioned, or JIT, got: " + originCode);
+  }
+
+  /**
+   * Lists {@code group_meta.audit_info} for a metalake-only Directory Group (not in IdP or SCIM).
+   *
+   * <p>One group name may appear in multiple metalakes; the service picks the earliest {@code
+   * createTime} across these rows for Overview Created.
+   *
+   * @param groupName Group name.
+   * @return MyBatis SQL returning zero or more {@code audit_info} strings.
+   */
+  public String listMetalakeOnlyDirectoryGroupAuditInfos(@Param("groupName") String groupName) {
+    return "SELECT gt.audit_info FROM "
+        + GROUP_TABLE_NAME
+        + " gt WHERE gt.group_name = #{groupName} AND gt.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
+        + " ig WHERE ig.group_name = gt.group_name AND ig.deleted_at = 0) AND NOT EXISTS (SELECT 1"
+        + " FROM "
+        + DatastratoGroupMetaMapper.SCIM_GROUP_TABLE_NAME
+        + " sg WHERE sg.group_name = gt.group_name AND sg.deleted_at = 0) AND NOT EXISTS (SELECT 1"
+        + " FROM "
+        + DatastratoGroupMetaMapper.JIT_GROUP_TABLE_NAME
+        + " jg WHERE jg.group_name = gt.group_name AND jg.deleted_at = 0)";
   }
 
   /**
@@ -784,6 +844,18 @@ public class DatastratoGroupMetaBaseSQLProvider {
    */
   protected String nullLongLiteral() {
     return "CAST(NULL AS BIGINT)";
+  }
+
+  /**
+   * Typed NULL for metalake-only Directory rows where {@code originCode} is absent.
+   *
+   * <p>PostgreSQL requires an explicit integer cast in {@code UNION ALL} with {@code originCode}
+   * literals; MySQL and H2 accept untyped {@code NULL}.
+   *
+   * @return SQL NULL literal for {@code originCode}.
+   */
+  protected String nullOriginCodeLiteral() {
+    return "NULL";
   }
 
   protected String groupNameInClause() {

@@ -13,10 +13,11 @@ import javax.annotation.Nullable;
  *
  * <p>For Directory Users/Groups lists: each active row from {@code idp_*}, {@code scim_*}, and
  * {@code jit_*} is listed without merging — {@code Local}, {@code Provisioned}, and {@code JIT}
- * respectively. The same name may appear more than once when it exists in multiple stores. For
- * metalake security Users/Groups lists, origin priority is {@code scim_*} → Provisioned, else
- * {@code idp_*} → Local, else {@code jit_*} → JIT; otherwise {@code origin} is omitted ({@code
- * null}).
+ * respectively. The same name may appear more than once when it exists in multiple stores.
+ * Metalake-only names (present in {@code user_meta} / {@code group_meta} but none of those identity
+ * stores) are included with {@code origin} omitted ({@code null}). For metalake security
+ * Users/Groups lists, origin priority is {@code scim_*} → Provisioned, else {@code idp_*} → Local,
+ * else {@code jit_*} → JIT; otherwise {@code origin} is omitted ({@code null}).
  *
  * <p>{@link #JIT} is also used for write-time JWT discovery; list SQL maps JIT from {@code
  * jit_user_meta} / {@code jit_group_meta}, not from mere absence in IdP/SCIM.

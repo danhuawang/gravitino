@@ -4,6 +4,7 @@
 package com.datastrato.gravitino.dto.authorization;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -11,7 +12,7 @@ import org.junit.jupiter.api.Test;
 /** Tests for {@link DirectoryGroupDTO}. */
 public class TestDirectoryGroupDTO {
 
-  /** Verifies Local and Provisioned mapping. */
+  /** Verifies Local, Provisioned, and metalake-only mapping. */
   @Test
   public void testFromDirectoryGroupView() {
     DirectoryGroupDTO local =
@@ -27,6 +28,13 @@ public class TestDirectoryGroupDTO {
     assertEquals("platform", provisioned.name());
     assertEquals(1, provisioned.memberCount());
     assertEquals(IdentitySource.PROVISIONED, provisioned.origin());
+
+    DirectoryGroupDTO metalakeOnly =
+        DirectoryGroupDTO.from(view("analysts", 0, null, List.of("Contoso", "Northwind")));
+    assertEquals("analysts", metalakeOnly.name());
+    assertEquals(0, metalakeOnly.memberCount());
+    assertNull(metalakeOnly.origin());
+    assertEquals(List.of("Contoso", "Northwind"), metalakeOnly.metalakes());
   }
 
   private static DirectoryGroupDTO.DirectoryGroupView view(

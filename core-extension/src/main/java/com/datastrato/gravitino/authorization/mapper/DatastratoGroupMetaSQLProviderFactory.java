@@ -68,6 +68,11 @@ public class DatastratoGroupMetaSQLProviderFactory {
     return getProvider().getDirectoryGroup(groupName, originCode);
   }
 
+  public static String listMetalakeOnlyDirectoryGroupAuditInfos(
+      @Param("groupName") String groupName) {
+    return getProvider().listMetalakeOnlyDirectoryGroupAuditInfos(groupName);
+  }
+
   public static String listDirectoryGroupsForUser(
       @Param("userName") String userName, @Param("originCode") int originCode) {
     return getProvider().listDirectoryGroupsForUser(userName, originCode);
@@ -127,6 +132,12 @@ public class DatastratoGroupMetaSQLProviderFactory {
     @Override
     protected String jsonArrayAgg(String expr) {
       return "JSON_AGG(" + expr + ")";
+    }
+
+    /** Cast metalake-only {@code originCode} so UNION ALL matches integer origin literals on PG. */
+    @Override
+    protected String nullOriginCodeLiteral() {
+      return "CAST(NULL AS INTEGER)";
     }
   }
 }

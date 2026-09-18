@@ -283,6 +283,18 @@ public interface DatastratoUserMetaMapper {
       @Param("userName") String userName, @Param("originCode") int originCode);
 
   /**
+   * Lists {@code user_meta.audit_info} for a metalake-only Directory User (neither IdP nor SCIM).
+   *
+   * @param userName Username.
+   * @return Audit JSON strings for each metalake membership; empty when the name is missing or not
+   *     metalake-only.
+   */
+  @SelectProvider(
+      type = DatastratoUserMetaSQLProviderFactory.class,
+      method = "listMetalakeOnlyDirectoryUserAuditInfos")
+  List<String> listMetalakeOnlyDirectoryUserAuditInfos(@Param("userName") String userName);
+
+  /**
    * Lists Directory Users that belong to a Directory Group for Configure → Directory → Group →
    * Members.
    *

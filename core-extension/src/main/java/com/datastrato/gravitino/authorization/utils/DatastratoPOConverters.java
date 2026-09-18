@@ -52,6 +52,35 @@ public final class DatastratoPOConverters {
   }
 
   /**
+   * Returns the {@code audit_info} JSON whose {@code createTime} is earliest among the candidates.
+   *
+   * <p>Used for metalake-only Directory Overview Created: a name may exist in several {@code
+   * user_meta} / {@code group_meta} rows across metalakes.
+   *
+   * @param auditInfoJsons serialized {@link AuditInfo} values; may be empty
+   * @return the audit JSON with the earliest createTime, or {@code null} when none parse a time
+   */
+  @Nullable
+  public static String auditInfoWithEarliestCreateTime(@Nullable List<String> auditInfoJsons) {
+    if (auditInfoJsons == null || auditInfoJsons.isEmpty()) {
+      return null;
+    }
+    String earliestAudit = null;
+    Instant earliest = null;
+    for (String auditInfoJson : auditInfoJsons) {
+      Instant createTime = parseCreateTime(auditInfoJson);
+      if (createTime == null) {
+        continue;
+      }
+      if (earliest == null || createTime.isBefore(earliest)) {
+        earliest = createTime;
+        earliestAudit = auditInfoJson;
+      }
+    }
+    return earliestAudit;
+  }
+
+  /**
    * Builds create-time {@code audit_info} JSON for Directory Local IdP inserts.
    *
    * @return serialized {@link AuditInfo} with creator and createTime

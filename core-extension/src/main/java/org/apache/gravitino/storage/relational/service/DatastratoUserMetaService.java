@@ -131,7 +131,8 @@ public class DatastratoUserMetaService {
    *
    * <p>Local from {@code idp_user_meta}, Provisioned from {@code scim_user_meta}, and JIT from
    * {@code jit_user_meta}, without merging. The same username may appear more than once when it
-   * exists in multiple stores.
+   * exists in multiple stores. Metalake-only names (in {@code user_meta} but none of those stores)
+   * are included with {@code origin} null.
    *
    * @return Directory users ordered by username, then origin.
    */
@@ -152,20 +153,26 @@ public class DatastratoUserMetaService {
   /**
    * Loads one Directory User for Configure → Directory → User Overview.
    *
-   * <p>{@code origin} must be {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED}.
+   * <p>When {@code origin} is {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED},
+   * loads from the matching identity store. When {@code origin} is {@code null}, loads a
+   * metalake-only name from {@code user_meta} (neither IdP nor SCIM); {@code createTime} is the
+   * earliest {@code audit_info.createTime} across all metalake rows for that username.
    *
    * @param userName Username.
-   * @param origin Local or Provisioned.
+   * @param origin Local, Provisioned, or {@code null} for metalake-only.
    * @return Directory user detail DTO fields as a {@link
    *     com.datastrato.gravitino.dto.authorization.DirectoryUserDetailDTO}-ready row.
-   * @throws NoSuchUserException If no matching identity-store user exists for that origin.
+   * @throws NoSuchUserException If no matching user exists for that origin (or metalake-only).
    */
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "getDirectoryUser")
-  public DirectoryUserDetailPO getDirectoryUser(String userName, IdentitySource origin) {
+  public DirectoryUserDetailPO getDirectoryUser(
+      String userName, @javax.annotation.Nullable IdentitySource origin) {
     Preconditions.checkArgument(StringUtils.isNotBlank(userName), "userName cannot be blank");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
+    if (origin == null) {
+      return getMetalakeOnlyDirectoryUser(userName);
+    }
     if (origin != IdentitySource.LOCAL
         && origin != IdentitySource.PROVISIONED
         && origin != IdentitySource.JIT) {
@@ -182,6 +189,23 @@ public class DatastratoUserMetaService {
       throw new NoSuchUserException(
           "Directory user does not exist: %s (%s)", userName, origin.value());
     }
+    return row;
+  }
+
+  private DirectoryUserDetailPO getMetalakeOnlyDirectoryUser(String userName) {
+    List<String> auditInfos =
+        SessionUtils.getWithoutCommit(
+            DatastratoUserMetaMapper.class,
+            mapper -> mapper.listMetalakeOnlyDirectoryUserAuditInfos(userName));
+    if (auditInfos == null || auditInfos.isEmpty()) {
+      throw new NoSuchUserException("Directory user does not exist: %s (metalake-only)", userName);
+    }
+    DirectoryUserDetailPO row = new DirectoryUserDetailPO();
+    row.setUserName(userName);
+    row.setEnabled(true);
+    row.setOriginCode(null);
+    row.setExternalId(null);
+    row.setAuditInfo(DatastratoPOConverters.auditInfoWithEarliestCreateTime(auditInfos));
     return row;
   }
 
@@ -237,12 +261,12 @@ public class DatastratoUserMetaService {
   /**
    * Lists Directory Users for Configure → Directory → Group → Members.
    *
-   * <p>{@code origin} must be {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED}.
-   * The Directory Group must exist for that origin (same rules as {@link
-   * DatastratoGroupMetaService#getDirectoryGroup}).
+   * <p>When {@code origin} is Local or Provisioned, lists identity-store members. When {@code
+   * origin} is {@code null}, requires a metalake-only Directory Group and returns an empty list
+   * (metalake-only groups have no identity-store members).
    *
    * @param groupName Group name.
-   * @param origin Local or Provisioned.
+   * @param origin Local, Provisioned, or {@code null} for metalake-only.
    * @return Members with {@code enabled} and {@code origin}, ordered by username.
    * @throws org.apache.gravitino.exceptions.NoSuchGroupException If the Directory Group is missing
    *     for that origin.
@@ -250,9 +274,13 @@ public class DatastratoUserMetaService {
   @Monitored(
       metricsSource = GRAVITINO_RELATIONAL_STORE_METRIC_NAME,
       baseMetricName = "listDirectoryUsersForGroup")
-  public List<DirectoryUser> listDirectoryUsersForGroup(String groupName, IdentitySource origin) {
+  public List<DirectoryUser> listDirectoryUsersForGroup(
+      String groupName, @javax.annotation.Nullable IdentitySource origin) {
     Preconditions.checkArgument(StringUtils.isNotBlank(groupName), "groupName cannot be blank");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
+    if (origin == null) {
+      DatastratoGroupMetaService.getInstance().getDirectoryGroup(groupName, null);
+      return Collections.emptyList();
+    }
     if (origin != IdentitySource.LOCAL
         && origin != IdentitySource.PROVISIONED
         && origin != IdentitySource.JIT) {

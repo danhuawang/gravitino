@@ -82,12 +82,27 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
     assertTrue(sql.contains("metalakeNames"));
     assertTrue(sql.contains("originCode"));
     assertTrue(sql.contains("UNION ALL"));
-    assertFalse(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains("ORDER BY identity.groupName, identity.originCode"));
     assertTrue(sql.contains("CAST(NULL AS BIGINT)"));
     assertTrue(sql.contains("GROUP BY gt.group_name"));
+    assertTrue(sql.contains("FROM group_meta gt"));
     assertTrue(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
     assertTrue(sql.contains("jitMembers.memberCount"));
+    assertTrue(sql.contains("NOT EXISTS"));
+  }
+
+  @Test
+  public void testPostgreSQLNullOriginCodeCastInDirectoryGroups() {
+    DatastratoGroupMetaBaseSQLProvider withPgCast =
+        new DatastratoGroupMetaBaseSQLProvider() {
+          @Override
+          protected String nullOriginCodeLiteral() {
+            return "CAST(NULL AS INTEGER)";
+          }
+        };
+    String sql = withPgCast.listDirectoryGroups();
+    assertTrue(sql.contains("CAST(NULL AS INTEGER) as originCode"));
   }
 
   @Test
@@ -196,12 +211,25 @@ public class TestDatastratoGroupMetaBaseSQLProvider {
   }
 
   @Test
+  public void testListMetalakeOnlyDirectoryGroupAuditInfos() {
+    String sql = provider.listMetalakeOnlyDirectoryGroupAuditInfos("analysts");
+    assertTrue(sql.contains("FROM group_meta gt"));
+    assertTrue(sql.contains("gt.audit_info"));
+    assertTrue(sql.contains("gt.group_name = #{groupName}"));
+    assertTrue(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains("idp_group_meta"));
+    assertTrue(sql.contains("scim_group_meta"));
+  }
+
+  @Test
   public void testListIdpGroupNames() {
     String sql = provider.listIdpGroupNames();
     assertTrue(sql.contains("scim_group_meta"));
     assertTrue(sql.contains("idp_group_meta"));
     assertTrue(sql.contains("jit_group_meta"));
+    assertTrue(sql.contains("group_meta"));
     assertTrue(sql.contains("UNION"));
+    assertTrue(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains("deleted_at = 0"));
     assertTrue(sql.contains("ORDER BY group_name"));
   }

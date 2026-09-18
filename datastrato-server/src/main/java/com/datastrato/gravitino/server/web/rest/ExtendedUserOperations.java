@@ -31,6 +31,7 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.Response;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.dto.responses.NameListResponse;
 import org.apache.gravitino.exceptions.ForbiddenException;
@@ -98,7 +99,7 @@ public class ExtendedUserOperations {
    * building a metalake-scoped NameIdentifier.
    *
    * @param user Username.
-   * @param origin Local or Provisioned.
+   * @param origin Local, Provisioned, or omitted for a metalake-only user.
    * @return User detail including optional {@code externalId}.
    */
   @GET
@@ -114,7 +115,7 @@ public class ExtendedUserOperations {
           httpRequest,
           () -> {
             requireServiceAdminOrSelf(user);
-            IdentitySource identitySource = requireDirectoryOrigin(origin);
+            IdentitySource identitySource = optionalDirectoryOrigin(origin);
             return Utils.ok(
                 new DirectoryUserDetailResponse(
                     accessControlDispatcher.getDirectoryUser(user, identitySource)));
@@ -132,7 +133,7 @@ public class ExtendedUserOperations {
    * <p>Same auth as {@link #getDirectoryUser}: service admin or self.
    *
    * @param user Username.
-   * @param origin Local or Provisioned.
+   * @param origin Local, Provisioned, or omitted for a metalake-only user.
    * @return Groups with {@code memberCount} and {@code origin}.
    */
   @GET
@@ -150,7 +151,7 @@ public class ExtendedUserOperations {
           httpRequest,
           () -> {
             requireServiceAdminOrSelf(user);
-            IdentitySource identitySource = requireDirectoryOrigin(origin);
+            IdentitySource identitySource = optionalDirectoryOrigin(origin);
             return Utils.ok(
                 new DirectoryGroupListResponse(
                     DirectoryGroupDTO.from(
@@ -266,10 +267,9 @@ public class ExtendedUserOperations {
     }
   }
 
-  private static IdentitySource requireDirectoryOrigin(String origin) {
-    if (origin == null || origin.isBlank()) {
-      throw new IllegalArgumentException(
-          "Query parameter 'origin' is required (Local, Provisioned, or JIT)");
+  private static IdentitySource optionalDirectoryOrigin(String origin) {
+    if (StringUtils.isBlank(origin)) {
+      return null;
     }
     IdentitySource identitySource = IdentitySource.fromValue(origin);
     if (identitySource != IdentitySource.LOCAL

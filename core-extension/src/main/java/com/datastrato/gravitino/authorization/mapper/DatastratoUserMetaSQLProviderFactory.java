@@ -165,6 +165,10 @@ public class DatastratoUserMetaSQLProviderFactory {
     return getProvider().getDirectoryUser(userName, originCode);
   }
 
+  public static String listMetalakeOnlyDirectoryUserAuditInfos(@Param("userName") String userName) {
+    return getProvider().listMetalakeOnlyDirectoryUserAuditInfos(userName);
+  }
+
   public static String listDirectoryUsersForGroup(
       @Param("groupName") String groupName, @Param("originCode") int originCode) {
     return getProvider().listDirectoryUsersForGroup(groupName, originCode);
@@ -217,6 +221,11 @@ public class DatastratoUserMetaSQLProviderFactory {
     @Override
     protected String scimUserEnabledBindValue(String enabledParamRef) {
       return "CASE WHEN " + enabledParamRef + " THEN 1 ELSE 0 END";
+    }
+    /** Cast metalake-only {@code originCode} so UNION ALL matches integer origin literals on PG. */
+    @Override
+    protected String nullOriginCodeLiteral() {
+      return "CAST(NULL AS INTEGER)";
     }
   }
 }

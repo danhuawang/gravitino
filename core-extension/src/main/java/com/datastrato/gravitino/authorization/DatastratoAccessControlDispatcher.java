@@ -329,7 +329,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Lists Directory Users for Configure → Directory → Users.
    *
    * <p>Local users come from {@code idp_user_meta}; Provisioned from {@code scim_user_meta}.
-   * Metalake-only ({@code JIT}) names are not included.
+   * Metalake-only names (in {@code user_meta} but neither IdP nor SCIM) are included with {@code
+   * origin} null.
    *
    * @return Directory users ordered by username.
    */
@@ -341,11 +342,12 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Gets one Directory User for Configure → Directory → User Overview.
    *
    * @param userName Username.
-   * @param origin Local or Provisioned (required).
-   * @return User detail with optional {@code externalId}.
-   * @throws NoSuchUserException If the identity-store user is missing for that origin.
+   * @param origin Local, Provisioned, or {@code null} for a metalake-only user.
+   * @return User detail with optional {@code externalId} and {@code origin}.
+   * @throws NoSuchUserException If the user is missing for that origin (or metalake-only).
    */
-  public DirectoryUserDetailDTO getDirectoryUser(String userName, IdentitySource origin) {
+  public DirectoryUserDetailDTO getDirectoryUser(
+      String userName, @javax.annotation.Nullable IdentitySource origin) {
     DirectoryUserDetailPO row =
         DatastratoUserMetaService.getInstance().getDirectoryUser(userName, origin);
     return DirectoryUserDetailDTO.of(
@@ -393,11 +395,13 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Lists Directory Groups for Configure → Directory → User → Groups.
    *
    * @param userName Username.
-   * @param origin Local or Provisioned.
-   * @return Groups with {@code memberCount} and {@code origin}; empty when the user has no groups.
+   * @param origin Local, Provisioned, or {@code null} for a metalake-only user.
+   * @return Groups with {@code memberCount} and {@code origin}; empty when the user has no groups
+   *     (always empty for metalake-only).
    * @throws NoSuchUserException If the Directory User is missing for that origin.
    */
-  public List<DirectoryGroup> listDirectoryGroupsForUser(String userName, IdentitySource origin) {
+  public List<DirectoryGroup> listDirectoryGroupsForUser(
+      String userName, @javax.annotation.Nullable IdentitySource origin) {
     return DatastratoGroupMetaService.getInstance().listDirectoryGroupsForUser(userName, origin);
   }
 
@@ -481,7 +485,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Lists identity-store groups for Configure → Directory → Groups.
    *
    * <p>Local groups come from {@code idp_group_meta}; Provisioned groups from {@code
-   * scim_group_meta}. Metalake-only ({@code JIT}) names are not included.
+   * scim_group_meta}. Metalake-only names (in {@code group_meta} but neither IdP nor SCIM) are
+   * included with {@code origin} null and {@code memberCount} 0.
    *
    * @return Directory groups ordered by group name.
    */
@@ -493,11 +498,12 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Gets one Directory Group for Configure → Directory → Group Overview.
    *
    * @param groupName Group name.
-   * @param origin Local or Provisioned (required).
+   * @param origin Local, Provisioned, or {@code null} for a metalake-only group.
    * @return Group detail with {@code memberCount}.
-   * @throws NoSuchGroupException If the identity-store group is missing for that origin.
+   * @throws NoSuchGroupException If the group is missing for that origin (or metalake-only).
    */
-  public DirectoryGroupDetailDTO getDirectoryGroup(String groupName, IdentitySource origin) {
+  public DirectoryGroupDetailDTO getDirectoryGroup(
+      String groupName, @javax.annotation.Nullable IdentitySource origin) {
     DirectoryGroupDetailPO row =
         DatastratoGroupMetaService.getInstance().getDirectoryGroup(groupName, origin);
     return DirectoryGroupDetailDTO.of(
@@ -511,11 +517,13 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Lists Directory Users for Configure → Directory → Group → Members.
    *
    * @param groupName Group name.
-   * @param origin Local or Provisioned.
-   * @return Members with {@code enabled} and {@code origin}; empty when the group has no members.
+   * @param origin Local, Provisioned, or {@code null} for a metalake-only group.
+   * @return Members with {@code enabled} and {@code origin}; empty when the group has no members
+   *     (always empty for metalake-only).
    * @throws NoSuchGroupException If the Directory Group is missing for that origin.
    */
-  public List<DirectoryUser> listDirectoryUsersForGroup(String groupName, IdentitySource origin) {
+  public List<DirectoryUser> listDirectoryUsersForGroup(
+      String groupName, @javax.annotation.Nullable IdentitySource origin) {
     return DatastratoUserMetaService.getInstance().listDirectoryUsersForGroup(groupName, origin);
   }
 

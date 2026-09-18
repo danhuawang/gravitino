@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.dto.authorization;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
@@ -14,8 +15,9 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Directory user DTO for Configure → Directory → Users.
  *
- * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_user_meta}) or {@link
- * IdentitySource#PROVISIONED} ({@code scim_user_meta}).
+ * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_user_meta}), {@link
+ * IdentitySource#PROVISIONED} ({@code scim_user_meta}), or omitted ({@code null}) for metalake-only
+ * names — matching metalake security Users.
  */
 public class DirectoryUserDTO {
 
@@ -32,8 +34,9 @@ public class DirectoryUserDTO {
     boolean enabled();
 
     /**
-     * @return Identity source for the Directory Users table.
+     * @return Identity source for the Directory Users table, or {@code null} when metalake-only.
      */
+    @Nullable
     IdentitySource origin();
 
     /**
@@ -53,6 +56,8 @@ public class DirectoryUserDTO {
   @JsonProperty("enabled")
   private boolean enabled;
 
+  @Nullable
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   @JsonProperty("origin")
   private IdentitySource origin;
 
@@ -68,7 +73,7 @@ public class DirectoryUserDTO {
   private DirectoryUserDTO(
       String name,
       boolean enabled,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       List<String> groups,
       List<String> metalakes) {
     this.name = name;
@@ -93,8 +98,10 @@ public class DirectoryUserDTO {
   }
 
   /**
-   * @return {@link IdentitySource} serialized as {@code origin}.
+   * @return {@link IdentitySource} serialized as {@code origin}, or {@code null} when
+   *     metalake-only.
    */
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }
@@ -142,11 +149,10 @@ public class DirectoryUserDTO {
   private static DirectoryUserDTO from(
       String name,
       boolean enabled,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       @Nullable List<String> groups,
       @Nullable List<String> metalakes) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
     return new DirectoryUserDTO(name, enabled, origin, groups, metalakes);
   }
 }

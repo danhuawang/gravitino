@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.dto.authorization;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
@@ -14,8 +15,9 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Directory group DTO for Configure → Directory → Groups.
  *
- * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_group_meta}) or {@link
- * IdentitySource#PROVISIONED} ({@code scim_group_meta}).
+ * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_group_meta}), {@link
+ * IdentitySource#PROVISIONED} ({@code scim_group_meta}), or omitted ({@code null}) for
+ * metalake-only names — matching metalake security Groups.
  */
 public class DirectoryGroupDTO {
 
@@ -32,8 +34,9 @@ public class DirectoryGroupDTO {
     int memberCount();
 
     /**
-     * @return Identity source for the Directory Groups table.
+     * @return Identity source for the Directory Groups table, or {@code null} when metalake-only.
      */
+    @Nullable
     IdentitySource origin();
 
     /**
@@ -48,6 +51,8 @@ public class DirectoryGroupDTO {
   @JsonProperty("memberCount")
   private int memberCount;
 
+  @Nullable
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   @JsonProperty("origin")
   private IdentitySource origin;
 
@@ -58,7 +63,7 @@ public class DirectoryGroupDTO {
   private DirectoryGroupDTO() {}
 
   private DirectoryGroupDTO(
-      String name, int memberCount, IdentitySource origin, List<String> metalakes) {
+      String name, int memberCount, @Nullable IdentitySource origin, List<String> metalakes) {
     this.name = name;
     this.memberCount = memberCount;
     this.origin = origin;
@@ -80,8 +85,10 @@ public class DirectoryGroupDTO {
   }
 
   /**
-   * @return {@link IdentitySource} serialized as {@code origin}.
+   * @return {@link IdentitySource} serialized as {@code origin}, or {@code null} when
+   *     metalake-only.
    */
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }
@@ -120,9 +127,11 @@ public class DirectoryGroupDTO {
   }
 
   private static DirectoryGroupDTO from(
-      String name, int memberCount, IdentitySource origin, @Nullable List<String> metalakes) {
+      String name,
+      int memberCount,
+      @Nullable IdentitySource origin,
+      @Nullable List<String> metalakes) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
     Preconditions.checkArgument(memberCount >= 0, "memberCount cannot be negative");
     return new DirectoryGroupDTO(name, memberCount, origin, metalakes);
   }

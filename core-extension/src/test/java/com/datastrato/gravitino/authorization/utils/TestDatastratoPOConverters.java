@@ -50,6 +50,20 @@ public class TestDatastratoPOConverters {
     assertNull(DatastratoPOConverters.parseCreateTime("{\"creator\":\"admin\"}"));
   }
 
+  /** Verifies metalake-only Created picks the earliest audit_info across metalakes. */
+  @Test
+  public void testAuditInfoWithEarliestCreateTime() {
+    String later = "{\"createTime\":\"2026-09-18T05:46:00Z\"}";
+    String earlier = "{\"creator\":\"admin\",\"createTime\":\"2026-01-01T00:00:00Z\"}";
+    assertEquals(
+        earlier, DatastratoPOConverters.auditInfoWithEarliestCreateTime(List.of(later, earlier)));
+    assertEquals(
+        earlier,
+        DatastratoPOConverters.auditInfoWithEarliestCreateTime(List.of("not-json", earlier)));
+    assertNull(DatastratoPOConverters.auditInfoWithEarliestCreateTime(List.of()));
+    assertNull(DatastratoPOConverters.auditInfoWithEarliestCreateTime(null));
+  }
+
   /** Verifies Directory Local create path can serialize create audit_info. */
   @Test
   public void testNewCreateAuditInfoJson() {

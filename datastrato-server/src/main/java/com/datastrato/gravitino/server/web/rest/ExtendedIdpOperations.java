@@ -34,10 +34,10 @@ import org.apache.gravitino.server.web.rest.OperationType;
 /**
  * Instance-scoped Local IdP REST APIs.
  *
- * <p>Lists active identity-store user and group names (SCIM ∪ IdP ∪ JIT, deduplicated), changes
- * Local IdP passwords (with old-password verification), and bulk-adds {@code idp_user_group_rel}
- * memberships. Metalake-scoped security user and group APIs live on {@link ExtendedUserOperations}
- * and {@link ExtendedGroupOperations}.
+ * <p>Lists active assignable user and group names (identity stores plus metalake-only {@code
+ * user_meta} / {@code group_meta}, deduplicated), changes Local IdP passwords (with old-password
+ * verification), and bulk-adds {@code idp_user_group_rel} memberships. Metalake-scoped security
+ * user and group APIs live on {@link ExtendedUserOperations} and {@link ExtendedGroupOperations}.
  */
 @NameBindings.AccessControlInterfaces
 @Path(InternalApiPaths.PREFIX + "/security")
@@ -57,8 +57,8 @@ public class ExtendedIdpOperations {
   }
 
   /**
-   * Lists distinct usernames from {@code scim_user_meta}, {@code idp_user_meta}, and {@code
-   * jit_user_meta} (instance-scoped, names only).
+   * Lists distinct usernames from identity stores and metalake-only {@code user_meta} rows
+   * (instance-scoped, names only).
    *
    * @return Deduplicated usernames.
    */
@@ -79,8 +79,8 @@ public class ExtendedIdpOperations {
   }
 
   /**
-   * Lists distinct group names from {@code scim_group_meta}, {@code idp_group_meta}, and {@code
-   * jit_group_meta} (instance-scoped, names only).
+   * Lists distinct group names from identity stores and metalake-only {@code group_meta} rows
+   * (instance-scoped, names only).
    *
    * @return Deduplicated group names.
    */

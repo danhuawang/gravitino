@@ -5,7 +5,6 @@ package com.datastrato.gravitino.authorization.po;
 
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Objects;
-import com.google.common.base.Preconditions;
 import javax.annotation.Nullable;
 
 /**
@@ -78,11 +77,11 @@ public class DirectoryGroupDetailPO {
   }
 
   /**
-   * @return Resolved identity source.
+   * @return Resolved identity source, or {@code null} when metalake-only.
    */
+  @Nullable
   public IdentitySource origin() {
-    Preconditions.checkArgument(originCode != null, "originCode cannot be null");
-    return IdentitySource.fromOriginCode(originCode);
+    return IdentitySource.fromOriginCodeOrNull(originCode);
   }
 
   /**

@@ -10,14 +10,17 @@ paths:
     get:
       tags:
         - users
-      summary: List identity-store user names
+      summary: List assignable user names
       operationId: listLocalIdpUserNames
       description: |
-        List distinct active usernames from `scim_user_meta`, `idp_user_meta`, and
-        `jit_user_meta` (UNION, no duplicates).
+        List distinct active usernames for Add-role user member pickers.
+
+        Names come from `scim_user_meta`, `idp_user_meta`, and `jit_user_meta`, plus
+        metalake-only rows in `user_meta` (not present in any identity store). UNION deduplicates
+        across sources.
 
         Instance-scoped: no metalake parameter. Returns names only — does not report metalake
-        membership. Used by Add-role user member pickers.
+        membership or origin.
 
       responses:
         "200":
@@ -130,11 +133,13 @@ paths:
         - `idp_user_meta` → `origin=Local`
         - `scim_user_meta` → `origin=Provisioned`
         - `jit_user_meta` → `origin=JIT`
+        - metalake-only (`user_meta`, not in IdP, SCIM, or JIT) → `origin` omitted (`null`),
+          `enabled=true`, `groups=[]`
 
         The same username may appear more than once when it exists in multiple stores.
-        Metalake-only (`user_meta`) names are not listed. `enabled` maps to Active / Suspended in
-        the UI (from the identity store). `groups` are identity-store group names for that row's
-        origin. `metalakes` are metalake names where the username exists in `user_meta`.
+        `enabled` maps to Active / Suspended in the UI (from the identity store for Local /
+        Provisioned / JIT). `groups` are identity-store group names for that row's origin.
+        `metalakes` are metalake names where the username exists in `user_meta`.
 
       responses:
         "200":
@@ -242,14 +247,16 @@ paths:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
       - name: origin
         in: query
-        required: true
+        required: false
         schema:
           type: string
           enum:
             - Local
             - Provisioned
             - JIT
-        description: Identity origin of the Directory User (`Local`, `Provisioned`, or `JIT`)
+        description: >
+          Identity origin of the Directory User (`Local`, `Provisioned`, or `JIT`). Omit for a
+          metalake-only user (present in `user_meta` but not in IdP, SCIM, or JIT).
     get:
       tags:
         - users
@@ -258,14 +265,17 @@ paths:
       description: |
         Get one Directory User for Configure → Directory → User Overview.
 
-        Requires `origin`:
+        `origin`:
         - `Local` → load from `idp_user_meta` (`externalId` omitted)
         - `Provisioned` → load from `scim_user_meta` (`externalId` when present)
         - `JIT` → load from `jit_user_meta` (`externalId` omitted)
+        - omitted → metalake-only (`user_meta`, not in IdP, SCIM, or JIT): `origin` omitted,
+          `enabled` true, `externalId` omitted. `createTime` is the earliest
+          `user_meta.audit_info.createTime` across every metalake row for that username.
 
         Detail is keyed by (username, origin); cross-store names are not excluded.
-        `enabled` maps to Status (Active / Suspended). `createTime` maps to Created and comes from
-        identity-store `audit_info.createTime`.
+        `enabled` maps to Status (Active / Suspended). For Local / Provisioned / JIT, `createTime`
+        comes from identity-store `audit_info.createTime`.
 
       responses:
         "200":
@@ -294,13 +304,17 @@ paths:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/user"
       - name: origin
         in: query
-        required: true
+        required: false
         schema:
           type: string
           enum:
             - Local
             - Provisioned
-        description: Identity origin of the Directory User (`Local` or `Provisioned`)
+            - JIT
+        description: >
+          Identity origin of the Directory User (`Local`, `Provisioned`, or `JIT`). Omit for a
+          metalake-only user (returns an empty `groups` array after the user exists in `user_meta`
+          only).
     get:
       tags:
         - users
@@ -309,9 +323,11 @@ paths:
       description: |
         List identity-store groups for Configure → Directory → User → Groups.
 
-        Requires `origin`:
+        `origin`:
         - `Local` → membership from `idp_user_group_rel` / `idp_group_meta`
-        - `Provisioned` → membership from `scim_user_group_rel` / `scim_group_meta` (user not in IdP)
+        - `Provisioned` → membership from `scim_user_group_rel` / `scim_group_meta`
+        - `JIT` → membership from `jit_user_group_rel` / `jit_group_meta`
+        - omitted → metalake-only user: empty `groups` array (404 if the name is not metalake-only)
 
         Each group includes `memberCount` (Members) and `origin` matching the user's identity store.
         `metalakes` is empty on this response. Missing user for that origin returns 404; a user with
@@ -1029,7 +1045,6 @@ components:
       required:
         - name
         - enabled
-        - origin
         - groups
         - metalakes
       properties:
@@ -1040,7 +1055,13 @@ components:
           type: boolean
           description: Whether the user is enabled (Active / Suspended in the UI)
         origin:
-          $ref: "#/components/schemas/IdentitySource"
+          type: string
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/IdentitySource"
+          description: >
+            Identity source when known. Omitted when the name is metalake-only (not in IdP, SCIM,
+            or JIT).
         groups:
           type: array
           description: Identity-store group names
@@ -1164,7 +1185,6 @@ components:
       required:
         - name
         - enabled
-        - origin
       properties:
         name:
           type: string
@@ -1173,17 +1193,23 @@ components:
           type: boolean
           description: Whether the user is enabled (Active / Suspended in the UI)
         origin:
-          $ref: "#/components/schemas/IdentitySource"
+          type: string
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/IdentitySource"
+          description: >
+            Omitted for metalake-only users (not in IdP, SCIM, or JIT).
         externalId:
           type: string
           nullable: true
-          description: SCIM externalId when Provisioned; omitted for Local
+          description: SCIM externalId when Provisioned; omitted for Local and metalake-only
         createTime:
           type: string
           format: date-time
           nullable: true
           description: >
-            Creation time from identity-store `audit_info.createTime` (Created on Overview).
+            Created on Overview. Local / Provisioned / JIT: identity-store `audit_info.createTime`.
+            Metalake-only: earliest `user_meta.audit_info.createTime` across metalakes.
             Omitted when audit data is unavailable.
 
     DirectoryUserDetailResponse:

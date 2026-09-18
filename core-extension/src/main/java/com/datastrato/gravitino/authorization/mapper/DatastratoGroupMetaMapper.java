@@ -137,6 +137,18 @@ public interface DatastratoGroupMetaMapper {
       @Param("groupName") String groupName, @Param("originCode") int originCode);
 
   /**
+   * Lists {@code group_meta.audit_info} for a metalake-only Directory Group (neither IdP nor SCIM).
+   *
+   * @param groupName Group name.
+   * @return Audit JSON strings for each metalake membership; empty when the name is missing or not
+   *     metalake-only.
+   */
+  @SelectProvider(
+      type = DatastratoGroupMetaSQLProviderFactory.class,
+      method = "listMetalakeOnlyDirectoryGroupAuditInfos")
+  List<String> listMetalakeOnlyDirectoryGroupAuditInfos(@Param("groupName") String groupName);
+
+  /**
    * Lists Directory Groups the user belongs to for Configure → Directory → User → Groups.
    *
    * @param userName Username.

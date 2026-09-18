@@ -149,8 +149,7 @@ public class TestExtendedUserOperations extends JerseyTest {
                     IdentitySource.PROVISIONED,
                     List.of("finance"),
                     List.of("Acme", "Contoso")),
-                new DirectoryUser(
-                    "jordan.m", true, IdentitySource.JIT, List.of(), List.of("Contoso")),
+                new DirectoryUser("jordan.m", true, null, List.of(), List.of("Contoso")),
                 new DirectoryUser("lee.p", false, IdentitySource.LOCAL, List.of(), List.of("Acme")),
                 new DirectoryUser(
                     "sam.o",
@@ -168,7 +167,7 @@ public class TestExtendedUserOperations extends JerseyTest {
     Assertions.assertEquals("dana.k", users[0].name());
     Assertions.assertEquals(IdentitySource.PROVISIONED, users[0].origin());
     Assertions.assertEquals("jordan.m", users[1].name());
-    Assertions.assertEquals(IdentitySource.JIT, users[1].origin());
+    Assertions.assertNull(users[1].origin());
     Assertions.assertEquals(IdentitySource.LOCAL, users[2].origin());
     Assertions.assertEquals(IdentitySource.LOCAL, users[3].origin());
   }

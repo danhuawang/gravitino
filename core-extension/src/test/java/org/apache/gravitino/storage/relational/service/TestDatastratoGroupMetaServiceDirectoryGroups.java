@@ -5,6 +5,7 @@ package org.apache.gravitino.storage.relational.service;
 
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_MAX_CONNECTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -12,14 +13,18 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.authorization.DirectoryGroup;
 import com.datastrato.gravitino.authorization.mapper.DatastratoGroupMetaMapper;
+import com.datastrato.gravitino.authorization.po.DirectoryGroupDetailPO;
+import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
+import org.apache.gravitino.exceptions.NoSuchGroupException;
 import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
 import org.junit.jupiter.api.AfterAll;
@@ -56,6 +61,7 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
               + "group_id BIGINT NOT NULL PRIMARY KEY,"
               + "group_name VARCHAR(128) NOT NULL,"
               + "metalake_id BIGINT NOT NULL,"
+              + "audit_info CLOB,"
               + "deleted_at BIGINT NOT NULL DEFAULT 0)");
       statement.execute(
           "CREATE TABLE idp_group_meta ("
@@ -176,7 +182,7 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
     }
   }
 
-  /** Verifies Add-role group picker names are SCIM ∪ IdP ∪ JIT without duplicates. */
+  /** Verifies Add-role group picker names include identity stores and metalake-only groups. */
   @Test
   public void testListIdpGroupNamesUnionsIdentityStores() throws Exception {
     try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
@@ -191,7 +197,7 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
         SessionUtils.getWithoutCommit(
             DatastratoGroupMetaMapper.class, DatastratoGroupMetaMapper::listIdpGroupNames);
 
-    assertEquals(List.of("contractors", "engineers", "governance", "platform"), names);
+    assertEquals(List.of("analysts", "contractors", "engineers", "governance", "platform"), names);
 
     List<String> requestedNames =
         SessionUtils.getWithoutCommit(
@@ -202,38 +208,75 @@ public class TestDatastratoGroupMetaServiceDirectoryGroups {
     assertEquals(Set.of("contractors", "engineers", "platform"), Set.copyOf(requestedNames));
   }
 
-  /** Verifies Local / Provisioned Directory Groups without cross-store merging. */
+  /** Verifies Local / Provisioned / metalake-only Directory Groups without cross-store merging. */
   @Test
   public void testListDirectoryGroups() {
     List<DirectoryGroup> groups = DatastratoGroupMetaService.getInstance().listDirectoryGroups();
 
-    // contractors (Local), governance (Provisioned + Local), platform (Provisioned) — no merge.
-    assertEquals(4, groups.size());
+    // analysts (metalake-only), contractors (Local), governance (Provisioned + Local), platform.
+    assertEquals(5, groups.size());
 
-    DirectoryGroup contractors = groups.get(0);
+    DirectoryGroup analysts = groups.get(0);
+    assertEquals("analysts", analysts.name());
+    assertEquals(0, analysts.memberCount());
+    assertNull(analysts.origin());
+    assertEquals(List.of("Contoso", "Northwind"), analysts.metalakes());
+
+    DirectoryGroup contractors = groups.get(1);
     assertEquals("contractors", contractors.name());
     assertEquals(0, contractors.memberCount());
     assertEquals(IdentitySource.LOCAL, contractors.origin());
     assertEquals(List.of("Acme"), contractors.metalakes());
 
     // ORIGIN_CODE_PROVISIONED (0) sorts before LOCAL (1) for the same group name.
-    DirectoryGroup governanceProvisioned = groups.get(1);
+    DirectoryGroup governanceProvisioned = groups.get(2);
     assertEquals("governance", governanceProvisioned.name());
     assertEquals(0, governanceProvisioned.memberCount());
     assertEquals(IdentitySource.PROVISIONED, governanceProvisioned.origin());
     assertEquals(List.of("Acme", "Contoso"), governanceProvisioned.metalakes());
 
-    DirectoryGroup governanceLocal = groups.get(2);
+    DirectoryGroup governanceLocal = groups.get(3);
     assertEquals("governance", governanceLocal.name());
     assertEquals(2, governanceLocal.memberCount());
     assertEquals(IdentitySource.LOCAL, governanceLocal.origin());
     assertEquals(List.of("Acme", "Contoso"), governanceLocal.metalakes());
 
-    DirectoryGroup platform = groups.get(3);
+    DirectoryGroup platform = groups.get(4);
     assertEquals("platform", platform.name());
     assertEquals(1, platform.memberCount());
     assertEquals(IdentitySource.PROVISIONED, platform.origin());
     assertEquals(List.of("Contoso"), platform.metalakes());
+  }
+
+  /** Verifies metalake-only Group Overview uses the earliest group_meta createTime. */
+  @Test
+  public void testGetMetalakeOnlyDirectoryGroupUsesEarliestCreateTime() throws Exception {
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement()) {
+      statement.execute(
+          "UPDATE group_meta SET audit_info ="
+              + " '{\"createTime\":\"2026-09-18T05:46:00Z\"}' WHERE group_id = 1004");
+      statement.execute(
+          "UPDATE group_meta SET audit_info ="
+              + " '{\"createTime\":\"2026-01-01T00:00:00Z\"}' WHERE group_id = 1005");
+    }
+
+    DirectoryGroupDetailPO analysts =
+        DatastratoGroupMetaService.getInstance().getDirectoryGroup("analysts", null);
+    assertEquals("analysts", analysts.getGroupName());
+    assertEquals(0, analysts.memberCountOrZero());
+    assertNull(analysts.origin());
+    assertEquals(
+        Instant.parse("2026-01-01T00:00:00Z"),
+        DatastratoPOConverters.parseCreateTime(analysts.getAuditInfo()));
+
+    assertThrows(
+        NoSuchGroupException.class,
+        () -> DatastratoGroupMetaService.getInstance().getDirectoryGroup("governance", null));
+    assertTrue(
+        DatastratoUserMetaService.getInstance()
+            .listDirectoryUsersForGroup("analysts", null)
+            .isEmpty());
   }
 
   @Test

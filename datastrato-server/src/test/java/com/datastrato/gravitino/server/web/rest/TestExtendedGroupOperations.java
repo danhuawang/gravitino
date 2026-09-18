@@ -117,7 +117,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
     when(accessControlDispatcher.listDirectoryGroups())
         .thenReturn(
             List.of(
-                new DirectoryGroup("analysts", 0, IdentitySource.JIT, List.of("Contoso")),
+                new DirectoryGroup("analysts", 0, null, List.of("Contoso")),
                 new DirectoryGroup("contractors", 0, IdentitySource.LOCAL, List.of("Acme")),
                 new DirectoryGroup(
                     "governance", 2, IdentitySource.LOCAL, List.of("Acme", "Contoso")),
@@ -129,7 +129,7 @@ public class TestExtendedGroupOperations extends JerseyTest {
     Assertions.assertEquals(0, body.getCode());
     DirectoryGroupDTO[] groups = body.getGroups();
     Assertions.assertEquals(4, groups.length);
-    Assertions.assertEquals(IdentitySource.JIT, groups[0].origin());
+    Assertions.assertNull(groups[0].origin());
     Assertions.assertEquals(IdentitySource.LOCAL, groups[1].origin());
     Assertions.assertEquals(2, groups[2].memberCount());
     Assertions.assertEquals(IdentitySource.PROVISIONED, groups[3].origin());

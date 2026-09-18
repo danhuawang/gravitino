@@ -350,10 +350,11 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Lists distinct active usernames from identity stores ({@code scim_user_meta}, {@code
-   * idp_user_meta}, {@code jit_user_meta}).
+   * Lists distinct active usernames from identity stores and metalake-only {@code user_meta} rows.
    *
-   * <p>Used by Add-role member pickers. Names present in more than one table appear once.
+   * <p>Used by Add-role member pickers. Identity-store names come from {@code scim_user_meta},
+   * {@code idp_user_meta}, and {@code jit_user_meta}. Metalake-only names (in {@code user_meta} but
+   * none of those stores) are included once. Names present in more than one source appear once.
    *
    * @return MyBatis SQL ordered by username.
    */
@@ -370,7 +371,19 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " SELECT user_name FROM "
         + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
         + " WHERE deleted_at = 0"
-        + ") identity_users ORDER BY user_name";
+        + " UNION"
+        + " SELECT DISTINCT ut.user_name FROM "
+        + USER_TABLE_NAME
+        + " ut WHERE ut.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu WHERE iu.user_name = ut.user_name AND iu.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su WHERE su.user_name = ut.user_name AND su.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " ju WHERE ju.user_name = ut.user_name AND ju.deleted_at = 0)"
+        + ") principal_users ORDER BY user_name";
   }
 
   /**
@@ -574,9 +587,11 @@ public class DatastratoUserMetaBaseSQLProvider {
    *
    * <p>Rows come from each identity store without merging: {@code idp_user_meta} → Local, {@code
    * scim_user_meta} → Provisioned, {@code jit_user_meta} → JIT. The same username may appear more
-   * than once when it exists in multiple stores. Groups are identity-store group names for that
-   * row's origin. Metalakes are distinct {@code metalake_meta} names that contain the username in
-   * {@code user_meta}. JIT has no {@code enabled} column and defaults to Active.
+   * than once when it exists in multiple stores. Metalake-only names (in {@code user_meta} but none
+   * of those stores) are included with {@code origin} null, {@code enabled} true, and empty groups.
+   * Groups are identity-store group names for that row's origin. Metalakes are distinct {@code
+   * metalake_meta} names that contain the username in {@code user_meta}. JIT has no {@code enabled}
+   * column and defaults to Active.
    *
    * @return MyBatis SQL ordered by username, then origin.
    */
@@ -610,11 +625,11 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Builds the Local / Provisioned / JIT identity UNION ALL for Directory Users.
+   * Builds the Local / Provisioned / JIT / metalake-only identity UNION ALL for Directory Users.
    *
-   * <p>No cross-store exclusion: every active row from {@code idp_user_meta}, {@code
-   * scim_user_meta}, and {@code jit_user_meta} is listed. Duplicate usernames across stores become
-   * separate Directory rows with different origins.
+   * <p>No cross-store exclusion among identity stores: every active row from {@code idp_user_meta},
+   * {@code scim_user_meta}, and {@code jit_user_meta} is listed. Names present only in {@code
+   * user_meta} are appended with {@code origin} null.
    *
    * @return UNION ALL SQL selecting {@code userName}, {@code enabled}, {@code originCode}, and IdP
    *     / SCIM / JIT ids.
@@ -656,7 +671,29 @@ public class DatastratoUserMetaBaseSQLProvider {
         + " as scimUserId, ju.user_id as jitUserId"
         + " FROM "
         + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
-        + " ju WHERE ju.deleted_at = 0";
+        + " ju WHERE ju.deleted_at = 0"
+        + " UNION ALL "
+        + "SELECT DISTINCT ut.user_name as userName, TRUE as enabled, "
+        + nullOriginCodeLiteral()
+        + " as originCode,"
+        + " "
+        + nullLongLiteral()
+        + " as idpUserId, "
+        + nullLongLiteral()
+        + " as scimUserId, "
+        + nullLongLiteral()
+        + " as jitUserId"
+        + " FROM "
+        + USER_TABLE_NAME
+        + " ut WHERE ut.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu WHERE iu.user_name = ut.user_name AND iu.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su WHERE su.user_name = ut.user_name AND su.deleted_at = 0)"
+        + " AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " ju WHERE ju.user_name = ut.user_name AND ju.deleted_at = 0)";
   }
 
   /**
@@ -700,6 +737,29 @@ public class DatastratoUserMetaBaseSQLProvider {
     }
     throw new IllegalArgumentException(
         "Directory user detail originCode must be Local, Provisioned, or JIT, got: " + originCode);
+  }
+
+  /**
+   * Lists {@code user_meta.audit_info} for a metalake-only Directory User (not in IdP or SCIM).
+   *
+   * <p>One username may appear in multiple metalakes; the service picks the earliest {@code
+   * createTime} across these rows for Overview Created.
+   *
+   * @param userName Username.
+   * @return MyBatis SQL returning zero or more {@code audit_info} strings.
+   */
+  public String listMetalakeOnlyDirectoryUserAuditInfos(@Param("userName") String userName) {
+    return "SELECT ut.audit_info FROM "
+        + USER_TABLE_NAME
+        + " ut WHERE ut.user_name = #{userName} AND ut.deleted_at = 0 AND NOT EXISTS (SELECT 1 FROM "
+        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
+        + " iu WHERE iu.user_name = ut.user_name AND iu.deleted_at = 0) AND NOT EXISTS (SELECT 1"
+        + " FROM "
+        + DatastratoUserMetaMapper.SCIM_USER_TABLE_NAME
+        + " su WHERE su.user_name = ut.user_name AND su.deleted_at = 0) AND NOT EXISTS (SELECT 1"
+        + " FROM "
+        + DatastratoUserMetaMapper.JIT_USER_TABLE_NAME
+        + " ju WHERE ju.user_name = ut.user_name AND ju.deleted_at = 0)";
   }
 
   /**
@@ -1148,6 +1208,18 @@ public class DatastratoUserMetaBaseSQLProvider {
    */
   protected String nullLongLiteral() {
     return "CAST(NULL AS BIGINT)";
+  }
+
+  /**
+   * Typed NULL for metalake-only Directory rows where {@code originCode} is absent.
+   *
+   * <p>PostgreSQL requires an explicit integer cast in {@code UNION ALL} with {@code originCode}
+   * literals; MySQL and H2 accept untyped {@code NULL}.
+   *
+   * @return SQL NULL literal for {@code originCode}.
+   */
+  protected String nullOriginCodeLiteral() {
+    return "NULL";
   }
 
   private String roleAggregationSubquery() {

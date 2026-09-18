@@ -9,34 +9,34 @@ import com.google.common.base.Preconditions;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 
 /**
  * Instance-scoped directory group for Configure → Directory → Groups.
  *
- * <p>Rows come from {@code idp_group_meta} ({@code Local}) or {@code scim_group_meta} ({@code
- * Provisioned}).
+ * <p>Rows come from {@code idp_group_meta} ({@code Local}), {@code scim_group_meta} ({@code
+ * Provisioned}), or metalake-only {@code group_meta} names ({@code origin} null).
  */
 public final class DirectoryGroup implements DirectoryGroupDTO.DirectoryGroupView {
 
   private final String name;
   private final int memberCount;
-  private final IdentitySource origin;
+  @Nullable private final IdentitySource origin;
   private final List<String> metalakes;
 
   /**
    * Creates a directory group.
    *
    * @param name Group name.
-   * @param memberCount Identity-store member count.
-   * @param origin Local or Provisioned.
+   * @param memberCount Identity-store member count (0 for metalake-only).
+   * @param origin Local / Provisioned, or {@code null} when metalake-only.
    * @param metalakes Metalake names where the group exists in {@code group_meta}.
    */
   public DirectoryGroup(
-      String name, int memberCount, IdentitySource origin, List<String> metalakes) {
+      String name, int memberCount, @Nullable IdentitySource origin, List<String> metalakes) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
     Preconditions.checkArgument(memberCount >= 0, "memberCount cannot be negative");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
     this.name = name;
     this.memberCount = memberCount;
     this.origin = origin;
@@ -54,6 +54,7 @@ public final class DirectoryGroup implements DirectoryGroupDTO.DirectoryGroupVie
   }
 
   @Override
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }

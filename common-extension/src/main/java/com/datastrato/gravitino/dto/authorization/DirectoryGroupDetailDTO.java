@@ -13,9 +13,11 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Directory group detail DTO for Configure → Directory → Group Overview.
  *
- * <p>{@code origin} is {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED}. {@code
- * memberCount} is the identity-store membership count (Members on the Overview). {@code createTime}
- * comes from identity-store {@code audit_info.createTime} (Created on Overview).
+ * <p>{@code origin} is {@link IdentitySource#LOCAL}, {@link IdentitySource#PROVISIONED}, {@link
+ * IdentitySource#JIT}, or omitted ({@code null}) for metalake-only names. {@code memberCount} is
+ * the identity-store membership count (0 for metalake-only). {@code createTime} comes from
+ * identity-store {@code audit_info.createTime} for Local / Provisioned, or the earliest {@code
+ * group_meta.audit_info.createTime} for metalake-only (Created on Overview).
  */
 public class DirectoryGroupDetailDTO {
 
@@ -25,6 +27,8 @@ public class DirectoryGroupDetailDTO {
   @JsonProperty("memberCount")
   private int memberCount;
 
+  @Nullable
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   @JsonProperty("origin")
   private IdentitySource origin;
 
@@ -37,7 +41,7 @@ public class DirectoryGroupDetailDTO {
   private DirectoryGroupDetailDTO() {}
 
   private DirectoryGroupDetailDTO(
-      String name, int memberCount, IdentitySource origin, @Nullable Instant createTime) {
+      String name, int memberCount, @Nullable IdentitySource origin, @Nullable Instant createTime) {
     this.name = name;
     this.memberCount = memberCount;
     this.origin = origin;
@@ -59,8 +63,10 @@ public class DirectoryGroupDetailDTO {
   }
 
   /**
-   * @return {@link IdentitySource} serialized as {@code origin}.
+   * @return {@link IdentitySource} serialized as {@code origin}, or {@code null} when
+   *     metalake-only.
    */
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }
@@ -78,20 +84,14 @@ public class DirectoryGroupDetailDTO {
    *
    * @param name Group name.
    * @param memberCount Identity-store member count.
-   * @param origin Local, Provisioned, or JIT.
+   * @param origin Local, Provisioned, JIT, or {@code null} when metalake-only.
    * @param createTime Optional creation time.
    * @return Detail DTO.
    */
   public static DirectoryGroupDetailDTO of(
-      String name, int memberCount, IdentitySource origin, @Nullable Instant createTime) {
+      String name, int memberCount, @Nullable IdentitySource origin, @Nullable Instant createTime) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
     Preconditions.checkArgument(memberCount >= 0, "memberCount cannot be negative");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
-    Preconditions.checkArgument(
-        origin == IdentitySource.LOCAL
-            || origin == IdentitySource.PROVISIONED
-            || origin == IdentitySource.JIT,
-        "origin must be Local, Provisioned, or JIT");
     return new DirectoryGroupDetailDTO(name, memberCount, origin, createTime);
   }
 }

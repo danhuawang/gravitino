@@ -10,14 +10,17 @@ paths:
     get:
       tags:
         - groups
-      summary: List identity-store group names
+      summary: List assignable group names
       operationId: listLocalIdpGroupNames
       description: |
-        List distinct active group names from `scim_group_meta`, `idp_group_meta`, and
-        `jit_group_meta` (UNION, no duplicates).
+        List distinct active group names for Add-role group member pickers.
+
+        Names come from `scim_group_meta`, `idp_group_meta`, and `jit_group_meta`, plus
+        metalake-only rows in `group_meta` (not present in any identity store). UNION
+        deduplicates across sources.
 
         Instance-scoped: no metalake parameter. Returns names only — does not report metalake
-        membership. Used by Add-role group member pickers.
+        membership or origin.
 
       responses:
         "200":
@@ -46,11 +49,12 @@ paths:
         - `idp_group_meta` → `origin=Local`
         - `scim_group_meta` → `origin=Provisioned`
         - `jit_group_meta` → `origin=JIT`
+        - metalake-only (`group_meta`, not in IdP, SCIM, or JIT) → `origin` omitted (`null`),
+          `memberCount=0`
 
         The same group name may appear more than once when it exists in multiple stores.
-        Metalake-only (`group_meta`) names are not listed. `memberCount` is the identity-store
-        membership count for that row's origin. `metalakes` are metalake names where the group name
-        exists in `group_meta`.
+        `memberCount` is the identity-store membership count for that row's origin. `metalakes`
+        are metalake names where the group name exists in `group_meta`.
 
       responses:
         "200":
@@ -119,13 +123,16 @@ paths:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
       - name: origin
         in: query
-        required: true
+        required: false
         schema:
           type: string
           enum:
             - Local
             - Provisioned
-        description: Identity origin of the Directory Group (`Local` or `Provisioned`)
+            - JIT
+        description: >
+          Identity origin of the Directory Group (`Local`, `Provisioned`, or `JIT`). Omit for a
+          metalake-only group (present in `group_meta` but not in IdP, SCIM, or JIT).
     get:
       tags:
         - groups
@@ -134,14 +141,17 @@ paths:
       description: |
         Get one Directory Group for Configure → Directory → Group Overview.
 
-        Requires `origin`:
+        `origin`:
         - `Local` → load from `idp_group_meta` with IdP membership count
         - `Provisioned` → load from `scim_group_meta` with SCIM membership count
         - `JIT` → load from `jit_group_meta` with JIT membership count
+        - omitted → metalake-only (`group_meta`, not in IdP, SCIM, or JIT): `origin` omitted,
+          `memberCount` 0. `createTime` is the earliest `group_meta.audit_info.createTime` across
+          every metalake row for that group name.
 
         Detail is keyed by (group name, origin); cross-store names are not excluded.
-        `memberCount` maps to Members on the Overview. `createTime` maps to Created and comes from
-        identity-store `audit_info.createTime`.
+        `memberCount` maps to Members on the Overview. For Local / Provisioned / JIT, `createTime`
+        comes from identity-store `audit_info.createTime`.
 
       responses:
         "200":
@@ -170,13 +180,17 @@ paths:
       - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/group"
       - name: origin
         in: query
-        required: true
+        required: false
         schema:
           type: string
           enum:
             - Local
             - Provisioned
-        description: Identity origin of the Directory Group (`Local` or `Provisioned`)
+            - JIT
+        description: >
+          Identity origin of the Directory Group (`Local`, `Provisioned`, or `JIT`). Omit for a
+          metalake-only group (returns an empty `users` array after the group exists in
+          `group_meta` only).
     get:
       tags:
         - groups
@@ -185,9 +199,11 @@ paths:
       description: |
         List identity-store users for Configure → Directory → Group → Members.
 
-        Requires `origin`:
+        `origin`:
         - `Local` → membership from `idp_user_group_rel` / `idp_user_meta`
-        - `Provisioned` → membership from `scim_user_group_rel` / `scim_user_meta` (group not in IdP)
+        - `Provisioned` → membership from `scim_user_group_rel` / `scim_user_meta`
+        - `JIT` → membership from `jit_user_group_rel` / `jit_user_meta`
+        - omitted → metalake-only group: empty `users` array (404 if the name is not metalake-only)
 
         Each user includes `name` (Username), `enabled` (Status: Active / Suspended), and `origin`
         matching the group's identity store. `groups` and `metalakes` are empty on this response.
@@ -669,7 +685,6 @@ components:
       required:
         - name
         - memberCount
-        - origin
       properties:
         name:
           type: string
@@ -677,15 +692,20 @@ components:
         memberCount:
           type: integer
           format: int32
-          description: Identity-store member count (Members on Overview)
+          description: Identity-store member count (0 for metalake-only)
         origin:
-          $ref: "#/components/schemas/IdentitySource"
+          type: string
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/IdentitySource"
+          description: Omitted for metalake-only groups (not in IdP, SCIM, or JIT).
         createTime:
           type: string
           format: date-time
           nullable: true
           description: >
-            Creation time from identity-store `audit_info.createTime` (Created on Overview).
+            Created on Overview. Local / Provisioned / JIT: identity-store `audit_info.createTime`.
+            Metalake-only: earliest `group_meta.audit_info.createTime` across metalakes.
             Omitted when audit data is unavailable.
 
     DirectoryGroupDetailResponse:
@@ -720,7 +740,6 @@ components:
       required:
         - name
         - memberCount
-        - origin
         - metalakes
       properties:
         name:
@@ -729,9 +748,15 @@ components:
         memberCount:
           type: integer
           format: int32
-          description: Identity-store member count
+          description: Identity-store member count (0 for metalake-only)
         origin:
-          $ref: "./users.yaml#/components/schemas/IdentitySource"
+          type: string
+          nullable: true
+          allOf:
+            - $ref: "./users.yaml#/components/schemas/IdentitySource"
+          description: >
+            Identity source when known. Omitted when the name is metalake-only (not in IdP, SCIM,
+            or JIT).
         metalakes:
           type: array
           description: Metalake names containing this group

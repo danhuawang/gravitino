@@ -13,9 +13,11 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * Directory user detail DTO for Configure → Directory → User Overview.
  *
- * <p>{@code origin} is {@link IdentitySource#LOCAL} or {@link IdentitySource#PROVISIONED}. {@code
- * externalId} is set for Provisioned users from {@code scim_user_meta}; Local users omit it. {@code
- * createTime} comes from identity-store {@code audit_info.createTime} (Created on Overview).
+ * <p>{@code origin} is {@link IdentitySource#LOCAL}, {@link IdentitySource#PROVISIONED}, {@link
+ * IdentitySource#JIT}, or omitted ({@code null}) for metalake-only names. {@code externalId} is set
+ * for Provisioned users from {@code scim_user_meta}. {@code createTime} comes from identity-store
+ * {@code audit_info.createTime} for Local / Provisioned, or the earliest {@code
+ * user_meta.audit_info.createTime} for metalake-only (Created on Overview).
  */
 public class DirectoryUserDetailDTO {
 
@@ -25,6 +27,8 @@ public class DirectoryUserDetailDTO {
   @JsonProperty("enabled")
   private boolean enabled;
 
+  @Nullable
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   @JsonProperty("origin")
   private IdentitySource origin;
 
@@ -44,7 +48,7 @@ public class DirectoryUserDetailDTO {
   private DirectoryUserDetailDTO(
       String name,
       boolean enabled,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       @Nullable String externalId,
       @Nullable Instant createTime) {
     this.name = name;
@@ -69,8 +73,10 @@ public class DirectoryUserDetailDTO {
   }
 
   /**
-   * @return {@link IdentitySource} serialized as {@code origin}.
+   * @return {@link IdentitySource} serialized as {@code origin}, or {@code null} when
+   *     metalake-only.
    */
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }
@@ -96,7 +102,7 @@ public class DirectoryUserDetailDTO {
    *
    * @param name Username.
    * @param enabled Enabled flag.
-   * @param origin Local, Provisioned, or JIT.
+   * @param origin Local, Provisioned, JIT, or {@code null} when metalake-only.
    * @param externalId Optional SCIM external id.
    * @param createTime Optional creation time.
    * @return Detail DTO.
@@ -104,16 +110,10 @@ public class DirectoryUserDetailDTO {
   public static DirectoryUserDetailDTO of(
       String name,
       boolean enabled,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       @Nullable String externalId,
       @Nullable Instant createTime) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
-    Preconditions.checkArgument(
-        origin == IdentitySource.LOCAL
-            || origin == IdentitySource.PROVISIONED
-            || origin == IdentitySource.JIT,
-        "origin must be Local, Provisioned, or JIT");
     return new DirectoryUserDetailDTO(name, enabled, origin, externalId, createTime);
   }
 }

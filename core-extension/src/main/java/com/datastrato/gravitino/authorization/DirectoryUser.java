@@ -9,19 +9,20 @@ import com.google.common.base.Preconditions;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 
 /**
  * Instance-scoped directory user for Configure → Directory → Users.
  *
- * <p>Rows come from {@code idp_user_meta} ({@code Local}) or {@code scim_user_meta} ({@code
- * Provisioned}).
+ * <p>Rows come from {@code idp_user_meta} ({@code Local}), {@code scim_user_meta} ({@code
+ * Provisioned}), or metalake-only {@code user_meta} names ({@code origin} null).
  */
 public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
 
   private final String name;
   private final boolean enabled;
-  private final IdentitySource origin;
+  @Nullable private final IdentitySource origin;
   private final List<String> groups;
   private final List<String> metalakes;
 
@@ -30,18 +31,17 @@ public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
    *
    * @param name Username.
    * @param enabled Whether the user is enabled (Active / Suspended in the UI).
-   * @param origin Local or Provisioned.
-   * @param groups Identity-store group names.
+   * @param origin Local / Provisioned, or {@code null} when metalake-only.
+   * @param groups Identity-store group names (empty for metalake-only).
    * @param metalakes Metalake names where the username exists in {@code user_meta}.
    */
   public DirectoryUser(
       String name,
       boolean enabled,
-      IdentitySource origin,
+      @Nullable IdentitySource origin,
       List<String> groups,
       List<String> metalakes) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
-    Preconditions.checkArgument(origin != null, "origin cannot be null");
     this.name = name;
     this.enabled = enabled;
     this.origin = origin;
@@ -60,6 +60,7 @@ public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
   }
 
   @Override
+  @Nullable
   public IdentitySource origin() {
     return origin;
   }

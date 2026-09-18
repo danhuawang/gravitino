@@ -65,15 +65,18 @@ public class TestDatastratoUserMetaBaseSQLProvider {
     assertTrue(sql.contains("originCode"));
     assertTrue(sql.contains("metalakeNames"));
     assertTrue(sql.contains("UNION ALL"));
-    assertFalse(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains("ORDER BY identity.userName, identity.originCode"));
     assertTrue(sql.contains("CAST(NULL AS BIGINT)"));
     // Metalake names are aggregated per username for the Directory Users table.
     assertTrue(sql.contains("GROUP BY ut.user_name"));
     assertFalse(sql.contains("#{metalakeName}"));
+    assertTrue(sql.contains("FROM user_meta ut"));
+    assertTrue(sql.contains("TRUE as enabled"));
     assertTrue(sql.contains(" " + IdentitySource.ORIGIN_CODE_JIT + " as originCode"));
     assertTrue(sql.contains("true as enabled"));
     assertTrue(sql.contains("jitGroups.groupNames"));
+    assertTrue(sql.contains("NOT EXISTS"));
   }
 
   @Test
@@ -101,6 +104,19 @@ public class TestDatastratoUserMetaBaseSQLProvider {
         };
     String sql = withPgCast.listDirectoryUsers();
     assertTrue(sql.contains("(su.enabled <> 0) as enabled"));
+  }
+
+  @Test
+  public void testPostgreSQLNullOriginCodeCastInDirectoryUsers() {
+    DatastratoUserMetaBaseSQLProvider withPgCast =
+        new DatastratoUserMetaBaseSQLProvider() {
+          @Override
+          protected String nullOriginCodeLiteral() {
+            return "CAST(NULL AS INTEGER)";
+          }
+        };
+    String sql = withPgCast.listDirectoryUsers();
+    assertTrue(sql.contains("CAST(NULL AS INTEGER) as originCode"));
   }
 
   @Test
@@ -404,13 +420,26 @@ public class TestDatastratoUserMetaBaseSQLProvider {
   }
 
   @Test
+  public void testListMetalakeOnlyDirectoryUserAuditInfos() {
+    String sql = provider.listMetalakeOnlyDirectoryUserAuditInfos("jordan.m");
+    assertTrue(sql.contains("FROM user_meta ut"));
+    assertTrue(sql.contains("ut.audit_info"));
+    assertTrue(sql.contains("ut.user_name = #{userName}"));
+    assertTrue(sql.contains("NOT EXISTS"));
+    assertTrue(sql.contains("idp_user_meta"));
+    assertTrue(sql.contains("scim_user_meta"));
+  }
+
+  @Test
   public void testListIdpUserNames() {
     String sql = provider.listIdpUserNames();
 
     assertTrue(sql.contains("scim_user_meta"));
     assertTrue(sql.contains("idp_user_meta"));
     assertTrue(sql.contains("jit_user_meta"));
+    assertTrue(sql.contains("user_meta"));
     assertTrue(sql.contains("UNION"));
+    assertTrue(sql.contains("NOT EXISTS"));
     assertTrue(sql.contains("deleted_at = 0"));
     assertTrue(sql.contains("ORDER BY user_name"));
   }
