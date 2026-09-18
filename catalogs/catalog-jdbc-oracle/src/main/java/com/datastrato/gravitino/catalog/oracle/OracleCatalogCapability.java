@@ -18,30 +18,32 @@ import org.apache.gravitino.connector.capability.CapabilityResult;
  */
 public class OracleCatalogCapability implements Capability {
   /**
-   * Regular expression explanation: ^[A-Za-z][A-Za-z0-9_$#]{0,29}$
-   *
-   * <p>^ - Start of the string
-   *
-   * <p>[A-Za-z] - Must start with a letter (upper or lower case)
-   *
-   * <p>[A-Za-z0-9_$#]{0,29} - Followed by 0 to 29 characters of letters, digits, underscores,
-   * dollar signs, or hash signs
-   *
-   * <p>$ - End of the string
-   *
-   * <p>Total length: 1 to 30 characters (Oracle's maximum identifier length for versions &lt; 12.2)
+   * Default maximum identifier length, in bytes, when the connected Oracle server's actual limit is
+   * unknown (e.g. the capability is built without a connection). 128 is the limit for Oracle 12.2
+   * and later, which covers every currently supported Oracle release; older servers report their
+   * lower limit (30) and it is applied instead (see {@link OracleCatalog#newCapability()}).
    */
-  public static final String ORACLE_NAME_PATTERN = "^[A-Za-z][A-Za-z0-9_$#]{0,29}$";
+  public static final int DEFAULT_MAX_IDENTIFIER_LENGTH_BYTES = 128;
 
   /**
-   * Maximum length, in bytes of the database character set, of the content inside a quoted Oracle
-   * identifier: the same 30-byte hard limit as {@link #ORACLE_NAME_PATTERN} (Oracle's maximum
-   * identifier length for versions &lt; 12.2), since quoting does not relax Oracle's length
-   * restriction. Oracle enforces this limit in bytes, not characters, so this is checked against
-   * the UTF-8 encoded length rather than {@link String#length()} — otherwise a multi-byte name
-   * (e.g. CJK characters) could pass this check but still be rejected by Oracle as too long.
+   * The unquoted-identifier grammar without the length bound: it must start with a letter and
+   * otherwise contain only letters, digits, underscores, dollar signs, or hash signs. The length is
+   * enforced separately against {@link #maxIdentifierLengthBytes} so that the limit can follow the
+   * connected Oracle server's version rather than being hardcoded.
+   *
+   * <p>An unquoted identifier is ASCII-only under this grammar, so its character count equals its
+   * byte length and comparing {@link String#length()} against the byte limit is exact.
    */
-  private static final int MAX_QUOTED_NAME_LENGTH_BYTES = 30;
+  private static final String ORACLE_UNQUOTED_NAME_PATTERN = "^[A-Za-z][A-Za-z0-9_$#]*$";
+
+  /**
+   * Maximum length, in bytes of the database character set, of an Oracle identifier for the
+   * connected server. Oracle enforces this limit in bytes, not characters, so a quoted identifier's
+   * content is checked against its UTF-8 encoded length rather than {@link String#length()} —
+   * otherwise a multi-byte name (e.g. CJK characters) could pass this check but still be rejected
+   * by Oracle as too long. Oracle raised this limit from 30 to 128 bytes in 12.2.
+   */
+  private final int maxIdentifierLengthBytes;
 
   /**
    * Characters Gravitino rejects inside a quoted Oracle identifier's content, even though Oracle
@@ -55,6 +57,28 @@ public class OracleCatalogCapability implements Capability {
    */
   private static final Set<Character> ILLEGAL_QUOTED_CONTENT_CHARACTERS =
       ImmutableSet.of('.', '\0');
+
+  /**
+   * Creates a capability with the {@link #DEFAULT_MAX_IDENTIFIER_LENGTH_BYTES default} identifier
+   * length limit, used when the connected Oracle server's actual limit has not been resolved.
+   */
+  public OracleCatalogCapability() {
+    this(DEFAULT_MAX_IDENTIFIER_LENGTH_BYTES);
+  }
+
+  /**
+   * Creates a capability that enforces the given maximum identifier length, in bytes.
+   *
+   * @param maxIdentifierLengthBytes the connected Oracle server's maximum identifier length in
+   *     bytes (30 before 12.2, 128 for 12.2 and later); a non-positive value falls back to {@link
+   *     #DEFAULT_MAX_IDENTIFIER_LENGTH_BYTES}.
+   */
+  public OracleCatalogCapability(int maxIdentifierLengthBytes) {
+    this.maxIdentifierLengthBytes =
+        maxIdentifierLengthBytes > 0
+            ? maxIdentifierLengthBytes
+            : DEFAULT_MAX_IDENTIFIER_LENGTH_BYTES;
+  }
 
   @Override
   public CapabilityResult specificationOnName(Scope scope, String name) {
@@ -71,11 +95,11 @@ public class OracleCatalogCapability implements Capability {
             String.format("The %s name '%s' has empty quoted content.", scope, name));
       }
       int innerByteLength = inner.getBytes(StandardCharsets.UTF_8).length;
-      if (innerByteLength > MAX_QUOTED_NAME_LENGTH_BYTES) {
+      if (innerByteLength > maxIdentifierLengthBytes) {
         return CapabilityResult.unsupported(
             String.format(
                 "The %s name '%s' exceeds the maximum quoted identifier length of %d bytes.",
-                scope, name, MAX_QUOTED_NAME_LENGTH_BYTES));
+                scope, name, maxIdentifierLengthBytes));
       }
       for (char illegal : ILLEGAL_QUOTED_CONTENT_CHARACTERS) {
         if (inner.indexOf(illegal) >= 0) {
@@ -87,9 +111,18 @@ public class OracleCatalogCapability implements Capability {
       return CapabilityResult.SUPPORTED;
     }
 
-    if (!name.matches(ORACLE_NAME_PATTERN)) {
+    if (!name.matches(ORACLE_UNQUOTED_NAME_PATTERN)) {
       return CapabilityResult.unsupported(
           String.format("The %s name '%s' is illegal.", scope, name));
+    }
+    // An unquoted identifier is ASCII-only under ORACLE_UNQUOTED_NAME_PATTERN, so its character
+    // count equals its byte length; enforce the server's identifier limit separately from the
+    // grammar so the bound follows the connected Oracle version.
+    if (name.length() > maxIdentifierLengthBytes) {
+      return CapabilityResult.unsupported(
+          String.format(
+              "The %s name '%s' exceeds the maximum identifier length of %d bytes.",
+              scope, name, maxIdentifierLengthBytes));
     }
     return CapabilityResult.SUPPORTED;
   }

@@ -25,6 +25,10 @@ public class OracleCatalog extends JdbcCatalog {
   private static final OracleTablePropertiesMetadata TABLE_PROPERTIES_METADATA =
       new OracleTablePropertiesMetadata();
 
+  // The table operations instance created for this catalog, retained so newCapability() can read
+  // the Oracle server's identifier length limit it resolves at initialization time (#2095).
+  private volatile OracleTableOperations oracleTableOperations;
+
   @Override
   public String shortName() {
     return "jdbc-oracle";
@@ -60,7 +64,9 @@ public class OracleCatalog extends JdbcCatalog {
 
   @Override
   protected JdbcTableOperations createJdbcTableOperations() {
-    return new OracleTableOperations();
+    OracleTableOperations ops = new OracleTableOperations();
+    this.oracleTableOperations = ops;
+    return ops;
   }
 
   @Override
@@ -70,7 +76,18 @@ public class OracleCatalog extends JdbcCatalog {
 
   @Override
   public Capability newCapability() {
-    return new OracleCatalogCapability();
+    // Ensure the operations layer is initialized so the Oracle server's identifier length limit is
+    // resolved before the capability that enforces it is built. When operations are not yet
+    // available (e.g. before the catalog is initialized), the capability falls back to its default
+    // limit.
+    OracleTableOperations tableOps = this.oracleTableOperations;
+    if (tableOps == null) {
+      ops();
+      tableOps = this.oracleTableOperations;
+    }
+    return tableOps != null
+        ? new OracleCatalogCapability(tableOps.getMaxIdentifierLengthBytes())
+        : new OracleCatalogCapability();
   }
 
   @Override
