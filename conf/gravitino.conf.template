@@ -195,3 +195,10 @@ gravitino.eventListener.dashboard-metrics.class = com.datastrato.gravitino.metri
 
 # URL shown in expiry warnings and the REST status endpoint. Default: https://datastrato.ai/renew
 #gravitino.datastrato.license.renewalContactUrl = https://datastrato.ai/renew
+
+# THE CONFIGURATION FOR sensitive property key matching
+# Comma-separated keywords. Each entry is a literal substring, not a regular expression.
+# This list replaces the default (secret,password,token,credential,access,account).
+# Omit a default keyword to stop masking keys that only match that word. An empty value
+# disables name-based matching.
+# gravitino.secret.sensitiveKeyKeywords = secret,password,token,credential,private,passwrod
