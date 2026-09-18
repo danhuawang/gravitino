@@ -6,6 +6,7 @@ package com.datastrato.gravitino.metrics;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -15,6 +16,7 @@ import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,10 +29,14 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
+import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -474,6 +480,73 @@ class TestMetricsCalculator {
     assertEquals(expectedMessage, metric.getMetricMessage());
   }
 
+  @Test
+  void testSchemaFailureMessagesRespectSchemaVisibility() {
+    SnapshotBuilder builder = new SnapshotBuilder();
+    builder.catalog(2L, "catalog", Catalog.Type.RELATIONAL, "hive", true);
+    NameIdentifier schema = NameIdentifierUtil.ofSchema(METALAKE, "catalog", "private_schema");
+    builder.failedSchemas.put("catalog", schema);
+    builder.users.put("reader", 10L);
+    MetricsCalculator calculator = new MetricsCalculator(builder.build());
+    GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    try (MockedStatic<MetadataAuthzHelper> helper = mockStatic(MetadataAuthzHelper.class)) {
+      helper
+          .when(
+              () ->
+                  MetadataAuthzHelper.filterByExpression(
+                      any(), any(), any(), any(), any(), any(), any()))
+          .thenAnswer(
+              invocation -> {
+                Object[] nodes = invocation.getArgument(3);
+                String expression = invocation.getArgument(1);
+                return AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION
+                        .equals(expression)
+                    ? Arrays.copyOf(nodes, 0)
+                    : nodes;
+              });
+      Map<String, MetricPO> hidden =
+          calculator.calculateMetricsForUser("reader", authorizer).stream()
+              .collect(Collectors.toMap(MetricPO::getMetricName, metric -> metric));
+      assertMetric(
+          hidden,
+          "by_catalog::catalog::hive::asset_count",
+          null,
+          MetricState.UNAVAILABLE,
+          UNAVAILABLE_MESSAGE);
+
+      helper
+          .when(
+              () ->
+                  MetadataAuthzHelper.filterByExpression(
+                      any(), any(), any(), any(), any(), any(), any()))
+          .thenAnswer(invocation -> invocation.getArgument(3));
+      Map<String, MetricPO> visible =
+          calculator.calculateMetricsForUser("reader", authorizer).stream()
+              .collect(Collectors.toMap(MetricPO::getMetricName, metric -> metric));
+      assertMetric(
+          visible,
+          "by_catalog::catalog::hive::asset_count",
+          null,
+          MetricState.UNAVAILABLE,
+          "Could not collect schema " + schema + ". " + UNAVAILABLE_MESSAGE);
+    }
+  }
+
+  @Test
+  void testSchemaFailureMessageFitsStorageLimit() {
+    SnapshotBuilder builder = new SnapshotBuilder();
+    builder.catalog(2L, "catalog", Catalog.Type.RELATIONAL, "hive", true);
+    builder.failedSchemas.put(
+        "catalog", NameIdentifierUtil.ofSchema(METALAKE, "catalog", "schema".repeat(300)));
+    MetricPO metric =
+        new MetricsCalculator(builder.build())
+            .calculateMetricsForDisableAuthz().stream()
+                .filter(row -> row.getMetricName().equals("by_catalog::catalog::hive::asset_count"))
+                .findFirst()
+                .orElseThrow();
+    assertEquals(1024, metric.getMetricMessage().length());
+  }
+
   private static Owner owner() {
     return mock(Owner.class);
   }
@@ -493,6 +566,8 @@ class TestMetricsCalculator {
     private final Set<Long> taggedObjectIds = new HashSet<>();
     private final Set<Long> policyObjectIds = new HashSet<>();
     private final Set<String> failedCatalogs = new HashSet<>();
+    private final Map<String, NameIdentifier> failedSchemas = new HashMap<>();
+    private final Map<String, Long> users = new HashMap<>();
     private final Map<String, Catalog.Type> catalogTypes = new HashMap<>();
     private final Map<String, String> catalogProviders = new HashMap<>();
     private final Map<String, Boolean> viewListingSupportByCatalog = new HashMap<>();
@@ -602,7 +677,7 @@ class TestMetricsCalculator {
       return MetalakeSnapshot.builder()
           .assetTreeRoot(root)
           .assetNodeById(nodesById)
-          .userNameToUserId(ImmutableMap.of())
+          .userNameToUserId(users)
           .roleIdToSecurableObjects(ImmutableMap.of())
           .userIdToRoleIds(ImmutableMap.of())
           .taggedObjectIds(taggedObjectIds)
@@ -620,6 +695,7 @@ class TestMetricsCalculator {
           .associatedTagCountsByCatalogId(associatedTagCountsByCatalogId)
           .associatedPolicyCountsByCatalogId(associatedPolicyCountsByCatalogId)
           .failedCatalogNames(failedCatalogs)
+          .failedSchemaIdentifiers(failedSchemas)
           .catalogTypes(catalogTypes)
           .catalogProviders(catalogProviders)
           .viewListingSupportByCatalog(viewListingSupportByCatalog)

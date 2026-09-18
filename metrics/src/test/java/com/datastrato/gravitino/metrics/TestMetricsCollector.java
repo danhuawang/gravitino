@@ -4,6 +4,7 @@
 package com.datastrato.gravitino.metrics;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -53,6 +54,7 @@ import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.connector.capability.CapabilityResult;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
+import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
@@ -76,6 +78,8 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 class TestMetricsCollector {
+
+  private static final LockManager LOCKS = new LockManager(new ServerConfig());
 
   private ServerConfig serverConfig;
   private GravitinoEnv gravitinoEnv;
@@ -238,6 +242,200 @@ class TestMetricsCollector {
       assertMetric(metrics, "asset_count", 3.0, MetricState.COMPLETE);
       assertMetric(metrics, "by_asset_type::FUNCTION::asset_count", 1.0, MetricState.COMPLETE);
     }
+  }
+
+  @Test
+  void testMissingSourceSchemaIsDeletedAndHealthySchemaIsCounted() throws Exception {
+    NameIdentifier stale = storedProbe();
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any())).thenReturn(false);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    verify(store).delete(stale, Entity.EntityType.SCHEMA, true);
+    verify(tableDispatcher, never())
+        .listTables(
+            Namespace.of(
+                stale.namespace().levels()[0], stale.namespace().levels()[1], stale.name()));
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertEquals(1, snapshot.getSchemaNodes().size());
+    assertEquals(1, snapshot.getTableNodes().size());
+    assertFalse(snapshot.getAssetNodeById().containsKey(99L));
+    assertEquals(
+        MetricsCollector.CollectionOutcome.COMPLETE,
+        MetricsCollector.collectionOutcome(
+            ImmutableMap.of(
+                0L, new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz())));
+  }
+
+  @Test
+  void testConcurrentMetadataCleanupIsHarmless() throws Exception {
+    NameIdentifier stale = storedProbe();
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any())).thenReturn(false);
+    when(store.delete(stale, Entity.EntityType.SCHEMA, true))
+        .thenThrow(new NoSuchEntityException("already removed"));
+
+    assertTrue(collectSnapshot().getFailedCatalogNames().isEmpty());
+  }
+
+  @Test
+  void testManagedSchemaIsNeverReconciledAgainstExternalListing() throws Exception {
+    NameIdentifier probe = storedProbe();
+    Capability capability = mock(Capability.class);
+    when(capability.managedStorage(any())).thenReturn(CapabilityResult.SUPPORTED);
+    when(capability.supportsHierarchicalSchema())
+        .thenReturn(CapabilityResult.unsupported("flat schema"));
+    when(catalogWrapper.capabilities()).thenReturn(capability);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    verify(schemaDispatcher, never()).listSchemas(any());
+    verify(catalogWrapper, never()).doWithSchemaOps(any());
+    verify(store, never()).delete(any(), any(), eq(true));
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertEquals(probe, snapshot.getSchemaNodes().iterator().next().getNameIdent());
+  }
+
+  @Test
+  void testSchemaOmittedFromListingButStillPresentIsRetained() throws Exception {
+    NameIdentifier probe = storedProbe();
+    Namespace ns = Namespace.of(metalakeName, relationalCatalogName, probe.name());
+    when(tableDispatcher.listTables(ns)).thenReturn(new NameIdentifier[0]);
+    when(viewDispatcher.listViews(ns)).thenReturn(new NameIdentifier[0]);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    verify(store, never()).delete(any(), any(), eq(true));
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertEquals(2, snapshot.getSchemaNodes().size());
+    assertTrue(snapshot.getAssetNodeById().containsKey(99L));
+  }
+
+  @Test
+  void testFailedExistenceProbePreservesMetadataAndNamesSchema() throws Exception {
+    NameIdentifier probe = storedProbe();
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any()))
+        .thenThrow(new IllegalStateException("secret connection password"));
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    verify(store, never()).delete(any(), any(), eq(true));
+    assertEquals(probe, snapshot.getFailedSchemaIdentifiers().get(relationalCatalogName));
+    List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+    MetricPO catalogMetric =
+        metrics.stream()
+            .filter(
+                metric ->
+                    metric
+                        .getMetricName()
+                        .equals(
+                            "by_catalog::"
+                                + relationalCatalogName
+                                + "::jdbc-postgresql::asset_count"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(MetricState.UNAVAILABLE, catalogMetric.getMetricState());
+    assertTrue(catalogMetric.getMetricMessage().contains(probe.toString()));
+    assertFalse(catalogMetric.getMetricMessage().contains("password"));
+  }
+
+  @Test
+  void testSchemaListingFailureDoesNotDeleteMetadata() throws Exception {
+    storedProbe();
+    when(schemaDispatcher.listSchemas(NamespaceUtil.ofSchema(metalakeName, relationalCatalogName)))
+        .thenThrow(new IllegalStateException("source unavailable"));
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    verify(store, never()).delete(any(), any(), eq(true));
+    verify(catalogWrapper, never()).doWithSchemaOps(any());
+    assertTrue(snapshot.getFailedCatalogNames().contains(relationalCatalogName));
+  }
+
+  @Test
+  void testMetadataCleanupFailureDoesNotReportCompleteCollection() throws Exception {
+    NameIdentifier probe = storedProbe();
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any())).thenReturn(false);
+    when(store.delete(probe, Entity.EntityType.SCHEMA, true))
+        .thenThrow(new IOException("store down"));
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().contains(relationalCatalogName));
+    assertEquals(probe, snapshot.getFailedSchemaIdentifiers().get(relationalCatalogName));
+  }
+
+  @Test
+  void testSchemaDroppedAfterListingDoesNotDiscardHealthySchema() throws Exception {
+    NameIdentifier probe = storedProbe();
+    when(schemaDispatcher.listSchemas(NamespaceUtil.ofSchema(metalakeName, relationalCatalogName)))
+        .thenReturn(
+            new NameIdentifier[] {
+              probe,
+              NameIdentifierUtil.ofSchema(metalakeName, relationalCatalogName, relationalSchemaName)
+            });
+    Namespace probeNamespace = Namespace.of(metalakeName, relationalCatalogName, probe.name());
+    when(tableDispatcher.listTables(probeNamespace))
+        .thenReturn(new NameIdentifier[] {NameIdentifier.of(probeNamespace, "old_table")});
+    when(viewDispatcher.listViews(probeNamespace))
+        .thenThrow(new IllegalStateException("Unknown database 'probe'"));
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any())).thenReturn(false);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    verify(store).delete(probe, Entity.EntityType.SCHEMA, true);
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertEquals(1, snapshot.getSchemaNodes().size());
+    assertEquals(1, snapshot.getCatalogNodes().iterator().next().getChildren().size());
+    assertEquals(1, snapshot.getTableNodes().size());
+    assertFalse(snapshot.getAssetNodeById().containsKey(99L));
+  }
+
+  @Test
+  void testHierarchicalSchemaRemovedWhileListingChildren() throws Exception {
+    Capability capability = mock(Capability.class);
+    when(capability.managedStorage(any())).thenReturn(CapabilityResult.unsupported("external"));
+    when(capability.supportsHierarchicalSchema()).thenReturn(CapabilityResult.SUPPORTED);
+    when(catalogWrapper.capabilities()).thenReturn(capability);
+    Namespace root = NamespaceUtil.ofSchema(metalakeName, relationalCatalogName);
+    NameIdentifier top = NameIdentifier.of(root, "top");
+    when(schemaDispatcher.listSchemas(root)).thenReturn(new NameIdentifier[] {top});
+    when(schemaDispatcher.listSchemas(Namespace.of(metalakeName, relationalCatalogName, "top")))
+        .thenThrow(new IllegalStateException("schema disappeared"));
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any())).thenReturn(false);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertTrue(snapshot.getSchemaNodes().isEmpty());
+    verify(store).delete(top, Entity.EntityType.SCHEMA, true);
+  }
+
+  @Test
+  void testMissingHierarchicalParentRemovesPreviouslyCollectedChildren() throws Exception {
+    Capability capability = mock(Capability.class);
+    when(capability.managedStorage(any())).thenReturn(CapabilityResult.unsupported("external"));
+    when(capability.supportsHierarchicalSchema()).thenReturn(CapabilityResult.SUPPORTED);
+    when(catalogWrapper.capabilities()).thenReturn(capability);
+    Namespace root = NamespaceUtil.ofSchema(metalakeName, relationalCatalogName);
+    NameIdentifier top = NameIdentifier.of(root, "top");
+    NameIdentifier child = NameIdentifier.of(root, "top:child");
+    Namespace topNs = Namespace.of(metalakeName, relationalCatalogName, "top");
+    Namespace childNs = Namespace.of(metalakeName, relationalCatalogName, "top:child");
+    when(schemaDispatcher.listSchemas(root)).thenReturn(new NameIdentifier[] {top});
+    when(schemaDispatcher.listSchemas(topNs)).thenReturn(new NameIdentifier[] {child});
+    when(schemaDispatcher.listSchemas(childNs)).thenReturn(new NameIdentifier[0]);
+    when(tableDispatcher.listTables(topNs)).thenThrow(new IllegalStateException("schema dropped"));
+    when(tableDispatcher.listTables(childNs))
+        .thenReturn(new NameIdentifier[] {NameIdentifier.of(childNs, "stale_table")});
+    when(viewDispatcher.listViews(childNs)).thenReturn(new NameIdentifier[0]);
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any())).thenReturn(false);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertTrue(snapshot.getSchemaNodes().isEmpty());
+    assertTrue(snapshot.getTableNodes().isEmpty());
+    assertTrue(snapshot.getCatalogNodes().iterator().next().getChildren().isEmpty());
   }
 
   @Test
@@ -740,6 +938,36 @@ class TestMetricsCollector {
         .build();
   }
 
+  private NameIdentifier storedProbe() throws IOException {
+    SchemaEntity probe =
+        SchemaEntity.builder()
+            .withId(99L)
+            .withName("probe")
+            .withNamespace(NamespaceUtil.ofSchema(metalakeName, relationalCatalogName))
+            .withAuditInfo(
+                AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+            .build();
+    when(store.list(
+            NamespaceUtil.ofSchema(metalakeName, relationalCatalogName),
+            SchemaEntity.class,
+            Entity.EntityType.SCHEMA))
+        .thenReturn(ImmutableList.of(probe));
+    return probe.nameIdentifier();
+  }
+
+  private MetalakeSnapshot collectSnapshot() throws Exception {
+    try (MockedStatic<GravitinoEnv> mockedEnv = Mockito.mockStatic(GravitinoEnv.class);
+        MockedStatic<MetricDataService> mockedService =
+            Mockito.mockStatic(MetricDataService.class)) {
+      mockedEnv.when(GravitinoEnv::getInstance).thenReturn(gravitinoEnv);
+      when(gravitinoEnv.lockManager()).thenReturn(LOCKS);
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      return collector.loadAllDataForMetalake(metalake());
+    }
+  }
+
   private void mockLoadCatalog() throws Exception {
     catalogWrapper = mock(CatalogManager.CatalogWrapper.class);
     doAnswer(
@@ -753,6 +981,7 @@ class TestMetricsCollector {
             eq(NameIdentifierUtil.ofCatalog(metalakeName, relationalCatalogName)), any());
 
     when(catalogWrapper.capabilities()).thenReturn(Capability.DEFAULT);
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any())).thenReturn(true);
     when(catalogWrapper.<Boolean>doWithViewOps(any())).thenReturn(true);
   }
 

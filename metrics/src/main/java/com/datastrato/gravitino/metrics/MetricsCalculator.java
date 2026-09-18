@@ -362,7 +362,61 @@ public class MetricsCalculator {
         directCountVisibleAssetNodes,
         failedVisibleCatalogNames);
 
+    addSchemaFailureDetails(metrics, visibleCatalogNames, username, authorizer);
     return Collections.unmodifiableList(metrics);
+  }
+
+  private void addSchemaFailureDetails(
+      List<MetricPO> metrics,
+      Set<String> visibleCatalogNames,
+      String username,
+      @Nullable GravitinoAuthorizer authorizer) {
+    for (Map.Entry<String, NameIdentifier> failure :
+        metalakeSnapshot.getFailedSchemaIdentifiers().entrySet()) {
+      String catalogName = failure.getKey();
+      if (!visibleCatalogNames.contains(catalogName)) {
+        continue;
+      }
+      NameIdentifier schemaIdent = failure.getValue();
+      if (authorizer != null
+          && MetadataAuthzHelper.filterByExpression(
+                      metalakeName,
+                      AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
+                      Entity.EntityType.SCHEMA,
+                      new NameIdentifier[] {schemaIdent},
+                      ident -> ident,
+                      new UserPrincipal(username),
+                      authorizer)
+                  .length
+              == 0) {
+        continue;
+      }
+      // Never expose connector exception messages: they may contain credentials or connection URLs.
+      String message = "Could not collect schema " + schemaIdent + ". " + UNAVAILABLE_MESSAGE;
+      if (message.length() > 1024) {
+        message = message.substring(0, 1021) + "...";
+      }
+      String catalogPrefix =
+          "by_catalog"
+              + DashboardMetricNames.SEPARATOR
+              + catalogName
+              + DashboardMetricNames.SEPARATOR;
+      String childCountName = DirectChildCountMetricNames.forCatalog(catalogName);
+      for (int i = 0; i < metrics.size(); i++) {
+        MetricPO metric = metrics.get(i);
+        if (metric.getMetricState() != MetricState.COMPLETE
+            && (metric.getMetricName().startsWith(catalogPrefix)
+                || metric.getMetricName().equals(childCountName))) {
+          metrics.set(
+              i,
+              createMetricPO(
+                  metric.getMetricName(),
+                  metric.getMetricValue(),
+                  metric.getMetricState(),
+                  message));
+        }
+      }
+    }
   }
 
   private static Set<AssetNode> visibleAssetNodes(MetalakeSnapshot snapshot) {

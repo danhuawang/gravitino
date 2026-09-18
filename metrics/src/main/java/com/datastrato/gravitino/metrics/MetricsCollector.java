@@ -41,6 +41,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
@@ -62,6 +63,8 @@ import org.apache.gravitino.catalog.ViewDispatcher;
 import org.apache.gravitino.connector.capability.Capability;
 import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
+import org.apache.gravitino.lock.LockType;
+import org.apache.gravitino.lock.TreeLockUtils;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
 import org.apache.gravitino.meta.FilesetEntity;
@@ -555,6 +558,7 @@ public class MetricsCollector implements Closeable {
     Set<AssetNode> topicNodes = new HashSet<>();
     Set<AssetNode> modelNodes = new HashSet<>();
     Set<String> failedCatalogNames = new HashSet<>();
+    Map<String, NameIdentifier> failedSchemaIdentifiers = new HashMap<>();
     Map<String, Catalog.Type> catalogTypes = new HashMap<>();
     Map<String, String> catalogProviders = new HashMap<>();
     Map<String, Boolean> viewListingSupportByCatalog = new HashMap<>();
@@ -595,6 +599,7 @@ public class MetricsCollector implements Closeable {
       Set<AssetNode> catalogFilesetNodes = new HashSet<>();
       Set<AssetNode> catalogTopicNodes = new HashSet<>();
       Set<AssetNode> catalogModelNodes = new HashSet<>();
+      Set<String> missingSchemaNames = new HashSet<>();
       try {
         CatalogCapabilities catalogCapabilities = loadCatalogCapabilities(catalog);
         boolean managedSchema = catalogCapabilities.managedSchema;
@@ -624,54 +629,95 @@ public class MetricsCollector implements Closeable {
 
         for (AssetNode schemaNode : schemas) {
           Namespace ns = Namespace.of(metalake.name(), catalogNode.getName(), schemaNode.getName());
-          switch (catalog.getType()) {
-            case RELATIONAL:
-              Set<AssetNode> tables =
-                  getTableNodes(
-                      ns, schemaNode, managedTable, objectIdToOwners, catalogAssetNodeById);
-              Set<AssetNode> views =
-                  viewListingSupported
-                      ? getViewNodes(
-                          ns, schemaNode, managedView, objectIdToOwners, catalogAssetNodeById)
-                      : Collections.emptySet();
-              schemaNode.addChildren(tables);
-              schemaNode.addChildren(views);
-              catalogTableNodes.addAll(tables);
-              catalogViewNodes.addAll(views);
-              break;
+          Map<Long, AssetNode> schemaAssetNodeById = new HashMap<>();
+          try {
+            switch (catalog.getType()) {
+              case RELATIONAL:
+                Set<AssetNode> tables =
+                    getTableNodes(
+                        ns, schemaNode, managedTable, objectIdToOwners, schemaAssetNodeById);
+                Set<AssetNode> views =
+                    viewListingSupported
+                        ? getViewNodes(
+                            ns, schemaNode, managedView, objectIdToOwners, schemaAssetNodeById)
+                        : Collections.emptySet();
+                schemaNode.addChildren(tables);
+                catalogTableNodes.addAll(tables);
+                schemaNode.addChildren(views);
+                catalogViewNodes.addAll(views);
+                break;
 
-            case FILESET:
-              Set<AssetNode> filesets =
-                  getFilesetNodes(ns, schemaNode, objectIdToOwners, catalogAssetNodeById);
-              schemaNode.addChildren(filesets);
-              catalogFilesetNodes.addAll(filesets);
-              break;
+              case FILESET:
+                Set<AssetNode> filesets =
+                    getFilesetNodes(ns, schemaNode, objectIdToOwners, schemaAssetNodeById);
+                schemaNode.addChildren(filesets);
+                catalogFilesetNodes.addAll(filesets);
+                break;
 
-            case MESSAGING:
-              Set<AssetNode> topics =
-                  getTopicNodes(
-                      ns, schemaNode, managedTopic, objectIdToOwners, catalogAssetNodeById);
-              schemaNode.addChildren(topics);
-              catalogTopicNodes.addAll(topics);
-              break;
+              case MESSAGING:
+                Set<AssetNode> topics =
+                    getTopicNodes(
+                        ns, schemaNode, managedTopic, objectIdToOwners, schemaAssetNodeById);
+                schemaNode.addChildren(topics);
+                catalogTopicNodes.addAll(topics);
+                break;
 
-            case MODEL:
-              Set<AssetNode> models =
-                  getModelNodes(ns, schemaNode, objectIdToOwners, catalogAssetNodeById);
-              schemaNode.addChildren(models);
-              catalogModelNodes.addAll(models);
-              break;
+              case MODEL:
+                Set<AssetNode> models =
+                    getModelNodes(ns, schemaNode, objectIdToOwners, schemaAssetNodeById);
+                schemaNode.addChildren(models);
+                catalogModelNodes.addAll(models);
+                break;
 
-            default:
-              LOG.warn("Unsupported catalog type: {}", catalog.getType());
+              default:
+                LOG.warn("Unsupported catalog type: {}", catalog.getType());
+            }
+
+            if (catalog.getType() != Catalog.Type.UNSUPPORTED) {
+              Set<AssetNode> functions =
+                  getFunctionNodes(ns, schemaNode, objectIdToOwners, schemaAssetNodeById);
+              schemaNode.addChildren(functions);
+              catalogFunctionNodes.addAll(functions);
+            }
+            catalogAssetNodeById.putAll(schemaAssetNodeById);
+          } catch (Exception e) {
+            try {
+              if (!managedSchema && removeMissingSchema(schemaNode.getNameIdent())) {
+                missingSchemaNames.add(schemaNode.getName());
+                continue;
+              }
+            } catch (Exception cleanupFailure) {
+              e.addSuppressed(cleanupFailure);
+            }
+            throw new CatalogCollectionException(schemaNode.getNameIdent(), e);
           }
+        }
 
-          if (catalog.getType() != Catalog.Type.UNSUPPORTED) {
-            Set<AssetNode> functions =
-                getFunctionNodes(ns, schemaNode, objectIdToOwners, catalogAssetNodeById);
-            schemaNode.addChildren(functions);
-            catalogFunctionNodes.addAll(functions);
+        if (!missingSchemaNames.isEmpty()) {
+          Set<AssetNode> removedNodes = new HashSet<>();
+          for (AssetNode schema : catalogSchemaNodes) {
+            boolean missing =
+                missingSchemaNames.contains(schema.getName())
+                    || (hierarchicalSchema
+                        && HierarchicalSchemaUtil.allScopes(
+                                schema.getName(), HierarchicalSchemaUtil.schemaSeparator())
+                            .stream()
+                            .anyMatch(missingSchemaNames::contains));
+            if (missing) {
+              removedNodes.add(schema);
+              removedNodes.addAll(schema.getChildren());
+            }
           }
+          catalogSchemaNodes.removeAll(removedNodes);
+          catalogTableNodes.removeAll(removedNodes);
+          catalogViewNodes.removeAll(removedNodes);
+          catalogFunctionNodes.removeAll(removedNodes);
+          catalogFilesetNodes.removeAll(removedNodes);
+          catalogTopicNodes.removeAll(removedNodes);
+          catalogModelNodes.removeAll(removedNodes);
+          catalogAssetNodeById.values().removeAll(removedNodes);
+          catalogNode.getChildren().removeAll(removedNodes);
+          catalogSchemaNodes.forEach(schema -> schema.getChildren().removeAll(removedNodes));
         }
 
         assetNodeById.putAll(catalogAssetNodeById);
@@ -684,6 +730,11 @@ public class MetricsCollector implements Closeable {
         modelNodes.addAll(catalogModelNodes);
       } catch (Exception e) {
         failedCatalogNames.add(catalog.name());
+        if (e instanceof CatalogCollectionException
+            && ((CatalogCollectionException) e).schemaIdentifier != null) {
+          failedSchemaIdentifiers.put(
+              catalog.name(), ((CatalogCollectionException) e).schemaIdentifier);
+        }
         LOG.warn(
             "Catalog {} could not be collected; dashboard metrics will publish a safe incomplete result",
             catalog.name(),
@@ -736,6 +787,7 @@ public class MetricsCollector implements Closeable {
         .associatedTagCountsByCatalogId(associatedTagCountsByCatalogId)
         .associatedPolicyCountsByCatalogId(associatedPolicyCountsByCatalogId)
         .failedCatalogNames(failedCatalogNames)
+        .failedSchemaIdentifiers(failedSchemaIdentifiers)
         .catalogTypes(catalogTypes)
         .catalogProviders(catalogProviders)
         .viewListingSupportByCatalog(viewListingSupportByCatalog)
@@ -933,10 +985,24 @@ public class MetricsCollector implements Closeable {
             .collect(Collectors.toMap(SchemaEntity::name, schema -> schema, (left, right) -> left));
     Set<String> schemaNames = new HashSet<>(storedSchemaByName.keySet());
 
-    // if the schemas are not managed, it means there may be external schemas that have not been
-    // imported, so we need to use schemaDispatcher to get the full schema
+    // Source listings discover new schemas but must not keep stale registrations alive.
+    // Confirm absence before deleting: a listing can omit a schema because of permissions.
     if (!managedSchema) {
-      collectExternalSchemaNames(nsOfSchema, hierarchicalSchema, schemaNames, new HashSet<>());
+      Set<String> externalNames = new HashSet<>();
+      collectExternalSchemaNames(nsOfSchema, hierarchicalSchema, externalNames, new HashSet<>());
+      for (String storedName : storedSchemaByName.keySet()) {
+        if (!externalNames.contains(storedName)) {
+          NameIdentifier ident = NameIdentifier.of(nsOfSchema, storedName);
+          try {
+            if (removeMissingSchema(ident)) {
+              schemaNames.remove(storedName);
+            }
+          } catch (Exception e) {
+            throw new CatalogCollectionException(ident, e);
+          }
+        }
+      }
+      schemaNames.addAll(externalNames);
     }
 
     String separator = HierarchicalSchemaUtil.schemaSeparator();
@@ -989,6 +1055,27 @@ public class MetricsCollector implements Closeable {
     return schemaNodes;
   }
 
+  private boolean removeMissingSchema(NameIdentifier ident) throws Exception {
+    NameIdentifier catalogIdent = NameIdentifier.of(ident.namespace().levels());
+    return TreeLockUtils.doWithTreeLock(
+        catalogIdent,
+        LockType.WRITE,
+        () -> {
+          boolean exists =
+              catalogManager.doWithCatalogWrapper(
+                  catalogIdent, wrapper -> wrapper.doWithSchemaOps(ops -> ops.schemaExists(ident)));
+          if (exists) {
+            return false;
+          }
+          try {
+            store.delete(ident, Entity.EntityType.SCHEMA, true);
+          } catch (NoSuchEntityException e) {
+            LOG.debug("Missing schema {} has already been removed from the store", ident);
+          }
+          return true;
+        });
+  }
+
   private void collectExternalSchemaNames(
       Namespace namespace,
       boolean hierarchicalSchema,
@@ -1011,7 +1098,25 @@ public class MetricsCollector implements Closeable {
               visitedParents);
         }
       }
+    } catch (CatalogCollectionException e) {
+      throw e;
     } catch (Exception e) {
+      if (namespace.length() == 3) {
+        NameIdentifier ident =
+            NameIdentifierUtil.ofSchema(namespace.level(0), namespace.level(1), namespace.level(2));
+        try {
+          if (removeMissingSchema(ident)) {
+            schemaNames.removeIf(
+                name ->
+                    HierarchicalSchemaUtil.allScopes(name, HierarchicalSchemaUtil.schemaSeparator())
+                        .contains(ident.name()));
+            return;
+          }
+        } catch (Exception cleanupFailure) {
+          e.addSuppressed(cleanupFailure);
+        }
+        throw new CatalogCollectionException(ident, e);
+      }
       throw new CatalogCollectionException(e);
     }
   }
@@ -1239,8 +1344,15 @@ public class MetricsCollector implements Closeable {
   }
 
   private static class CatalogCollectionException extends Exception {
+    @Nullable private final NameIdentifier schemaIdentifier;
+
     private CatalogCollectionException(Throwable cause) {
+      this(null, cause);
+    }
+
+    private CatalogCollectionException(@Nullable NameIdentifier schemaIdentifier, Throwable cause) {
       super(cause);
+      this.schemaIdentifier = schemaIdentifier;
     }
   }
 

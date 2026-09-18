@@ -50,6 +50,7 @@ public class MetalakeSnapshot {
   private final Map<Long, Long> associatedTagCountsByCatalogId;
   private final Map<Long, Long> associatedPolicyCountsByCatalogId;
   private final Set<String> failedCatalogNames;
+  private final Map<String, NameIdentifier> failedSchemaIdentifiers;
   private final Map<String, Catalog.Type> catalogTypes;
   private final Map<String, String> catalogProviders;
   private final Map<String, Boolean> viewListingSupportByCatalog;
@@ -78,6 +79,7 @@ public class MetalakeSnapshot {
    * @param associatedPolicyCountsByCatalogId distinct active Policy counts indexed by Catalog ID;
    *     disabled Policies are included
    * @param failedCatalogNames enabled catalogs whose connector collection failed
+   * @param failedSchemaIdentifiers schemas that caused catalog collection failures, by catalog
    * @param catalogTypes enabled catalog types indexed by catalog name
    * @param catalogProviders enabled catalog provider short names indexed by catalog name
    * @param viewListingSupportByCatalog known view-listing support indexed by catalog name; a
@@ -105,6 +107,7 @@ public class MetalakeSnapshot {
       Map<Long, Long> associatedTagCountsByCatalogId,
       Map<Long, Long> associatedPolicyCountsByCatalogId,
       Set<String> failedCatalogNames,
+      Map<String, NameIdentifier> failedSchemaIdentifiers,
       Map<String, Catalog.Type> catalogTypes,
       Map<String, String> catalogProviders,
       Map<String, Boolean> viewListingSupportByCatalog) {
@@ -134,6 +137,8 @@ public class MetalakeSnapshot {
             ? Collections.emptyMap()
             : associatedPolicyCountsByCatalogId;
     this.failedCatalogNames = failedCatalogNames;
+    this.failedSchemaIdentifiers =
+        failedSchemaIdentifiers == null ? Collections.emptyMap() : failedSchemaIdentifiers;
     this.catalogTypes = catalogTypes;
     this.catalogProviders = catalogProviders;
     this.viewListingSupportByCatalog = viewListingSupportByCatalog;
