@@ -174,6 +174,10 @@ logger.openBaoTransitHttpHeaders.level = off
 logger.openBaoTransitHttpWire.name = com.datastrato.gravitino.transit.openbao.shaded.org.apache.hc.client5.http.wire
 logger.openBaoTransitHttpWire.level = off
 
+# Suppress verbose JCasbin authorization decision logs by default
+logger.jcasbin.name = org.casbin.jcasbin
+logger.jcasbin.level = warn
+
 # Configure root logger
 rootLogger.level = info
 rootLogger.appenderRef.rolling.ref = fileLogger
