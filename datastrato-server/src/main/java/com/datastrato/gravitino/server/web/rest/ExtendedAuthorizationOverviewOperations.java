@@ -115,7 +115,7 @@ public class ExtendedAuthorizationOverviewOperations {
       name = "web-get-authorization-overview." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "web-get-authorization-overview", absolute = true)
-  @AuthorizationExpression(expression = "")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN && METALAKE::OWNER")
   public Response getAuthorizationOverview(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {

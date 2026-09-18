@@ -653,12 +653,12 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
     Preconditions.checkArgument(StringUtils.isNotBlank(username), "username cannot be blank");
 
     idpUserGroupManager.getUser(username);
-    if (enabled != null) {
-      idpUserGroupManager.updateEnabled(username, enabled);
-    }
 
     // Metalake user_meta does not store enabled; IdP/SCIM tables own that flag.
     User user = accessControlDispatcher.addUser(metalake, username);
+    if (enabled != null) {
+      idpUserGroupManager.updateEnabled(username, enabled);
+    }
     if (roles != null && !roles.isEmpty()) {
       user = accessControlDispatcher.grantRolesToUser(metalake, roles, username);
     }

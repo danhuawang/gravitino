@@ -265,7 +265,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
             "getAuthorizationOverview", String.class);
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
-    Assertions.assertEquals("", expression.expression());
+    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
 
     Parameter metalakeParameter = method.getParameters()[0];
     AuthorizationMetadata authorizationMetadata =

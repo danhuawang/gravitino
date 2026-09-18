@@ -5,6 +5,7 @@ package com.datastrato.gravitino.authorization;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -25,6 +26,7 @@ import org.apache.gravitino.idp.model.IdpUser;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 public class TestDatastratoAccessControlDispatcherLocalUser {
 
@@ -86,7 +88,10 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
     when(inner.addUser(METALAKE, "alice")).thenReturn(created);
 
     Assertions.assertSame(created, dispatcher.addLocalUser(METALAKE, "alice", null, true));
-    verify(idp).updateEnabled("alice", true);
+    InOrder order = inOrder(idp, inner);
+    order.verify(idp).getUser("alice");
+    order.verify(inner).addUser(METALAKE, "alice");
+    order.verify(idp).updateEnabled("alice", true);
     verify(inner, never()).grantRolesToUser(any(), any(), any());
   }
 
@@ -97,6 +102,16 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
     Assertions.assertThrows(
         NotFoundException.class, () -> dispatcher.addLocalUser(METALAKE, "missing", null, true));
     verify(inner, never()).addUser(any(), any());
+  }
+
+  @Test
+  public void testAddUserDoesNotUpdateEnabledWhenMetalakeAddFails() {
+    stubIdpUser("alice");
+    when(inner.addUser(METALAKE, "alice")).thenThrow(new IllegalStateException("failed"));
+
+    Assertions.assertThrows(
+        IllegalStateException.class, () -> dispatcher.addLocalUser(METALAKE, "alice", null, true));
+    verify(idp, never()).updateEnabled(any(), anyBoolean());
   }
 
   @Test

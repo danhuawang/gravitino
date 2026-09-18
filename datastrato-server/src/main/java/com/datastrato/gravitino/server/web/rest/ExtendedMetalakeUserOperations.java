@@ -18,6 +18,7 @@ import com.datastrato.gravitino.dto.responses.IdpUserNameListResponse;
 import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
 import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.Lists;
+import java.util.List;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -51,6 +52,10 @@ import org.apache.gravitino.server.web.rest.OperationType;
 @NameBindings.AccessControlInterfaces
 @Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/users")
 public class ExtendedMetalakeUserOperations {
+  private static final String METALAKE_SECURITY_AUTHORIZATION_EXPRESSION =
+      "SERVICE_ADMIN && METALAKE::OWNER";
+  private static final String USER_MANAGEMENT_AUTHORIZATION_EXPRESSION =
+      "SERVICE_ADMIN && (METALAKE::OWNER || METALAKE::MANAGE_USERS)";
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
   private final EntityStore entityStore;
@@ -78,7 +83,7 @@ public class ExtendedMetalakeUserOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-list-metalake-users." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-list-metalake-users", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listUsers(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -107,7 +112,7 @@ public class ExtendedMetalakeUserOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-list-metalake-idp-users." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-list-metalake-idp-users", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listIdpUsers(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -136,7 +141,7 @@ public class ExtendedMetalakeUserOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-add-metalake-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-add-metalake-user", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  @AuthorizationExpression(expression = USER_MANAGEMENT_AUTHORIZATION_EXPRESSION)
   public Response addUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -206,7 +211,7 @@ public class ExtendedMetalakeUserOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-list-groups-for-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-list-groups-for-user", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF")
+  @AuthorizationExpression(expression = "(SERVICE_ADMIN && METALAKE::OWNER) || USER::SELF")
   public Response listGroupsForUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -239,7 +244,7 @@ public class ExtendedMetalakeUserOperations {
       name = "web-batch-update-user-enabled." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "web-batch-update-user-enabled", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS")
+  @AuthorizationExpression(expression = USER_MANAGEMENT_AUTHORIZATION_EXPRESSION)
   public Response batchUpdateUserEnabled(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -250,11 +255,11 @@ public class ExtendedMetalakeUserOperations {
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
             request.validate();
+            List<String> users = Lists.newArrayList(request.getUsers());
             return Utils.ok(
                 new NameListResponse(
                     accessControlDispatcher
-                        .batchUpdateUserEnabled(
-                            metalake, Lists.newArrayList(request.getUsers()), request.getEnabled())
+                        .batchUpdateUserEnabled(metalake, users, request.getEnabled())
                         .toArray(new String[0])));
           });
     } catch (Exception e) {

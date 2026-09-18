@@ -190,19 +190,19 @@ final class SearchResultFilter {
       case CATALOG:
         return AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION;
       case SCHEMA:
-        return AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION;
+        return AuthorizationExpressionConstants.LOAD_SCHEMA_AUTHORIZATION_EXPRESSION;
       case TABLE:
-        return AuthorizationExpressionConstants.FILTER_TABLE_AUTHORIZATION_EXPRESSION;
+        return AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION;
       case VIEW:
-        return AuthorizationExpressionConstants.FILTER_VIEW_AUTHORIZATION_EXPRESSION;
+        return AuthorizationExpressionConstants.LOAD_VIEW_AUTHORIZATION_EXPRESSION;
       case FILESET:
-        return AuthorizationExpressionConstants.FILTER_FILESET_AUTHORIZATION_EXPRESSION;
+        return AuthorizationExpressionConstants.LOAD_FILESET_AUTHORIZATION_EXPRESSION;
       case MODEL:
-        return AuthorizationExpressionConstants.FILTER_MODEL_AUTHORIZATION_EXPRESSION;
+        return AuthorizationExpressionConstants.LOAD_MODEL_AUTHORIZATION_EXPRESSION;
       case TOPIC:
-        return AuthorizationExpressionConstants.FILTER_TOPICS_AUTHORIZATION_EXPRESSION;
+        return AuthorizationExpressionConstants.LOAD_TOPICS_AUTHORIZATION_EXPRESSION;
       case FUNCTION:
-        return AuthorizationExpressionConstants.FILTER_FUNCTION_AUTHORIZATION_EXPRESSION;
+        return AuthorizationExpressionConstants.LOAD_FUNCTION_AUTHORIZATION_EXPRESSION;
       case TAG:
         return AuthorizationExpressionConstants.LOAD_TAG_AUTHORIZATION_EXPRESSION;
       case POLICY:

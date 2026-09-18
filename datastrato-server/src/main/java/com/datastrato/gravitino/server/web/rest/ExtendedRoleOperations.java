@@ -38,7 +38,6 @@ import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
-import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
@@ -50,6 +49,8 @@ import org.slf4j.LoggerFactory;
 @Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/roles/{role}/")
 public class ExtendedRoleOperations {
   private static final Logger LOG = LoggerFactory.getLogger(ExtendedRoleOperations.class);
+  private static final String ROLE_MEMBERSHIP_AUTHORIZATION_EXPRESSION =
+      "SERVICE_ADMIN && METALAKE::OWNER";
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
 
@@ -69,8 +70,7 @@ public class ExtendedRoleOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-list-users-by-role." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-list-users-by-role", absolute = true)
-  @AuthorizationExpression(
-      expression = AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION)
+  @AuthorizationExpression(expression = ROLE_MEMBERSHIP_AUTHORIZATION_EXPRESSION)
   public Response listUsersByRole(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -100,8 +100,7 @@ public class ExtendedRoleOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-list-groups-by-role." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-list-groups-by-role", absolute = true)
-  @AuthorizationExpression(
-      expression = AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION)
+  @AuthorizationExpression(expression = ROLE_MEMBERSHIP_AUTHORIZATION_EXPRESSION)
   public Response listGroupsByRole(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,

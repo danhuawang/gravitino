@@ -240,8 +240,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
             "listGroupRoleAssignments", String.class, String.class);
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
-    Assertions.assertEquals(
-        "METALAKE::OWNER || METALAKE::MANAGE_GROUPS || GROUP::SELF", expression.expression());
+    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
 
     Parameter[] parameters = method.getParameters();
     Assertions.assertEquals(
@@ -249,6 +248,16 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
         parameters[0].getAnnotation(AuthorizationMetadata.class).type());
     Assertions.assertEquals(
         Entity.EntityType.GROUP, parameters[1].getAnnotation(AuthorizationMetadata.class).type());
+  }
+
+  @Test
+  public void testAddGroupAuthorization() throws NoSuchMethodException {
+    Method method =
+        ExtendedMetalakeGroupOperations.class.getMethod(
+            "addGroup", String.class, LocalGroupAddRequest.class);
+    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+    Assertions.assertNotNull(expression);
+    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
   }
 
   @Test

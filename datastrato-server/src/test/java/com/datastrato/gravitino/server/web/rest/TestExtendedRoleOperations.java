@@ -21,6 +21,7 @@ import com.datastrato.gravitino.dto.responses.RoleGroupAssignmentListResponse;
 import com.datastrato.gravitino.dto.responses.RoleUserAssignmentListResponse;
 import com.google.common.collect.Lists;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Collections;
 import javax.servlet.http.HttpServletRequest;
@@ -54,6 +55,7 @@ import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -166,6 +168,21 @@ public class TestExtendedRoleOperations extends JerseyTest {
     ErrorResponse errorResponse = errorResp.readEntity(ErrorResponse.class);
     Assertions.assertEquals(ErrorConstants.NOT_FOUND_CODE, errorResponse.getCode());
     Assertions.assertEquals(NoSuchRoleException.class.getSimpleName(), errorResponse.getType());
+  }
+
+  @Test
+  public void testRoleMembershipAuthorization() throws NoSuchMethodException {
+    Method listUsers =
+        ExtendedRoleOperations.class.getMethod("listUsersByRole", String.class, String.class);
+    Method listGroups =
+        ExtendedRoleOperations.class.getMethod("listGroupsByRole", String.class, String.class);
+
+    Assertions.assertEquals(
+        "SERVICE_ADMIN && METALAKE::OWNER",
+        listUsers.getAnnotation(AuthorizationExpression.class).expression());
+    Assertions.assertEquals(
+        "SERVICE_ADMIN && METALAKE::OWNER",
+        listGroups.getAnnotation(AuthorizationExpression.class).expression());
   }
 
   @Test

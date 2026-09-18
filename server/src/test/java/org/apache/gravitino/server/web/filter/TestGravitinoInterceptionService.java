@@ -602,6 +602,14 @@ public class TestGravitinoInterceptionService {
     Mockito.when(dataPreviewOperationsDescriptor.getImplementation())
         .thenReturn("com.datastrato.gravitino.server.web.rest.DataPreviewOperations");
 
+    Descriptor connectionOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(connectionOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.ConnectionOperations");
+
+    Descriptor metalakeSummaryOperationsDescriptor = Mockito.mock(Descriptor.class);
+    Mockito.when(metalakeSummaryOperationsDescriptor.getImplementation())
+        .thenReturn("com.datastrato.gravitino.server.web.rest.MetalakeSummaryOperations");
+
     Descriptor enterpriseNonOperationsDescriptor = Mockito.mock(Descriptor.class);
     Mockito.when(enterpriseNonOperationsDescriptor.getImplementation())
         .thenReturn("com.datastrato.gravitino.server.web.rest.ServletRequestFactoryBase");
@@ -622,6 +630,8 @@ public class TestGravitinoInterceptionService {
     Assertions.assertTrue(filter.matches(principalRoleOperationsDescriptor));
     Assertions.assertTrue(filter.matches(credentialProviderOperationsDescriptor));
     Assertions.assertTrue(filter.matches(dataPreviewOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(connectionOperationsDescriptor));
+    Assertions.assertTrue(filter.matches(metalakeSummaryOperationsDescriptor));
     Assertions.assertFalse(filter.matches(enterpriseNonOperationsDescriptor));
   }
 

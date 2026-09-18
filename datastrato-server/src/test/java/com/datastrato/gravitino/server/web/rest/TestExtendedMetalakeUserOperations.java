@@ -270,7 +270,35 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
     Assertions.assertEquals(
-        "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF", expression.expression());
+        "(SERVICE_ADMIN && METALAKE::OWNER) || USER::SELF", expression.expression());
+  }
+
+  @Test
+  public void testListUsersAuthorization() throws NoSuchMethodException {
+    Method method = ExtendedMetalakeUserOperations.class.getMethod("listUsers", String.class);
+    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+    Assertions.assertNotNull(expression);
+    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
+  }
+
+  @Test
+  public void testAddAndEnabledAuthorization() throws NoSuchMethodException {
+    Method addMethod =
+        ExtendedMetalakeUserOperations.class.getMethod(
+            "addUser", String.class, LocalUserAddRequest.class);
+    Assertions.assertEquals(
+        "SERVICE_ADMIN && (METALAKE::OWNER || METALAKE::MANAGE_USERS)",
+        addMethod.getAnnotation(AuthorizationExpression.class).expression());
+
+    Method enabledMethod =
+        ExtendedMetalakeUserOperations.class.getMethod(
+            "batchUpdateUserEnabled", String.class, UserEnabledBatchUpdateRequest.class);
+    Assertions.assertEquals(
+        "SERVICE_ADMIN && (METALAKE::OWNER || METALAKE::MANAGE_USERS)",
+        enabledMethod.getAnnotation(AuthorizationExpression.class).expression());
+    Assertions.assertEquals(
+        Entity.EntityType.METALAKE,
+        enabledMethod.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());
   }
 
   @Test
@@ -421,6 +449,14 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     Assertions.assertTrue(body.getUsers()[0].isStatus());
     Assertions.assertEquals("bob", body.getUsers()[1].getName());
     Assertions.assertFalse(body.getUsers()[1].isStatus());
+  }
+
+  @Test
+  public void testListIdpUsersAuthorization() throws NoSuchMethodException {
+    Method method = ExtendedMetalakeUserOperations.class.getMethod("listIdpUsers", String.class);
+    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+    Assertions.assertNotNull(expression);
+    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
   }
 
   @Test

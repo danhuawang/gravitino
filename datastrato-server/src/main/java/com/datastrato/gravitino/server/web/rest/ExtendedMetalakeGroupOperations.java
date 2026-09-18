@@ -47,6 +47,8 @@ import org.apache.gravitino.server.web.rest.OperationType;
 @NameBindings.AccessControlInterfaces
 @Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/groups")
 public class ExtendedMetalakeGroupOperations {
+  private static final String METALAKE_SECURITY_AUTHORIZATION_EXPRESSION =
+      "SERVICE_ADMIN && METALAKE::OWNER";
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
   private final EntityStore entityStore;
@@ -74,7 +76,7 @@ public class ExtendedMetalakeGroupOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-list-metalake-groups." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-list-metalake-groups", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listGroups(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -105,7 +107,7 @@ public class ExtendedMetalakeGroupOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-get-metalake-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-get-metalake-group", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response getGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -137,7 +139,7 @@ public class ExtendedMetalakeGroupOperations {
       name = "web-list-metalake-idp-groups." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "web-list-metalake-idp-groups", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listIdpGroups(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -166,7 +168,7 @@ public class ExtendedMetalakeGroupOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-add-metalake-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-add-metalake-group", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response addGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -207,7 +209,7 @@ public class ExtendedMetalakeGroupOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "web-list-users-for-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "web-list-users-for-group", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS")
+  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listUsersForGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -240,7 +242,7 @@ public class ExtendedMetalakeGroupOperations {
       name = "web-list-group-role-assignments." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "web-list-group-role-assignments", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS || GROUP::SELF")
+  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listGroupRoleAssignments(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,

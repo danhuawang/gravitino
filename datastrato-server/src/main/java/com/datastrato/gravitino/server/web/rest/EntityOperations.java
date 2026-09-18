@@ -212,6 +212,8 @@ public class EntityOperations {
     try {
       return Utils.doAs(
           httpRequest, () -> doList(namespace, catalogType, parentSchema, resultLimit));
+    } catch (ForbiddenException e) {
+      return Utils.forbidden(e.getMessage(), e);
     } catch (Exception e) {
       return Utils.internalError("Error while listing entities", e);
     } catch (Throwable throwable) {
@@ -221,6 +223,18 @@ public class EntityOperations {
 
   private Response doList(
       Namespace namespace, Catalog.Type catalogType, String parentSchema, int resultLimit) {
+    if (namespace.length() == 2) {
+      checkParentAccess(
+          NameIdentifierUtil.ofCatalog(namespace.level(0), namespace.level(1)),
+          Entity.EntityType.CATALOG,
+          AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION);
+    } else if (namespace.length() == 3) {
+      checkParentAccess(
+          NameIdentifier.of(namespace.level(0), namespace.level(1), namespace.level(2)),
+          Entity.EntityType.SCHEMA,
+          AuthorizationExpressionConstants.LOAD_SCHEMA_AUTHORIZATION_EXPRESSION);
+    }
+
     if (StringUtils.isNotBlank(parentSchema)) {
       try {
         validateParentSchema(parentSchema);
@@ -336,6 +350,17 @@ public class EntityOperations {
         return Utils.illegalArguments(
             "Namespace levels should be less than 4: " + namespace, new IllegalArgumentException());
     }
+  }
+
+  private void checkParentAccess(
+      NameIdentifier identifier, Entity.EntityType entityType, String expression) {
+    if (MetadataAuthzHelper.checkAccess(identifier, entityType, expression)) {
+      return;
+    }
+
+    throw new ForbiddenException(
+        "User '%s' is not authorized to list entities under metadata '%s' with expression '%s'",
+        PrincipalUtils.getCurrentUserName(), identifier, expression);
   }
 
   private Response handleListFailure(

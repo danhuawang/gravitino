@@ -49,7 +49,20 @@ class TestSearchResultFilter {
   void testEveryIndexedTypeUsesItsVisibilityRules() throws Exception {
     GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
     when(authorizer.authorize(any(), eq("lake"), any(), any(), any()))
-        .thenAnswer(call -> ((MetadataObject) call.getArgument(2)).name().startsWith("visible"));
+        .thenAnswer(
+            call -> {
+              MetadataObject object = call.getArgument(2);
+              Privilege.Name privilege = call.getArgument(3);
+              if (privilege == Privilege.Name.USE_CATALOG) {
+                return object.type() == MetadataObject.Type.CATALOG
+                    && object.name().equals("catalog");
+              }
+              if (privilege == Privilege.Name.USE_SCHEMA) {
+                return object.type() == MetadataObject.Type.SCHEMA
+                    && object.name().equals("schema");
+              }
+              return object.name().startsWith("visible");
+            });
     when(authorizer.isOwner(any(), eq("lake"), any(), any()))
         .thenAnswer(call -> ((MetadataObject) call.getArgument(2)).name().startsWith("visible"));
     when(authorizer.isSelf(any(), any(), any()))
@@ -95,6 +108,7 @@ class TestSearchResultFilter {
   void testSpecificPrivilegeWithoutOwnership(EntityType type, Privilege.Name privilege)
       throws Exception {
     GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    allowParentUse(authorizer);
     List<SearchDataSource.Result> batches =
         List.of(new SearchDataSource.Result(List.of(entity(type, "target")), type));
     when(authorizer.authorize(any(), eq("lake"), any(), eq(privilege), any()))
@@ -108,6 +122,22 @@ class TestSearchResultFilter {
     // Revoking the grant must take effect on the next request, including its total count.
     when(authorizer.authorize(any(), eq("lake"), any(), eq(privilege), any())).thenReturn(false);
     assertTrue(filter(source(batches), 0, 10, authorizer).isEmpty());
+  }
+
+  @Test
+  void testTablePrivilegeRequiresParentUsePrivileges() throws Exception {
+    GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.SELECT_TABLE), any()))
+        .thenReturn(true);
+    List<SearchDataSource.Result> batches = List.of(batch(entity(EntityType.TABLE, "target")));
+
+    assertTrue(filter(source(batches), 0, 10, authorizer).isEmpty());
+    when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.USE_CATALOG), any()))
+        .thenReturn(true);
+    assertTrue(filter(source(batches), 0, 10, authorizer).isEmpty());
+    when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.USE_SCHEMA), any()))
+        .thenReturn(true);
+    assertEquals(1, filter(source(batches), 0, 10, authorizer).size());
   }
 
   @ParameterizedTest
@@ -180,6 +210,7 @@ class TestSearchResultFilter {
   @Test
   void testPaginationAndCountsAcrossBatches() throws Exception {
     GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    allowParentUse(authorizer);
     when(authorizer.isOwner(any(), eq("lake"), any(), any()))
         .thenAnswer(call -> ((MetadataObject) call.getArgument(2)).name().startsWith("visible"));
     SearchDataSource source =
@@ -205,6 +236,7 @@ class TestSearchResultFilter {
   @Test
   void testInheritedGrantStillHonorsExplicitDeny() throws Exception {
     GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    allowParentUse(authorizer);
     when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.SELECT_TABLE), any()))
         .thenReturn(true);
     when(authorizer.deny(any(), eq("lake"), any(), eq(Privilege.Name.SELECT_TABLE), any()))
@@ -225,6 +257,11 @@ class TestSearchResultFilter {
   @Test
   void testSchemaGrantDoesNotLeakAcrossSchemasOrCatalogs() throws Exception {
     GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    allowParentUse(authorizer);
+    when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.USE_CATALOG), any()))
+        .thenReturn(true);
+    when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.USE_SCHEMA), any()))
+        .thenReturn(true);
     when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.SELECT_TABLE), any()))
         .thenAnswer(
             call -> {
@@ -311,6 +348,7 @@ class TestSearchResultFilter {
   @Test
   void testCurrentCallerIsPropagatedToAuthorization() throws Exception {
     GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    allowParentUse(authorizer);
     when(authorizer.authorize(any(), any(), any(), eq(Privilege.Name.SELECT_TABLE), any()))
         .thenAnswer(call -> "reader".equals(((Principal) call.getArgument(0)).getName()));
     List<SearchDataSource.Result> batches = List.of(batch(entity(EntityType.TABLE, "table")));
@@ -465,6 +503,22 @@ class TestSearchResultFilter {
     assertThrows(
         IllegalArgumentException.class,
         () -> SearchResultFilter.filter(source, "lake", 0, 10, 0, authorizer));
+  }
+
+  private static void allowParentUse(GravitinoAuthorizer authorizer) {
+    when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.USE_CATALOG), any()))
+        .thenAnswer(
+            call -> {
+              MetadataObject object = call.getArgument(2);
+              return object.type() == MetadataObject.Type.CATALOG
+                  && object.name().equals("catalog");
+            });
+    when(authorizer.authorize(any(), eq("lake"), any(), eq(Privilege.Name.USE_SCHEMA), any()))
+        .thenAnswer(
+            call -> {
+              MetadataObject object = call.getArgument(2);
+              return object.type() == MetadataObject.Type.SCHEMA && object.name().equals("schema");
+            });
   }
 
   private static GravitinoAuthorizer visibleToEveryone() {

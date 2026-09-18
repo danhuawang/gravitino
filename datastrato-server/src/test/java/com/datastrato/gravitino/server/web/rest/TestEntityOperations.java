@@ -72,6 +72,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
+import javax.ws.rs.Path;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -380,6 +381,55 @@ public class TestEntityOperations extends JerseyTest {
     lenient()
         .when(metricDataService.getCurrentMetrics(any(), any(), any(String[].class)))
         .thenReturn(new CurrentMetricsSnapshot(1L, Collections.emptyList(), defaultDirty));
+  }
+
+  @Test
+  public void testListEntitiesRequiresParentAccess() throws IllegalAccessException {
+    Namespace catalogNamespace = Namespace.of("testMetalake", "relCatalog");
+    Namespace schemaNamespace = Namespace.of("testMetalake", "relCatalog", "relSchema");
+    String entitiesPath = EntityOperations.class.getAnnotation(Path.class).value();
+    Mockito.clearInvocations(schemaDispatcher, tableDispatcher, catalogDispatcher);
+
+    Config oldConfig = GravitinoEnv.getInstance().config();
+    GravitinoAuthorizer oldAuthorizer = GravitinoEnv.getInstance().gravitinoAuthorizer();
+    GravitinoAuthorizerProvider provider = GravitinoAuthorizerProvider.getInstance();
+    GravitinoAuthorizer oldProviderAuthorizer =
+        (GravitinoAuthorizer) FieldUtils.readField(provider, "gravitinoAuthorizer", true);
+    Config mockConfig = mock(Config.class);
+    when(mockConfig.get(ENABLE_AUTHORIZATION)).thenReturn(true);
+    GravitinoAuthorizer mockAuthorizer = mock(GravitinoAuthorizer.class);
+    when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
+
+    try {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", mockConfig, true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(mockAuthorizer);
+      FieldUtils.writeField(provider, "gravitinoAuthorizer", mockAuthorizer, true);
+
+      Response schemaResponse =
+          target(entitiesPath)
+              .queryParam("namespace", catalogNamespace.toString())
+              .queryParam("catalogType", "relational")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .get();
+      Assertions.assertEquals(
+          Response.Status.FORBIDDEN.getStatusCode(), schemaResponse.getStatus());
+
+      Response childResponse =
+          target(entitiesPath)
+              .queryParam("namespace", schemaNamespace.toString())
+              .queryParam("catalogType", "relational")
+              .request(MediaType.APPLICATION_JSON_TYPE)
+              .accept("application/vnd.gravitino.v1+json")
+              .get();
+      Assertions.assertEquals(Response.Status.FORBIDDEN.getStatusCode(), childResponse.getStatus());
+
+      Mockito.verifyNoInteractions(schemaDispatcher, tableDispatcher, catalogDispatcher);
+    } finally {
+      FieldUtils.writeField(GravitinoEnv.getInstance(), "config", oldConfig, true);
+      GravitinoEnv.getInstance().setGravitinoAuthorizer(oldAuthorizer);
+      FieldUtils.writeField(provider, "gravitinoAuthorizer", oldProviderAuthorizer, true);
+    }
   }
 
   @Test
@@ -1675,6 +1725,11 @@ public class TestEntityOperations extends JerseyTest {
         .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
         .thenReturn(false);
     lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_CATALOG), any()))
+        .thenReturn(true);
+    lenient()
         .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
         .thenReturn(false);
     lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
@@ -1887,6 +1942,16 @@ public class TestEntityOperations extends JerseyTest {
         .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
         .thenReturn(false);
     lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_CATALOG), any()))
+        .thenReturn(true);
+    lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_SCHEMA), any()))
+        .thenReturn(true);
+    lenient()
         .when(mockAuthorizer.deny(any(), eq("testMetalake"), any(), any(), any()))
         .thenReturn(false);
     lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
@@ -1993,6 +2058,16 @@ public class TestEntityOperations extends JerseyTest {
         .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
         .thenReturn(false);
     lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_CATALOG), any()))
+        .thenReturn(true);
+    lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_SCHEMA), any()))
+        .thenReturn(true);
+    lenient()
         .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
         .thenReturn(false);
     lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
@@ -2086,6 +2161,16 @@ public class TestEntityOperations extends JerseyTest {
         .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
         .thenReturn(false);
     lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_CATALOG), any()))
+        .thenReturn(true);
+    lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_SCHEMA), any()))
+        .thenReturn(true);
+    lenient()
         .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
         .thenReturn(false);
     lenient().when(mockAuthorizer.isMetalakeUser(eq("testMetalake"), any())).thenReturn(true);
@@ -2177,6 +2262,16 @@ public class TestEntityOperations extends JerseyTest {
     lenient()
         .when(mockAuthorizer.authorize(any(), eq("testMetalake"), any(), any(), any()))
         .thenReturn(false);
+    lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_CATALOG), any()))
+        .thenReturn(true);
+    lenient()
+        .when(
+            mockAuthorizer.authorize(
+                any(), eq("testMetalake"), any(), eq(Privilege.Name.USE_SCHEMA), any()))
+        .thenReturn(true);
     lenient()
         .when(mockAuthorizer.hasDenyPolicy(any(), eq("testMetalake"), anySet(), any()))
         .thenReturn(false);
