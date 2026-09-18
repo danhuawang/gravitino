@@ -3,7 +3,6 @@
  */
 package com.datastrato.gravitino.catalog.oracle.operations;
 
-import com.datastrato.gravitino.catalog.oracle.OracleCatalogCapability;
 import com.google.common.base.Preconditions;
 import java.util.Locale;
 import org.apache.commons.lang3.StringUtils;
@@ -105,7 +104,7 @@ public final class OracleIdentifierUtil {
    *
    * @throws IllegalArgumentException if {@code name}'s content contains an embedded {@code "} (see
    *     {@link #quote}) — this also covers index/partition names, which are not validated against
-   *     {@link OracleCatalogCapability#ORACLE_NAME_PATTERN}.
+   *     Oracle's unquoted-identifier grammar.
    */
   public static String quotedName(String name) {
     return quote(toPhysicalName(name));

@@ -1252,6 +1252,40 @@ public class CatalogOracleIT extends BaseIT {
   }
 
   @Test
+  void testCreateTableWithNameLongerThan30Chars() {
+    // Issue #2095: Oracle raised the identifier limit to 128 bytes in 12.2, so a name longer than
+    // 30 characters must be creatable against a modern Oracle server. The same limit applies to
+    // column names, not just the table name, so this table uses a 40-character table name AND a
+    // 40-character column name to cover both scopes.
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    String longTableName = "LONG_NAME_TABLE_FOR_GRAVITINO_PROBE_0917";
+    String longColumnName = "LONG_NAME_COLUMN_FOR_GRAVITINO_PROBE_0917";
+    assertEquals(40, longTableName.length());
+    assertEquals(41, longColumnName.length());
+
+    Column[] columns =
+        new Column[] {
+          Column.of("id", Types.IntegerType.get(), null, false, false, null),
+          Column.of(longColumnName, Types.VarCharType.of(64), null, true, false, null)
+        };
+
+    Table created =
+        createTable(longTableName, columns, null, ImmutableMap.of(), Transforms.EMPTY_TRANSFORM);
+    assertEquals(longTableName, created.name());
+
+    // Both the long table name and the long column name round-trip through list and load.
+    Table loaded = tableCatalog.loadTable(NameIdentifier.of(schemaName, longTableName));
+    assertEquals(longTableName, loaded.name());
+    assertTrue(
+        Arrays.stream(loaded.columns()).anyMatch(c -> longColumnName.equals(c.name())),
+        "the 40-plus-character column name should be created and loaded");
+    assertTrue(
+        Arrays.stream(tableCatalog.listTables(Namespace.of(schemaName)))
+            .anyMatch(ident -> longTableName.equals(ident.name())));
+    assertTrue(oracleService.tableExists(longTableName));
+  }
+
+  @Test
   void testQuotedLowerCaseTableIsListableAndLoadableByQuotedName() {
     // Issue #1749: an Oracle table created with a quoted, lower-case physical name is listed by its
     // bare physical name but cannot be loaded under that bare name, because loadTable folds an

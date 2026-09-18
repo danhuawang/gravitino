@@ -314,12 +314,18 @@ The following operations are **not** supported and will throw `UnsupportedOperat
 
 ### Identifier naming rules
 
-Oracle 11g has strict identifier rules, and the catalog enforces them on every schema, table, column, and index name:
+The catalog enforces Oracle's own identifier rules on every schema, table, column, and index name:
 
 - Must start with a letter (A-Z, a-z).
 - May contain letters, digits, underscores (`_`), dollar signs (`$`), and hash signs (`#`).
-- Maximum length is **30 characters** (Oracle 11g hard limit).
+- Maximum length follows the connected Oracle server's limit: **128 bytes** on Oracle 12.2 and
+  later, **30 bytes** on releases before 12.2. The catalog resolves this from the server at
+  connection time (via the JDBC driver's reported maximum identifier length) rather than assuming a
+  fixed value, so it does not reject a name that the connected Oracle would accept.
 
-Regex: `^[A-Za-z][A-Za-z0-9_$#]{0,29}$`
+Grammar (length enforced separately against the server limit): `^[A-Za-z][A-Za-z0-9_$#]*$`
 
-Names that do not match this pattern are rejected up front, before any SQL is sent to Oracle.
+A quoted identifier (e.g. `"My Table"`) is exempt from the character grammar but is still bound by
+the same server length limit, measured in bytes of the database character set.
+
+Names that do not match these rules are rejected up front, before any SQL is sent to Oracle.

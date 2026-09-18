@@ -13,7 +13,12 @@ import org.junit.jupiter.api.Test;
 
 public class TestOracleCatalogCapability {
 
+  // Default capability: no server-resolved limit, so it uses the modern 128-byte limit.
   private final OracleCatalogCapability capability = new OracleCatalogCapability();
+
+  // Capability pinned to the pre-12.2 30-byte limit, used to test length-boundary behavior for an
+  // older Oracle server.
+  private final OracleCatalogCapability legacyCapability = new OracleCatalogCapability(30);
 
   @Test
   void testCaseSensitiveOnNameIsUnsupportedForAllScopes() {
@@ -42,17 +47,44 @@ public class TestOracleCatalogCapability {
   }
 
   @Test
-  void testSpecificationOnNameRejectsTooLongName() {
+  void testSpecificationOnNameRejectsTooLongNameForLegacyLimit() {
+    // 31 chars exceeds the pre-12.2 30-byte limit.
     CapabilityResult result =
-        capability.specificationOnName(Capability.Scope.TABLE, "a" + "b".repeat(30));
+        legacyCapability.specificationOnName(Capability.Scope.TABLE, "a" + "b".repeat(30));
     assertFalse(result.supported());
   }
 
   @Test
-  void testSpecificationOnNameAcceptsMaxLengthName() {
+  void testSpecificationOnNameAcceptsMaxLengthNameForLegacyLimit() {
+    // 30 chars is exactly the pre-12.2 limit.
     CapabilityResult result =
-        capability.specificationOnName(Capability.Scope.TABLE, "a" + "b".repeat(29));
+        legacyCapability.specificationOnName(Capability.Scope.TABLE, "a" + "b".repeat(29));
     assertTrue(result.supported());
+  }
+
+  @Test
+  void testSpecificationOnNameAcceptsNameOver30ForDefaultLimit() {
+    // A 31-character name is rejected by a legacy (30) limit but accepted by the default 128-byte
+    // limit that modern Oracle (12.2+) allows -- the fix for issue #2095.
+    String name = "a" + "b".repeat(30);
+    assertFalse(legacyCapability.specificationOnName(Capability.Scope.TABLE, name).supported());
+    assertTrue(capability.specificationOnName(Capability.Scope.TABLE, name).supported());
+  }
+
+  @Test
+  void testSpecificationOnNameAcceptsMaxLengthNameForDefaultLimit() {
+    // 128 chars is exactly the default (12.2+) limit.
+    CapabilityResult result =
+        capability.specificationOnName(Capability.Scope.TABLE, "a" + "b".repeat(127));
+    assertTrue(result.supported());
+  }
+
+  @Test
+  void testSpecificationOnNameRejectsNameOver128ForDefaultLimit() {
+    // 129 chars exceeds even the modern 128-byte limit.
+    CapabilityResult result =
+        capability.specificationOnName(Capability.Scope.TABLE, "a" + "b".repeat(128));
+    assertFalse(result.supported());
   }
 
   @Test
@@ -69,17 +101,35 @@ public class TestOracleCatalogCapability {
   }
 
   @Test
-  void testSpecificationOnNameQuotedFormRejectsTooLongInner() {
+  void testSpecificationOnNameQuotedFormRejectsTooLongInnerForLegacyLimit() {
     CapabilityResult result =
-        capability.specificationOnName(Capability.Scope.TABLE, "\"" + "a".repeat(31) + "\"");
+        legacyCapability.specificationOnName(Capability.Scope.TABLE, "\"" + "a".repeat(31) + "\"");
     assertFalse(result.supported());
   }
 
   @Test
-  void testSpecificationOnNameQuotedFormAcceptsMaxLengthInner() {
+  void testSpecificationOnNameQuotedFormAcceptsMaxLengthInnerForLegacyLimit() {
     CapabilityResult result =
-        capability.specificationOnName(Capability.Scope.TABLE, "\"" + "a".repeat(30) + "\"");
+        legacyCapability.specificationOnName(Capability.Scope.TABLE, "\"" + "a".repeat(30) + "\"");
     assertTrue(result.supported());
+  }
+
+  @Test
+  void testSpecificationOnNameQuotedFormAcceptsLongInnerForDefaultLimit() {
+    // A 31-char quoted inner is rejected by the legacy limit but accepted by the default 128-byte
+    // limit; 128 is exactly the boundary and 129 is rejected.
+    assertFalse(
+        legacyCapability
+            .specificationOnName(Capability.Scope.TABLE, "\"" + "a".repeat(31) + "\"")
+            .supported());
+    assertTrue(
+        capability
+            .specificationOnName(Capability.Scope.TABLE, "\"" + "a".repeat(128) + "\"")
+            .supported());
+    assertFalse(
+        capability
+            .specificationOnName(Capability.Scope.TABLE, "\"" + "a".repeat(129) + "\"")
+            .supported());
   }
 
   @Test
@@ -112,21 +162,37 @@ public class TestOracleCatalogCapability {
 
   @Test
   void testSpecificationOnNameQuotedFormRejectsNameExceedingByteLength() {
-    // 11 three-byte UTF-8 characters = 33 bytes, exceeding Oracle's 30-byte identifier limit, even
-    // though it is only 11 Java characters -- well under a naive character-count check.
+    // 11 three-byte UTF-8 characters = 33 bytes, exceeding the pre-12.2 30-byte limit, even though
+    // it is only 11 Java characters -- well under a naive character-count check.
     String elevenMultiByteChars = "测".repeat(11);
     CapabilityResult result =
-        capability.specificationOnName(Capability.Scope.TABLE, "\"" + elevenMultiByteChars + "\"");
+        legacyCapability.specificationOnName(
+            Capability.Scope.TABLE, "\"" + elevenMultiByteChars + "\"");
     assertFalse(result.supported());
   }
 
   @Test
   void testSpecificationOnNameQuotedFormAcceptsNameAtByteLengthLimit() {
-    // 10 three-byte UTF-8 characters = exactly 30 bytes, the Oracle identifier length limit.
+    // 10 three-byte UTF-8 characters = exactly 30 bytes, the pre-12.2 identifier length limit.
     String tenMultiByteChars = "测".repeat(10);
     CapabilityResult result =
-        capability.specificationOnName(Capability.Scope.TABLE, "\"" + tenMultiByteChars + "\"");
+        legacyCapability.specificationOnName(
+            Capability.Scope.TABLE, "\"" + tenMultiByteChars + "\"");
     assertTrue(result.supported());
+  }
+
+  @Test
+  void testSpecificationOnNameQuotedFormEnforcesByteLengthAgainstDefaultLimit() {
+    // 43 three-byte UTF-8 characters = 129 bytes, exceeding the default 128-byte limit, while 42
+    // characters = 126 bytes is accepted.
+    assertFalse(
+        capability
+            .specificationOnName(Capability.Scope.TABLE, "\"" + "测".repeat(43) + "\"")
+            .supported());
+    assertTrue(
+        capability
+            .specificationOnName(Capability.Scope.TABLE, "\"" + "测".repeat(42) + "\"")
+            .supported());
   }
 
   @Test
