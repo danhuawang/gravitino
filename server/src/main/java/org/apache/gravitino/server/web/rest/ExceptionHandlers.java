@@ -32,6 +32,7 @@ import org.apache.gravitino.exceptions.GroupAlreadyExistsException;
 import org.apache.gravitino.exceptions.IllegalJobTemplateOperationException;
 import org.apache.gravitino.exceptions.InUseException;
 import org.apache.gravitino.exceptions.JobTemplateAlreadyExistsException;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.MetalakeAlreadyExistsException;
 import org.apache.gravitino.exceptions.MetalakeInUseException;
 import org.apache.gravitino.exceptions.MetalakeNotInUseException;
@@ -63,6 +64,8 @@ import org.slf4j.LoggerFactory;
 public class ExceptionHandlers {
 
   private static final Logger LOG = LoggerFactory.getLogger(ExceptionHandlers.class);
+  private static final String METADATA_INTEGRITY_PUBLIC_MESSAGE =
+      "Metadata integrity verification failed";
 
   private ExceptionHandlers() {}
 
@@ -291,7 +294,16 @@ public class ExceptionHandlers {
       String errorMsg = getTableErrorMsg(formatted, op.name(), schema, getErrorMsg(e));
       LOG.warn(errorMsg, e);
 
-      if (e instanceof IllegalArgumentException) {
+      if (e instanceof MetadataIntegrityException) {
+        return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+            .entity(
+                ErrorResponse.typedInternalError(
+                    MetadataIntegrityException.class.getSimpleName(),
+                    METADATA_INTEGRITY_PUBLIC_MESSAGE))
+            .type(MediaType.APPLICATION_JSON)
+            .build();
+
+      } else if (e instanceof IllegalArgumentException) {
         return Utils.illegalArguments(errorMsg, e);
 
       } else if (e instanceof ConnectionFailedException) {

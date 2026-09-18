@@ -414,6 +414,23 @@ public class IcebergRESTUtils {
   }
 
   /**
+   * Builds an Iceberg error response that never carries a stack trace, for failures whose detail
+   * must stay server-side regardless of the configured stack-trace policy.
+   *
+   * @param httpStatus HTTP status code
+   * @param type Iceberg error type
+   * @param message public error message
+   * @return the redacted Iceberg error response
+   */
+  public static ErrorResponse errorResponse(int httpStatus, String type, String message) {
+    return ErrorResponse.builder()
+        .responseCode(httpStatus)
+        .withType(type)
+        .withMessage(message)
+        .build();
+  }
+
+  /**
    * Builds an Iceberg error response while applying the configured stack-trace policy.
    *
    * @param httpStatus HTTP status code

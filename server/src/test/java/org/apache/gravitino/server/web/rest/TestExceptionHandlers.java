@@ -23,11 +23,14 @@ import javax.ws.rs.core.Response;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.UnmodifiableStatisticException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class TestExceptionHandlers {
+  private static final String METADATA_INTEGRITY_PUBLIC_MESSAGE =
+      "Metadata integrity verification failed";
 
   @Test
   public void testGetErrorMsg() {
@@ -70,6 +73,27 @@ public class TestExceptionHandlers {
     ErrorResponse error = (ErrorResponse) response.getEntity();
     Assertions.assertEquals(ErrorConstants.CONNECTION_FAILED_CODE, error.getCode());
     Assertions.assertEquals(ConnectionFailedException.class.getSimpleName(), error.getType());
+  }
+
+  /** Table metadata-integrity failures retain their type without exposing internal details. */
+  @Test
+  public void testTableMetadataIntegrityFailureIsRedacted() {
+    Response response =
+        ExceptionHandlers.handleTableException(
+            OperationType.LOAD,
+            "orders",
+            "customer",
+            new MetadataIntegrityException("JDBC metadata hash secret-a did not match secret-b"));
+
+    Assertions.assertEquals(
+        Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), response.getStatus());
+    ErrorResponse error = (ErrorResponse) response.getEntity();
+    Assertions.assertEquals(ErrorConstants.INTERNAL_ERROR_CODE, error.getCode());
+    Assertions.assertEquals(MetadataIntegrityException.class.getSimpleName(), error.getType());
+    Assertions.assertEquals(METADATA_INTEGRITY_PUBLIC_MESSAGE, error.getMessage());
+    Assertions.assertNull(error.getStack());
+    Assertions.assertFalse(error.toString().contains("secret-a"));
+    Assertions.assertFalse(error.toString().contains("secret-b"));
   }
 
   @Test

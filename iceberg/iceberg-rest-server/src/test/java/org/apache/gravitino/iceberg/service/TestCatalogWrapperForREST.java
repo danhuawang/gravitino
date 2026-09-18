@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.credential.CredentialConstants;
 import org.apache.gravitino.credential.CredentialPrivilege;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.service.extension.DummyCredentialProvider;
 import org.apache.iceberg.BaseTransaction;
@@ -69,6 +70,7 @@ import org.apache.iceberg.rest.auth.AuthProperties;
 import org.apache.iceberg.rest.credentials.Credential;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.ImmutableRegisterTableRequest;
+import org.apache.iceberg.rest.requests.PlanTableScanRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.LoadCredentialsResponse;
@@ -682,6 +684,35 @@ public class TestCatalogWrapperForREST {
     } finally {
       CONSTRUCTION_IN_PROGRESS.set(false);
     }
+  }
+
+  @Test
+  void testPlanTableScanPreservesMetadataIntegrityFailure() {
+    IcebergConfig config =
+        new IcebergConfig(
+            ImmutableMap.of(
+                IcebergConstants.CATALOG_BACKEND,
+                "memory",
+                IcebergConstants.WAREHOUSE,
+                "/tmp/warehouse"));
+    Catalog catalog = mock(Catalog.class);
+    TableIdentifier table = TableIdentifier.of(Namespace.of("db"), "tbl");
+    MetadataIntegrityException failure = new MetadataIntegrityException("integrity failure");
+    when(catalog.loadTable(table)).thenThrow(failure);
+    CatalogWrapperForREST wrapper =
+        new CatalogWrapperForREST("local", config) {
+          @Override
+          public Catalog getCatalog() {
+            return catalog;
+          }
+        };
+
+    MetadataIntegrityException thrown =
+        Assertions.assertThrowsExactly(
+            MetadataIntegrityException.class,
+            () -> wrapper.planTableScan(table, PlanTableScanRequest.builder().build()));
+
+    Assertions.assertSame(failure, thrown);
   }
 
   @Test

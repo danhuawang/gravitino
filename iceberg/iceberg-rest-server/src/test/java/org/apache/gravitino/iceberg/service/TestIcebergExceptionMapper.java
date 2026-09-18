@@ -20,6 +20,7 @@ package org.apache.gravitino.iceberg.service;
 
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.TokenExpiredException;
 import org.apache.gravitino.server.web.ServerHealth;
 import org.apache.iceberg.exceptions.AlreadyExistsException;
@@ -41,6 +42,9 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 public class TestIcebergExceptionMapper {
+  private static final String METADATA_INTEGRITY_PUBLIC_MESSAGE =
+      "Iceberg table metadata integrity verification failed";
+
   private final IcebergExceptionMapper icebergExceptionMapper = new IcebergExceptionMapper();
 
   @Test
@@ -63,6 +67,25 @@ public class TestIcebergExceptionMapper {
     checkExceptionStatus(new CommitStateUnknownException("", new RuntimeException()), 500);
     checkExceptionStatus(new ServiceUnavailableException(""), 503);
     checkExceptionStatus(new RuntimeException(), 500);
+  }
+
+  /** Metadata-integrity failures retain their type without exposing internal details. */
+  @Test
+  public void testMetadataIntegrityFailureIsRedacted() {
+    MetadataIntegrityException exception =
+        new MetadataIntegrityException("JDBC metadata hash secret-a did not match secret-b");
+    Assertions.assertSame(exception, IcebergExceptionMapper.convertToIcebergException(exception));
+
+    Response response = icebergExceptionMapper.toResponse(exception);
+
+    Assertions.assertEquals(412, response.getStatus());
+    ErrorResponse error = (ErrorResponse) response.getEntity();
+    Assertions.assertEquals(412, error.code());
+    Assertions.assertEquals(MetadataIntegrityException.class.getSimpleName(), error.type());
+    Assertions.assertEquals(METADATA_INTEGRITY_PUBLIC_MESSAGE, error.message());
+    Assertions.assertNull(error.stack());
+    Assertions.assertFalse(error.toString().contains("secret-a"));
+    Assertions.assertFalse(error.toString().contains("secret-b"));
   }
 
   /** Checks that errors retain their type and nested causes in the response. */

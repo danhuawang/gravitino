@@ -221,6 +221,17 @@ public class ErrorResponse extends BaseResponse {
   }
 
   /**
+   * Create a typed internal error without serializing a stack trace.
+   *
+   * @param type The type of the error.
+   * @param message The message of the error.
+   * @return The new instance.
+   */
+  public static ErrorResponse typedInternalError(String type, String message) {
+    return new ErrorResponse(ErrorConstants.INTERNAL_ERROR_CODE, type, message, null);
+  }
+
+  /**
    * Create a new already exists error instance of {@link ErrorResponse}.
    *
    * @param type The type of the error.

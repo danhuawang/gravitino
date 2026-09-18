@@ -21,11 +21,13 @@ package org.apache.gravitino.iceberg.service;
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
 import javax.ws.rs.NotFoundException;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.ext.ExceptionMapper;
 import javax.ws.rs.ext.Provider;
 import org.apache.gravitino.exceptions.IllegalNameIdentifierException;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.exceptions.TokenExpiredException;
 import org.apache.gravitino.exceptions.UnauthorizedException;
@@ -54,12 +56,17 @@ import org.slf4j.LoggerFactory;
 public class IcebergExceptionMapper implements ExceptionMapper<Throwable> {
 
   private static final Logger LOG = LoggerFactory.getLogger(IcebergExceptionMapper.class);
+  private static final String METADATA_INTEGRITY_PUBLIC_MESSAGE =
+      "Iceberg table metadata integrity verification failed";
+  private static final int METADATA_INTEGRITY_ERROR_CODE =
+      Status.PRECONDITION_FAILED.getStatusCode();
 
   private static final Map<Class<? extends Exception>, Integer> EXCEPTION_ERROR_CODES =
       ImmutableMap.<Class<? extends Exception>, Integer>builder()
           .put(IllegalArgumentException.class, 400)
           .put(ValidationException.class, 400)
           .put(IllegalNameIdentifierException.class, 400)
+          .put(MetadataIntegrityException.class, METADATA_INTEGRITY_ERROR_CODE)
           .put(NamespaceNotEmptyException.class, 409)
           .put(NotAuthorizedException.class, 401)
           .put(UnauthorizedException.class, 401)
@@ -134,6 +141,18 @@ public class IcebergExceptionMapper implements ExceptionMapper<Throwable> {
 
   public static Response toRESTResponse(Throwable ex) {
     ServerHealth.getInstance().recordFailure(ex);
+    if (ex instanceof MetadataIntegrityException) {
+      LOG.warn("Iceberg table metadata integrity verification failed:", ex);
+      return Response.status(METADATA_INTEGRITY_ERROR_CODE)
+          .entity(
+              IcebergRESTUtils.errorResponse(
+                  METADATA_INTEGRITY_ERROR_CODE,
+                  MetadataIntegrityException.class.getSimpleName(),
+                  METADATA_INTEGRITY_PUBLIC_MESSAGE))
+          .type(MediaType.APPLICATION_JSON)
+          .build();
+    }
+
     int status =
         EXCEPTION_ERROR_CODES.getOrDefault(
             ex.getClass(), Status.INTERNAL_SERVER_ERROR.getStatusCode());

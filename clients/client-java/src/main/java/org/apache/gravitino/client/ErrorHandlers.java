@@ -42,6 +42,7 @@ import org.apache.gravitino.exceptions.IllegalRoleException;
 import org.apache.gravitino.exceptions.IllegalStatisticNameException;
 import org.apache.gravitino.exceptions.InUseException;
 import org.apache.gravitino.exceptions.JobTemplateAlreadyExistsException;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.MetalakeAlreadyExistsException;
 import org.apache.gravitino.exceptions.MetalakeInUseException;
 import org.apache.gravitino.exceptions.MetalakeNotInUseException;
@@ -420,6 +421,9 @@ public class ErrorHandlers {
           throw new TableAlreadyExistsException(errorMessage);
 
         case ErrorConstants.INTERNAL_ERROR_CODE:
+          if (MetadataIntegrityException.class.getSimpleName().equals(errorResponse.getType())) {
+            throw new MetadataIntegrityException(errorMessage);
+          }
           throw new RuntimeException(errorMessage);
 
         case ErrorConstants.UNSUPPORTED_OPERATION_CODE:

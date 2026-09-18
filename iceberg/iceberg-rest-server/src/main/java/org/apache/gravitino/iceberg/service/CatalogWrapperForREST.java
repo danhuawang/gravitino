@@ -44,6 +44,7 @@ import org.apache.gravitino.credential.PathBasedCredentialContext;
 import org.apache.gravitino.encryption.IcebergEncryptionDecision;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
 import org.apache.gravitino.encryption.kms.KmsReference;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.common.ops.IcebergCatalogWrapper;
 import org.apache.gravitino.iceberg.service.cache.ScanPlanCache;
@@ -469,6 +470,7 @@ public class CatalogWrapperForREST extends IcebergCatalogWrapper {
    * @return PlanTableScanResponse with status=COMPLETED and file scan tasks.
    * @throws IllegalArgumentException if scan request validation fails
    * @throws org.apache.gravitino.exceptions.NoSuchTableException if table doesn't exist
+   * @throws MetadataIntegrityException if trusted metadata verification fails
    * @throws RuntimeException for other scan planning failures
    */
   public PlanTableScanResponse planTableScan(
@@ -526,6 +528,8 @@ public class CatalogWrapperForREST extends IcebergCatalogWrapper {
       scanPlanCache.put(ScanPlanCacheKey.create(tableIdentifier, table, scanRequest), response);
       return response;
 
+    } catch (MetadataIntegrityException e) {
+      throw e;
     } catch (IllegalArgumentException e) {
       LOG.error("Invalid scan request for table {}: {}", tableIdentifier, e.getMessage());
       throw new IllegalArgumentException("Invalid scan parameters: " + e.getMessage(), e);
