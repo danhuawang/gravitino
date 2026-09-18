@@ -265,11 +265,12 @@ public class MetalakeIT extends BaseIT {
     Assertions.assertTrue(exception.getMessage().contains("please enable it first"));
 
     // test catalog operations under non-in-use metalake
+    String newCatalogName = GravitinoITUtils.genRandomName("test_catalog");
     Assertions.assertThrows(
         MetalakeNotInUseException.class,
         () ->
             loadedMetalake.createCatalog(
-                catalogName, Catalog.Type.FILESET, "dummy", null, Collections.emptyMap()));
+                newCatalogName, Catalog.Type.FILESET, "dummy", null, Collections.emptyMap()));
     Assertions.assertThrows(MetalakeNotInUseException.class, loadedMetalake::listCatalogs);
     Assertions.assertThrows(
         MetalakeNotInUseException.class, () -> loadedMetalake.loadCatalog(catalogName));
