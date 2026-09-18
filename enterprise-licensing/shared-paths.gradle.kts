@@ -47,6 +47,7 @@ val enterpriseFilePatterns: List<String> by extra(
     "enterprise-licensing.gradle.kts",
     "enterprise-licensing/**",
     "flink-connector/ext/**",
+    "iceberg/iceberg-common/src/main/resources/org/apache/gravitino/iceberg/jdbc/metadata-integrity/**",
     "integration-test-common/src/test/java/org/apache/gravitino/integration/test/container/OracleContainer.java",
     "licensing/**",
     "lineage-extension/**",

@@ -111,9 +111,11 @@ dependencies {
 
   testImplementation(project(":server-common"))
   testImplementation(libs.azure.identity)
+  testImplementation(libs.h2db)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.mockito.core)
+  testImplementation(libs.mockito.inline)
   testImplementation(libs.sqlite.jdbc)
 
   testRuntimeOnly(libs.junit.jupiter.engine)

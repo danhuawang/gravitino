@@ -1065,6 +1065,10 @@ jacoco {
 tasks {
   val projectDir = layout.projectDirectory
   val outputDir = projectDir.dir("distribution")
+  val icebergIntegritySchemaDir =
+    projectDir.dir(
+      "iceberg/iceberg-common/src/main/resources/org/apache/gravitino/iceberg/jdbc/metadata-integrity"
+    )
   val cleanDistributionPackage by registering(Delete::class) {
     group = "gravitino distribution"
     delete(distributionPackageDir, distributionPackageAllDir)
@@ -1150,6 +1154,13 @@ tasks {
           fileName.replace(".bin", "")
         }
       }
+      copy {
+        from(icebergIntegritySchemaDir) {
+          into("package/scripts/enterprise/iceberg-jdbc")
+        }
+        into(outputDir)
+        fileMode = 0b110100100
+      }
 
       if (skipWeb) {
         delete(projectDir.dir("distribution/package/web"), projectDir.dir("distribution/package/web-v2"))
@@ -1226,6 +1237,13 @@ tasks {
         rename { fileName ->
           fileName.replace(".iceberg", "")
         }
+      }
+      copy {
+        from(icebergIntegritySchemaDir) {
+          into("${rootProject.name}-iceberg-rest-server/scripts/enterprise/iceberg-jdbc")
+        }
+        into(outputDir)
+        fileMode = 0b110100100
       }
     }
   }
