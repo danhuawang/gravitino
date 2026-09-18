@@ -182,7 +182,7 @@ public class SparkFunctionPrivilegeIT {
     // Clean up metalake
     try {
       if (client != null && metalake != null) {
-        client.dropMetalake(metalakeName);
+        client.dropMetalake(metalakeName, true);
       }
     } catch (Exception e) {
       LOG.warn("Failed to clean up metalake", e);
