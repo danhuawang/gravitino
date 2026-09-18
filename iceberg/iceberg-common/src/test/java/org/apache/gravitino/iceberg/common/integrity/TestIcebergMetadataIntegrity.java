@@ -133,6 +133,35 @@ public class TestIcebergMetadataIntegrity {
                 metadataWithKey("kms-key-1")));
   }
 
+  @Test
+  void testRequireSameEncryptionKeyAcceptsUnchangedBinding() {
+    Assertions.assertDoesNotThrow(
+        () ->
+            IcebergMetadataIntegrity.requireSameEncryptionKey(
+                IDENTIFIER, metadataWithKey("kms-key-1"), metadataWithKey("kms-key-1")));
+    Assertions.assertDoesNotThrow(
+        () ->
+            IcebergMetadataIntegrity.requireSameEncryptionKey(
+                IDENTIFIER, metadataWithKey(null), metadataWithKey(null)));
+  }
+
+  @Test
+  void testRequireSameEncryptionKeyRejectsEnrollRekeyAndStrip() {
+    String[][] transitions = {
+      {null, "kms-key-1"}, {"kms-key-1", "kms-key-2"}, {"kms-key-1", null},
+    };
+    for (String[] transition : transitions) {
+      IllegalArgumentException e =
+          Assertions.assertThrows(
+              IllegalArgumentException.class,
+              () ->
+                  IcebergMetadataIntegrity.requireSameEncryptionKey(
+                      IDENTIFIER, metadataWithKey(transition[0]), metadataWithKey(transition[1])),
+              transition[0] + " -> " + transition[1]);
+      Assertions.assertTrue(e.getMessage().contains("re-registering"), e.getMessage());
+    }
+  }
+
   private static TableMetadata metadataWithKey(@Nullable String keyId) {
     Map<String, String> properties =
         keyId == null

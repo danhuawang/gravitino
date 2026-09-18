@@ -133,6 +133,31 @@ public final class IcebergMetadataIntegrity {
   }
 
   /**
+   * Requires that a repoint keeps the table's encryption key binding unchanged.
+   *
+   * <p>Backends call this before a register-overwrite because Iceberg has no native overwrite and
+   * therefore no native check on this path. Re-registering a metadata file must not enroll an
+   * unencrypted table, rekey an encrypted one, or strip its key; those are governed changes that
+   * happen through admission, never through a repoint.
+   *
+   * @param identifier the table identifier
+   * @param current the table's current metadata
+   * @param target the metadata to publish
+   * @throws IllegalArgumentException if the target carries a different encryption key than the
+   *     current metadata, including a key appearing or disappearing
+   */
+  public static void requireSameEncryptionKey(
+      TableIdentifier identifier, TableMetadata current, TableMetadata target) {
+    String currentKeyId = current.properties().get(TableProperties.ENCRYPTION_TABLE_KEY);
+    String targetKeyId = target.properties().get(TableProperties.ENCRYPTION_TABLE_KEY);
+    if (!Objects.equals(currentKeyId, targetKeyId)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Cannot change the encryption key of table %s by re-registering it", identifier));
+    }
+  }
+
+  /**
    * Computes the Base64-encoded SHA-256 hash of Iceberg's table metadata serialization.
    *
    * @param metadata the Iceberg table metadata

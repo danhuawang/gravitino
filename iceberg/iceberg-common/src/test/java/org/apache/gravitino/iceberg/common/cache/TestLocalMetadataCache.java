@@ -20,6 +20,7 @@
 package org.apache.gravitino.iceberg.common.cache;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -75,6 +76,31 @@ class TestLocalMetadataCache {
     cache.invalidate(testIdentifier);
     Assertions.assertNull(cache.doGetTableMetadata(testIdentifier).orElse(null));
     Assertions.assertNull(cache.getTableMetadata(testIdentifier).orElse(null));
+  }
+
+  @Test
+  void testMovedBackendPointerEvictsCachedEntry() {
+    // D3: every hit compares the backend's current metadata_location with the cached entry.
+    cache.updateTableMetadata(testIdentifier, testMetadata);
+    when(supportsMetadataLocation.metadataLocation(testIdentifier))
+        .thenReturn("test_location_moved");
+
+    Assertions.assertFalse(cache.getTableMetadata(testIdentifier).isPresent());
+
+    verify(supportsMetadataLocation).metadataLocation(testIdentifier);
+    Assertions.assertFalse(
+        cache.doGetTableMetadata(testIdentifier).isPresent(), "stale entry must be evicted");
+  }
+
+  @Test
+  void testUnknownBackendPointerIsACacheMissWithoutEviction() {
+    cache.updateTableMetadata(testIdentifier, testMetadata);
+    when(supportsMetadataLocation.metadataLocation(testIdentifier)).thenReturn(null);
+
+    Assertions.assertFalse(cache.getTableMetadata(testIdentifier).isPresent());
+
+    // The entry stays until the backend reports a location again and the compare can run.
+    Assertions.assertTrue(cache.doGetTableMetadata(testIdentifier).isPresent());
   }
 
   @Test
