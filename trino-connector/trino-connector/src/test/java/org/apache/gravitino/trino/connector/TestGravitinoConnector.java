@@ -379,6 +379,8 @@ public abstract class TestGravitinoConnector extends AbstractGravitinoConnectorT
       MaterializedRow row = result.getMaterializedRows().get(0);
       assertEquals("FAILED", row.getField(0));
       assertThat((String) row.getField(1)).contains("unknown-direct-key");
+      // The load loop retries failed catalogs on every metadata refresh, so a refresh that lands
+      // between the procedure call and this query bumps the count past the initial failure.
       assertThat((Long) row.getField(2)).isGreaterThanOrEqualTo(1L);
     } finally {
       // Leave the shared query runner as it was found, or the load loop keeps retrying this catalog

@@ -36,6 +36,9 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityAlreadyExistsException;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.authorization.AuthorizationUtils;
+import org.apache.gravitino.authorization.Privileges;
+import org.apache.gravitino.authorization.SecurableObjects;
 import org.apache.gravitino.exceptions.NoSuchEntityException;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.meta.CatalogEntity;
@@ -43,10 +46,12 @@ import org.apache.gravitino.meta.ColumnEntity;
 import org.apache.gravitino.meta.FilesetEntity;
 import org.apache.gravitino.meta.GenericEntity;
 import org.apache.gravitino.meta.ModelEntity;
+import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.meta.TagEntity;
 import org.apache.gravitino.meta.TopicEntity;
+import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rel.types.Types;
 import org.apache.gravitino.storage.RandomIdGenerator;
 import org.apache.gravitino.storage.relational.TestJDBCBackend;
@@ -1113,6 +1118,141 @@ public class TestTagMetaService extends TestJDBCBackend {
   }
 
   @TestTemplate
+  public void testTagRelationsFollowColumnDropAndRename() throws IOException {
+    BaseMetalake metalake =
+        createBaseMakeLake(RandomIdGenerator.INSTANCE.nextId(), METALAKE_NAME, AUDIT_INFO);
+    backend.insert(metalake, false);
+    CatalogEntity catalog =
+        createCatalog(
+            RandomIdGenerator.INSTANCE.nextId(),
+            Namespace.of(METALAKE_NAME),
+            "catalog1",
+            AUDIT_INFO);
+    backend.insert(catalog, false);
+    SchemaEntity schema =
+        createSchemaEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            Namespace.of(METALAKE_NAME, catalog.name()),
+            "schema1",
+            AUDIT_INFO);
+    backend.insert(schema, false);
+
+    ColumnEntity dropped = newColumn("c1", 0);
+    ColumnEntity renamed = newColumn("c2", 1);
+    ColumnEntity kept = newColumn("c3", 2);
+    TableEntity table =
+        TableEntity.builder()
+            .withId(RandomIdGenerator.INSTANCE.nextId())
+            .withName("table1")
+            .withNamespace(Namespace.of(METALAKE_NAME, catalog.name(), schema.name()))
+            .withColumns(Lists.newArrayList(dropped, renamed, kept))
+            .withAuditInfo(AUDIT_INFO)
+            .build();
+    backend.insert(table, false);
+
+    TagMetaService tagMetaService = TagMetaService.getInstance();
+    TagEntity tag =
+        TagEntity.builder()
+            .withId(RandomIdGenerator.INSTANCE.nextId())
+            .withName("tag1")
+            .withNamespace(NamespaceUtil.ofTag(METALAKE_NAME))
+            .withAuditInfo(AUDIT_INFO)
+            .build();
+    tagMetaService.insertTag(tag, false);
+    for (ColumnEntity column : Lists.newArrayList(dropped, renamed, kept)) {
+      tagMetaService.associateTagsWithMetadataObject(
+          columnIdent(table, column.name()),
+          Entity.EntityType.COLUMN,
+          new NameIdentifier[] {tag.nameIdentifier()},
+          new NameIdentifier[0]);
+    }
+
+    // Drop c1 and rename c2 to c2_new in one update. A rename keeps the column id.
+    ColumnEntity renamedColumn = copyColumn(renamed, "c2_new", renamed.id());
+    TableMetaService.getInstance()
+        .updateTable(
+            table.nameIdentifier(), (TableEntity old) -> withColumns(old, renamedColumn, kept));
+
+    List<GenericEntity> objects =
+        tagMetaService.listAssociatedMetadataObjectsForTag(tag.nameIdentifier());
+    Assertions.assertEquals(2, objects.size());
+    Assertions.assertTrue(
+        containsGenericEntity(objects, "catalog1.schema1.table1.c2_new", Entity.EntityType.COLUMN));
+    Assertions.assertTrue(
+        containsGenericEntity(objects, "catalog1.schema1.table1.c3", Entity.EntityType.COLUMN));
+    // The dropped column's relation row is removed, not just hidden.
+    Assertions.assertEquals(2, countActiveTagRel(tag.id()));
+
+    Assertions.assertEquals(
+        1,
+        tagMetaService
+            .listTagsForMetadataObject(columnIdent(table, "c2_new"), Entity.EntityType.COLUMN)
+            .size());
+    // Neither the old name of the renamed column nor the dropped column resolves any more.
+    Assertions.assertThrows(
+        NoSuchEntityException.class,
+        () ->
+            tagMetaService.listTagsForMetadataObject(
+                columnIdent(table, "c2"), Entity.EntityType.COLUMN));
+    Assertions.assertThrows(
+        NoSuchEntityException.class,
+        () ->
+            tagMetaService.listTagsForMetadataObject(
+                columnIdent(table, "c1"), Entity.EntityType.COLUMN));
+
+    // A new column that reuses the dropped column's name does not inherit its tag.
+    ColumnEntity readded = copyColumn(dropped, "c1", RandomIdGenerator.INSTANCE.nextId());
+    TableMetaService.getInstance()
+        .updateTable(
+            table.nameIdentifier(),
+            (TableEntity old) -> withColumns(old, renamedColumn, kept, readded));
+    Assertions.assertTrue(
+        tagMetaService
+            .listTagsForMetadataObject(columnIdent(table, "c1"), Entity.EntityType.COLUMN)
+            .isEmpty());
+    Assertions.assertEquals(
+        2, tagMetaService.listAssociatedMetadataObjectsForTag(tag.nameIdentifier()).size());
+  }
+
+  private static ColumnEntity newColumn(String name, int position) {
+    return ColumnEntity.builder()
+        .withId(RandomIdGenerator.INSTANCE.nextId())
+        .withName(name)
+        .withPosition(position)
+        .withAutoIncrement(false)
+        .withNullable(true)
+        .withDataType(Types.IntegerType.get())
+        .withAuditInfo(AUDIT_INFO)
+        .build();
+  }
+
+  private static ColumnEntity copyColumn(ColumnEntity column, String name, long id) {
+    return ColumnEntity.builder()
+        .withId(id)
+        .withName(name)
+        .withPosition(column.position())
+        .withAutoIncrement(column.autoIncrement())
+        .withNullable(column.nullable())
+        .withDataType(column.dataType())
+        .withAuditInfo(AUDIT_INFO)
+        .build();
+  }
+
+  private static TableEntity withColumns(TableEntity table, ColumnEntity... columns) {
+    return TableEntity.builder()
+        .withId(table.id())
+        .withName(table.name())
+        .withNamespace(table.namespace())
+        .withColumns(Lists.newArrayList(columns))
+        .withAuditInfo(table.auditInfo())
+        .build();
+  }
+
+  private static NameIdentifier columnIdent(TableEntity table, String columnName) {
+    return NameIdentifier.of(Namespace.fromString(table.nameIdentifier().toString()), columnName);
+  }
+
+  @TestTemplate
   public void testGetTagIdByTagNameWhenTagNotFound() throws IOException {
     createAndInsertMakeLake(METALAKE_NAME);
 
@@ -1147,6 +1287,60 @@ public class TestTagMetaService extends TestJDBCBackend {
     }
   }
 
+  @TestTemplate
+  public void testDeleteTagCleansEveryDependentRelation() throws IOException {
+    createAndInsertMakeLake(METALAKE_NAME);
+    CatalogEntity catalog = createAndInsertCatalog(METALAKE_NAME, "catalog_tag_cascade");
+    TagMetaService tagMetaService = TagMetaService.getInstance();
+    TagEntity tag = createAndInsertTagEntity("tag_cascade", "comment", METALAKE_NAME);
+    tagMetaService.associateTagsWithMetadataObject(
+        catalog.nameIdentifier(),
+        catalog.type(),
+        new NameIdentifier[] {tag.nameIdentifier()},
+        new NameIdentifier[0]);
+
+    UserEntity user =
+        createUserEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofUserNamespace(METALAKE_NAME),
+            "user_tag_cascade",
+            AUDIT_INFO);
+    backend.insert(user, false);
+    OwnerMetaService.getInstance()
+        .setOwner(tag.nameIdentifier(), Entity.EntityType.TAG, user.nameIdentifier(), user.type());
+
+    RoleEntity role =
+        createRoleEntity(
+            RandomIdGenerator.INSTANCE.nextId(),
+            AuthorizationUtils.ofRoleNamespace(METALAKE_NAME),
+            "role_tag_cascade",
+            AUDIT_INFO,
+            Lists.newArrayList(
+                SecurableObjects.ofTag(
+                    tag.name(), Lists.newArrayList(Privileges.ApplyTag.allow()))),
+            null);
+    backend.insert(role, false);
+
+    String tagAsMetadataObject =
+        String.format("metadata_object_id = %d AND metadata_object_type = 'TAG'", tag.id());
+    String tagAsSecurableObject =
+        String.format("metadata_object_id = %d AND type = 'TAG'", tag.id());
+    assertEquals(1, countActiveTagRel(tag.id()));
+    assertEquals(1, countActiveRows("owner_meta", tagAsMetadataObject));
+    assertEquals(1, countActiveRows("role_meta_securable_object", tagAsSecurableObject));
+
+    assertTrue(tagMetaService.deleteTag(tag.nameIdentifier()));
+
+    assertEquals(0, countActiveTagRel(tag.id()));
+    assertEquals(0, countActiveRows("owner_meta", tagAsMetadataObject));
+    assertEquals(0, countActiveRows("role_meta_securable_object", tagAsSecurableObject));
+    assertTrue(
+        tagMetaService
+            .listTagsForMetadataObject(catalog.nameIdentifier(), catalog.type())
+            .isEmpty());
+    assertFalse(tagMetaService.deleteTag(tag.nameIdentifier()));
+  }
+
   private Integer countActiveTagRel(Long tagId) {
     try (SqlSession sqlSession =
             SqlSessionFactoryHelper.getInstance().getSqlSessionFactory().openSession(true);
@@ -1162,6 +1356,22 @@ public class TestTagMetaService extends TestJDBCBackend {
       } else {
         throw new RuntimeException("Doesn't contain data");
       }
+    } catch (SQLException se) {
+      throw new RuntimeException("SQL execution failed", se);
+    }
+  }
+
+  private int countActiveRows(String table, String condition) {
+    try (SqlSession sqlSession =
+            SqlSessionFactoryHelper.getInstance().getSqlSessionFactory().openSession(true);
+        Connection connection = sqlSession.getConnection();
+        Statement statement = connection.createStatement();
+        ResultSet rs =
+            statement.executeQuery(
+                String.format(
+                    "SELECT count(*) FROM %s WHERE %s AND deleted_at = 0", table, condition))) {
+      Assertions.assertTrue(rs.next());
+      return rs.getInt(1);
     } catch (SQLException se) {
       throw new RuntimeException("SQL execution failed", se);
     }
