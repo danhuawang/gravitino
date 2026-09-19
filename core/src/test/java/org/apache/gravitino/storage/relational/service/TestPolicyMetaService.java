@@ -1118,7 +1118,9 @@ public class TestPolicyMetaService extends TestJDBCBackend {
     createAndInsertMakeLake(METALAKE_NAME);
     createAndInsertMakeLake(anotherMetalakeName);
     CatalogEntity catalog = createAndInsertCatalog(METALAKE_NAME, "catalog_same_name");
-    CatalogEntity anotherCatalog = createAndInsertCatalog(anotherMetalakeName, "catalog_same_name");
+    // Catalog names are unique across metalakes in Enterprise, so only the policy name is shared.
+    CatalogEntity anotherCatalog =
+        createAndInsertCatalog(anotherMetalakeName, "catalog_same_name_another");
     PolicyMetaService policyMetaService = PolicyMetaService.getInstance();
 
     PolicyEntity policy =
