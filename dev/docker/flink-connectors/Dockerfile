@@ -45,7 +45,7 @@ ARG UBI_MINIMAL_TAG=10.2
 # build-docker.sh / the release workflow. The default below is kept in sync
 # with the current gradle.properties version as a fallback for uninjected
 # local builds.
-ARG IMAGE_VERSION=2.0.0-SNAPSHOT
+ARG IMAGE_VERSION=1.3.0
 ARG IMAGE_RELEASE=1
 
 FROM registry.access.redhat.com/ubi10/ubi-minimal:${UBI_MINIMAL_TAG}
