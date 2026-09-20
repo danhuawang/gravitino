@@ -54,7 +54,8 @@ paths:
       summary: List role summaries
       operationId: listRoleSummaries
       description: |
-        Lists all roles visible to the caller, together with each role's owner,
+        Requires both service administrator status and metalake ownership.
+        Lists all roles in the metalake, together with each role's owner,
         creation time, direct user and group counts, and their sum as assignCount.
         Users contained in an assigned group are not included in the user count.
       responses:
@@ -69,6 +70,12 @@ paths:
                   $ref: "#/components/examples/RoleSummaryListResponse"
         "400":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/BadRequestErrorResponse"
+        "403":
+          description: Forbidden - The caller must be both a service administrator and a metalake owner
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
         "404":
           description: Not Found - The specified metalake does not exist
           content:

@@ -82,7 +82,7 @@ public class ExtendedPrincipalRoleOperations {
       name = "internal-list-role-summaries." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-role-summaries", absolute = true)
-  @AuthorizationExpression(expression = "")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN && METALAKE::OWNER")
   public Response listRoleSummaries(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {

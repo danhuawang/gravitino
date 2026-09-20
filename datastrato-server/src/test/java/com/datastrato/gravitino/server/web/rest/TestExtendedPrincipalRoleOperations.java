@@ -29,6 +29,8 @@ import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
@@ -38,8 +40,12 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.RelationalEntity;
 import org.apache.gravitino.SupportsRelationOperations;
+import org.apache.gravitino.UserPrincipal;
+import org.apache.gravitino.authorization.AuthorizationRequestContext;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Role;
@@ -58,6 +64,7 @@ import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionEvaluator;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -310,7 +317,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
     AuthorizationExpression listExpression =
         listRoleSummaries.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(listExpression);
-    Assertions.assertEquals("", listExpression.expression());
+    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", listExpression.expression());
     Assertions.assertEquals(
         Entity.EntityType.METALAKE,
         listRoleSummaries.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());
@@ -326,6 +333,36 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
     Assertions.assertEquals(
         Entity.EntityType.METALAKE,
         assignRoles.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());
+  }
+
+  /** Tests that the role list requires service admin status and metalake ownership together. */
+  @Test
+  public void testListRoleSummariesAuthorization() throws NoSuchMethodException {
+    Method method =
+        ExtendedPrincipalRoleOperations.class.getMethod("listRoleSummaries", String.class);
+    String expression = method.getAnnotation(AuthorizationExpression.class).expression();
+    GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    AuthorizationExpressionEvaluator evaluator =
+        new AuthorizationExpressionEvaluator(expression, authorizer);
+    Map<Entity.EntityType, NameIdentifier> metadataNames =
+        Map.of(Entity.EntityType.METALAKE, NameIdentifierUtil.ofMetalake("metalake1"));
+    UserPrincipal principal = new UserPrincipal("tester");
+
+    when(authorizer.isOwner(any(), eq("metalake1"), any(), any())).thenReturn(true);
+    Assertions.assertFalse(
+        evaluator.evaluate(
+            metadataNames, new AuthorizationRequestContext(), principal, Optional.empty()));
+
+    when(authorizer.isServiceAdmin()).thenReturn(true);
+    when(authorizer.isOwner(any(), eq("metalake1"), any(), any())).thenReturn(false);
+    Assertions.assertFalse(
+        evaluator.evaluate(
+            metadataNames, new AuthorizationRequestContext(), principal, Optional.empty()));
+
+    when(authorizer.isOwner(any(), eq("metalake1"), any(), any())).thenReturn(true);
+    Assertions.assertTrue(
+        evaluator.evaluate(
+            metadataNames, new AuthorizationRequestContext(), principal, Optional.empty()));
   }
 
   private void assertRoleSummary(
