@@ -213,6 +213,7 @@ class TestMetricsCollector {
 
   @Test
   void testLoadAllDataForMetalakeIncludesFunctions() throws Exception {
+    mockStoredRelationalSchema(41L);
     FunctionEntity function = mock(FunctionEntity.class);
     when(function.id()).thenReturn(42L);
     when(function.name()).thenReturn("function");
@@ -231,6 +232,7 @@ class TestMetricsCollector {
 
       MetalakeSnapshot snapshot = collector.loadAllDataForMetalake(metalake());
 
+      assertEquals(41L, snapshot.getSchemaNodes().iterator().next().getId());
       assertEquals(1, snapshot.getFunctionNodes().size());
       AssetNode functionNode = snapshot.getFunctionNodes().iterator().next();
       assertEquals(42L, functionNode.getId());
@@ -505,7 +507,7 @@ class TestMetricsCollector {
   }
 
   @Test
-  void testLoadAllDataForMetalakeWithSchemaNotInStore() throws Exception {
+  void testExternalSchemaNotInStoreUsesDispatcherAndSkipsFunctions() throws Exception {
     try (MockedStatic<MetricDataService> mockedMetricDataService =
         Mockito.mockStatic(MetricDataService.class)) {
       mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
@@ -532,9 +534,42 @@ class TestMetricsCollector {
       MetalakeSnapshot snapshot = collector.loadAllDataForMetalake(metalake);
       assertNotNull(snapshot);
       assertEquals(metalakeName, snapshot.getAssetTreeRoot().getName());
-      // Tables should still be loaded from tableDispatcher since managedTable=false
+      assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+      assertEquals(1, snapshot.getSchemaNodes().size());
+      assertEquals(-1L, snapshot.getSchemaNodes().iterator().next().getId());
       assertEquals(1, snapshot.getTableNodes().size());
       assertEquals(tableName, snapshot.getTableNodes().iterator().next().getName());
+      assertEquals(1, snapshot.getViewNodes().size());
+      assertTrue(snapshot.getFunctionNodes().isEmpty());
+      verify(store, never())
+          .list(
+              NamespaceUtil.ofFunction(metalakeName, relationalCatalogName, relationalSchemaName),
+              FunctionEntity.class,
+              Entity.EntityType.FUNCTION);
+
+      List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+      assertMetric(metrics, "asset_count", 2.0, MetricState.COMPLETE);
+      assertMetric(
+          metrics,
+          DashboardMetricNames.forCatalog(
+              relationalCatalogName, relationalCatalogProvider, "asset_count"),
+          2.0,
+          MetricState.COMPLETE);
+      assertMetric(
+          metrics,
+          DashboardMetricNames.forCatalog(relationalCatalogName, "schema_count"),
+          1.0,
+          MetricState.COMPLETE);
+      assertMetric(
+          metrics,
+          DashboardMetricNames.forCatalog(relationalCatalogName, "table_count"),
+          1.0,
+          MetricState.COMPLETE);
+      assertMetric(
+          metrics,
+          DashboardMetricNames.forCatalog(relationalCatalogName, "function_count"),
+          0.0,
+          MetricState.COMPLETE);
     }
   }
 
@@ -953,6 +988,22 @@ class TestMetricsCollector {
             Entity.EntityType.SCHEMA))
         .thenReturn(ImmutableList.of(probe));
     return probe.nameIdentifier();
+  }
+
+  private void mockStoredRelationalSchema(long schemaId) throws IOException {
+    SchemaEntity schema =
+        SchemaEntity.builder()
+            .withId(schemaId)
+            .withName(relationalSchemaName)
+            .withNamespace(NamespaceUtil.ofSchema(metalakeName, relationalCatalogName))
+            .withAuditInfo(
+                AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+            .build();
+    when(store.list(
+            NamespaceUtil.ofSchema(metalakeName, relationalCatalogName),
+            SchemaEntity.class,
+            Entity.EntityType.SCHEMA))
+        .thenReturn(ImmutableList.of(schema));
   }
 
   private MetalakeSnapshot collectSnapshot() throws Exception {

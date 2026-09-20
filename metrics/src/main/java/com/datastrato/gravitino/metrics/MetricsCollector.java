@@ -1252,6 +1252,11 @@ public class MetricsCollector implements Closeable {
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException {
+    // Functions are managed in the entity store and require a persisted parent schema.
+    if (schemaNode.getId() == -1L) {
+      return Collections.emptySet();
+    }
+
     return store.list(nsOfFunction, FunctionEntity.class, Entity.EntityType.FUNCTION).stream()
         .map(
             function -> {
