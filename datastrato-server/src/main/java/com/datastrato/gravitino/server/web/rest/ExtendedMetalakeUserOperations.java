@@ -81,8 +81,10 @@ public class ExtendedMetalakeUserOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-metalake-users." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-metalake-users", absolute = true)
+  @Timed(
+      name = "internal-list-metalake-users." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-list-metalake-users", absolute = true)
   @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listUsers(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -110,8 +112,10 @@ public class ExtendedMetalakeUserOperations {
   @GET
   @Path("idp")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-metalake-idp-users." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-metalake-idp-users", absolute = true)
+  @Timed(
+      name = "internal-list-metalake-idp-users." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-list-metalake-idp-users", absolute = true)
   @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listIdpUsers(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -139,8 +143,8 @@ public class ExtendedMetalakeUserOperations {
    */
   @POST
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-add-metalake-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-add-metalake-user", absolute = true)
+  @Timed(name = "internal-add-metalake-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-add-metalake-user", absolute = true)
   @AuthorizationExpression(expression = USER_MANAGEMENT_AUTHORIZATION_EXPRESSION)
   public Response addUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -175,8 +179,8 @@ public class ExtendedMetalakeUserOperations {
   @GET
   @Path("{user}")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-get-metalake-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-get-metalake-user", absolute = true)
+  @Timed(name = "internal-get-metalake-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-get-metalake-user", absolute = true)
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF")
   public Response getUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -209,8 +213,10 @@ public class ExtendedMetalakeUserOperations {
   @GET
   @Path("{user}/groups")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-groups-for-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-groups-for-user", absolute = true)
+  @Timed(
+      name = "internal-list-groups-for-user." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-list-groups-for-user", absolute = true)
   @AuthorizationExpression(expression = "(SERVICE_ADMIN && METALAKE::OWNER) || USER::SELF")
   public Response listGroupsForUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -241,9 +247,9 @@ public class ExtendedMetalakeUserOperations {
   @Path("enabled")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(
-      name = "web-batch-update-user-enabled." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-batch-update-user-enabled." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "web-batch-update-user-enabled", absolute = true)
+  @ResponseMetered(name = "internal-batch-update-user-enabled", absolute = true)
   @AuthorizationExpression(expression = USER_MANAGEMENT_AUTHORIZATION_EXPRESSION)
   public Response batchUpdateUserEnabled(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -278,9 +284,9 @@ public class ExtendedMetalakeUserOperations {
   @Path("{user}/roles")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(
-      name = "web-list-user-role-assignments." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-list-user-role-assignments." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "web-list-user-role-assignments", absolute = true)
+  @ResponseMetered(name = "internal-list-user-role-assignments", absolute = true)
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF")
   public Response listUserRoleAssignments(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

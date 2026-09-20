@@ -55,8 +55,10 @@ public class SearchOperations {
   @POST
   @Path("/rebuild/metalakes/{metalake}")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "search-rebuild-metadata." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "search-rebuild-metadata", absolute = true)
+  @Timed(
+      name = "internal-search-rebuild-metadata." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-search-rebuild-metadata", absolute = true)
   public Response rebuildMetadata(@PathParam("metalake") String metalake) {
     if (StringUtils.isBlank(metalake)) {
       return Utils.illegalArguments("Metalake cannot be null or empty");
@@ -86,9 +88,9 @@ public class SearchOperations {
   @Path("/sync/metalakes/{metalake}/objects")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(
-      name = "search-sync-metadata-objects." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-search-sync-metadata-objects." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "search-sync-metadata-objects", absolute = true)
+  @ResponseMetered(name = "internal-search-sync-metadata-objects", absolute = true)
   public Response syncMetadataObjects(
       @PathParam("metalake") String metalake, SynMetadataRequest request) {
     if (StringUtils.isBlank(metalake)) {
@@ -134,8 +136,8 @@ public class SearchOperations {
   @GET
   @Path("/query")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "search-query." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "search-query", absolute = true)
+  @Timed(name = "internal-search-query." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-search-query", absolute = true)
   public Response query(
       @QueryParam("metalake") String metalake,
       @QueryParam("keyword") String keyword,
@@ -186,8 +188,8 @@ public class SearchOperations {
   @GET
   @Path("/task/{taskId}/status")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "search-task-status." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "search-task-status", absolute = true)
+  @Timed(name = "internal-search-task-status." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-search-task-status", absolute = true)
   public Response getTaskStatus(@PathParam("taskId") String taskId) {
     try {
       return Utils.doAs(

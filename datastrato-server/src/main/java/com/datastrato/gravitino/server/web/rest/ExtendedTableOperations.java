@@ -85,8 +85,8 @@ public class ExtendedTableOperations {
   @GET
   @Path("{table}")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-load-table." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-load-table", absolute = true)
+  @Timed(name = "internal-load-table." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-load-table", absolute = true)
   @AuthorizationExpression(
       expression = AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION,
       secondaryExpression = AuthorizationExpressionConstants.MODIFY_TABLE_AUTHORIZATION_EXPRESSION,

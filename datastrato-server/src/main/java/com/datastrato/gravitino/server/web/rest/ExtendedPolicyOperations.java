@@ -78,8 +78,8 @@ public class ExtendedPolicyOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-extended-policies." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-extended-policies", absolute = true)
+  @Timed(name = "internal-list-policies." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-list-policies", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listPolicies(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

@@ -126,8 +126,8 @@ public class CreationWithTagsOperations {
 
   @POST
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-create-catalog." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-create-catalog", absolute = true)
+  @Timed(name = "internal-create-catalog." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-create-catalog", absolute = true)
   @AuthorizationExpression(
       expression = "METALAKE::CREATE_CATALOG || METALAKE::OWNER",
       accessMetadataType = MetadataObject.Type.METALAKE)
@@ -204,8 +204,8 @@ public class CreationWithTagsOperations {
   @POST
   @Path("testConnection")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-test-connection." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-test-connection", absolute = true)
+  @Timed(name = "internal-test-connection." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-test-connection", absolute = true)
   @AuthorizationExpression(
       expression = "METALAKE::CREATE_CATALOG || METALAKE::OWNER",
       accessMetadataType = MetadataObject.Type.METALAKE)
@@ -246,8 +246,8 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-create-schema." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-create-schema", absolute = true)
+  @Timed(name = "internal-create-schema." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-create-schema", absolute = true)
   @AuthorizationExpression(
       expression = "ANY(OWNER, METALAKE, CATALOG, SCHEMA) || ANY_USE_CATALOG && ANY_CREATE_SCHEMA",
       accessMetadataType = MetadataObject.Type.SCHEMA)
@@ -310,8 +310,8 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/tables")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-create-table." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-create-table", absolute = true)
+  @Timed(name = "internal-create-table." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-create-table", absolute = true)
   @AuthorizationExpression(
       expression =
           "ANY(OWNER, METALAKE, CATALOG) || "
@@ -400,8 +400,8 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/filesets")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-create-fileset." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-create-fileset", absolute = true)
+  @Timed(name = "internal-create-fileset." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-create-fileset", absolute = true)
   @AuthorizationExpression(
       expression =
           "ANY(OWNER, METALAKE, CATALOG) || "
@@ -469,8 +469,8 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/topics")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-create-topic." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-create-topic", absolute = true)
+  @Timed(name = "internal-create-topic." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-create-topic", absolute = true)
   @AuthorizationExpression(
       expression =
           "ANY(OWNER, METALAKE, CATALOG) || "
@@ -538,8 +538,8 @@ public class CreationWithTagsOperations {
   @POST
   @Path("{catalog}/schemas/{schema}/models")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-register-model." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-register-model", absolute = true)
+  @Timed(name = "internal-register-model." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-register-model", absolute = true)
   @AuthorizationExpression(
       expression =
           "ANY(OWNER, METALAKE, CATALOG) || "

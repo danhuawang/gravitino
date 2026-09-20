@@ -110,9 +110,9 @@ public class CredentialProviderOperations {
   @POST
   @Path("/{credentialType}/test")
   @Timed(
-      name = "web-test-credential-provider." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-test-credential-provider." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "web-test-credential-provider", absolute = true)
+  @ResponseMetered(name = "internal-test-credential-provider", absolute = true)
   @AuthorizationExpression(
       expression = "ANY(OWNER, METALAKE, CATALOG)",
       accessMetadataType = MetadataObject.Type.CATALOG)

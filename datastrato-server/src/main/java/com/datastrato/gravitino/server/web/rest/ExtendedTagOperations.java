@@ -86,8 +86,8 @@ public class ExtendedTagOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-extended-tags." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-extended-tags", absolute = true)
+  @Timed(name = "internal-list-tags." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-list-tags", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listTags(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

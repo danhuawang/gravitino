@@ -74,8 +74,10 @@ public class ExtendedMetalakeGroupOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-metalake-groups." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-metalake-groups", absolute = true)
+  @Timed(
+      name = "internal-list-metalake-groups." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-list-metalake-groups", absolute = true)
   @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listGroups(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -105,8 +107,8 @@ public class ExtendedMetalakeGroupOperations {
   @GET
   @Path("{group}")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-get-metalake-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-get-metalake-group", absolute = true)
+  @Timed(name = "internal-get-metalake-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-get-metalake-group", absolute = true)
   @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response getGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -136,9 +138,9 @@ public class ExtendedMetalakeGroupOperations {
   @Path("idp")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(
-      name = "web-list-metalake-idp-groups." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-list-metalake-idp-groups." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "web-list-metalake-idp-groups", absolute = true)
+  @ResponseMetered(name = "internal-list-metalake-idp-groups", absolute = true)
   @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listIdpGroups(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -166,8 +168,8 @@ public class ExtendedMetalakeGroupOperations {
    */
   @POST
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-add-metalake-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-add-metalake-group", absolute = true)
+  @Timed(name = "internal-add-metalake-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-add-metalake-group", absolute = true)
   @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response addGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -207,8 +209,10 @@ public class ExtendedMetalakeGroupOperations {
   @GET
   @Path("{group}/users")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-users-for-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-users-for-group", absolute = true)
+  @Timed(
+      name = "internal-list-users-for-group." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-list-users-for-group", absolute = true)
   @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listUsersForGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -239,9 +243,9 @@ public class ExtendedMetalakeGroupOperations {
   @Path("{group}/roles")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(
-      name = "web-list-group-role-assignments." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-list-group-role-assignments." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "web-list-group-role-assignments", absolute = true)
+  @ResponseMetered(name = "internal-list-group-role-assignments", absolute = true)
   @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
   public Response listGroupRoleAssignments(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

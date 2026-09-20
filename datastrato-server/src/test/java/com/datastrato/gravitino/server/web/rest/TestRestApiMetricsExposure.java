@@ -55,7 +55,7 @@ public class TestRestApiMetricsExposure {
     new ApplicationHandler(resourceConfig);
 
     Set<String> names = metricsSystem.getMetricRegistry().getNames();
-    String prefix = MetricsSource.GRAVITINO_SERVER_METRIC_NAME + ".web-create-catalog";
+    String prefix = MetricsSource.GRAVITINO_SERVER_METRIC_NAME + ".internal-create-catalog";
 
     assertTrue(
         names.contains(prefix + "." + MetricNames.HTTP_PROCESS_DURATION),

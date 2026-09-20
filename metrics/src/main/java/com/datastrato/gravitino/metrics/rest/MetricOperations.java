@@ -48,8 +48,8 @@ public class MetricOperations {
 
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-get-metrics." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-get-metrics", absolute = true)
+  @Timed(name = "internal-get-metrics." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-get-metrics", absolute = true)
   public Response getMetrics(
       @PathParam("metalake") String metalakeName,
       @QueryParam("metrics") String metrics,

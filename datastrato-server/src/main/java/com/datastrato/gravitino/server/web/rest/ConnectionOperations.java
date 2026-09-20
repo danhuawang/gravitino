@@ -101,8 +101,8 @@ public class ConnectionOperations {
    */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-connections." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-connections", absolute = true)
+  @Timed(name = "internal-list-connections." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-list-connections", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listConnections(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -168,8 +168,8 @@ public class ConnectionOperations {
   @GET
   @Path("{connection}")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-load-connection." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-load-connection", absolute = true)
+  @Timed(name = "internal-load-connection." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-load-connection", absolute = true)
   @AuthorizationExpression(
       expression = AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
       accessMetadataType = MetadataObject.Type.CATALOG)

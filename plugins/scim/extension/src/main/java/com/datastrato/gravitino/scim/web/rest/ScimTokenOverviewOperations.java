@@ -54,8 +54,10 @@ public class ScimTokenOverviewOperations {
   @GET
   @Path("overview")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "get-scim-token-overview." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "get-scim-token-overview", absolute = true)
+  @Timed(
+      name = "internal-get-scim-token-overview." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-get-scim-token-overview", absolute = true)
   public Response getTokenOverview() {
     return ScimRESTUtils.doAs(
         httpRequest,

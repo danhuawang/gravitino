@@ -59,8 +59,8 @@ public class ExtendedAuthnOperations {
   @GET
   @Path("me")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-authn-me." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-authn-me", absolute = true)
+  @Timed(name = "internal-authn-me." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-authn-me", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response me() {
     try {

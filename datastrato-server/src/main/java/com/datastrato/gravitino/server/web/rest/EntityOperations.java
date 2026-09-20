@@ -164,8 +164,8 @@ public class EntityOperations {
 
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-entities." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-entities", absolute = true)
+  @Timed(name = "internal-list-entities." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-list-entities", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listEntities(
       @QueryParam("namespace") Namespace namespace,

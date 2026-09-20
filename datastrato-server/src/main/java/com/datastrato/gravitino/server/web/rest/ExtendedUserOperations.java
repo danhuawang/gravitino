@@ -75,8 +75,10 @@ public class ExtendedUserOperations {
   @GET
   @Path("directory/users")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-directory-users." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-directory-users", absolute = true)
+  @Timed(
+      name = "internal-list-directory-users." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-list-directory-users", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response listDirectoryUsers() {
     try {
@@ -105,8 +107,8 @@ public class ExtendedUserOperations {
   @GET
   @Path("directory/users/{user}")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-get-directory-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-get-directory-user", absolute = true)
+  @Timed(name = "internal-get-directory-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-get-directory-user", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response getDirectoryUser(
       @PathParam("user") String user, @QueryParam("origin") String origin) {
@@ -140,9 +142,9 @@ public class ExtendedUserOperations {
   @Path("directory/users/{user}/groups")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(
-      name = "web-list-directory-groups-for-user." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-list-directory-groups-for-user." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "web-list-directory-groups-for-user", absolute = true)
+  @ResponseMetered(name = "internal-list-directory-groups-for-user", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listDirectoryGroupsForUser(
       @PathParam("user") String user, @QueryParam("origin") String origin) {
@@ -173,8 +175,8 @@ public class ExtendedUserOperations {
   @POST
   @Path("directory/users")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-add-directory-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-add-directory-user", absolute = true)
+  @Timed(name = "internal-add-directory-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-add-directory-user", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response addDirectoryUser(DirectoryUserAddRequest request) {
     try {
@@ -203,8 +205,10 @@ public class ExtendedUserOperations {
   @POST
   @Path("directory/users/delete")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-delete-directory-users." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-delete-directory-users", absolute = true)
+  @Timed(
+      name = "internal-delete-directory-users." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-delete-directory-users", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response deleteDirectoryUsers(DirectoryUserDeleteRequest request) {
     try {
@@ -239,9 +243,9 @@ public class ExtendedUserOperations {
   @Path("directory/users/enabled")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(
-      name = "web-batch-update-directory-user-enabled." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-batch-update-directory-user-enabled." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "web-batch-update-directory-user-enabled", absolute = true)
+  @ResponseMetered(name = "internal-batch-update-directory-user-enabled", absolute = true)
   @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response batchUpdateDirectoryUserEnabled(DirectoryUserEnabledBatchUpdateRequest request) {
     try {

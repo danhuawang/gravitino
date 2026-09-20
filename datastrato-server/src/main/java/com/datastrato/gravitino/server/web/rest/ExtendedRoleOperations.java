@@ -68,8 +68,8 @@ public class ExtendedRoleOperations {
   @GET
   @Path("users")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-users-by-role." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-users-by-role", absolute = true)
+  @Timed(name = "internal-list-users-by-role." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-list-users-by-role", absolute = true)
   @AuthorizationExpression(expression = ROLE_MEMBERSHIP_AUTHORIZATION_EXPRESSION)
   public Response listUsersByRole(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -98,8 +98,10 @@ public class ExtendedRoleOperations {
   @GET
   @Path("groups")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-list-groups-by-role." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-list-groups-by-role", absolute = true)
+  @Timed(
+      name = "internal-list-groups-by-role." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-list-groups-by-role", absolute = true)
   @AuthorizationExpression(expression = ROLE_MEMBERSHIP_AUTHORIZATION_EXPRESSION)
   public Response listGroupsByRole(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
@@ -127,8 +129,10 @@ public class ExtendedRoleOperations {
 
   @PUT
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-update-bulk-permissions." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-update-bulk-permissions", absolute = true)
+  @Timed(
+      name = "internal-update-role-privileges." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-update-role-privileges", absolute = true)
   @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_GRANTS")
   public Response updateBulkPermissions(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

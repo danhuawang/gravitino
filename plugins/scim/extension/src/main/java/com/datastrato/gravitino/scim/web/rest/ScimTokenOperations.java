@@ -53,8 +53,8 @@ public class ScimTokenOperations {
 
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "list-scim-tokens." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "list-scim-tokens", absolute = true)
+  @Timed(name = "internal-list-scim-tokens." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-list-scim-tokens", absolute = true)
   public Response listTokens() {
     return ScimRESTUtils.doAs(
         httpRequest,
@@ -71,8 +71,8 @@ public class ScimTokenOperations {
 
   @POST
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "create-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "create-scim-token", absolute = true)
+  @Timed(name = "internal-create-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-create-scim-token", absolute = true)
   public Response createToken(CreateScimTokenRequest request) {
     return ScimRESTUtils.doAs(
         httpRequest,
@@ -89,8 +89,8 @@ public class ScimTokenOperations {
   @POST
   @Path("{tokenName}/rotate")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "rotate-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "rotate-scim-token", absolute = true)
+  @Timed(name = "internal-rotate-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-rotate-scim-token", absolute = true)
   public Response rotateToken(
       @PathParam("tokenName") String tokenName, @Nullable RotateScimTokenRequest request) {
     return ScimRESTUtils.doAs(
@@ -108,8 +108,8 @@ public class ScimTokenOperations {
   @DELETE
   @Path("{tokenName}")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "delete-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "delete-scim-token", absolute = true)
+  @Timed(name = "internal-delete-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-delete-scim-token", absolute = true)
   public Response deleteToken(@PathParam("tokenName") String tokenName) {
     return ScimRESTUtils.doAs(
         httpRequest,

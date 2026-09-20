@@ -77,9 +77,9 @@ public class ExtendedMetadataObjectRoleOperations {
   @GET
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(
-      name = "web-list-object-role-privileges." + MetricNames.HTTP_PROCESS_DURATION,
+      name = "internal-list-object-role-privileges." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
-  @ResponseMetered(name = "web-list-object-role-privileges", absolute = true)
+  @ResponseMetered(name = "internal-list-object-role-privileges", absolute = true)
   @AuthorizationExpression(expression = "")
   public Response listObjectRolePrivileges(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)

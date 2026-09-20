@@ -67,8 +67,8 @@ public class DataPreviewOperations {
   @GET
   @Path("schemas/{schema}/tables/{table}")
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "web-preview-table." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "web-preview-table", absolute = true)
+  @Timed(name = "internal-preview-table." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
+  @ResponseMetered(name = "internal-preview-table", absolute = true)
   @AuthorizationExpression(
       expression = AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION,
       accessMetadataType = MetadataObject.Type.TABLE)

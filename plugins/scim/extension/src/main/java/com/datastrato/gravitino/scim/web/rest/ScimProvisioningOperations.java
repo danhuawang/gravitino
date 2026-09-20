@@ -41,8 +41,10 @@ public class ScimProvisioningOperations {
 
   @GET
   @Produces("application/vnd.gravitino.v1+json")
-  @Timed(name = "list-scim-provisioning." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
-  @ResponseMetered(name = "list-scim-provisioning", absolute = true)
+  @Timed(
+      name = "internal-list-scim-provisioning." + MetricNames.HTTP_PROCESS_DURATION,
+      absolute = true)
+  @ResponseMetered(name = "internal-list-scim-provisioning", absolute = true)
   public Response listProvisioning() {
     return ScimRESTUtils.doAs(
         httpRequest,

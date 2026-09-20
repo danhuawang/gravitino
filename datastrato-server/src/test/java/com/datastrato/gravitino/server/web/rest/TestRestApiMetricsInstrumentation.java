@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
+import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.reflect.ClassPath;
@@ -35,10 +36,11 @@ import org.junit.jupiter.api.Test;
  * that carry {@link Timed} and {@link ResponseMetered}, so an un-annotated endpoint silently
  * disappears from {@code /metrics} — nothing fails, the numbers are simply missing. These tests
  * fail when a new endpoint is added without the annotations, when a metric name is reused, or when
- * a UI-facing endpoint drops the {@code web-} prefix.
+ * the prefix derived from {@link InternalApiPaths#PREFIX} and the path it is derived from stop
+ * agreeing in either direction.
  *
- * <p>The scanned packages are those the enterprise server loads: the three listed under {@code
- * gravitino.server.rest.extensionPackages} in {@code gravitino.conf}, the license resource
+ * <p>The scanned packages are those the enterprise server loads: the resources registered through
+ * {@code gravitino.server.rest.extensionPackages} in {@code gravitino.conf}, the license resource
  * registered by {@code DatastratoGravitinoServer}, and the resources contributed by the SCIM and
  * IdP plugins.
  */
@@ -54,11 +56,17 @@ public class TestRestApiMetricsInstrumentation {
           "org.apache.gravitino.idp.web.rest");
 
   /**
-   * Resources served under {@code /web} are the ones the Enterprise UI calls, and several of them
-   * mirror an open-source endpoint of the same name. Their metrics carry this prefix so the two
-   * stay distinguishable and so a dashboard can select the whole UI surface at once.
+   * Resources served under {@link InternalApiPaths#PREFIX} are the ones the Enterprise UI and the
+   * bundled tooling call, and several of them mirror an open-source endpoint of the same name.
+   * Their metrics carry this prefix so the two stay distinguishable and so a dashboard can select
+   * the whole internal surface at once.
+   *
+   * <p>The prefix is derived from the path constant rather than spelled out, so that moving the
+   * internal API to another path makes these tests fail loudly instead of quietly matching nothing.
+   * A previous literal {@code "web-"} kept passing after the endpoints moved from {@code /web} to
+   * {@code /api/internal}, which left the rule untested.
    */
-  private static final String WEB_METRIC_PREFIX = "web-";
+  private static final String INTERNAL_METRIC_PREFIX = normalize(InternalApiPaths.PREFIX) + "-";
 
   private static final List<Class<? extends Annotation>> HTTP_METHOD_ANNOTATIONS =
       ImmutableList.of(
@@ -112,13 +120,30 @@ public class TestRestApiMetricsInstrumentation {
       if (!metered.absolute()) {
         violations.add(name + " must declare @ResponseMetered(absolute = true)");
       }
-      if (isWebFacing(method) && !metered.name().startsWith(WEB_METRIC_PREFIX)) {
+      // The prefix and the path have to agree in both directions. Checking only that an internal
+      // resource carries the prefix would miss the opposite drift: a resource moved out from under
+      // the internal path while others stay behind keeps a stale prefix that nothing rejects, and
+      // testThePrefixRuleActuallyMatchesResources still passes on the resources left behind.
+      if (isInternalApi(method) && !metered.name().startsWith(INTERNAL_METRIC_PREFIX)) {
         violations.add(
             name
-                + " is served under /web but its metric name '"
+                + " is served under "
+                + InternalApiPaths.PREFIX
+                + " but its metric name '"
                 + metered.name()
                 + "' does not start with '"
-                + WEB_METRIC_PREFIX
+                + INTERNAL_METRIC_PREFIX
+                + "'");
+      }
+      if (!isInternalApi(method) && metered.name().startsWith(INTERNAL_METRIC_PREFIX)) {
+        violations.add(
+            name
+                + " is not served under "
+                + InternalApiPaths.PREFIX
+                + " but its metric name '"
+                + metered.name()
+                + "' starts with '"
+                + INTERNAL_METRIC_PREFIX
                 + "'");
       }
       String expectedTimerName = metered.name() + "." + MetricNames.HTTP_PROCESS_DURATION;
@@ -159,6 +184,24 @@ public class TestRestApiMetricsInstrumentation {
   }
 
   @Test
+  public void testThePrefixRuleActuallyMatchesResources() {
+    // The prefix rule is only worth anything while some resource is served under the internal
+    // path. When the endpoints moved from /web to /api/internal, the rule kept comparing against a
+    // literal "web" that nothing matched any more, so it passed without checking a single class.
+    // This test fails in that situation instead of going quiet.
+    long internalMethods =
+        resourceMethods().stream().filter(TestRestApiMetricsInstrumentation::isInternalApi).count();
+
+    assertTrue(
+        internalMethods > 0,
+        "No resource method is served under "
+            + InternalApiPaths.PREFIX
+            + ", so the '"
+            + INTERNAL_METRIC_PREFIX
+            + "' prefix rule is not guarding anything");
+  }
+
+  @Test
   public void testEveryPackageContributesResources() {
     // Without this, a package that is renamed or dropped from the classpath would make the tests
     // above pass by scanning nothing at all.
@@ -177,14 +220,19 @@ public class TestRestApiMetricsInstrumentation {
             + empty);
   }
 
-  private static boolean isWebFacing(Method method) {
+  private static boolean isInternalApi(Method method) {
     Path path = method.getDeclaringClass().getAnnotation(Path.class);
     if (path == null) {
       return false;
     }
     // Class-level paths are written both with and without a leading slash in this codebase.
-    String value = path.value().startsWith("/") ? path.value().substring(1) : path.value();
-    return value.equals("web") || value.startsWith("web/");
+    String value = normalize(path.value());
+    String prefix = normalize(InternalApiPaths.PREFIX);
+    return value.equals(prefix) || value.startsWith(prefix + "/");
+  }
+
+  private static String normalize(String path) {
+    return path.startsWith("/") ? path.substring(1) : path;
   }
 
   private static List<Method> resourceMethods() {
