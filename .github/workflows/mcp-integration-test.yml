@@ -20,6 +20,11 @@ name: mcp-integration-test
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main", "branch-*" ]
+  pull_request:
+    types: [labeled]
+    branches: [ "main", "branch-*" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -28,8 +33,9 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci')
     outputs:
-      mcp_server_changes: ${{ steps.filter.outputs.mcp_server_changes }}
+      mcp_or_authz_changes: ${{ steps.filter.outputs.mcp_or_authz_changes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,16 +45,18 @@ jobs:
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
-          base: ${{ github.event.repository.default_branch }}
           filters: |
-            mcp_server_changes:
+            mcp_or_authz_changes:
               - 'mcp-server/**'
+              - 'server/**'
+              - 'core/src/main/java/org/apache/gravitino/authorization/**'
+              - 'server-common/src/main/java/org/apache/gravitino/server/authentication/**'
               - '.github/workflows/mcp-integration-test.yml'
               - '.github/workflows/mcp-integration-test-action.yml'
 
   mcp-authz-integration-test:
     needs: changes
-    if: needs.changes.outputs.mcp_server_changes == 'true'
+    if: needs.changes.outputs.mcp_or_authz_changes == 'true'
     uses: ./.github/workflows/mcp-integration-test-action.yml
     with:
       java-version: '17'
