@@ -57,6 +57,44 @@ Besides the [common catalog properties](./gravitino-server-config.md#apache-grav
 | `jdbc.pool.min-size` | The minimum number of connections in the pool. `2` by default.                                               | `2`           | No       | 1.2.0         |
 | `jdbc.pool.max-size` | The maximum number of connections in the pool. `10` by default.                                              | `10`          | No       | 1.2.0         |
 
+#### Connection timeouts
+
+The MaxCompute (ODPS) JDBC driver retries forever with no bounded timeout by default, so a mistyped
+or temporarily unavailable endpoint can block for a long time. To keep that from stalling metadata
+operations, Gravitino injects the following bounded defaults into the `jdbc-url` when you do not set
+them yourself. Timeout values are in **seconds**; all are passed as JDBC URL parameters.
+
+| Parameter              | Description                                                    | Default (injected) |
+|------------------------|----------------------------------------------------------------|--------------------|
+| `retryTime`            | Number of times a failed request is retried.                   | `1`                |
+| `connectTimeout`       | Maximum time to establish the connection to the ODPS endpoint. | `3`                |
+| `readTimeout`          | Maximum time to read a response after the connection is open.  | `3`                |
+| `tunnelConnectTimeout` | Maximum time to establish a data-tunnel connection.            | `3`                |
+| `tunnelReadTimeout`    | Maximum time to read from a data-tunnel connection.            | `3`                |
+
+Against an unreachable endpoint, the driver's worst-case time is roughly
+`(connectTimeout + readTimeout) × (retryTime + 1)`. With the defaults above that is about twelve
+seconds. `retryTime` is the dominant factor: the driver's own default is four retries, which is what
+turns an unreachable endpoint into a hang of tens of seconds.
+
+To override a default, add the parameter to your `jdbc-url` (for example `...&retryTime=2`). Any
+value you set is preserved and not overwritten. Parameter names are **case-sensitive**: the ODPS
+driver only recognizes the exact keys above (for example `readTimeout`, not `ReadTimeout`).
+
+:::caution
+Do not disable these bounds (for example by setting `retryTime=-1` or a timeout to `-1`, which the
+driver treats as "wait forever"). Without them, a catalog pointed at an unreachable backend can
+block every metadata operation in the metalake — including the Iceberg REST surface that engines
+depend on — for as long as the driver keeps retrying, which can take many minutes.
+:::
+
+:::caution
+Using the `odps_config` URL parameter is **not supported**. When it is present, the ODPS driver
+reads its configuration from that file and ignores all other URL parameters, so Gravitino cannot
+bound the connection timeouts and catalog creation is rejected. Put the connection settings
+directly in the `jdbc-url` instead.
+:::
+
 #### JDBC URL format
 
 The JDBC URL must follow this format and include the `odpsNamespaceSchema=true` parameter:

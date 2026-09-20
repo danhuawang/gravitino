@@ -9,6 +9,7 @@ import com.datastrato.gravitino.catalog.maxcompute.converter.MaxComputeException
 import com.datastrato.gravitino.catalog.maxcompute.converter.MaxComputeTypeConverter;
 import com.datastrato.gravitino.catalog.maxcompute.operation.MaxComputeDatabaseOperations;
 import com.datastrato.gravitino.catalog.maxcompute.operation.MaxComputeTableOperations;
+import com.datastrato.gravitino.catalog.maxcompute.utils.MaxComputeTimeoutUtils;
 import java.util.Map;
 import org.apache.gravitino.catalog.jdbc.JdbcCatalog;
 import org.apache.gravitino.catalog.jdbc.JdbcCatalogOperations;
@@ -26,6 +27,20 @@ public class MaxComputeCatalog extends JdbcCatalog {
 
   public static final MaxComputeTablePropertiesMetadata MAXCOMPUTE_TABLE_PROPERTIES_META =
       new MaxComputeTablePropertiesMetadata();
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>Injects bounded default connection timeouts into the {@code jdbc-url} before the
+   * configuration is used to open connections. The ODPS JDBC driver defaults its timeouts to "wait
+   * forever", so without this an unreachable backend would block a connection attempt for the full
+   * operating-system TCP timeout while the search metadata sync holds the metalake tree locks. See
+   * {@link MaxComputeTimeoutUtils}.
+   */
+  @Override
+  public JdbcCatalog withCatalogConf(Map<String, String> conf) {
+    return super.withCatalogConf(MaxComputeTimeoutUtils.withConnectionTimeouts(conf));
+  }
 
   @Override
   public String shortName() {
