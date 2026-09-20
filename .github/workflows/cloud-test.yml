@@ -14,9 +14,68 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-ci'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Disable Git automatic maintenance
+        run: git config --local maintenance.auto false
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d
+        if: github.event_name != 'workflow_dispatch'
+        id: filter
+        with:
+          filters: |
+            cloud_changes:
+              - .github/workflows/cloud-test.yml
+              - api/**
+              - authorization-jdbc-enterprise/**
+              - authorizations/**
+              - bin/**
+              - bundles/**
+              - catalogs/catalog-common/**
+              - catalogs/catalog-fileset/**
+              - catalogs/hadoop-auth/**
+              - catalogs/hadoop-common/**
+              - clients/client-java/**
+              - clients/client-java-runtime/**
+              - clients/client-python/**
+              - clients/filesystem-hadoop3/**
+              - common/**
+              - common-extension/**
+              - conf/**
+              - core/**
+              - core-extension/**
+              - datastrato-server/**
+              - dev/**
+              - distribution/**
+              - enterprise-licensing/**
+              - gradle/**
+              - iceberg/**
+              - integration-test-common/**
+              - licensing/**
+              - scripts/**
+              - server/**
+              - server-common/**
+              - test/**
+              - build.gradle.kts
+              - enterprise-licensing.gradle.kts
+              - gradle.properties
+              - gradlew
+              - settings.gradle.kts
+      - name: Force Cloud Test for manual dispatch
+        if: github.event_name == 'workflow_dispatch'
+        id: manual
+        run: echo "cloud_changes=true" >> "$GITHUB_OUTPUT"
+    outputs:
+      cloud_changes: ${{ steps.manual.outputs.cloud_changes || steps.filter.outputs.cloud_changes }}
+
   # Integration test for AMD64 architecture
   test-amd64-arch:
-    if: contains(github.event.pull_request.labels.*.name, 'run-ci')
+    needs: changes
+    if: needs.changes.outputs.cloud_changes == 'true'
     runs-on: gcp-arc-runners
     env:
       GRAVITINO_TEST_CLOUD_IT: true
