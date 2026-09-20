@@ -7,11 +7,12 @@ package com.datastrato.gravitino.scim;
 import javax.annotation.Nullable;
 
 /**
- * Maximum lengths of SCIM fields persisted by the enterprise schema.
+ * Maximum lengths of SCIM and JIT fields persisted by the enterprise schema.
  *
  * <p>These values must match {@code scim_user_meta}, {@code scim_group_meta}, and {@code
- * scim_token_meta} in {@code scripts/enterprise/{h2,mysql,postgresql}/enterprise-schema-*.sql}.
- * Values that cannot be stored are rejected before they reach the database.
+ * scim_token_meta}, {@code jit_user_meta}, and {@code jit_group_meta} in {@code
+ * scripts/enterprise/{h2,mysql,postgresql}/enterprise-schema-*.sql}. Values that cannot be stored
+ * are rejected before they reach the database.
  */
 public final class ScimFieldLimits {
 
@@ -85,11 +86,30 @@ public final class ScimFieldLimits {
    */
   public static void checkMaxLength(
       @Nullable String value, int maxLength, String fieldName, String resource) {
-    // Count code points rather than UTF-16 chars, since MySQL (utf8mb4) and PostgreSQL count a
-    // supplementary character such as an emoji as one character.
-    if (value != null && value.codePointCount(0, value.length()) > maxLength) {
+    if (exceedsMaxLength(value, maxLength)) {
       throw new IllegalArgumentException(exceedMaxLengthMessage(fieldName, resource, maxLength));
     }
+  }
+
+  /**
+   * Checks a name written to a JIT identity table.
+   *
+   * @param value the user or group name to check
+   * @param fieldName {@code userName} or {@code groupName}
+   * @throws IllegalArgumentException if the name exceeds the JIT column width
+   */
+  public static void checkJitName(@Nullable String value, String fieldName) {
+    if (exceedsMaxLength(value, MAX_NAME_LENGTH)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "The %s of the JIT identity must not exceed %d characters",
+              fieldName, MAX_NAME_LENGTH));
+    }
+  }
+
+  private static boolean exceedsMaxLength(@Nullable String value, int maxLength) {
+    // MySQL (utf8mb4) and PostgreSQL count a supplementary character as one character.
+    return value != null && value.codePointCount(0, value.length()) > maxLength;
   }
 
   static String exceedMaxLengthMessage(String fieldName, String resource, int maxLength) {

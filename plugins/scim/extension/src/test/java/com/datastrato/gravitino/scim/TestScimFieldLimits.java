@@ -53,6 +53,30 @@ class TestScimFieldLimits {
   }
 
   @Test
+  void testJitNamesUseCodePointLimit() {
+    String emoji = "\uD83D\uDE00";
+    String atLimit = "a".repeat(ScimFieldLimits.MAX_NAME_LENGTH - 1) + emoji;
+    String overLimit = atLimit + "a";
+
+    assertDoesNotThrow(() -> ScimFieldLimits.checkJitName(atLimit, "userName"));
+    assertDoesNotThrow(() -> ScimFieldLimits.checkJitName(atLimit, "groupName"));
+
+    IllegalArgumentException userName =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ScimFieldLimits.checkJitName(overLimit, "userName"));
+    assertEquals(
+        "The userName of the JIT identity must not exceed 128 characters", userName.getMessage());
+
+    IllegalArgumentException groupName =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ScimFieldLimits.checkJitName(overLimit, "groupName"));
+    assertEquals(
+        "The groupName of the JIT identity must not exceed 128 characters", groupName.getMessage());
+  }
+
+  @Test
   void testExternalIdAndGroupCommentLimits() {
     IllegalArgumentException externalId =
         assertThrows(

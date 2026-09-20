@@ -4,6 +4,7 @@
 
 package com.datastrato.gravitino.scim.storage.service;
 
+import com.datastrato.gravitino.scim.ScimFieldLimits;
 import com.datastrato.gravitino.scim.storage.mapper.JitIdentityMapper;
 import com.datastrato.gravitino.scim.storage.po.JitGroupPO;
 import com.datastrato.gravitino.scim.storage.po.JitUserGroupRelPO;
@@ -53,7 +54,17 @@ public class JitIdentityMetaService {
       long observedAt,
       String auditInfo,
       IdGenerator idGenerator) {
+    String trimmedUserName = StringUtils.trimToNull(userName);
+    if (trimmedUserName == null) {
+      throw new IllegalArgumentException("The userName of the JIT identity must not be blank");
+    }
+    if (!trimmedUserName.equals(userName)) {
+      throw new IllegalArgumentException(
+          "The userName of the JIT identity must not have leading or trailing whitespace");
+    }
+    ScimFieldLimits.checkJitName(userName, "userName");
     List<String> normalizedGroups = normalizeGroupNames(groupNames);
+    normalizedGroups.forEach(groupName -> ScimFieldLimits.checkJitName(groupName, "groupName"));
     return SessionUtils.doWithCommitAndFetchResult(
         JitIdentityMapper.class,
         mapper ->
