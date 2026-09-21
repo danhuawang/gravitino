@@ -63,6 +63,7 @@ public class TestBigQueryCatalogProxy {
 
     // Basic required properties
     config.put(PROJECT_ID, "test-project");
+    config.put(USERNAME.getKey(), "test@example.com");
     config.put(PASSWORD.getKey(), "/path/to/key.json");
 
     // Proxy configuration without authentication
@@ -88,6 +89,7 @@ public class TestBigQueryCatalogProxy {
 
     // Basic required properties only
     config.put(PROJECT_ID, "test-project");
+    config.put(USERNAME.getKey(), "test@example.com");
     config.put(PASSWORD.getKey(), "/path/to/key.json");
 
     // Create catalog and process configuration
@@ -110,6 +112,7 @@ public class TestBigQueryCatalogProxy {
 
     // Basic required properties
     config.put(PROJECT_ID, "test-project");
+    config.put(USERNAME.getKey(), "test@example.com");
     config.put(PASSWORD.getKey(), "/path/to/key.json");
 
     // Invalid proxy configuration - host without port
@@ -130,6 +133,7 @@ public class TestBigQueryCatalogProxy {
 
     // Basic required properties
     config.put(PROJECT_ID, "test-project");
+    config.put(USERNAME.getKey(), "test@example.com");
     config.put(PASSWORD.getKey(), "/path/to/key.json");
 
     // Invalid proxy port
@@ -150,6 +154,7 @@ public class TestBigQueryCatalogProxy {
 
     // Basic required properties
     config.put(PROJECT_ID, "test-project");
+    config.put(USERNAME.getKey(), "test@example.com");
     config.put(PASSWORD.getKey(), "/path/to/key.json");
 
     // Proxy port out of range

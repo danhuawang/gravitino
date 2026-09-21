@@ -37,6 +37,7 @@ import org.apache.gravitino.exceptions.TableAlreadyExistsException;
 import org.apache.gravitino.rel.TableChange;
 import org.apache.gravitino.rel.expressions.distributions.Distribution;
 import org.apache.gravitino.rel.expressions.distributions.Distributions;
+import org.apache.gravitino.rel.expressions.sorts.SortOrder;
 import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
@@ -204,6 +205,27 @@ public class BigQueryTableOperations extends JdbcTableOperations {
     }
   }
 
+  /**
+   * Creates a table in BigQuery.
+   *
+   * <p>This overrides the {@code SortOrder}-aware overload because that is the one the JDBC catalog
+   * layer ({@code JdbcCatalogOperations#createTable}) actually invokes. BigQuery requires the table
+   * identifier in {@code CREATE TABLE} to be qualified with its dataset (e.g. {@code
+   * dataset.table}); an unqualified name is rejected by BigQuery with "Table must be qualified with
+   * a dataset". Here {@code databaseName} is the BigQuery dataset, so we prepend it to the table
+   * name before generating the SQL.
+   *
+   * @param databaseName the BigQuery dataset name
+   * @param tableName the (unqualified) table name
+   * @param columns the columns of the table
+   * @param comment the table comment
+   * @param properties the table properties
+   * @param partitioning the partitioning transforms
+   * @param distribution the distribution (must be {@link Distributions#NONE} for BigQuery)
+   * @param indexes the indexes (unsupported by BigQuery)
+   * @param sortOrders the sort orders (unsupported by BigQuery)
+   * @throws TableAlreadyExistsException if the table already exists
+   */
   @Override
   public void create(
       String databaseName,
@@ -213,12 +235,20 @@ public class BigQueryTableOperations extends JdbcTableOperations {
       Map<String, String> properties,
       Transform[] partitioning,
       Distribution distribution,
-      Index[] indexes)
+      Index[] indexes,
+      SortOrder[] sortOrders)
       throws TableAlreadyExistsException {
 
-    // In BigQuery, table name must be fully qualified with dataset
+    if (sortOrders != null && sortOrders.length > 0) {
+      throw new UnsupportedOperationException(
+          "BigQuery does not support sort orders. Use clustering via the 'clustering_fields' "
+              + "table property instead.");
+    }
+
+    // In BigQuery, the table identifier in DDL must be fully qualified with its dataset.
     String qualifiedTableName = databaseName + "." + tableName;
 
+    LOG.info("Attempting to create table {} in dataset {}", tableName, databaseName);
     try (Connection connection = getConnection(databaseName)) {
 
       String createTableSql =
@@ -232,6 +262,7 @@ public class BigQueryTableOperations extends JdbcTableOperations {
               indexes);
 
       JdbcConnectorUtils.executeUpdate(connection, createTableSql);
+      LOG.info("Created table {} in dataset {}", qualifiedTableName, databaseName);
 
     } catch (final SQLException se) {
       throw this.exceptionMapper.toGravitinoException(se);

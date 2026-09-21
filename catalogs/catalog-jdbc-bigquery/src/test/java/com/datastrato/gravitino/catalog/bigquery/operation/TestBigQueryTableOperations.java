@@ -8,17 +8,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.catalog.bigquery.BigQueryTablePropertiesMetadata;
 import com.datastrato.gravitino.catalog.bigquery.converter.BigQueryTypeConverter;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.gravitino.catalog.jdbc.JdbcColumn;
 import org.apache.gravitino.rel.expressions.distributions.Distributions;
+import org.apache.gravitino.rel.expressions.sorts.SortOrder;
+import org.apache.gravitino.rel.expressions.sorts.SortOrders;
 import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.expressions.transforms.Transforms;
 import org.apache.gravitino.rel.indexes.Index;
@@ -26,6 +31,7 @@ import org.apache.gravitino.rel.indexes.Indexes;
 import org.apache.gravitino.rel.types.Types;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 /** Unit tests for {@link BigQueryTableOperations}. */
 public class TestBigQueryTableOperations {
@@ -580,5 +586,120 @@ public class TestBigQueryTableOperations {
         sql.contains("kms_key_name=\"projects/test/locations/us/keyRings/ring/cryptoKeys/key\""));
     assertTrue(sql.contains("default_rounding_mode=\"ROUND_HALF_EVEN\""));
     assertTrue(sql.contains("tags="));
+  }
+
+  /**
+   * A test-only subclass that intercepts the JDBC connection so the emitted SQL can be captured
+   * without a live BigQuery instance.
+   */
+  private static class CapturingBigQueryTableOperations extends BigQueryTableOperations {
+    private final Connection connection;
+
+    CapturingBigQueryTableOperations(Connection connection) {
+      this.connection = connection;
+    }
+
+    @Override
+    protected Connection getConnection(String databaseName) {
+      return connection;
+    }
+  }
+
+  private CapturingBigQueryTableOperations createCapturingOperations(Statement statement)
+      throws SQLException {
+    Connection connection = mock(Connection.class);
+    when(connection.createStatement()).thenReturn(statement);
+    when(statement.executeUpdate(anyString())).thenReturn(0);
+
+    CapturingBigQueryTableOperations tableOperations =
+        new CapturingBigQueryTableOperations(connection);
+    try {
+      java.lang.reflect.Field field =
+          BigQueryTableOperations.class.getSuperclass().getDeclaredField("typeConverter");
+      field.setAccessible(true);
+      field.set(tableOperations, new BigQueryTypeConverter());
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to set typeConverter for testing", e);
+    }
+    return tableOperations;
+  }
+
+  /**
+   * Regression test for #2164: creating a table through the {@code SortOrder}-aware {@code create}
+   * overload (the one the JDBC catalog layer actually invokes) must emit a CREATE TABLE statement
+   * whose identifier is qualified with the dataset. Previously only the 8-arg overload was
+   * overridden, so the framework's 9-arg path emitted an unqualified name and BigQuery rejected it.
+   */
+  @Test
+  void testCreateEmitsDatasetQualifiedName() throws SQLException {
+    Statement statement = mock(Statement.class);
+    CapturingBigQueryTableOperations tableOperations = createCapturingOperations(statement);
+
+    JdbcColumn[] columns = {
+      JdbcColumn.builder()
+          .withName("id")
+          .withType(Types.LongType.get())
+          .withNullable(false)
+          .build(),
+      JdbcColumn.builder()
+          .withName("name")
+          .withType(Types.StringType.get())
+          .withNullable(true)
+          .build()
+    };
+
+    // Invoke the SortOrder-aware overload with the (unqualified) table name, mirroring the
+    // JdbcCatalogOperations.createTable call path.
+    tableOperations.create(
+        "gravitino_probe",
+        "t_1716",
+        columns,
+        "crud probe",
+        new HashMap<>(),
+        new Transform[0],
+        Distributions.NONE,
+        new Index[0],
+        SortOrders.NONE);
+
+    ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+    org.mockito.Mockito.verify(statement).executeUpdate(sqlCaptor.capture());
+    String sql = sqlCaptor.getValue();
+
+    // The identifier must be dataset-qualified, not the bare table name.
+    assertTrue(
+        sql.contains("CREATE TABLE `gravitino_probe.t_1716`"),
+        "Expected dataset-qualified CREATE TABLE, but got: " + sql);
+    assertFalse(
+        sql.contains("CREATE TABLE `t_1716`"),
+        "CREATE TABLE must not use an unqualified table name: " + sql);
+  }
+
+  /** BigQuery does not support sort orders; the create path must reject them clearly. */
+  @Test
+  void testCreateRejectsSortOrders() throws SQLException {
+    Statement statement = mock(Statement.class);
+    CapturingBigQueryTableOperations tableOperations = createCapturingOperations(statement);
+
+    JdbcColumn[] columns = {
+      JdbcColumn.builder().withName("id").withType(Types.LongType.get()).withNullable(false).build()
+    };
+
+    SortOrder[] sortOrders = {
+      SortOrders.ascending(org.apache.gravitino.rel.expressions.NamedReference.field("id"))
+    };
+
+    assertThrows(
+        UnsupportedOperationException.class,
+        () ->
+            tableOperations.create(
+                "gravitino_probe",
+                "t_sorted",
+                columns,
+                null,
+                new HashMap<>(),
+                new Transform[0],
+                Distributions.NONE,
+                new Index[0],
+                sortOrders));
   }
 }

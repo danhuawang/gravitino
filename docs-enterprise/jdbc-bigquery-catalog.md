@@ -24,8 +24,8 @@ Gravitino saves some system information in schema and table comment, like `(From
 The BigQuery JDBC driver is not included in the Gravitino distribution. You must download and install it manually:
 
 1. Download the Simba JDBC Driver for Google BigQuery from the [official website](https://cloud.google.com/bigquery/docs/reference/odbc-jdbc-drivers)
-2. Extract the downloaded ZIP file
-3. Copy all JAR files (except Jackson JARs to avoid conflicts) to `${GRAVITINO_HOME}/catalogs/jdbc-bigquery/libs/`
+2. Extract the downloaded ZIP file. It bundles the Google runtime libraries the catalog needs (such as `google-auth-library-oauth2-http-*.jar`), not just the driver JAR.
+3. Copy all JAR files from the extracted archive (except Jackson JARs to avoid conflicts) to `${GRAVITINO_HOME}/catalogs/jdbc-bigquery/libs/`
 4. Restart the Gravitino server
 
 :::note
@@ -56,16 +56,23 @@ You can pass to a BigQuery data source any property that isn't defined by Gravit
 
 Check the relevant data source configuration in [data source properties](https://commons.apache.org/proper/commons-dbcp/configuration.html)
 
-If you use a JDBC catalog, you must provide `jdbc-url`, `jdbc-driver`, `jdbc-user` and `jdbc-password` to catalog properties.
+A BigQuery catalog requires `project-id`, `jdbc-user` (service account email) and `jdbc-password`
+(service account key file path). `jdbc-url` and `jdbc-driver` are optional: the connector builds the
+JDBC URL from the other properties and defaults the driver to the Simba class. Every property listed
+below is declared by the connector, so it is discoverable through the API and the "Add catalog" UI,
+and a create that omits a required property is rejected at create time rather than failing on first
+use.
+
 Besides the [common catalog properties](./gravitino-server-config.md#apache-gravitino-catalog-properties-configuration), the BigQuery catalog has the following properties:
 
 | Configuration item      | Description                                                                                       | Default value                                                | Required | Since version |
 |-------------------------|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------|----------|---------------|
 | `project-id`            | Google Cloud Project ID                                                                           | (none)                                                       | Yes      | 1.2.0         |
-| `jdbc-url`              | JDBC connection URL, can be auto-generated or manually specified                                  | `jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443` | Yes      | 1.2.0         |
-| `jdbc-driver`           | JDBC driver class name                                                                            | `com.simba.googlebigquery.jdbc42.Driver`                     | Yes      | 1.2.0         |
 | `jdbc-user`             | Service account email                                                                             | (none)                                                       | Yes      | 1.2.0         |
-| `jdbc-password`         | Service account key file path                                                                     | (none)                                                       | Yes      | 1.2.0         |
+| `jdbc-password`         | Service account key file path (on the Gravitino server / container filesystem)                    | (none)                                                       | Yes      | 1.2.0         |
+| `jdbc-url`              | JDBC connection URL. Built from `project-id`, `jdbc-user` and `jdbc-password` when not provided.   | `jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443` | No       | 1.2.0         |
+| `jdbc-driver`           | JDBC driver class name                                                                            | `com.simba.googlebigquery.jdbc42.Driver`                     | No       | 1.2.0         |
+| `jdbc-database`         | Default dataset. Optional; the dataset is normally supplied per schema/table request.             | (none)                                                       | No       | 1.2.0         |
 | `jdbc.pool.min-size`    | The minimum number of connections in the pool. `2` by default.                                    | `2`                                                          | No       | 1.2.0         |
 | `jdbc.pool.max-size`    | The maximum number of connections in the pool. `10` by default.                                   | `10`                                                         | No       | 1.2.0         |
 | `jdbc.pool.max-wait-ms` | The maximum Duration that the pool will wait for a connection to be returned. `30000` by default. | `30000`                                                      | No       | 1.2.0         |
@@ -73,6 +80,15 @@ Besides the [common catalog properties](./gravitino-server-config.md#apache-grav
 | `proxy-port`            | Proxy server port number                                                                          | (none)                                                       | No       | 1.2.0         |
 | `proxy-username`        | Proxy authentication username                                                                     | (none)                                                       | No       | 1.2.0         |
 | `proxy-password`        | Proxy authentication password                                                                     | (none)                                                       | No       | 1.2.0         |
+
+:::note
+`jdbc-password` is a **path to the service account JSON key on the Gravitino server**, not the key
+material itself. The file must exist on the server before the catalog is created. In containerized
+or Kubernetes deployments, mount the key through your deployment (for the Datastrato Enterprise
+chart, see the GCP service account key values) and set `jdbc-password` to the mounted path. See the
+[Providing the service account key in containers](#providing-the-service-account-key-in-containers)
+section below.
+:::
 
 :::note
 When using a proxy that requires credentials (`proxy-username` and `proxy-password`), the following JVM arguments must be used:
@@ -83,7 +99,43 @@ When using a proxy that requires credentials (`proxy-username` and `proxy-passwo
 These arguments disable the default security restrictions on HTTP authentication schemes for tunneling and proxying, allowing authentication to work properly through the proxy.
 :::
 
+### Providing the service account key in containers
 
+`jdbc-password` points to a service account JSON key on the Gravitino server filesystem, so the file
+must be reachable inside the container before the catalog is created. Do not bake the key into the
+image. Supply it as a Kubernetes Secret mounted into the Gravitino pod, then set `jdbc-password` to
+the mounted path.
+
+1. Create a Secret from the key file:
+
+   ```bash
+   kubectl create secret generic bigquery-sa-key \
+     --from-file=key.json=/local/path/to/service-account-key.json \
+     -n <gravitino-namespace>
+   ```
+
+2. Mount the Secret into the Gravitino pod with the chart's `extraVolumes` / `extraVolumeMounts`
+   values (mounted read-only):
+
+   ```yaml
+   extraVolumes:
+     - name: bigquery-sa-key
+       secret:
+         secretName: bigquery-sa-key
+   extraVolumeMounts:
+     - name: bigquery-sa-key
+       mountPath: /opt/gravitino/secrets/bigquery
+       readOnly: true
+   ```
+
+3. Set `jdbc-password` to the mounted file path when creating the catalog, for example
+   `/opt/gravitino/secrets/bigquery/key.json`.
+
+:::note
+Mounting the key as a Secret keeps the credential out of the image and out of catalog `properties()`
+responses (`jdbc-password` is masked on read). A future release will let the credential be resolved
+through Gravitino's secret providers so the key never needs to touch the container filesystem.
+:::
 
 ### Catalog operations
 

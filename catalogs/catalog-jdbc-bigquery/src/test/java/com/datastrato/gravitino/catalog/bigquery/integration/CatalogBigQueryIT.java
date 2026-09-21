@@ -341,6 +341,43 @@ public class CatalogBigQueryIT extends BaseIT {
     }
   }
 
+  /**
+   * Regression test for #2164: creating a table must send a dataset-qualified name to BigQuery.
+   *
+   * <p>Previously the connector emitted an unqualified {@code CREATE TABLE `t_1716`}, which
+   * BigQuery rejects with "Table must be qualified with a dataset". This reproduces that exact
+   * scenario with a {@code t_<digits>} style name and verifies the table is created and can be
+   * loaded back.
+   */
+  @Test
+  void testCreateTableUnqualifiedNameRegression() {
+    String probeTableName = "t_" + System.currentTimeMillis();
+    Column[] columns = {
+      Column.of("id", Types.LongType.get(), "id column"),
+      Column.of("name", Types.StringType.get(), "name column")
+    };
+    NameIdentifier tableIdentifier = NameIdentifier.of(schemaName, probeTableName);
+
+    TableCatalog tableCatalog = catalog.asTableCatalog();
+    Table createdTable =
+        Assertions.assertDoesNotThrow(
+            () ->
+                tableCatalog.createTable(
+                    tableIdentifier,
+                    columns,
+                    "crud probe #2164",
+                    createProperties(),
+                    Transforms.EMPTY_TRANSFORM,
+                    Distributions.NONE,
+                    new SortOrder[0]),
+            "Creating a table must not fail with a BigQuery unqualified-name error");
+    Assertions.assertEquals(probeTableName, createdTable.name());
+
+    Table loadedTable = tableCatalog.loadTable(tableIdentifier);
+    Assertions.assertEquals(probeTableName, loadedTable.name());
+    Assertions.assertEquals(columns.length, loadedTable.columns().length);
+  }
+
   @Test
   void testCreateTableWithPartitioning() {
     Column[] columns = {
