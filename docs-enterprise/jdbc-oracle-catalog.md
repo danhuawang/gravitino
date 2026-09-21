@@ -318,14 +318,13 @@ The catalog enforces Oracle's own identifier rules on every schema, table, colum
 
 - Must start with a letter (A-Z, a-z).
 - May contain letters, digits, underscores (`_`), dollar signs (`$`), and hash signs (`#`).
-- Maximum length follows the connected Oracle server's limit: **128 bytes** on Oracle 12.2 and
-  later, **30 bytes** on releases before 12.2. The catalog resolves this from the server at
-  connection time (via the JDBC driver's reported maximum identifier length) rather than assuming a
-  fixed value, so it does not reject a name that the connected Oracle would accept.
+- Maximum length is **128 bytes**, the identifier limit Oracle 12.2 introduced, which covers every
+  currently supported Oracle release. On a pre-12.2 server (30-byte limit), a name between 31 and
+  128 bytes passes this check but is rejected by Oracle itself at `CREATE`/`ALTER` time.
 
-Grammar (length enforced separately against the server limit): `^[A-Za-z][A-Za-z0-9_$#]*$`
+Grammar (length enforced separately against the 128-byte limit): `^[A-Za-z][A-Za-z0-9_$#]*$`
 
 A quoted identifier (e.g. `"My Table"`) is exempt from the character grammar but is still bound by
-the same server length limit, measured in bytes of the database character set.
+the same 128-byte limit, measured in bytes of the database character set.
 
 Names that do not match these rules are rejected up front, before any SQL is sent to Oracle.

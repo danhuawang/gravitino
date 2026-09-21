@@ -25,10 +25,6 @@ public class OracleCatalog extends JdbcCatalog {
   private static final OracleTablePropertiesMetadata TABLE_PROPERTIES_METADATA =
       new OracleTablePropertiesMetadata();
 
-  // The table operations instance created for this catalog, retained so newCapability() can read
-  // the Oracle server's identifier length limit it resolves at initialization time (#2095).
-  private volatile OracleTableOperations oracleTableOperations;
-
   @Override
   public String shortName() {
     return "jdbc-oracle";
@@ -64,9 +60,7 @@ public class OracleCatalog extends JdbcCatalog {
 
   @Override
   protected JdbcTableOperations createJdbcTableOperations() {
-    OracleTableOperations ops = new OracleTableOperations();
-    this.oracleTableOperations = ops;
-    return ops;
+    return new OracleTableOperations();
   }
 
   @Override
@@ -76,18 +70,12 @@ public class OracleCatalog extends JdbcCatalog {
 
   @Override
   public Capability newCapability() {
-    // Ensure the operations layer is initialized so the Oracle server's identifier length limit is
-    // resolved before the capability that enforces it is built. When operations are not yet
-    // available (e.g. before the catalog is initialized), the capability falls back to its default
-    // limit.
-    OracleTableOperations tableOps = this.oracleTableOperations;
-    if (tableOps == null) {
-      ops();
-      tableOps = this.oracleTableOperations;
-    }
-    return tableOps != null
-        ? new OracleCatalogCapability(tableOps.getMaxIdentifierLengthBytes())
-        : new OracleCatalogCapability();
+    // newCapability() must stay cheap and must not open a JDBC connection: CatalogManager preloads
+    // capability() when a catalog is created or loaded, so touching ops() here would build the
+    // connection pool eagerly and break BaseCatalog's lazy-init contract (#2195). The default
+    // 128-byte identifier limit is correct for every supported Oracle (12.2+); a pre-12.2 server's
+    // lower limit is enforced by Oracle itself at DDL time.
+    return new OracleCatalogCapability();
   }
 
   @Override

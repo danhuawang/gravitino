@@ -72,13 +72,6 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   private static final int ORACLE_NATIVE_BOOLEAN_MIN_VERSION = 23;
 
-  /**
-   * Identifier length limit assumed when the JDBC driver does not report one (it returns 0 from
-   * {@link java.sql.DatabaseMetaData#getMaxTableNameLength()} for "unknown"). 128 is the limit for
-   * Oracle 12.2 and later, which covers every currently supported release.
-   */
-  private static final int DEFAULT_MAX_IDENTIFIER_LENGTH_BYTES = 128;
-
   private static final int MAX_RANGE_EXPRESSIONS_PER_QUERY = 100;
   private static final int MAX_RANGE_EXPRESSION_QUERY_LENGTH = 30_000;
   private static final String EVALUATE_RANGE_EXPRESSIONS_SQL_PREFIX = "SELECT ";
@@ -115,8 +108,6 @@ public class OracleTableOperations extends JdbcTableOperations {
 
   private boolean nativeBooleanSupported;
 
-  private int maxIdentifierLengthBytes = DEFAULT_MAX_IDENTIFIER_LENGTH_BYTES;
-
   /**
    * Initializes Oracle table operations and selects the version-appropriate boolean mapping.
    *
@@ -137,18 +128,8 @@ public class OracleTableOperations extends JdbcTableOperations {
         dataSource, exceptionMapper, jdbcTypeConverter, jdbcColumnDefaultValueConverter, conf);
 
     try (Connection connection = dataSource.getConnection()) {
-      DatabaseMetaData metaData = connection.getMetaData();
       nativeBooleanSupported =
-          metaData.getDatabaseMajorVersion() >= ORACLE_NATIVE_BOOLEAN_MIN_VERSION;
-      // The driver reports the server's real identifier length limit here: 30 before Oracle 12.2,
-      // 128 for 12.2 and later. Oracle applies the same limit to every identifier the catalog
-      // manages (schema, table, column, index) — verified against Oracle 23, where
-      // getMaxTableNameLength, getMaxColumnNameLength and getMaxSchemaNameLength all report 128 —
-      // so this single value bounds all of them. It returns 0 when the limit is unknown, in which
-      // case the default applies.
-      int reportedLimit = metaData.getMaxTableNameLength();
-      maxIdentifierLengthBytes =
-          reportedLimit > 0 ? reportedLimit : DEFAULT_MAX_IDENTIFIER_LENGTH_BYTES;
+          connection.getMetaData().getDatabaseMajorVersion() >= ORACLE_NATIVE_BOOLEAN_MIN_VERSION;
     } catch (SQLException e) {
       throw exceptionMapper.toGravitinoException(e);
     }
@@ -156,17 +137,6 @@ public class OracleTableOperations extends JdbcTableOperations {
     ((OracleTypeConverter) jdbcTypeConverter).setNativeBooleanSupported(nativeBooleanSupported);
     ((OracleColumnDefaultValueConverter) jdbcColumnDefaultValueConverter)
         .setNativeBooleanSupported(nativeBooleanSupported);
-  }
-
-  /**
-   * Returns the connected Oracle server's maximum identifier length in bytes, resolved during
-   * {@link #initialize}. Used to build a version-appropriate {@code OracleCatalogCapability} rather
-   * than hardcoding a single limit.
-   *
-   * @return the maximum identifier length in bytes
-   */
-  public int getMaxIdentifierLengthBytes() {
-    return maxIdentifierLengthBytes;
   }
 
   @Override
