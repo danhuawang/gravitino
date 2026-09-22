@@ -416,15 +416,16 @@ subprojects {
     return@subprojects
   }
 
-  if (project.path == ":catalogs:hive-metastore2-libs" ||
-    project.path == ":catalogs:hive-metastore3-libs"
-  ) {
-    return@subprojects
-  }
+  val isHiveMetastoreLib = project.path in setOf(
+    ":catalogs:hive-metastore2-libs",
+    ":catalogs:hive-metastore3-libs"
+  )
 
   apply(plugin = "jacoco")
-  apply(plugin = "maven-publish")
   apply(plugin = "java")
+  if (!isHiveMetastoreLib) {
+    apply(plugin = "maven-publish")
+  }
 
   // Force upgrade commons-beanutils/snappy-java for all subprojects to resolve outdated transitive versions
   // commons-beanutils: pulled by Hadoop, Hive, Spark, Flink, etc.
@@ -669,6 +670,7 @@ subprojects {
     }
   }
 
+<<<<<<< HEAD
   apply(plugin = "signing")
   publishing {
     publications {
@@ -713,6 +715,28 @@ subprojects {
               connection.set("scm:git:git://github.com/datastrato/gravitino-enterprise.git")
             }
           } else {
+=======
+  if (!isHiveMetastoreLib) {
+    apply(plugin = "signing")
+    publishing {
+      publications {
+        create<MavenPublication>("MavenJava") {
+          if (project.name == "docs" ||
+            project.name == "integration-test" ||
+            project.name == "integration-test-common" ||
+            project.name == "web"
+          ) {
+            setArtifacts(emptyList<Any>())
+          } else {
+            from(components["java"])
+            artifact(sourcesJar)
+            artifact(javadocJar)
+          }
+
+          artifactId = "${rootProject.name.lowercase()}-${project.name}"
+
+          pom {
+>>>>>>> upstream/branch-1.3
             name.set("Gravitino")
             description.set("Gravitino is a high-performance, geo-distributed and federated metadata lake.")
             url.set("https://gravitino.apache.org")
@@ -737,19 +761,19 @@ subprojects {
         }
       }
     }
-  }
 
-  configure<SigningExtension> {
-    val taskNames = gradle.getStartParameter().getTaskNames()
-    taskNames.forEach() {
-      if (it.contains("publishToMavenLocal")) setRequired(false)
+    configure<SigningExtension> {
+      val taskNames = gradle.getStartParameter().getTaskNames()
+      taskNames.forEach() {
+        if (it.contains("publishToMavenLocal")) setRequired(false)
+      }
+
+      val gpgId = System.getenv("GPG_ID")
+      val gpgSecretKey = System.getenv("GPG_PRIVATE_KEY")
+      val gpgKeyPassword = System.getenv("GPG_PASSPHRASE")
+      useInMemoryPgpKeys(gpgId, gpgSecretKey, gpgKeyPassword)
+      sign(publishing.publications)
     }
-
-    val gpgId = System.getenv("GPG_ID")
-    val gpgSecretKey = System.getenv("GPG_PRIVATE_KEY")
-    val gpgKeyPassword = System.getenv("GPG_PASSPHRASE")
-    useInMemoryPgpKeys(gpgId, gpgSecretKey, gpgKeyPassword)
-    sign(publishing.publications)
   }
 
   tasks.configureEach<Test> {
