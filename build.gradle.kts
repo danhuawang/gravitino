@@ -670,58 +670,13 @@ subprojects {
     }
   }
 
-<<<<<<< HEAD
-  apply(plugin = "signing")
-  publishing {
-    publications {
-      create<MavenPublication>("MavenJava") {
-        if (project.name == "docs" ||
-          project.name == "docs-enterprise" ||
-          project.name == "integration-test" ||
-          project.name == "integration-test-common" ||
-          project.name == "web"
-        ) {
-          setArtifacts(emptyList<Any>())
-        } else {
-          from(components["java"])
-          artifact(sourcesJar)
-          artifact(javadocJar)
-        }
-
-        artifactId = "${rootProject.name.lowercase()}-${project.name}"
-
-        // POM metadata must agree with the license files inside the jar: a module that ships
-        // Datastrato proprietary code is published under LICENSE-ENTERPRISE, not Apache 2.0.
-        pom {
-          if (shipsEnterpriseCode) {
-            name.set("Gravitino Enterprise")
-            description.set("Datastrato proprietary extensions for Gravitino.")
-            url.set("https://datastrato.ai/")
-            licenses {
-              license {
-                name.set("Datastrato Enterprise - Proprietary Components")
-                url.set("https://github.com/datastrato/gravitino-enterprise/blob/main/LICENSE-ENTERPRISE")
-              }
-            }
-            developers {
-              developer {
-                id.set("Datastrato")
-                name.set("Datastrato Inc.")
-                email.set("contact@datastrato.com")
-              }
-            }
-            scm {
-              url.set("https://github.com/datastrato/gravitino-enterprise")
-              connection.set("scm:git:git://github.com/datastrato/gravitino-enterprise.git")
-            }
-          } else {
-=======
   if (!isHiveMetastoreLib) {
     apply(plugin = "signing")
     publishing {
       publications {
         create<MavenPublication>("MavenJava") {
           if (project.name == "docs" ||
+            project.name == "docs-enterprise" ||
             project.name == "integration-test" ||
             project.name == "integration-test-common" ||
             project.name == "web"
@@ -735,27 +690,51 @@ subprojects {
 
           artifactId = "${rootProject.name.lowercase()}-${project.name}"
 
+          // POM metadata must agree with the license files inside the jar: a module that ships
+          // Datastrato proprietary code is published under LICENSE-ENTERPRISE, not Apache 2.0.
           pom {
->>>>>>> upstream/branch-1.3
-            name.set("Gravitino")
-            description.set("Gravitino is a high-performance, geo-distributed and federated metadata lake.")
-            url.set("https://gravitino.apache.org")
-            licenses {
-              license {
-                name.set("The Apache Software License, Version 2.0")
-                url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+            if (shipsEnterpriseCode) {
+              name.set("Gravitino Enterprise")
+              description.set("Datastrato proprietary extensions for Gravitino.")
+              url.set("https://datastrato.ai/")
+              licenses {
+                license {
+                  name.set("Datastrato Enterprise - Proprietary Components")
+                  url.set("https://github.com/datastrato/gravitino-enterprise/blob/main/LICENSE-ENTERPRISE")
+                }
               }
-            }
-            developers {
-              developer {
-                id.set("The Gravitino community")
-                name.set("support")
-                email.set("dev@gravitino.apache.org")
+              developers {
+                developer {
+                  id.set("Datastrato")
+                  name.set("Datastrato Inc.")
+                  email.set("contact@datastrato.com")
+                }
               }
-            }
-            scm {
-              url.set("https://github.com/apache/gravitino")
-              connection.set("scm:git:git://github.com/apache/gravitino.git")
+              scm {
+                url.set("https://github.com/datastrato/gravitino-enterprise")
+                connection.set("scm:git:git://github.com/datastrato/gravitino-enterprise.git")
+              }
+            } else {
+              name.set("Gravitino")
+              description.set("Gravitino is a high-performance, geo-distributed and federated metadata lake.")
+              url.set("https://gravitino.apache.org")
+              licenses {
+                license {
+                  name.set("The Apache Software License, Version 2.0")
+                  url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                }
+              }
+              developers {
+                developer {
+                  id.set("The Gravitino community")
+                  name.set("support")
+                  email.set("dev@gravitino.apache.org")
+                }
+              }
+              scm {
+                url.set("https://github.com/apache/gravitino")
+                connection.set("scm:git:git://github.com/apache/gravitino.git")
+              }
             }
           }
         }
