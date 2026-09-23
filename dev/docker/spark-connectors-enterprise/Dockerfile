@@ -70,6 +70,9 @@ COPY --chmod=755 copy-connector.sh /copy-connector.sh
 # --- Red Hat certification: licenses directory ---
 COPY licenses /licenses
 
+# --- Connector image usage documentation ---
+COPY README.md /README.md
+
 # --- OpenShift arbitrary UID compatibility ---
 RUN chgrp -R 0 /connectors && chmod -R g=u /connectors
 
