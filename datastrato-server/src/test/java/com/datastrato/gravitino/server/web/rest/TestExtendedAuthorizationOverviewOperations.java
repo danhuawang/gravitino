@@ -15,7 +15,7 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
-import com.datastrato.gravitino.authorization.UserEnabledCounts;
+import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.dto.authorization.AuthorizationSummaryDTO;
 import com.datastrato.gravitino.dto.authorization.CatalogAuthorizationDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
@@ -57,6 +57,7 @@ import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -65,6 +66,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
@@ -163,9 +165,11 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
     User user2 = mockUser("user2", Lists.newArrayList("role1"));
     ExtendedGroupDTO group1 = mockExtendedGroup("group1", Lists.newArrayList("role2"), 2);
     ExtendedGroupDTO emptyGroup = mockExtendedGroup("empty", Collections.emptyList(), 0);
-    when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[] {user1, user2});
-    when(accessControlDispatcher.countUsersByEnabled("metalake1"))
-        .thenReturn(new UserEnabledCounts(2, 1, 1));
+    when(accessControlDispatcher.listUsersWithGroups("metalake1"))
+        .thenReturn(
+            List.of(
+                new UserWithGroups(user1, List.of("group1"), null, true, null),
+                new UserWithGroups(user2, List.of("group1"), null, false, null)));
     when(accessControlDispatcher.listExtendedGroups("metalake1"))
         .thenReturn(new ExtendedGroupDTO[] {group1, emptyGroup});
     Catalog catalogInfo1 = mockCatalog("catalog1", "lakehouse-iceberg", Catalog.Type.RELATIONAL);
@@ -226,12 +230,78 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
   }
 
   @Test
+  public void testAuthorizationOverviewUsesVisiblePrincipals() throws IllegalAccessException {
+    User visibleUser = mockUser("visible", List.of());
+    User hiddenUser = mockUser("hidden", List.of());
+    UserWithGroups visible =
+        new UserWithGroups(visibleUser, List.of("visible-group"), null, true, null);
+    UserWithGroups hidden =
+        new UserWithGroups(hiddenUser, List.of("hidden-group"), null, false, null);
+    when(accessControlDispatcher.listRolesWithSecurableObjects("metalake1"))
+        .thenReturn(new Role[0]);
+    when(accessControlDispatcher.listUsersWithGroups("metalake1"))
+        .thenReturn(List.of(visible, hidden));
+    ExtendedGroupDTO visibleGroup = mockExtendedGroup("visible-group", List.of(), 1);
+    ExtendedGroupDTO hiddenGroup = mockExtendedGroup("hidden-group", List.of(), 1);
+    when(accessControlDispatcher.listExtendedGroups("metalake1"))
+        .thenReturn(new ExtendedGroupDTO[] {visibleGroup, hiddenGroup});
+
+    ExtendedAuthorizationOverviewOperations operations =
+        new ExtendedAuthorizationOverviewOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.ROLE),
+                      Mockito.any(Role[].class),
+                      Mockito.any()))
+          .thenReturn(new Role[0]);
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.USER),
+                      Mockito.any(UserWithGroups[].class),
+                      Mockito.any()))
+          .thenReturn(new UserWithGroups[] {visible});
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.GROUP),
+                      Mockito.any(ExtendedGroupDTO[].class),
+                      Mockito.any()))
+          .thenReturn(new ExtendedGroupDTO[] {visibleGroup});
+
+      Response response = operations.getAuthorizationOverview("metalake1");
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      AuthorizationOverviewResponse overview = (AuthorizationOverviewResponse) response.getEntity();
+      Assertions.assertEquals(1, overview.getSummary().getUserCount());
+      Assertions.assertEquals(1, overview.getSummary().getActiveUserCount());
+      Assertions.assertEquals(0, overview.getSummary().getSuspendedUserCount());
+      Assertions.assertEquals(1, overview.getSummary().getGroupCount());
+      Assertions.assertEquals(0, overview.getSummary().getEmptyGroupCount());
+    }
+  }
+
+  @Test
   public void testGetAuthorizationOverviewWithEmptyResult() {
     when(accessControlDispatcher.listRolesWithSecurableObjects("metalake1"))
         .thenReturn(new Role[0]);
-    when(accessControlDispatcher.listUsers("metalake1")).thenReturn(new User[0]);
-    when(accessControlDispatcher.countUsersByEnabled("metalake1"))
-        .thenReturn(UserEnabledCounts.empty());
+    when(accessControlDispatcher.listUsersWithGroups("metalake1")).thenReturn(List.of());
     when(accessControlDispatcher.listExtendedGroups("metalake1"))
         .thenReturn(new ExtendedGroupDTO[0]);
 
@@ -265,7 +335,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
             "getAuthorizationOverview", String.class);
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
-    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
+    Assertions.assertEquals("SERVICE_ADMIN", expression.expression());
 
     Parameter metalakeParameter = method.getParameters()[0];
     AuthorizationMetadata authorizationMetadata =

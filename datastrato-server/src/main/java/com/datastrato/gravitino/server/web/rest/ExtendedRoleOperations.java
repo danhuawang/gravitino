@@ -38,10 +38,12 @@ import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
 import org.apache.gravitino.utils.MetadataObjectUtil;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,7 +52,9 @@ import org.slf4j.LoggerFactory;
 public class ExtendedRoleOperations {
   private static final Logger LOG = LoggerFactory.getLogger(ExtendedRoleOperations.class);
   private static final String ROLE_MEMBERSHIP_AUTHORIZATION_EXPRESSION =
-      "SERVICE_ADMIN && METALAKE::OWNER";
+      "SERVICE_ADMIN && ("
+          + AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION
+          + ")";
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
 
@@ -78,18 +82,25 @@ public class ExtendedRoleOperations {
     try {
       return Utils.doAs(
           httpRequest,
-          () ->
-              Utils.ok(
-                  new RoleUserAssignmentListResponse(
-                      Arrays.stream(
-                              accessControlDispatcher.listUserAssignmentsByRole(metalake, role))
-                          .map(
-                              assignment ->
-                                  new RoleUserAssignmentDTO(
-                                      assignment.user(),
-                                      assignment.assignmentAudit(),
-                                      assignment.inBuiltInIdp()))
-                          .toArray(RoleUserAssignmentDTO[]::new))));
+          () -> {
+            RoleUserAssignmentDTO[] users =
+                Arrays.stream(accessControlDispatcher.listUserAssignmentsByRole(metalake, role))
+                    .map(
+                        assignment ->
+                            new RoleUserAssignmentDTO(
+                                assignment.user(),
+                                assignment.assignmentAudit(),
+                                assignment.inBuiltInIdp()))
+                    .toArray(RoleUserAssignmentDTO[]::new);
+            users =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.USER,
+                    users,
+                    user -> NameIdentifierUtil.ofUser(metalake, user.name()));
+            return Utils.ok(new RoleUserAssignmentListResponse(users));
+          });
     } catch (Exception e) {
       return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
     }
@@ -110,18 +121,25 @@ public class ExtendedRoleOperations {
     try {
       return Utils.doAs(
           httpRequest,
-          () ->
-              Utils.ok(
-                  new RoleGroupAssignmentListResponse(
-                      Arrays.stream(
-                              accessControlDispatcher.listGroupAssignmentsByRole(metalake, role))
-                          .map(
-                              assignment ->
-                                  new RoleGroupAssignmentDTO(
-                                      assignment.group(),
-                                      assignment.assignmentAudit(),
-                                      assignment.userCount()))
-                          .toArray(RoleGroupAssignmentDTO[]::new))));
+          () -> {
+            RoleGroupAssignmentDTO[] groups =
+                Arrays.stream(accessControlDispatcher.listGroupAssignmentsByRole(metalake, role))
+                    .map(
+                        assignment ->
+                            new RoleGroupAssignmentDTO(
+                                assignment.group(),
+                                assignment.assignmentAudit(),
+                                assignment.userCount()))
+                    .toArray(RoleGroupAssignmentDTO[]::new);
+            groups =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.GROUP,
+                    groups,
+                    group -> NameIdentifierUtil.ofGroup(metalake, group.name()));
+            return Utils.ok(new RoleGroupAssignmentListResponse(groups));
+          });
     } catch (Exception e) {
       return ExceptionHandlers.handleRoleException(OperationType.LIST, role, metalake, e);
     }

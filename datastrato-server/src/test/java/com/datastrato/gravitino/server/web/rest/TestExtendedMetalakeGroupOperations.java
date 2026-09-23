@@ -64,6 +64,7 @@ import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -73,6 +74,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 public class TestExtendedMetalakeGroupOperations extends JerseyTest {
@@ -271,6 +273,48 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
     Assertions.assertEquals(1, body.getUsers().length);
     Assertions.assertEquals("alice", body.getUsers()[0].name());
     Assertions.assertEquals(IdentitySource.LOCAL, body.getUsers()[0].origin());
+  }
+
+  @Test
+  public void testListGroupsRequiresServiceAdminAndFiltersByPrivilege() throws Exception {
+    String metalake = "metalake";
+    when(accessControlDispatcher.listExtendedGroups(metalake))
+        .thenReturn(
+            new ExtendedGroupDTO[] {
+              ExtendedGroupDTO.from(buildGroup(1L, "visible", List.of()), IdentitySource.LOCAL, 1),
+              ExtendedGroupDTO.from(buildGroup(2L, "hidden", List.of()), IdentitySource.LOCAL, 1)
+            });
+    Method method = ExtendedMetalakeGroupOperations.class.getMethod("listGroups", String.class);
+    Assertions.assertEquals(
+        "SERVICE_ADMIN", method.getAnnotation(AuthorizationExpression.class).expression());
+
+    ExtendedMetalakeGroupOperations operations = new ExtendedMetalakeGroupOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq(metalake),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.GROUP),
+                      Mockito.any(ExtendedGroupDTO[].class),
+                      Mockito.any()))
+          .thenAnswer(
+              invocation -> {
+                ExtendedGroupDTO[] candidates = invocation.getArgument(3);
+                return new ExtendedGroupDTO[] {candidates[0]};
+              });
+
+      Response response = operations.listGroups(metalake);
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      ExtendedGroupListResponse body = (ExtendedGroupListResponse) response.getEntity();
+      Assertions.assertEquals(1, body.getGroups().length);
+      Assertions.assertEquals("visible", body.getGroups()[0].name());
+    }
   }
 
   @Test

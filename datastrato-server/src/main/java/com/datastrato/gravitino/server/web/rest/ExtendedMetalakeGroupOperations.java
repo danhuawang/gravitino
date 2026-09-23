@@ -32,9 +32,11 @@ import org.apache.gravitino.metrics.MetricNames;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.server.web.Utils;
 import org.apache.gravitino.server.web.rest.ExceptionHandlers;
 import org.apache.gravitino.server.web.rest.OperationType;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 
 /**
  * Metalake-scoped security Groups APIs.
@@ -78,7 +80,7 @@ public class ExtendedMetalakeGroupOperations {
       name = "internal-list-metalake-groups." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-metalake-groups", absolute = true)
-  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response listGroups(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -87,9 +89,15 @@ public class ExtendedMetalakeGroupOperations {
           httpRequest,
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
-            return Utils.ok(
-                new ExtendedGroupListResponse(
-                    accessControlDispatcher.listExtendedGroups(metalake)));
+            ExtendedGroupDTO[] groups = accessControlDispatcher.listExtendedGroups(metalake);
+            groups =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.GROUP,
+                    groups,
+                    group -> NameIdentifierUtil.ofGroup(metalake, group.name()));
+            return Utils.ok(new ExtendedGroupListResponse(groups));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.LIST, "", metalake, e);

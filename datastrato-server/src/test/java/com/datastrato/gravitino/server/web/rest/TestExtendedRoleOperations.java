@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.server.web.rest;
 
+import static javax.ws.rs.client.Entity.entity;
 import static org.apache.gravitino.Configs.TREE_LOCK_CLEAN_INTERVAL;
 import static org.apache.gravitino.Configs.TREE_LOCK_MAX_NODE_IN_MEMORY;
 import static org.apache.gravitino.Configs.TREE_LOCK_MIN_NODE_IN_MEMORY;
@@ -16,24 +17,32 @@ import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.authorization.RoleGroupAssignment;
 import com.datastrato.gravitino.authorization.RoleUserAssignment;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
+import com.datastrato.gravitino.dto.authorization.RoleGroupAssignmentDTO;
+import com.datastrato.gravitino.dto.authorization.RoleUserAssignmentDTO;
 import com.datastrato.gravitino.dto.requests.PermissionUpdateRequest;
 import com.datastrato.gravitino.dto.responses.RoleGroupAssignmentListResponse;
 import com.datastrato.gravitino.dto.responses.RoleUserAssignmentListResponse;
 import com.google.common.collect.Lists;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
-import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.MetadataObject;
+import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.UserPrincipal;
+import org.apache.gravitino.authorization.AuthorizationRequestContext;
+import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.authorization.Privileges;
@@ -56,6 +65,9 @@ import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionEvaluator;
+import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
 import org.glassfish.jersey.test.JerseyTest;
@@ -64,6 +76,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 public class TestExtendedRoleOperations extends JerseyTest {
@@ -171,18 +184,114 @@ public class TestExtendedRoleOperations extends JerseyTest {
   }
 
   @Test
-  public void testRoleMembershipAuthorization() throws NoSuchMethodException {
-    Method listUsers =
-        ExtendedRoleOperations.class.getMethod("listUsersByRole", String.class, String.class);
-    Method listGroups =
-        ExtendedRoleOperations.class.getMethod("listGroupsByRole", String.class, String.class);
+  public void testRoleMemberListExpressionRequiresAdminAndRolePrivilege() throws Exception {
+    String expression =
+        ExtendedRoleOperations.class
+            .getMethod("listUsersByRole", String.class, String.class)
+            .getAnnotation(AuthorizationExpression.class)
+            .expression();
+    GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
+    AuthorizationExpressionEvaluator evaluator =
+        new AuthorizationExpressionEvaluator(expression, authorizer);
+    Map<Entity.EntityType, NameIdentifier> metadata =
+        Map.of(
+            Entity.EntityType.METALAKE,
+            NameIdentifier.of("metalake"),
+            Entity.EntityType.ROLE,
+            NameIdentifierUtil.ofRole("metalake", "role"));
+    UserPrincipal principal = new UserPrincipal("admin");
 
-    Assertions.assertEquals(
-        "SERVICE_ADMIN && METALAKE::OWNER",
-        listUsers.getAnnotation(AuthorizationExpression.class).expression());
-    Assertions.assertEquals(
-        "SERVICE_ADMIN && METALAKE::OWNER",
-        listGroups.getAnnotation(AuthorizationExpression.class).expression());
+    Assertions.assertFalse(
+        evaluator.evaluate(
+            metadata, new AuthorizationRequestContext(), principal, Optional.empty()));
+
+    when(authorizer.isServiceAdmin()).thenReturn(true);
+    Assertions.assertFalse(
+        evaluator.evaluate(
+            metadata, new AuthorizationRequestContext(), principal, Optional.empty()));
+
+    when(authorizer.isOwner(Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.any()))
+        .thenReturn(true);
+    Assertions.assertTrue(
+        evaluator.evaluate(
+            metadata, new AuthorizationRequestContext(), principal, Optional.empty()));
+  }
+
+  @Test
+  public void testRoleMemberListsRequireServiceAdminAndFilterPrincipals() throws Exception {
+    when(accessControlDispatcher.listUserAssignmentsByRole("metalake", "role"))
+        .thenReturn(
+            new RoleUserAssignment[] {
+              new RoleUserAssignment(buildUser("visible-user"), buildAssignmentAudit(), true),
+              new RoleUserAssignment(buildUser("hidden-user"), buildAssignmentAudit(), true)
+            });
+    when(accessControlDispatcher.listGroupAssignmentsByRole("metalake", "role"))
+        .thenReturn(
+            new RoleGroupAssignment[] {
+              new RoleGroupAssignment(buildGroup("visible-group"), buildAssignmentAudit(), 1),
+              new RoleGroupAssignment(buildGroup("hidden-group"), buildAssignmentAudit(), 1)
+            });
+
+    for (String methodName : List.of("listUsersByRole", "listGroupsByRole")) {
+      AuthorizationExpression expression =
+          ExtendedRoleOperations.class
+              .getMethod(methodName, String.class, String.class)
+              .getAnnotation(AuthorizationExpression.class);
+      Assertions.assertTrue(expression.expression().contains("SERVICE_ADMIN &&"));
+      Assertions.assertTrue(
+          expression
+              .expression()
+              .contains(AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION));
+    }
+
+    ExtendedRoleOperations operations = new ExtendedRoleOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.USER),
+                      Mockito.any(RoleUserAssignmentDTO[].class),
+                      Mockito.any()))
+          .thenAnswer(
+              invocation -> {
+                RoleUserAssignmentDTO[] candidates = invocation.getArgument(3);
+                return new RoleUserAssignmentDTO[] {candidates[0]};
+              });
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.GROUP),
+                      Mockito.any(RoleGroupAssignmentDTO[].class),
+                      Mockito.any()))
+          .thenAnswer(
+              invocation -> {
+                RoleGroupAssignmentDTO[] candidates = invocation.getArgument(3);
+                return new RoleGroupAssignmentDTO[] {candidates[0]};
+              });
+
+      Response users = operations.listUsersByRole("metalake", "role");
+      Response groups = operations.listGroupsByRole("metalake", "role");
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), users.getStatus());
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), groups.getStatus());
+      RoleUserAssignmentListResponse userBody = (RoleUserAssignmentListResponse) users.getEntity();
+      RoleGroupAssignmentListResponse groupBody =
+          (RoleGroupAssignmentListResponse) groups.getEntity();
+      Assertions.assertEquals(1, userBody.getUsers().length);
+      Assertions.assertEquals("visible-user", userBody.getUsers()[0].name());
+      Assertions.assertEquals(1, groupBody.getGroups().length);
+      Assertions.assertEquals("visible-group", groupBody.getGroups()[0].name());
+    }
   }
 
   @Test
@@ -256,7 +365,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
         target("/internal/security/metalakes/testMetalake/roles/testRole/")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
-            .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+            .put(entity(req, MediaType.APPLICATION_JSON_TYPE));
 
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), resp.getStatus());
     Assertions.assertEquals(MediaType.APPLICATION_JSON_TYPE, resp.getMediaType());
@@ -284,7 +393,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
         target("/internal/security/metalakes/testMetalake/roles/testRole/")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
-            .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+            .put(entity(req, MediaType.APPLICATION_JSON_TYPE));
 
     Assertions.assertEquals(Response.Status.NOT_FOUND.getStatusCode(), resp1.getStatus());
 
@@ -301,7 +410,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
         target("/internal/security/metalakes/testMetalake/roles/testRole/")
             .request(MediaType.APPLICATION_JSON_TYPE)
             .accept("application/vnd.gravitino.v1+json")
-            .put(Entity.entity(req, MediaType.APPLICATION_JSON_TYPE));
+            .put(entity(req, MediaType.APPLICATION_JSON_TYPE));
 
     Assertions.assertEquals(
         Response.Status.INTERNAL_SERVER_ERROR.getStatusCode(), resp2.getStatus());

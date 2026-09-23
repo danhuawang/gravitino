@@ -75,6 +75,7 @@ import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -84,6 +85,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 public class TestExtendedMetalakeUserOperations extends JerseyTest {
@@ -172,6 +174,47 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     Assertions.assertEquals("dana.k", body.getUsers()[1].name());
     Assertions.assertEquals(IdentitySource.PROVISIONED, body.getUsers()[1].origin());
     Assertions.assertNull(body.getUsers()[2].origin());
+  }
+
+  @Test
+  public void testListUsersRequiresServiceAdminAndFiltersByPrivilege() throws Exception {
+    String metalake = "metalake";
+    when(accessControlDispatcher.listUsersWithGroups(metalake))
+        .thenReturn(
+            List.of(
+                new UserWithGroups(buildUser("visible"), List.of(), IdentitySource.LOCAL),
+                new UserWithGroups(buildUser("hidden"), List.of(), IdentitySource.LOCAL)));
+    Method method = ExtendedMetalakeUserOperations.class.getMethod("listUsers", String.class);
+    Assertions.assertEquals(
+        "SERVICE_ADMIN", method.getAnnotation(AuthorizationExpression.class).expression());
+
+    ExtendedMetalakeUserOperations operations = new ExtendedMetalakeUserOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq(metalake),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.USER),
+                      Mockito.any(ExtendedUserDTO[].class),
+                      Mockito.any()))
+          .thenAnswer(
+              invocation -> {
+                ExtendedUserDTO[] candidates = invocation.getArgument(3);
+                return new ExtendedUserDTO[] {candidates[0]};
+              });
+
+      Response response = operations.listUsers(metalake);
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      ExtendedUserListResponse body = (ExtendedUserListResponse) response.getEntity();
+      Assertions.assertEquals(1, body.getUsers().length);
+      Assertions.assertEquals("visible", body.getUsers()[0].name());
+    }
   }
 
   @Test
@@ -278,7 +321,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     Method method = ExtendedMetalakeUserOperations.class.getMethod("listUsers", String.class);
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
-    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
+    Assertions.assertEquals("SERVICE_ADMIN", expression.expression());
   }
 
   @Test

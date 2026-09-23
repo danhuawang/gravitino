@@ -8,6 +8,7 @@ import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.authorization.UserEnabledCounts;
+import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.dto.authorization.AuthorizationSummaryDTO;
 import com.datastrato.gravitino.dto.authorization.CatalogAuthorizationDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
@@ -115,7 +116,7 @@ public class ExtendedAuthorizationOverviewOperations {
       name = "internal-get-authorization-overview." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-get-authorization-overview", absolute = true)
-  @AuthorizationExpression(expression = "SERVICE_ADMIN && METALAKE::OWNER")
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response getAuthorizationOverview(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -125,9 +126,28 @@ public class ExtendedAuthorizationOverviewOperations {
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
             Role[] roles = loadVisibleRoles(metalake);
-            User[] users = accessControlDispatcher.listUsers(metalake);
-            UserEnabledCounts enabledCounts = accessControlDispatcher.countUsersByEnabled(metalake);
-            ExtendedGroupDTO[] groups = accessControlDispatcher.listExtendedGroups(metalake);
+            UserWithGroups[] visibleUsers =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.USER,
+                    accessControlDispatcher
+                        .listUsersWithGroups(metalake)
+                        .toArray(new UserWithGroups[0]),
+                    user -> NameIdentifierUtil.ofUser(metalake, user.user().name()));
+            User[] users =
+                Arrays.stream(visibleUsers).map(UserWithGroups::user).toArray(User[]::new);
+            long activeUsers = Arrays.stream(visibleUsers).filter(UserWithGroups::enabled).count();
+            UserEnabledCounts enabledCounts =
+                new UserEnabledCounts(
+                    visibleUsers.length, activeUsers, visibleUsers.length - activeUsers);
+            ExtendedGroupDTO[] groups =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.GROUP,
+                    accessControlDispatcher.listExtendedGroups(metalake),
+                    group -> NameIdentifierUtil.ofGroup(metalake, group.name()));
             Map<String, Set<String>> usersByRole = initializeMembersByRole(roles);
             Map<String, Set<String>> groupsByRole = initializeMembersByRole(roles);
             collectUsersByRole(usersByRole, users);
@@ -180,7 +200,7 @@ public class ExtendedAuthorizationOverviewOperations {
 
             return Utils.ok(
                 new AuthorizationOverviewResponse(
-                    buildSummary(enabledCounts, groups, roleDTOs, unassignedRoles),
+                    buildSummary(enabledCounts, visibleUsers, groups, roleDTOs, unassignedRoles),
                     catalogDTOs,
                     roleDTOs,
                     unassignedRoles));
@@ -192,11 +212,15 @@ public class ExtendedAuthorizationOverviewOperations {
 
   private AuthorizationSummaryDTO buildSummary(
       UserEnabledCounts enabledCounts,
+      UserWithGroups[] users,
       ExtendedGroupDTO[] groups,
       RoleMembershipDTO[] roles,
       String[] unassignedRoles) {
+    Set<String> populatedGroups = new LinkedHashSet<>();
+    Arrays.stream(users).forEach(user -> populatedGroups.addAll(user.groups()));
     int emptyGroupCount =
-        (int) Arrays.stream(groups).filter(group -> group.userCount() == 0).count();
+        (int)
+            Arrays.stream(groups).filter(group -> !populatedGroups.contains(group.name())).count();
     return new AuthorizationSummaryDTO(
         (int) enabledCounts.total(),
         (int) enabledCounts.active(),

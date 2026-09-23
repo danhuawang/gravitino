@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.PUT;
@@ -82,7 +83,7 @@ public class ExtendedPrincipalRoleOperations {
       name = "internal-list-role-summaries." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-role-summaries", absolute = true)
-  @AuthorizationExpression(expression = "SERVICE_ADMIN && METALAKE::OWNER")
+  @AuthorizationExpression(expression = "")
   public Response listRoleSummaries(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -96,8 +97,22 @@ public class ExtendedPrincipalRoleOperations {
             Map<String, OwnerDTO> owners = loadRoleOwners(metalake, roleNames);
             Map<String, Set<String>> usersByRole = initializeMembersByRole(roleNames);
             Map<String, Set<String>> groupsByRole = initializeMembersByRole(roleNames);
-            collectUsersByRole(usersByRole, accessControlDispatcher.listUsers(metalake));
-            collectGroupsByRole(groupsByRole, accessControlDispatcher.listGroups(metalake));
+            User[] users =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.USER,
+                    accessControlDispatcher.listUsers(metalake),
+                    user -> NameIdentifierUtil.ofUser(metalake, user.name()));
+            Group[] groups =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.GROUP,
+                    accessControlDispatcher.listGroups(metalake),
+                    group -> NameIdentifierUtil.ofGroup(metalake, group.name()));
+            collectUsersByRole(usersByRole, users);
+            collectGroupsByRole(groupsByRole, groups);
 
             RoleSummaryDTO[] summaries =
                 Arrays.stream(roles)
@@ -228,7 +243,53 @@ public class ExtendedPrincipalRoleOperations {
             owners.put(relation.source().name(), owner);
           }
         });
+    filterRoleOwners(
+        metalake,
+        owners,
+        Owner.Type.USER,
+        AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.USER);
+    filterRoleOwners(
+        metalake,
+        owners,
+        Owner.Type.GROUP,
+        AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION,
+        Entity.EntityType.GROUP);
     return owners;
+  }
+
+  private void filterRoleOwners(
+      String metalake,
+      Map<String, OwnerDTO> owners,
+      Owner.Type ownerType,
+      String expression,
+      Entity.EntityType entityType) {
+    OwnerDTO[] candidates =
+        owners.values().stream()
+            .filter(owner -> owner.type() == ownerType)
+            .toArray(OwnerDTO[]::new);
+    if (candidates.length == 0) {
+      return;
+    }
+
+    OwnerDTO[] visible =
+        MetadataListingHelper.filterByExpression(
+            metalake,
+            expression,
+            entityType,
+            candidates,
+            owner ->
+                ownerType == Owner.Type.USER
+                    ? NameIdentifierUtil.ofUser(metalake, owner.name())
+                    : NameIdentifierUtil.ofGroup(metalake, owner.name()));
+    Set<String> visibleNames =
+        Arrays.stream(visible).map(OwnerDTO::name).collect(Collectors.toSet());
+    owners
+        .entrySet()
+        .removeIf(
+            entry ->
+                entry.getValue().type() == ownerType
+                    && !visibleNames.contains(entry.getValue().name()));
   }
 
   private OwnerDTO toOwnerDTO(Entity ownerEntity) {

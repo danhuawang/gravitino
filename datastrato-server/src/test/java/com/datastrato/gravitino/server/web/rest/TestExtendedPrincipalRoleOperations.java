@@ -29,8 +29,6 @@ import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
@@ -40,17 +38,14 @@ import org.apache.gravitino.Config;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
-import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.RelationalEntity;
 import org.apache.gravitino.SupportsRelationOperations;
-import org.apache.gravitino.UserPrincipal;
-import org.apache.gravitino.authorization.AuthorizationRequestContext;
-import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.connector.PropertiesMetadata;
+import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
@@ -64,7 +59,7 @@ import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
-import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionEvaluator;
+import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.glassfish.hk2.utilities.binding.AbstractBinder;
 import org.glassfish.jersey.server.ResourceConfig;
@@ -74,6 +69,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 /** Tests REST operations that list roles and their principal assignments. */
@@ -270,6 +266,168 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
 
   /** Tests listing role summaries when the metalake has no roles. */
   @Test
+  public void testRoleSummaryCountsOnlyVisiblePrincipals() throws Exception {
+    Role role = buildRole("role1");
+    User visibleUser = mockUser("visible", List.of("role1"));
+    User hiddenUser = mockUser("hidden", List.of("role1"));
+    Group hiddenGroup = mockGroup("hidden-group", List.of("role1"));
+    when(ACCESS_CONTROL_DISPATCHER.listRolesWithSecurableObjects("metalake1"))
+        .thenReturn(new Role[] {role});
+    when(ACCESS_CONTROL_DISPATCHER.listUsers("metalake1"))
+        .thenReturn(new User[] {visibleUser, hiddenUser});
+    when(ACCESS_CONTROL_DISPATCHER.listGroups("metalake1")).thenReturn(new Group[] {hiddenGroup});
+    when(RELATION_OPERATIONS.batchListEntitiesByRelation(
+            eq(SupportsRelationOperations.Type.OWNER_REL), anyList(), eq(Entity.EntityType.ROLE)))
+        .thenReturn(Lists.newArrayList());
+
+    ExtendedPrincipalRoleOperations operations = new ExtendedPrincipalRoleOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.ROLE),
+                      Mockito.any(Role[].class),
+                      Mockito.any()))
+          .thenReturn(new Role[] {role});
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.USER),
+                      Mockito.any(User[].class),
+                      Mockito.any()))
+          .thenReturn(new User[] {visibleUser});
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.GROUP),
+                      Mockito.any(Group[].class),
+                      Mockito.any()))
+          .thenReturn(new Group[0]);
+
+      Response response = operations.listRoleSummaries("metalake1");
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      RoleSummaryListResponse body = (RoleSummaryListResponse) response.getEntity();
+      Assertions.assertEquals(1, body.getRoles().length);
+      Assertions.assertEquals(1, body.getRoles()[0].getUserCount());
+      Assertions.assertEquals(0, body.getRoles()[0].getGroupCount());
+    }
+  }
+
+  /** Tests that role owners are hidden when their principals cannot be loaded. */
+  @Test
+  public void testRoleSummaryHidesInvisibleOwners() throws Exception {
+    Role userOwnedRole = buildRole("user-owned");
+    Role groupOwnedRole = buildRole("group-owned");
+    when(ACCESS_CONTROL_DISPATCHER.listRolesWithSecurableObjects("metalake1"))
+        .thenReturn(new Role[] {userOwnedRole, groupOwnedRole});
+    when(ACCESS_CONTROL_DISPATCHER.listUsers("metalake1")).thenReturn(new User[0]);
+    when(ACCESS_CONTROL_DISPATCHER.listGroups("metalake1")).thenReturn(new Group[0]);
+
+    UserEntity userOwner = mock(UserEntity.class);
+    when(userOwner.name()).thenReturn("hidden-user");
+    GroupEntity groupOwner = mock(GroupEntity.class);
+    when(groupOwner.name()).thenReturn("hidden-group");
+    when(RELATION_OPERATIONS.batchListEntitiesByRelation(
+            eq(SupportsRelationOperations.Type.OWNER_REL), anyList(), eq(Entity.EntityType.ROLE)))
+        .thenReturn(
+            List.of(
+                new RelationalEntity<>(
+                    SupportsRelationOperations.Type.OWNER_REL,
+                    NameIdentifierUtil.ofRole("metalake1", "user-owned"),
+                    Entity.EntityType.ROLE,
+                    userOwner),
+                new RelationalEntity<>(
+                    SupportsRelationOperations.Type.OWNER_REL,
+                    NameIdentifierUtil.ofRole("metalake1", "group-owned"),
+                    Entity.EntityType.ROLE,
+                    groupOwner)));
+
+    ExtendedPrincipalRoleOperations operations = new ExtendedPrincipalRoleOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.ROLE),
+                      Mockito.any(Role[].class),
+                      Mockito.any()))
+          .thenReturn(new Role[] {userOwnedRole, groupOwnedRole});
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.USER),
+                      Mockito.any(OwnerDTO[].class),
+                      Mockito.any()))
+          .thenReturn(new OwnerDTO[0]);
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.GROUP),
+                      Mockito.any(OwnerDTO[].class),
+                      Mockito.any()))
+          .thenReturn(new OwnerDTO[0]);
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.USER),
+                      Mockito.any(User[].class),
+                      Mockito.any()))
+          .thenReturn(new User[0]);
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq("metalake1"),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.GROUP),
+                      Mockito.any(Group[].class),
+                      Mockito.any()))
+          .thenReturn(new Group[0]);
+
+      Response response = operations.listRoleSummaries("metalake1");
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      RoleSummaryListResponse body = (RoleSummaryListResponse) response.getEntity();
+      Assertions.assertEquals(2, body.getRoles().length);
+      Assertions.assertNull(body.getRoles()[0].getOwner());
+      Assertions.assertNull(body.getRoles()[1].getOwner());
+    }
+  }
+
+  @Test
   public void testListRoleSummariesWithEmptyResult() throws IOException {
     when(ACCESS_CONTROL_DISPATCHER.listRolesWithSecurableObjects("metalake1"))
         .thenReturn(new Role[0]);
@@ -317,7 +475,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
     AuthorizationExpression listExpression =
         listRoleSummaries.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(listExpression);
-    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", listExpression.expression());
+    Assertions.assertEquals("", listExpression.expression());
     Assertions.assertEquals(
         Entity.EntityType.METALAKE,
         listRoleSummaries.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());
@@ -335,34 +493,12 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
         assignRoles.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());
   }
 
-  /** Tests that the role list requires service admin status and metalake ownership together. */
+  /** Tests that role summaries require no service admin authorization. */
   @Test
   public void testListRoleSummariesAuthorization() throws NoSuchMethodException {
     Method method =
         ExtendedPrincipalRoleOperations.class.getMethod("listRoleSummaries", String.class);
-    String expression = method.getAnnotation(AuthorizationExpression.class).expression();
-    GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
-    AuthorizationExpressionEvaluator evaluator =
-        new AuthorizationExpressionEvaluator(expression, authorizer);
-    Map<Entity.EntityType, NameIdentifier> metadataNames =
-        Map.of(Entity.EntityType.METALAKE, NameIdentifierUtil.ofMetalake("metalake1"));
-    UserPrincipal principal = new UserPrincipal("tester");
-
-    when(authorizer.isOwner(any(), eq("metalake1"), any(), any())).thenReturn(true);
-    Assertions.assertFalse(
-        evaluator.evaluate(
-            metadataNames, new AuthorizationRequestContext(), principal, Optional.empty()));
-
-    when(authorizer.isServiceAdmin()).thenReturn(true);
-    when(authorizer.isOwner(any(), eq("metalake1"), any(), any())).thenReturn(false);
-    Assertions.assertFalse(
-        evaluator.evaluate(
-            metadataNames, new AuthorizationRequestContext(), principal, Optional.empty()));
-
-    when(authorizer.isOwner(any(), eq("metalake1"), any(), any())).thenReturn(true);
-    Assertions.assertTrue(
-        evaluator.evaluate(
-            metadataNames, new AuthorizationRequestContext(), principal, Optional.empty()));
+    Assertions.assertEquals("", method.getAnnotation(AuthorizationExpression.class).expression());
   }
 
   private void assertRoleSummary(
