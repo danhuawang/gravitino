@@ -120,6 +120,16 @@ jobs:
             -x :qa:gravitino-service-e2e-test:test \
             $EXCLUDE_CONTRIB_TESTS
 
+      - name: Upload JUnit results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: junit-xml-backend-${{ inputs.java-version }}-${{ inputs.test-mode }}-${{ inputs.backend }}
+          path: |
+            **/build/test-results/test/*.xml
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload integrate tests reports
         uses: actions/upload-artifact@v7
         if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}

@@ -174,11 +174,12 @@ done
 log "Running integration tests..."
 (
   cd "${MCP_DIR}"
+  mkdir -p build/test-results/test
   GRAVITINO_URI="${GRAVITINO_URI}" \
   MCP_URL="${MCP_URL}" \
   MCP_METALAKE="${MCP_METALAKE}" \
   MCP_AUDIT_LOG="${MCP_AUDIT_LOG}" \
-  uv run pytest tests/integration -v
+  uv run pytest tests/integration -v --junitxml=build/test-results/test/mcp-authz.xml
 )
 
 log "Integration tests passed."

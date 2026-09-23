@@ -65,6 +65,16 @@ jobs:
         run: |
           ./mcp-server/dev/run_authz_integration_test.sh
 
+      - name: Upload JUnit results
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: junit-xml-mcp-${{ inputs.java-version }}
+          path: |
+            **/build/test-results/test/*.xml
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Upload server logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
