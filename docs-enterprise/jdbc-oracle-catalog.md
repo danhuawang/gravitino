@@ -40,6 +40,14 @@ Breaking changes from earlier versions of this catalog:
 - Quoted mixed-case tables — created outside Gravitino, by older Gravitino versions, or now directly through this catalog — are visible again via `listTables`/`loadTable` (reported using their exact physical case), instead of being skipped with a warning. Referencing one of these tables again for `alterTable`/`dropTable`/etc. still requires supplying the quoted form.
 :::
 
+:::caution
+Known issue (1.3.0): a table or column whose stored Oracle name is not upper case — for example one created with a quoted lower-case or mixed-case name such as `"lower_case_tbl"` — appears in `listTables` under its exact stored name, but **cannot be loaded, altered, or dropped by that bare name** from the SDK, REST API, or any query engine (Spark, Trino, Flink). Because `loadTable` folds an unquoted name to upper case, the bare name resolves to a different, non-existent object and returns `NoSuchTableException`.
+
+Workaround: reference the object with its quoted form (e.g. `"lower_case_tbl"`), exactly as you would in Oracle SQL. From an engine that strips quotes before Gravitino sees them, such an object is not reachable.
+
+A fix that resolves the stored physical name on the server side, so every name returned by `listTables` can be passed straight back to `loadTable`/`alterTable`/`dropTable`, is planned for 2.0.0.
+:::
+
 Index names are the one exception: Gravitino does not fold them and does not apply the quoted/unquoted convention to them, so an index/constraint name is always quoted case-preserving, exactly as given, and must be referenced with that same exact case thereafter (e.g. an index created as `PK_USERS` cannot be dropped by referencing `pk_users`).
 
 :::note
