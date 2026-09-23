@@ -99,12 +99,16 @@ public class IncrementalMetricsWorker implements Closeable {
   }
 
   void pollOnce() {
+    if (!metricsCollector.areStartupMetalakesRegistered()) {
+      return;
+    }
     long now = System.currentTimeMillis();
     List<MetricDirtyPO> dueMetalakes =
         metricDataService.listDueDirtyMetalakes(now - debounceMs, now - maxDebounceMs, now);
     for (MetricDirtyPO dirty : dueMetalakes) {
       long metalakeId = dirty.getMetalakeId();
-      if (!inFlightMetalakes.add(metalakeId)) {
+      if (metricsCollector.isStartupCollectionPending(metalakeId)
+          || !inFlightMetalakes.add(metalakeId)) {
         continue;
       }
       try {

@@ -32,10 +32,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -95,6 +99,13 @@ public class MetricsCollector implements Closeable {
   public static final Long MOCK_USER_ID_FOR_METALAKE_OWNER = 1L;
   private static final MetricsCollector INSTANCE = new MetricsCollector();
   private static final Logger LOG = LoggerFactory.getLogger(MetricsCollector.class);
+  private static final RejectedExecutionHandler CALLER_RUNS_OR_REJECT =
+      (task, executor) -> {
+        if (executor.isShutdown()) {
+          throw new RejectedExecutionException("Metrics collector executor is shut down");
+        }
+        task.run();
+      };
 
   private CatalogManager catalogManager;
   private SchemaDispatcher schemaDispatcher;
@@ -112,6 +123,7 @@ public class MetricsCollector implements Closeable {
 
   // Executor for parallel computation of metrics, create independent thread for each metalake
   private ExecutorService metricsCalculationExecutor;
+  private ExecutorService metricsAuthorizationExecutor;
   private final int metricsCalculationCoreThreadsNum = 2;
   private final int metricsCalculationMaxThreadsNum = 5;
   private final long metricsCalculationKeepAliveTimeSec = 60L;
@@ -119,6 +131,9 @@ public class MetricsCollector implements Closeable {
 
   private Duration retentionPeriod;
   private boolean enableAuthorization;
+  private int authorizationCalculationThreads;
+  private volatile boolean startupMetalakesRegistered;
+  private final Set<Long> pendingStartupMetalakes = ConcurrentHashMap.newKeySet();
 
   @Getter private final Map<String, MetalakeSnapshot> metalakeSnapshots = new ConcurrentHashMap<>();
 
@@ -131,6 +146,8 @@ public class MetricsCollector implements Closeable {
   }
 
   public void initialize(ServerConfig serverConfig, GravitinoEnv gravitinoEnv) {
+    startupMetalakesRegistered = false;
+    pendingStartupMetalakes.clear();
     this.catalogManager = gravitinoEnv.catalogManager();
     this.schemaDispatcher = gravitinoEnv.schemaDispatcher();
     this.tableDispatcher = gravitinoEnv.tableDispatcher();
@@ -166,7 +183,24 @@ public class MetricsCollector implements Closeable {
             TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(metricsCalculationQueueSize),
             calculatorThreadFactory,
-            new ThreadPoolExecutor.CallerRunsPolicy());
+            CALLER_RUNS_OR_REJECT);
+
+    authorizationCalculationThreads =
+        serverConfig.get(MetricsConfig.AUTHORIZATION_CALCULATION_THREADS_CONFIG);
+    ThreadFactory authorizationThreadFactory =
+        new ThreadFactoryBuilder()
+            .setNameFormat("metrics-authorization-thread-%d")
+            .setDaemon(true)
+            .build();
+    this.metricsAuthorizationExecutor =
+        new ThreadPoolExecutor(
+            authorizationCalculationThreads,
+            authorizationCalculationThreads,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(authorizationCalculationThreads * 2),
+            authorizationThreadFactory,
+            CALLER_RUNS_OR_REJECT);
 
     this.retentionPeriod = Duration.ofDays(serverConfig.get(MetricsConfig.RETENTION_DAYS_CONFIG));
 
@@ -175,8 +209,7 @@ public class MetricsCollector implements Closeable {
 
   public void start() {
     // execute the metrics collection immediately for the first time
-    scheduledExecutor.execute(
-        () -> collectAllMetrics(PublishMode.CURRENT_ONLY, System.currentTimeMillis(), true));
+    scheduledExecutor.execute(() -> collectStartupMetrics(System.currentTimeMillis()));
 
     // schedule the metrics collection to run daily at midnight
     LocalDateTime now = LocalDateTime.now();
@@ -189,7 +222,10 @@ public class MetricsCollector implements Closeable {
         TimeUnit.DAYS.toMillis(scheduledPeriodDays),
         TimeUnit.MILLISECONDS);
 
-    LOG.info("Metrics collector started");
+    LOG.info(
+        "Metrics collector started: authorizationEnabled={}, authorizationWorkerThreads={}",
+        enableAuthorization,
+        authorizationCalculationThreads);
   }
 
   @Override
@@ -214,13 +250,25 @@ public class MetricsCollector implements Closeable {
       try {
         metricsCalculationExecutor.shutdown();
         if (!metricsCalculationExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
-          metricsCalculationExecutor.shutdownNow();
+          LOG.warn("Metrics calculation executor did not terminate within 30 seconds");
         }
       } catch (InterruptedException e) {
-        metricsCalculationExecutor.shutdownNow();
         Thread.currentThread().interrupt();
       } catch (Exception e) {
         LOG.error("Failed to shutdown metrics calculation executor", e);
+      }
+    }
+
+    if (metricsAuthorizationExecutor != null) {
+      try {
+        metricsAuthorizationExecutor.shutdown();
+        if (!metricsAuthorizationExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+          LOG.warn("Metrics authorization executor did not terminate within 30 seconds");
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      } catch (RuntimeException e) {
+        LOG.error("Failed to shutdown metrics authorization executor", e);
       }
     }
 
@@ -254,6 +302,7 @@ public class MetricsCollector implements Closeable {
 
   private void collectAllMetrics(
       PublishMode publishMode, long runTimestamp, boolean initializeDirtyMarkers) {
+    Set<Long> unsubmittedStartupMetalakes = new HashSet<>();
     try {
       LOG.info(
           "[run: {}] Starting to collect metrics data for all users in all metalakes",
@@ -262,6 +311,12 @@ public class MetricsCollector implements Closeable {
           store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE).stream()
               .filter(MetricsCollector::isMetalakeInUse)
               .collect(Collectors.toList());
+      if (initializeDirtyMarkers) {
+        metalakes.forEach(metalake -> unsubmittedStartupMetalakes.add(metalake.id()));
+        pendingStartupMetalakes.addAll(unsubmittedStartupMetalakes);
+        // Register every startup task before allowing per-metalake incremental refresh.
+        startupMetalakesRegistered = true;
+      }
       Map<Long, Long> startupDirtyRevisions =
           initializeDirtyMarkers
               ? prepareStartupDirtyRevisions(metalakes, runTimestamp)
@@ -287,10 +342,15 @@ public class MetricsCollector implements Closeable {
                         Instant.ofEpochMilli(runTimestamp),
                         metalakeName,
                         e);
+                  } finally {
+                    if (initializeDirtyMarkers) {
+                      pendingStartupMetalakes.remove(metalake.id());
+                    }
                   }
                 },
                 metricsCalculationExecutor);
 
+        unsubmittedStartupMetalakes.remove(metalake.id());
         futures.add(future);
       }
 
@@ -305,12 +365,31 @@ public class MetricsCollector implements Closeable {
           "[run: {}] Failed to list metalakes for dashboard metric collection",
           Instant.ofEpochMilli(runTimestamp),
           e);
+    } finally {
+      if (initializeDirtyMarkers) {
+        // Release tasks that were never submitted, while accepted tasks retain their own gates.
+        pendingStartupMetalakes.removeAll(unsubmittedStartupMetalakes);
+        startupMetalakesRegistered = true;
+      }
     }
   }
 
   @VisibleForTesting
   void collectStartupMetrics(long runTimestamp) {
     collectAllMetrics(PublishMode.CURRENT_ONLY, runTimestamp, true);
+  }
+
+  @VisibleForTesting
+  boolean isStartupCollectionComplete() {
+    return startupMetalakesRegistered && pendingStartupMetalakes.isEmpty();
+  }
+
+  boolean areStartupMetalakesRegistered() {
+    return startupMetalakesRegistered;
+  }
+
+  boolean isStartupCollectionPending(long metalakeId) {
+    return pendingStartupMetalakes.contains(metalakeId);
   }
 
   private Map<Long, Long> prepareStartupDirtyRevisions(
@@ -377,22 +456,27 @@ public class MetricsCollector implements Closeable {
       long totalStartedAt = System.nanoTime();
       try {
         long loadStartedAt = System.nanoTime();
+        long loadDurationNanos;
         MetalakeSnapshot snapshot;
         try {
           snapshot = loadAllDataForMetalake(metalake);
         } finally {
-          recordLoadDuration(System.nanoTime() - loadStartedAt);
+          loadDurationNanos = System.nanoTime() - loadStartedAt;
+          recordLoadDuration(loadDurationNanos);
         }
         metalakeSnapshots.put(metalakeName, snapshot);
         long calculationStartedAt = System.nanoTime();
+        long calculationDurationNanos;
         Map<Long, List<MetricPO>> metricsByUser;
         try {
           metricsByUser = calculateMetrics(snapshot);
         } finally {
-          recordCalculationDuration(System.nanoTime() - calculationStartedAt);
+          calculationDurationNanos = System.nanoTime() - calculationStartedAt;
+          recordCalculationDuration(calculationDurationNanos);
         }
         CollectionOutcome outcome = collectionOutcome(metricsByUser);
         long publishStartedAt = System.nanoTime();
+        long publishDurationNanos;
         try {
           if (publishMode == PublishMode.CURRENT_AND_HISTORY) {
             if (outcome == CollectionOutcome.INCOMPLETE && markDirtyOnIncomplete) {
@@ -411,7 +495,8 @@ public class MetricsCollector implements Closeable {
             }
           }
         } finally {
-          recordPublishDuration(System.nanoTime() - publishStartedAt);
+          publishDurationNanos = System.nanoTime() - publishStartedAt;
+          recordPublishDuration(publishDurationNanos);
         }
         metalakeSnapshots
             .entrySet()
@@ -433,16 +518,23 @@ public class MetricsCollector implements Closeable {
           metricsSource.recordOutcome(outcome);
         }
         LOG.info(
-            "[run: {}] Dashboard metrics processed: metalake={}, outcome={}, users={}, schemas={}, "
-                + "failedCatalogs={}, publishedRows={}, directChildRows={}, totalMs={}",
+            "[run: {}] Dashboard metrics processed: metalake={}, outcome={}, "
+                + "authorizationEnabled={}, users={}, metricRecipients={}, metadataObjects={}, "
+                + "failedCatalogs={}, publishedRows={}, directChildRows={}, loadMs={}, "
+                + "calculationMs={}, publishMs={}, totalMs={}",
             Instant.ofEpochMilli(runTimestamp),
             metalakeName,
             outcome,
+            enableAuthorization,
+            snapshot.getUserNameToUserId().size(),
             metricsByUser.size(),
-            snapshot.getSchemaNodes().size(),
+            snapshot.getAssetNodeByIdent().size(),
             snapshot.getFailedCatalogNames().size(),
             publishedRows,
             directChildRows,
+            TimeUnit.NANOSECONDS.toMillis(loadDurationNanos),
+            TimeUnit.NANOSECONDS.toMillis(calculationDurationNanos),
+            TimeUnit.NANOSECONDS.toMillis(publishDurationNanos),
             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - totalStartedAt));
         return outcome;
       } catch (Exception e) {
@@ -514,31 +606,120 @@ public class MetricsCollector implements Closeable {
       return metricsByUser;
     }
 
-    GravitinoAuthorizer authorizer = new MemoizedJcasbinAuthorizer();
+    MemoizedJcasbinAuthorizer authorizer = new MemoizedJcasbinAuthorizer();
     try {
       authorizer.initialize();
-      snapshot
-          .getUserNameToUserId()
-          .forEach(
-              (userName, userId) ->
-                  metricsByUser.put(
-                      userId, calculator.calculateMetricsForUser(userName, authorizer)));
-      Optional<Owner> owner =
-          snapshot.getAssetTreeRoot().getOwners().stream()
-              .filter(candidate -> candidate.type().equals(Owner.Type.USER))
-              .filter(candidate -> snapshot.getUserNameToUserId().containsKey(candidate.name()))
-              .findFirst();
-      owner.ifPresent(
-          value ->
-              metricsByUser.put(
-                  MOCK_USER_ID_FOR_METALAKE_OWNER,
-                  calculator.calculateMetricsForUser(value.name(), authorizer)));
-      return metricsByUser;
+      if (!snapshot.getFailedSchemaIdentifiers().isEmpty()) {
+        authorizer.preloadSnapshotPolicies(snapshot.getAssetTreeRoot().getName());
+      }
+      MetricsAuthorizationIndex authorizationIndex = new MetricsAuthorizationIndex(snapshot);
+      Executor executor =
+          metricsAuthorizationExecutor == null ? Runnable::run : metricsAuthorizationExecutor;
+      return calculateAuthorizedMetrics(
+          snapshot, calculator, authorizer, authorizationIndex, executor);
     } finally {
       try {
         authorizer.close();
       } catch (IOException e) {
         LOG.warn("Error closing authorizer", e);
+      }
+    }
+  }
+
+  @VisibleForTesting
+  static Map<Long, List<MetricPO>> calculateAuthorizedMetrics(
+      MetalakeSnapshot snapshot,
+      MetricsCalculator calculator,
+      GravitinoAuthorizer authorizer,
+      MetricsAuthorizationIndex authorizationIndex,
+      Executor executor) {
+    Map<MetricsAuthorizationIndex.AccessProfile, List<MetricUser>> usersByProfile =
+        groupUsersByAccessProfile(snapshot, authorizationIndex);
+    LOG.info(
+        "Dashboard metric authorization calculation started: metalake={}, users={}, "
+            + "roleOwnershipCombinations={}, metadataObjects={}, workerThreads={}",
+        snapshot.getAssetTreeRoot().getName(),
+        snapshot.getUserNameToUserId().size(),
+        usersByProfile.size(),
+        snapshot.getAssetNodeByIdent().size(),
+        authorizationWorkerThreadCount(executor));
+    List<CompletableFuture<ProfileMetrics>> profileCalculations =
+        submitProfileCalculations(
+            usersByProfile, calculator, authorizer, authorizationIndex, executor);
+    Map<Long, List<MetricPO>> metricsByUser = collectProfileMetrics(profileCalculations);
+    addMetalakeOwnerMetrics(snapshot, metricsByUser);
+    return metricsByUser;
+  }
+
+  private static int authorizationWorkerThreadCount(Executor executor) {
+    return executor instanceof ThreadPoolExecutor
+        ? ((ThreadPoolExecutor) executor).getCorePoolSize()
+        : 1;
+  }
+
+  private static Map<MetricsAuthorizationIndex.AccessProfile, List<MetricUser>>
+      groupUsersByAccessProfile(
+          MetalakeSnapshot snapshot, MetricsAuthorizationIndex authorizationIndex) {
+    Map<MetricsAuthorizationIndex.AccessProfile, List<MetricUser>> usersByProfile = new HashMap<>();
+    for (Map.Entry<String, Long> user : snapshot.getUserNameToUserId().entrySet()) {
+      MetricsAuthorizationIndex.AccessProfile profile =
+          authorizationIndex.profile(user.getKey(), user.getValue());
+      usersByProfile
+          .computeIfAbsent(profile, ignored -> new ArrayList<>())
+          .add(new MetricUser(user.getKey(), user.getValue()));
+    }
+    return usersByProfile;
+  }
+
+  private static List<CompletableFuture<ProfileMetrics>> submitProfileCalculations(
+      Map<MetricsAuthorizationIndex.AccessProfile, List<MetricUser>> usersByProfile,
+      MetricsCalculator calculator,
+      GravitinoAuthorizer authorizer,
+      MetricsAuthorizationIndex authorizationIndex,
+      Executor executor) {
+    List<CompletableFuture<ProfileMetrics>> calculations = new ArrayList<>(usersByProfile.size());
+    for (Map.Entry<MetricsAuthorizationIndex.AccessProfile, List<MetricUser>> profileEntry :
+        usersByProfile.entrySet()) {
+      MetricsAuthorizationIndex.AccessProfile profile = profileEntry.getKey();
+      List<MetricUser> users = profileEntry.getValue();
+      MetricUser representativeUser = users.get(0);
+      calculations.add(
+          CompletableFuture.supplyAsync(
+              () ->
+                  new ProfileMetrics(
+                      users,
+                      calculator.calculateMetricsForVisibility(
+                          representativeUser.userName,
+                          authorizationIndex.visibility(profile),
+                          authorizer)),
+              executor));
+    }
+    return calculations;
+  }
+
+  private static Map<Long, List<MetricPO>> collectProfileMetrics(
+      List<CompletableFuture<ProfileMetrics>> profileCalculations) {
+    Map<Long, List<MetricPO>> metricsByUser = new HashMap<>();
+    for (CompletableFuture<ProfileMetrics> calculation : profileCalculations) {
+      ProfileMetrics profileMetrics = calculation.join();
+      for (MetricUser user : profileMetrics.users) {
+        metricsByUser.put(user.userId, profileMetrics.metrics);
+      }
+    }
+    return metricsByUser;
+  }
+
+  private static void addMetalakeOwnerMetrics(
+      MetalakeSnapshot snapshot, Map<Long, List<MetricPO>> metricsByUser) {
+    for (Owner owner : snapshot.getAssetTreeRoot().getOwners()) {
+      if (owner.type() != Owner.Type.USER) {
+        continue;
+      }
+      Long ownerId = snapshot.getUserNameToUserId().get(owner.name());
+      List<MetricPO> ownerMetrics = ownerId == null ? null : metricsByUser.get(ownerId);
+      if (ownerMetrics != null) {
+        metricsByUser.put(MOCK_USER_ID_FOR_METALAKE_OWNER, ownerMetrics);
+        return;
       }
     }
   }
@@ -736,7 +917,8 @@ public class MetricsCollector implements Closeable {
               catalog.name(), ((CatalogCollectionException) e).schemaIdentifier);
         }
         LOG.warn(
-            "Catalog {} could not be collected; dashboard metrics will publish a safe incomplete result",
+            "Catalog {} could not be collected; dashboard metrics will publish a safe incomplete"
+                + " result",
             catalog.name(),
             e);
       }
@@ -880,7 +1062,8 @@ public class MetricsCollector implements Closeable {
       AssetNode assetNode = assetNodeById.get(relPO.getObjectId());
       if (assetNode == null) {
         LOG.warn(
-            "Asset node not found for object id: {} in metalake: {} when loading tag relations for tag: {}",
+            "Asset node not found for object id: {} in metalake: {} when loading tag relations for"
+                + " tag: {}",
             relPO.getObjectId(),
             metalake.name(),
             relPO.getTagName());
@@ -1346,6 +1529,26 @@ public class MetricsCollector implements Closeable {
               return assetNode;
             })
         .collect(Collectors.toSet());
+  }
+
+  private static final class MetricUser {
+    private final String userName;
+    private final long userId;
+
+    private MetricUser(String userName, long userId) {
+      this.userName = userName;
+      this.userId = userId;
+    }
+  }
+
+  private static final class ProfileMetrics {
+    private final List<MetricUser> users;
+    private final List<MetricPO> metrics;
+
+    private ProfileMetrics(List<MetricUser> users, List<MetricPO> metrics) {
+      this.users = users;
+      this.metrics = metrics;
+    }
   }
 
   private static class CatalogCollectionException extends Exception {

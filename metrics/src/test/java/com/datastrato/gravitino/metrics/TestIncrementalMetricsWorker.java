@@ -20,6 +20,7 @@ import com.datastrato.gravitino.metrics.config.MetricsConfig;
 import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import java.sql.Timestamp;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -29,6 +30,72 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class TestIncrementalMetricsWorker {
+
+  @Test
+  void testPollWaitsForStartupMetalakeRegistration() throws Exception {
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricDataService service = mock(MetricDataService.class);
+    IncrementalMetricsWorker worker = newWorker(collector, service);
+    MetricDirtyPO dirty = dirty(10L, 8L, System.currentTimeMillis() - 2_000, null, 0);
+    BaseMetalake metalake = mock(BaseMetalake.class);
+    when(service.listDueDirtyMetalakes(anyLong(), anyLong(), anyLong()))
+        .thenReturn(Collections.singletonList(dirty));
+    when(service.getDirtyMetalake(10L)).thenReturn(dirty);
+    when(collector.metalakeLock(10L)).thenReturn(new Object());
+    when(collector.findActiveMetalake(10L)).thenReturn(Optional.of(metalake));
+    when(collector.refreshAndPublishDirtyMetalake(
+            eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong()))
+        .thenReturn(MetricsCollector.CollectionOutcome.COMPLETE);
+    runSubmittedTasksImmediately(collector);
+    when(collector.areStartupMetalakesRegistered()).thenReturn(false);
+
+    worker.pollOnce();
+
+    verify(service, never()).listDueDirtyMetalakes(anyLong(), anyLong(), anyLong());
+
+    when(collector.areStartupMetalakesRegistered()).thenReturn(true);
+    worker.pollOnce();
+
+    verify(collector)
+        .refreshAndPublishDirtyMetalake(
+            eq(metalake), eq(MetricsCollector.PublishMode.CURRENT_ONLY), anyLong());
+    verify(service).deleteDirtyIfRevision(10L, 8L);
+    worker.close();
+  }
+
+  @Test
+  void testPendingStartupDoesNotBlockOtherMetalakes() throws Exception {
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricDataService service = mock(MetricDataService.class);
+    try (IncrementalMetricsWorker worker = newWorker(collector, service)) {
+      long eventTime = System.currentTimeMillis() - 2_000;
+      MetricDirtyPO pending = dirty(10L, 3L, eventTime, null, 0);
+      MetricDirtyPO ready = dirty(20L, 4L, eventTime, null, 0);
+      when(service.listDueDirtyMetalakes(anyLong(), anyLong(), anyLong()))
+          .thenReturn(Arrays.asList(pending, ready))
+          .thenReturn(Collections.singletonList(pending));
+      for (MetricDirtyPO marker : Arrays.asList(pending, ready)) {
+        long id = marker.getMetalakeId();
+        when(service.getDirtyMetalake(id)).thenReturn(marker);
+        when(collector.metalakeLock(id)).thenReturn(new Object());
+        when(collector.findActiveMetalake(id)).thenReturn(Optional.of(mock(BaseMetalake.class)));
+      }
+      when(collector.refreshAndPublishDirtyMetalake(any(), any(), anyLong()))
+          .thenReturn(MetricsCollector.CollectionOutcome.COMPLETE);
+      when(collector.isStartupCollectionPending(10L)).thenReturn(true);
+      runSubmittedTasksImmediately(collector);
+
+      worker.pollOnce();
+
+      verify(service).deleteDirtyIfRevision(20L, 4L);
+      verify(service, never()).getDirtyMetalake(10L);
+      when(collector.isStartupCollectionPending(10L)).thenReturn(false);
+
+      worker.pollOnce();
+
+      verify(service).deleteDirtyIfRevision(10L, 3L);
+    }
+  }
 
   @Test
   void testDueMarkerIsCollectedAndDeletedByRevision() throws Exception {
@@ -129,6 +196,7 @@ class TestIncrementalMetricsWorker {
     when(config.get(MetricsConfig.INCREMENTAL_RETRY_MAX_MS_CONFIG)).thenReturn(1_000L);
     IncrementalMetricsWorker worker = new IncrementalMetricsWorker(collector, service);
     worker.initialize(config);
+    when(collector.areStartupMetalakesRegistered()).thenReturn(true);
 
     MetricDirtyPO dirty = dirty(12L, 5L, System.currentTimeMillis() - 2_000, null, 3);
     BaseMetalake metalake = mock(BaseMetalake.class);
@@ -191,6 +259,7 @@ class TestIncrementalMetricsWorker {
     ServerConfig config = defaultConfig();
     IncrementalMetricsWorker worker = new IncrementalMetricsWorker(collector, service);
     worker.initialize(config);
+    when(collector.areStartupMetalakesRegistered()).thenReturn(true);
     return worker;
   }
 

@@ -35,6 +35,10 @@ gravitino.cache.implementation = caffeine
 gravitino.authorization.enable = true
 gravitino.authorization.serviceAdmins = anonymous
 
+# Dedicated threads for authorization-scoped dashboard metrics. Increase only when many users have
+# different permissions and collection is slow; higher values use more CPU.
+# gravitino.metrics.authorizationCalculationThreads=4
+
 # Incremental dashboard metrics worker configuration.
 # Only one running Gravitino Metrics Service instance is supported.
 # Interval in milliseconds for polling metalakes pending a metrics refresh.

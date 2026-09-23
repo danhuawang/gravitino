@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.io.IOUtils;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.MetadataObject;
@@ -64,6 +65,14 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
   /** User-to-role relations that have been loaded into both enforcers. */
   private final Map<Long, Set<Long>> loadedUserRoles = new HashMap<>();
 
+  /** Metalakes whose role relations and direct user-owner policies are fully loaded. */
+  private final Set<String> preloadedMetalakes = ConcurrentHashMap.newKeySet();
+
+  private final Set<String> warnedRoleLoadFailures = ConcurrentHashMap.newKeySet();
+  private final Set<String> warnedOwnerLoadFailures = ConcurrentHashMap.newKeySet();
+  private final Set<String> warnedMissingOwnerUsers = ConcurrentHashMap.newKeySet();
+  private final Set<String> warnedUnsupportedOwnerTypes = ConcurrentHashMap.newKeySet();
+
   @Override
   public void initialize() {
     initialize(
@@ -84,6 +93,58 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
     this.metalakeSnapshots = metalakeSnapshots;
     loadedRoles.clear();
     loadedUserRoles.clear();
+    preloadedMetalakes.clear();
+    warnedRoleLoadFailures.clear();
+    warnedOwnerLoadFailures.clear();
+    warnedMissingOwnerUsers.clear();
+    warnedUnsupportedOwnerTypes.clear();
+  }
+
+  /** Loads every snapshot-backed role and direct user-owner policy before parallel evaluation. */
+  synchronized void preloadSnapshotPolicies(String metalake) {
+    if (preloadedMetalakes.contains(metalake)) {
+      return;
+    }
+
+    MetalakeSnapshot snapshot =
+        Preconditions.checkNotNull(
+            metalakeSnapshots.get(metalake), "Metalake snapshot %s was not found", metalake);
+    int failedRoleLoads = 0;
+    int failedOwnerLoads = 0;
+    Exception firstFailure = null;
+    for (Long userId : snapshot.getUserIdToRoleIds().keySet()) {
+      try {
+        loadRolePrivilege(metalake, userId);
+      } catch (Exception e) {
+        failedRoleLoads++;
+        if (firstFailure == null) {
+          firstFailure = e;
+        }
+      }
+    }
+    for (AssetNode assetNode : snapshot.getAssetNodeById().values()) {
+      if (assetNode.getId() != -1L) {
+        try {
+          loadOwnerPolicy(metalake, assetNode.getId());
+        } catch (Exception e) {
+          failedOwnerLoads++;
+          if (firstFailure == null) {
+            firstFailure = e;
+          }
+        }
+      }
+    }
+    if (failedRoleLoads == 0 && failedOwnerLoads == 0) {
+      preloadedMetalakes.add(metalake);
+    } else {
+      LOG.warn(
+          "Dashboard metric authorization preload incomplete: metalake={}, failedRoleLoads={}, "
+              + "failedOwnerLoads={}",
+          metalake,
+          failedRoleLoads,
+          failedOwnerLoads,
+          firstFailure);
+    }
   }
 
   private Model getModel(String modelFilePath) {
@@ -282,20 +343,34 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
   }
 
   private void loadPrivilege(String metalake, Long userId, Long metadataObjectId) {
+    if (preloadedMetalakes.contains(metalake)) {
+      return;
+    }
+
     try {
       loadRolePrivilege(metalake, userId);
     } catch (Exception e) {
-      LOG.warn("Can not load role privilege for user id {} in metalake {}", userId, metalake, e);
+      if (warnedRoleLoadFailures.add(metalake)) {
+        LOG.warn(
+            "Failed to load role privileges for dashboard metrics: metalake={}, userId={};"
+                + " further on-demand failures suppressed",
+            metalake,
+            userId,
+            e);
+      }
     }
 
     try {
       loadOwnerPolicy(metalake, metadataObjectId);
     } catch (Exception e) {
-      LOG.warn(
-          "Can not load owner policy for metadata id {} in metalake {}",
-          metadataObjectId,
-          metalake,
-          e);
+      if (warnedOwnerLoadFailures.add(metalake)) {
+        LOG.warn(
+            "Failed to load ownership for dashboard metrics: metalake={}, objectId={};"
+                + " further on-demand failures suppressed",
+            metalake,
+            metadataObjectId,
+            e);
+      }
     }
   }
 
@@ -321,29 +396,36 @@ public class MemoizedJcasbinAuthorizer implements GravitinoAuthorizer {
   }
 
   private void loadOwnerPolicy(String metalake, Long metadataId) {
-    try {
-      AssetNode assetNode = metalakeSnapshots.get(metalake).getAssetNodeById().get(metadataId);
-      for (Owner owner : assetNode.getOwners()) {
-        if (owner.type() == Owner.Type.USER) {
-          long userId = metalakeSnapshots.get(metalake).getUserNameToUserId().get(owner.name());
-          ImmutableList<String> policy =
-              ImmutableList.of(
-                  String.valueOf(userId),
-                  String.valueOf(assetNode.getType()),
-                  String.valueOf(metadataId),
-                  AuthConstants.OWNER,
-                  AuthConstants.ALLOW);
-          allowEnforcer.addPolicy(policy);
-        } else {
-          LOG.warn(
-              "Unsupported owner type {} for owner {}, asset {}",
-              owner.type(),
-              owner.name(),
-              assetNode.getNameIdent());
+    AssetNode assetNode = metalakeSnapshots.get(metalake).getAssetNodeById().get(metadataId);
+    for (Owner owner : assetNode.getOwners()) {
+      if (owner.type() == Owner.Type.USER) {
+        Long userId = metalakeSnapshots.get(metalake).getUserNameToUserId().get(owner.name());
+        if (userId == null) {
+          if (warnedMissingOwnerUsers.add(metalake)) {
+            LOG.warn(
+                "Skipping owner: user={} not found in metrics snapshot, objectId={}, metalake={};"
+                    + " further occurrences suppressed",
+                owner.name(),
+                metadataId,
+                metalake);
+          }
+          continue;
         }
+        ImmutableList<String> policy =
+            ImmutableList.of(
+                String.valueOf(userId),
+                String.valueOf(assetNode.getType()),
+                String.valueOf(metadataId),
+                AuthConstants.OWNER,
+                AuthConstants.ALLOW);
+        allowEnforcer.addPolicy(policy);
+      } else if (warnedUnsupportedOwnerTypes.add(metalake + ':' + owner.type())) {
+        LOG.warn(
+            "Skipping unsupported dashboard metric owner type {} in metalake {}; further"
+                + " occurrences are omitted",
+            owner.type(),
+            metalake);
       }
-    } catch (Exception e) {
-      LOG.warn("Can not load metadata owner", e);
     }
   }
 

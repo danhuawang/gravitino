@@ -30,9 +30,13 @@ import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataSer
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.Entity;
@@ -74,6 +78,7 @@ import org.apache.gravitino.utils.ThrowableFunction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
@@ -141,6 +146,7 @@ class TestMetricsCollector {
 
     // mock config
     when(serverConfig.get(MetricsConfig.RETENTION_DAYS_CONFIG)).thenReturn(30);
+    when(serverConfig.get(MetricsConfig.AUTHORIZATION_CALCULATION_THREADS_CONFIG)).thenReturn(2);
     when(serverConfig.get(Configs.ENABLE_AUTHORIZATION)).thenReturn(false);
 
     // mock store
@@ -663,6 +669,31 @@ class TestMetricsCollector {
   }
 
   @Test
+  void testAuthorizationPreloadRunsOnlyForSchemaFailures() throws Exception {
+    when(serverConfig.get(Configs.ENABLE_AUTHORIZATION)).thenReturn(true);
+    try (MockedStatic<MetricDataService> mockedService =
+            Mockito.mockStatic(MetricDataService.class);
+        MockedConstruction<MemoizedJcasbinAuthorizer> authorizers =
+            Mockito.mockConstruction(MemoizedJcasbinAuthorizer.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      collector.collectAndPublish(metalake(), MetricsCollector.PublishMode.CURRENT_ONLY, 1_000L);
+
+      verify(authorizers.constructed().get(0), never()).preloadSnapshotPolicies(any());
+      when(tableDispatcher.listTables(
+              eq(NamespaceUtil.ofTable(metalakeName, relationalCatalogName, relationalSchemaName))))
+          .thenThrow(new RuntimeException("catalog unavailable"));
+
+      collector.collectAndPublish(metalake(), MetricsCollector.PublishMode.CURRENT_ONLY, 2_000L);
+
+      assertEquals(2, authorizers.constructed().size());
+      verify(authorizers.constructed().get(1)).preloadSnapshotPolicies(metalakeName);
+    }
+  }
+
+  @Test
   void testStartupCreatesPendingMarkerBeforePublishingAndClearsItOnSuccess() throws Exception {
     when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
         .thenReturn(ImmutableList.of(metalake()));
@@ -675,8 +706,10 @@ class TestMetricsCollector {
       mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
       MetricsCollector collector = MetricsCollector.getInstance();
       collector.initialize(serverConfig, gravitinoEnv);
+      assertFalse(collector.isStartupCollectionComplete());
 
       collector.collectStartupMetrics(1_250L);
+      assertTrue(collector.isStartupCollectionComplete());
 
       InOrder order = inOrder(metricDataService);
       order.verify(metricDataService).markMetalakeDirty(mockId, 1_250L);
@@ -684,6 +717,100 @@ class TestMetricsCollector {
       order.verify(metricDataService).deleteDirtyIfRevision(mockId, 7L);
       verify(metricDataService, never())
           .replaceCurrentMetricsAndMarkDirty(eq(mockId), anyMap(), eq(1_250L), eq(1_250L));
+    }
+  }
+
+  @Test
+  void testStartupReleasesEachMetalakeAfterPublication() throws Exception {
+    BaseMetalake second = mock(BaseMetalake.class);
+    when(second.id()).thenReturn(2L);
+    when(second.name()).thenReturn("second_metalake");
+    when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenReturn(ImmutableList.of(metalake(), second));
+    MetricDirtyPO dirty = mock(MetricDirtyPO.class);
+    when(dirty.getRevision()).thenReturn(7L);
+    when(metricDataService.getDirtyMetalake(anyLong())).thenReturn(dirty);
+
+    try (MockedStatic<MetricDataService> mockedService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      ExecutorService executor = mock(ExecutorService.class);
+      setCalculationExecutor(collector, executor);
+      doAnswer(
+              invocation -> {
+                assertTrue(collector.areStartupMetalakesRegistered());
+                assertTrue(collector.isStartupCollectionPending(mockId));
+                assertTrue(collector.isStartupCollectionPending(2L));
+                invocation.<Runnable>getArgument(0).run();
+                return null;
+              })
+          .doAnswer(
+              invocation -> {
+                assertFalse(collector.isStartupCollectionPending(mockId));
+                assertTrue(collector.isStartupCollectionPending(2L));
+                assertFalse(collector.isStartupCollectionComplete());
+                invocation.<Runnable>getArgument(0).run();
+                return null;
+              })
+          .when(executor)
+          .execute(any());
+      doAnswer(
+              invocation -> {
+                assertTrue(collector.isStartupCollectionPending(mockId));
+                return null;
+              })
+          .when(metricDataService)
+          .replaceCurrentMetrics(eq(mockId), anyMap(), anyLong());
+      when(metricDataService.deleteDirtyIfRevision(mockId, 7L))
+          .thenAnswer(
+              invocation -> {
+                assertTrue(collector.isStartupCollectionPending(mockId));
+                return true;
+              });
+
+      collector.collectStartupMetrics(1_250L);
+
+      assertTrue(collector.isStartupCollectionComplete());
+      verify(metricDataService).replaceCurrentMetrics(eq(mockId), anyMap(), eq(1_250L));
+      verify(metricDataService).deleteDirtyIfRevision(mockId, 7L);
+    }
+  }
+
+  @Test
+  void testStartupSubmissionFailureRetainsAcceptedTaskGate() throws Exception {
+    BaseMetalake second = mock(BaseMetalake.class);
+    when(second.id()).thenReturn(2L);
+    when(second.name()).thenReturn("second_metalake");
+    when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenReturn(ImmutableList.of(metalake(), second));
+    try (MockedStatic<MetricDataService> mockedService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      ExecutorService executor = mock(ExecutorService.class);
+      setCalculationExecutor(collector, executor);
+      List<Runnable> accepted = new ArrayList<>();
+      doAnswer(
+              invocation -> {
+                accepted.add(invocation.getArgument(0));
+                return null;
+              })
+          .doThrow(new RejectedExecutionException("executor stopped"))
+          .when(executor)
+          .execute(any());
+
+      collector.collectStartupMetrics(1_250L);
+
+      assertTrue(collector.areStartupMetalakesRegistered());
+      assertTrue(collector.isStartupCollectionPending(mockId));
+      assertFalse(collector.isStartupCollectionPending(2L));
+      assertFalse(collector.isStartupCollectionComplete());
+      assertEquals(1, accepted.size());
+      accepted.get(0).run();
+      assertTrue(collector.isStartupCollectionComplete());
     }
   }
 
@@ -703,8 +830,10 @@ class TestMetricsCollector {
       mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
       MetricsCollector collector = MetricsCollector.getInstance();
       collector.initialize(serverConfig, gravitinoEnv);
+      assertFalse(collector.isStartupCollectionComplete());
 
       collector.collectStartupMetrics(1_300L);
+      assertTrue(collector.isStartupCollectionComplete());
 
       InOrder order = inOrder(metricDataService);
       order.verify(metricDataService).markMetalakeDirty(mockId, 1_300L);
@@ -712,6 +841,25 @@ class TestMetricsCollector {
       verify(metricDataService, never()).deleteDirtyIfRevision(anyLong(), anyLong());
       verify(metricDataService, never())
           .replaceCurrentMetricsAndMarkDirty(eq(mockId), anyMap(), eq(1_300L), eq(1_300L));
+    }
+  }
+
+  @Test
+  void testStartupGateOpensWhenMetalakeListingFails() throws Exception {
+    when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenThrow(new RuntimeException("list failed"));
+
+    try (MockedStatic<MetricDataService> mockedMetricDataService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedMetricDataService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      assertFalse(collector.isStartupCollectionComplete());
+
+      collector.collectStartupMetrics(1_350L);
+
+      assertTrue(collector.isStartupCollectionComplete());
+      verify(metricDataService, never()).markMetalakeDirty(anyLong(), anyLong());
     }
   }
 
@@ -961,6 +1109,13 @@ class TestMetricsCollector {
     when(store.list(
             NamespaceUtil.ofCatalog(metalakeName), CatalogEntity.class, Entity.EntityType.CATALOG))
         .thenReturn(ImmutableList.of(catalogEntity));
+  }
+
+  private static void setCalculationExecutor(MetricsCollector collector, ExecutorService executor)
+      throws ReflectiveOperationException {
+    Field field = MetricsCollector.class.getDeclaredField("metricsCalculationExecutor");
+    field.setAccessible(true);
+    field.set(collector, executor);
   }
 
   private BaseMetalake metalake() {

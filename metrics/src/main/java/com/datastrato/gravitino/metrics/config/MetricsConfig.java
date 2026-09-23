@@ -10,6 +10,8 @@ import org.apache.gravitino.config.ConfigEntry;
 public class MetricsConfig {
   private static final String RETENTION_DAYS =
       "gravitino.datastrato.dashboardMetrics.retentionDays";
+  private static final String AUTHORIZATION_CALCULATION_THREADS =
+      "gravitino.metrics.authorizationCalculationThreads";
   private static final String INCREMENTAL_POLL_INTERVAL_MS =
       "gravitino.metrics.incremental.pollIntervalMs";
   private static final String INCREMENTAL_DEBOUNCE_MS = "gravitino.metrics.incremental.debounceMs";
@@ -26,6 +28,20 @@ public class MetricsConfig {
           .intConf()
           .checkValue(value -> value > 0, "Retention days must be greater than 0")
           .createWithDefault(30);
+
+  /** Number of dedicated threads used for authorization-scoped dashboard metric calculation. */
+  public static final ConfigEntry<Integer> AUTHORIZATION_CALCULATION_THREADS_CONFIG =
+      new ConfigBuilder(AUTHORIZATION_CALCULATION_THREADS)
+          .doc(
+              "Number of dedicated threads used for authorization-scoped dashboard metric"
+                  + " calculation. Increase only when many users have different permissions and"
+                  + " collection is slow; higher values use more CPU")
+          .version(ConfigConstants.VERSION_1_3_0)
+          .intConf()
+          .checkValue(
+              value -> value > 0 && value <= 32,
+              "Authorization calculation threads must be between 1 and 32")
+          .createWithDefault(4);
 
   /** Interval between polls for metalakes pending a metrics refresh. */
   public static final ConfigEntry<Long> INCREMENTAL_POLL_INTERVAL_MS_CONFIG =

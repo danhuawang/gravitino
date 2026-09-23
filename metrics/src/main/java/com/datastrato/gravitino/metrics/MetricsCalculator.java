@@ -28,7 +28,6 @@ import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.UserPrincipal;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
-import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,13 +40,10 @@ public class MetricsCalculator {
   private static final String PARTIAL_MESSAGE = "Some catalog data is temporarily unavailable.";
   private static final String UNAVAILABLE_MESSAGE = "Metric data is temporarily unavailable.";
   private static final List<MetadataObject.Type> ASSET_TYPES =
-      Arrays.asList(
-          MetadataObject.Type.TABLE,
-          MetadataObject.Type.VIEW,
-          MetadataObject.Type.FUNCTION,
-          MetadataObject.Type.TOPIC,
-          MetadataObject.Type.FILESET,
-          MetadataObject.Type.MODEL);
+      Collections.unmodifiableList(
+          MetricsAssetAuthorizationRule.rules().stream()
+              .map(MetricsAssetAuthorizationRule::assetType)
+              .collect(Collectors.toList()));
   private static final List<MetricDataService.Metric> ASSET_METRICS =
       Arrays.asList(
           MetricDataService.Metric.ASSET_COUNT,
@@ -116,153 +112,31 @@ public class MetricsCalculator {
 
   List<MetricPO> calculateMetricsForUser(
       String username, @Nullable GravitinoAuthorizer authorizer) {
+    return calculateMetricsForUser(username, authorizer, null);
+  }
+
+  List<MetricPO> calculateMetricsForVisibility(
+      String username, MetricsVisibility visibility, @Nullable GravitinoAuthorizer authorizer) {
+    return calculateMetricsForUser(username, authorizer, visibility);
+  }
+
+  private List<MetricPO> calculateMetricsForUser(
+      String username,
+      @Nullable GravitinoAuthorizer authorizer,
+      @Nullable MetricsVisibility visibility) {
     if (authorizer != null && !metalakeSnapshot.getUserNameToUserId().containsKey(username)) {
       LOG.warn("User {} not found in snapshot, skipping metrics calculation", username);
       return Collections.emptyList();
     }
 
-    Set<AssetNode> visibleCatalogNodes;
-    Set<AssetNode> visibleTableNodes;
-    Set<AssetNode> visibleViewNodes;
-    Set<AssetNode> visibleFunctionNodes;
-    Set<AssetNode> visibleFilesetNodes;
-    Set<AssetNode> visibleTopicNodes;
-    Set<AssetNode> visibleModelNodes;
-    Set<AssetNode> directCountVisibleSchemaNodes;
-    Set<AssetNode> directCountVisibleAssetNodes;
-    if (authorizer != null) {
-      Principal principal = new UserPrincipal(username);
-      visibleCatalogNodes =
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.CATALOG,
-              metalakeSnapshot.getCatalogNodes());
-      visibleTableNodes =
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.LOAD_TABLE_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.TABLE,
-              metalakeSnapshot.getTableNodes());
-      visibleViewNodes =
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.LOAD_VIEW_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.VIEW,
-              metalakeSnapshot.getViewNodes());
-      visibleFunctionNodes =
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.LOAD_FUNCTION_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.FUNCTION,
-              metalakeSnapshot.getFunctionNodes());
-      visibleFilesetNodes =
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.LOAD_FILESET_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.FILESET,
-              metalakeSnapshot.getFilesetNodes());
-      visibleTopicNodes =
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.LOAD_TOPICS_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.TOPIC,
-              metalakeSnapshot.getTopicNodes());
-      visibleModelNodes =
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.LOAD_MODEL_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.MODEL,
-              metalakeSnapshot.getModelNodes());
-      directCountVisibleSchemaNodes =
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.SCHEMA,
-              metalakeSnapshot.getSchemaNodes());
-      directCountVisibleAssetNodes = new HashSet<>();
-      directCountVisibleAssetNodes.addAll(
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.FILTER_TABLE_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.TABLE,
-              metalakeSnapshot.getTableNodes()));
-      directCountVisibleAssetNodes.addAll(
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.FILTER_VIEW_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.VIEW,
-              metalakeSnapshot.getViewNodes()));
-      directCountVisibleAssetNodes.addAll(
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.FILTER_FUNCTION_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.FUNCTION,
-              metalakeSnapshot.getFunctionNodes()));
-      directCountVisibleAssetNodes.addAll(
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.FILTER_FILESET_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.FILESET,
-              metalakeSnapshot.getFilesetNodes()));
-      directCountVisibleAssetNodes.addAll(
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.FILTER_TOPICS_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.TOPIC,
-              metalakeSnapshot.getTopicNodes()));
-      directCountVisibleAssetNodes.addAll(
-          getVisibleNodes(
-              metalakeName,
-              principal,
-              authorizer,
-              AuthorizationExpressionConstants.FILTER_MODEL_AUTHORIZATION_EXPRESSION,
-              Entity.EntityType.MODEL,
-              metalakeSnapshot.getModelNodes()));
-    } else {
-      visibleCatalogNodes = new HashSet<>(metalakeSnapshot.getCatalogNodes());
-      visibleTableNodes = new HashSet<>(metalakeSnapshot.getTableNodes());
-      visibleViewNodes = new HashSet<>(metalakeSnapshot.getViewNodes());
-      visibleFunctionNodes = new HashSet<>(metalakeSnapshot.getFunctionNodes());
-      visibleFilesetNodes = new HashSet<>(metalakeSnapshot.getFilesetNodes());
-      visibleTopicNodes = new HashSet<>(metalakeSnapshot.getTopicNodes());
-      visibleModelNodes = new HashSet<>(metalakeSnapshot.getModelNodes());
-      directCountVisibleSchemaNodes = new HashSet<>(metalakeSnapshot.getSchemaNodes());
-      directCountVisibleAssetNodes = new HashSet<>(visibleAssetNodes(metalakeSnapshot));
-    }
-
-    Set<AssetNode> visibleAssetNodes = new HashSet<>(visibleTableNodes);
-    visibleAssetNodes.addAll(visibleViewNodes);
-    visibleAssetNodes.addAll(visibleFunctionNodes);
-    visibleAssetNodes.addAll(visibleFilesetNodes);
-    visibleAssetNodes.addAll(visibleTopicNodes);
-    visibleAssetNodes.addAll(visibleModelNodes);
+    MetricsVisibility resolvedVisibility =
+        visibility != null ? visibility : resolveVisibility(username, authorizer);
+    Set<AssetNode> visibleCatalogNodes = resolvedVisibility.catalogNodes();
+    Set<AssetNode> directCountVisibleSchemaNodes =
+        new HashSet<>(resolvedVisibility.schemaNodesForDirectCounts());
+    Set<AssetNode> directCountVisibleAssetNodes =
+        new HashSet<>(resolvedVisibility.assetNodesForDirectCounts());
+    Set<AssetNode> visibleAssetNodes = visibleAssetNodes(resolvedVisibility);
 
     Set<String> visibleCatalogNames =
         visibleCatalogNodes.stream().map(AssetNode::getName).collect(Collectors.toSet());
@@ -294,12 +168,9 @@ public class MetricsCalculator {
         new EnumMap<>(MetadataObject.Type.class);
     visibleCountsByType.put(
         MetadataObject.Type.SCHEMA, countByCatalog(directCountVisibleSchemaNodes));
-    visibleCountsByType.put(MetadataObject.Type.TABLE, countByCatalog(visibleTableNodes));
-    visibleCountsByType.put(MetadataObject.Type.VIEW, countByCatalog(visibleViewNodes));
-    visibleCountsByType.put(MetadataObject.Type.FUNCTION, countByCatalog(visibleFunctionNodes));
-    visibleCountsByType.put(MetadataObject.Type.FILESET, countByCatalog(visibleFilesetNodes));
-    visibleCountsByType.put(MetadataObject.Type.TOPIC, countByCatalog(visibleTopicNodes));
-    visibleCountsByType.put(MetadataObject.Type.MODEL, countByCatalog(visibleModelNodes));
+    for (MetadataObject.Type assetType : ASSET_TYPES) {
+      visibleCountsByType.put(assetType, countByCatalog(resolvedVisibility.assetNodes(assetType)));
+    }
     List<MetricPO> metrics = new ArrayList<>();
 
     addAggregateMetrics(
@@ -366,6 +237,78 @@ public class MetricsCalculator {
     return Collections.unmodifiableList(metrics);
   }
 
+  private MetricsVisibility resolveVisibility(
+      String username, @Nullable GravitinoAuthorizer authorizer) {
+    if (authorizer == null) {
+      return fullVisibility();
+    }
+    return authorizationVisibility(new UserPrincipal(username), authorizer);
+  }
+
+  private MetricsVisibility authorizationVisibility(
+      Principal principal, GravitinoAuthorizer authorizer) {
+    Set<AssetNode> visibleCatalogs =
+        getVisibleNodes(
+            metalakeName,
+            principal,
+            authorizer,
+            AuthorizationExpressionConstants.LOAD_CATALOG_AUTHORIZATION_EXPRESSION,
+            Entity.EntityType.CATALOG,
+            metalakeSnapshot.getCatalogNodes());
+    Map<MetadataObject.Type, Set<AssetNode>> visibleAssetsByType =
+        new EnumMap<>(MetadataObject.Type.class);
+    Set<AssetNode> visibleAssetsForDirectCounts = new HashSet<>();
+    for (MetricsAssetAuthorizationRule rule : MetricsAssetAuthorizationRule.rules()) {
+      Set<AssetNode> assetNodes = rule.nodes(metalakeSnapshot);
+      visibleAssetsByType.put(
+          rule.assetType(),
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              rule.loadExpression(),
+              rule.entityType(),
+              assetNodes));
+      visibleAssetsForDirectCounts.addAll(
+          getVisibleNodes(
+              metalakeName,
+              principal,
+              authorizer,
+              rule.filterExpression(),
+              rule.entityType(),
+              assetNodes));
+    }
+    Set<AssetNode> visibleSchemasForDirectCounts =
+        getVisibleNodes(
+            metalakeName,
+            principal,
+            authorizer,
+            AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
+            Entity.EntityType.SCHEMA,
+            metalakeSnapshot.getSchemaNodes());
+    return new MetricsVisibility(
+        visibleCatalogs,
+        visibleAssetsByType,
+        visibleSchemasForDirectCounts,
+        visibleAssetsForDirectCounts);
+  }
+
+  private MetricsVisibility fullVisibility() {
+    Map<MetadataObject.Type, Set<AssetNode>> assetsByType =
+        new EnumMap<>(MetadataObject.Type.class);
+    Set<AssetNode> allAssets = new HashSet<>();
+    for (MetricsAssetAuthorizationRule rule : MetricsAssetAuthorizationRule.rules()) {
+      Set<AssetNode> assetNodes = rule.nodes(metalakeSnapshot);
+      assetsByType.put(rule.assetType(), assetNodes);
+      allAssets.addAll(assetNodes);
+    }
+    return new MetricsVisibility(
+        metalakeSnapshot.getCatalogNodes(),
+        assetsByType,
+        metalakeSnapshot.getSchemaNodes(),
+        allAssets);
+  }
+
   private void addSchemaFailureDetails(
       List<MetricPO> metrics,
       Set<String> visibleCatalogNames,
@@ -379,16 +322,15 @@ public class MetricsCalculator {
       }
       NameIdentifier schemaIdent = failure.getValue();
       if (authorizer != null
-          && MetadataAuthzHelper.filterByExpression(
-                      metalakeName,
-                      AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
-                      Entity.EntityType.SCHEMA,
-                      new NameIdentifier[] {schemaIdent},
-                      ident -> ident,
-                      new UserPrincipal(username),
-                      authorizer)
-                  .length
-              == 0) {
+          && MetricsAuthorizationFilter.filterVisibleEntities(
+                  metalakeName,
+                  AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION,
+                  Entity.EntityType.SCHEMA,
+                  Collections.singleton(schemaIdent),
+                  Function.identity(),
+                  new UserPrincipal(username),
+                  authorizer)
+              .isEmpty()) {
         continue;
       }
       // Never expose connector exception messages: they may contain credentials or connection URLs.
@@ -419,13 +361,11 @@ public class MetricsCalculator {
     }
   }
 
-  private static Set<AssetNode> visibleAssetNodes(MetalakeSnapshot snapshot) {
-    Set<AssetNode> assets = new HashSet<>(snapshot.getTableNodes());
-    assets.addAll(snapshot.getViewNodes());
-    assets.addAll(snapshot.getFunctionNodes());
-    assets.addAll(snapshot.getFilesetNodes());
-    assets.addAll(snapshot.getTopicNodes());
-    assets.addAll(snapshot.getModelNodes());
+  private static Set<AssetNode> visibleAssetNodes(MetricsVisibility visibility) {
+    Set<AssetNode> assets = new HashSet<>();
+    for (MetadataObject.Type assetType : ASSET_TYPES) {
+      assets.addAll(visibility.assetNodes(assetType));
+    }
     return assets;
   }
 
@@ -662,6 +602,7 @@ public class MetricsCalculator {
       Map<AssetNode, Boolean> taggedCache,
       Map<AssetNode, Boolean> policyCache) {
     long taggedAssetCount = assets.stream().filter(node -> isTagged(node, taggedCache)).count();
+    // Ancestor ownership may grant visibility, but this metric counts only direct asset owners.
     long ownedAssetCount = assets.stream().filter(node -> !node.getOwners().isEmpty()).count();
     long policyCoveredAssetCount =
         assets.stream().filter(node -> isPolicyCovered(node, policyCache)).count();
@@ -748,16 +689,14 @@ public class MetricsCalculator {
       String authorizationExpression,
       Entity.EntityType entityType,
       Set<AssetNode> nodes) {
-    AssetNode[] visibleNodes =
-        MetadataAuthzHelper.filterByExpression(
-            metalakeName,
-            authorizationExpression,
-            entityType,
-            nodes.toArray(new AssetNode[0]),
-            AssetNode::getNameIdent,
-            principal,
-            authorizer);
-    return Arrays.stream(visibleNodes).collect(Collectors.toSet());
+    return MetricsAuthorizationFilter.filterVisibleEntities(
+        metalakeName,
+        authorizationExpression,
+        entityType,
+        nodes,
+        AssetNode::getNameIdent,
+        principal,
+        authorizer);
   }
 
   private interface ParentPredicate {

@@ -16,7 +16,6 @@ import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,7 +34,6 @@ import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.Privileges;
 import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.authorization.SecurableObjects;
-import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.junit.jupiter.api.Test;
@@ -489,20 +487,20 @@ class TestMetricsCalculator {
     builder.users.put("reader", 10L);
     MetricsCalculator calculator = new MetricsCalculator(builder.build());
     GravitinoAuthorizer authorizer = mock(GravitinoAuthorizer.class);
-    try (MockedStatic<MetadataAuthzHelper> helper = mockStatic(MetadataAuthzHelper.class)) {
+    try (MockedStatic<MetricsAuthorizationFilter> helper =
+        mockStatic(MetricsAuthorizationFilter.class)) {
       helper
           .when(
               () ->
-                  MetadataAuthzHelper.filterByExpression(
+                  MetricsAuthorizationFilter.filterVisibleEntities(
                       any(), any(), any(), any(), any(), any(), any()))
           .thenAnswer(
               invocation -> {
-                Object[] nodes = invocation.getArgument(3);
                 String expression = invocation.getArgument(1);
                 return AuthorizationExpressionConstants.FILTER_SCHEMA_AUTHORIZATION_EXPRESSION
                         .equals(expression)
-                    ? Arrays.copyOf(nodes, 0)
-                    : nodes;
+                    ? Collections.emptySet()
+                    : invocation.getArgument(3);
               });
       Map<String, MetricPO> hidden =
           calculator.calculateMetricsForUser("reader", authorizer).stream()
@@ -517,7 +515,7 @@ class TestMetricsCalculator {
       helper
           .when(
               () ->
-                  MetadataAuthzHelper.filterByExpression(
+                  MetricsAuthorizationFilter.filterVisibleEntities(
                       any(), any(), any(), any(), any(), any(), any()))
           .thenAnswer(invocation -> invocation.getArgument(3));
       Map<String, MetricPO> visible =
