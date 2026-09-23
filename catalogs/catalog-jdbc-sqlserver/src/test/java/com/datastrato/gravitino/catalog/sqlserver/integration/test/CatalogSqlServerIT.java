@@ -325,15 +325,46 @@ public class CatalogSqlServerIT extends BaseIT {
   }
 
   @Test
-  void testSchemaCommentRejection() {
+  void testSchemaCommentRoundTrip() throws SQLException {
     String testSchemaName = GravitinoITUtils.genRandomName("comment_schema");
-    Assertions.assertThrows(
-        UnsupportedOperationException.class,
-        () ->
-            catalog
-                .asSchemas()
-                .createSchema(testSchemaName, "some comment", Collections.emptyMap()));
-    Assertions.assertFalse(catalog.asSchemas().schemaExists(testSchemaName));
+    String comment = "probe 'quoted' comment";
+    Schema created =
+        catalog.asSchemas().createSchema(testSchemaName, comment, Collections.emptyMap());
+    try {
+      Assertions.assertEquals(comment, created.comment());
+      Assertions.assertEquals(comment, catalog.asSchemas().loadSchema(testSchemaName).comment());
+
+      // The MS_Description extended property holds the caller's text only, with no Gravitino
+      // identifier appended.
+      try (Connection connection =
+              DriverManager.getConnection(
+                  jdbcUrl, sqlServerContainer.getUsername(), sqlServerContainer.getPassword());
+          Statement statement = connection.createStatement();
+          ResultSet resultSet =
+              statement.executeQuery(
+                  "SELECT CAST(ep.value AS NVARCHAR(MAX)) FROM sys.extended_properties ep "
+                      + "JOIN sys.schemas s ON ep.class = 3 AND ep.major_id = s.schema_id "
+                      + "WHERE ep.name = 'MS_Description' AND s.name = '"
+                      + testSchemaName
+                      + "'")) {
+        Assertions.assertTrue(resultSet.next());
+        Assertions.assertEquals(comment, resultSet.getString(1));
+        Assertions.assertFalse(resultSet.next());
+      }
+    } finally {
+      catalog.asSchemas().dropSchema(testSchemaName, false);
+    }
+  }
+
+  @Test
+  void testSchemaWithoutCommentLoadsNullComment() {
+    String testSchemaName = GravitinoITUtils.genRandomName("no_comment_schema");
+    catalog.asSchemas().createSchema(testSchemaName, null, Collections.emptyMap());
+    try {
+      Assertions.assertNull(catalog.asSchemas().loadSchema(testSchemaName).comment());
+    } finally {
+      catalog.asSchemas().dropSchema(testSchemaName, false);
+    }
   }
 
   @Test

@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.catalog.sqlserver.operation;
 
+import com.datastrato.gravitino.catalog.sqlserver.utils.SqlServerUtils;
 import com.google.common.collect.ImmutableSet;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -20,10 +21,13 @@ import java.util.Map;
 import java.util.Set;
 import javax.sql.DataSource;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.gravitino.StringIdentifier;
 import org.apache.gravitino.catalog.jdbc.JdbcSchema;
 import org.apache.gravitino.catalog.jdbc.config.JdbcConfig;
 import org.apache.gravitino.catalog.jdbc.converter.JdbcExceptionConverter;
 import org.apache.gravitino.catalog.jdbc.operation.JdbcDatabaseOperations;
+import org.apache.gravitino.catalog.jdbc.utils.JdbcConnectorUtils;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NonEmptySchemaException;
 import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
@@ -51,6 +55,13 @@ public class SqlServerSchemaOperations extends JdbcDatabaseOperations {
           "db_denydatareader",
           "db_denydatawriter");
 
+  /** Schema row plus its {@code MS_Description} extended property (class 3 = SCHEMA). */
+  private static final String LOAD_SCHEMA_SQL =
+      "SELECT s.name, CAST(ep.value AS NVARCHAR(MAX)) FROM sys.schemas s "
+          + "LEFT JOIN sys.extended_properties ep ON ep.class = 3 AND ep.major_id = s.schema_id "
+          + "AND ep.minor_id = 0 AND ep.name = 'MS_Description' "
+          + "WHERE s.name = ?";
+
   private String database;
 
   @Override
@@ -60,16 +71,51 @@ public class SqlServerSchemaOperations extends JdbcDatabaseOperations {
     database = new JdbcConfig(conf).getJdbcDatabase();
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>SQL Server has no {@code COMMENT ON SCHEMA}. A comment is stored as the schema's {@code
+   * MS_Description} extended property, which is what SQL Server tools show as the description.
+   * {@code CREATE SCHEMA} must be the only statement in its batch, so the property is added in a
+   * second statement inside the same transaction.
+   *
+   * <p>The property holds the caller's text only: the Gravitino identifier that the JDBC layer
+   * appends to the comment is stripped, so nothing Gravitino-specific reaches the source. Nothing
+   * was written here before this catalog supported schema comments, so no identifier is lost;
+   * {@code JdbcCatalogOperations.loadSchema} resolves the schema through the entity store instead.
+   * Table comments in this catalog still carry the identifier, see issue #1750.
+   *
+   * <p>A schema comment can only be set at create time. {@code JdbcCatalogOperations.alterSchema}
+   * is unsupported across every JDBC catalog, so there is no path that updates the property later.
+   */
   @Override
-  public void create(String databaseName, String comment, Map<String, String> properties)
+  public void create(String schema, String comment, Map<String, String> properties)
       throws SchemaAlreadyExistsException {
-    try {
-      super.create(databaseName, comment, properties);
-    } catch (TableAlreadyExistsException e) {
-      // SQL Server returns error code 2714 for both duplicate tables and duplicate schemas.
-      // The converter maps 2714 to TableAlreadyExistsException, but in schema context
-      // we need SchemaAlreadyExistsException.
-      throw new SchemaAlreadyExistsException(e, "Schema already exists: %s", databaseName);
+    LOG.info("Beginning to create schema {}", schema);
+    String createSql = generateCreateDatabaseSql(schema, comment, properties);
+    String schemaComment = StringIdentifier.removeIdFromComment(comment);
+    try (Connection connection = getConnection()) {
+      if (StringUtils.isEmpty(schemaComment)) {
+        JdbcConnectorUtils.executeUpdate(connection, createSql);
+      } else {
+        connection.setAutoCommit(false);
+        try {
+          JdbcConnectorUtils.executeUpdate(connection, createSql);
+          JdbcConnectorUtils.executeUpdate(
+              connection, SqlServerUtils.generateAddSchemaCommentSql(schema, schemaComment));
+          connection.commit();
+        } catch (SQLException | RuntimeException e) {
+          try {
+            connection.rollback();
+          } catch (SQLException rollbackFailure) {
+            e.addSuppressed(rollbackFailure);
+          }
+          throw e;
+        }
+      }
+      LOG.info("Finished creating schema {}", schema);
+    } catch (SQLException se) {
+      throw toSchemaException(schema, exceptionMapper.toGravitinoException(se));
     }
   }
 
@@ -95,16 +141,16 @@ public class SqlServerSchemaOperations extends JdbcDatabaseOperations {
   @Override
   public JdbcSchema load(String schema) throws NoSuchSchemaException {
     try (Connection connection = getConnection();
-        PreparedStatement statement =
-            connection.prepareStatement("SELECT s.name FROM sys.schemas s WHERE s.name = ?")) {
+        PreparedStatement statement = connection.prepareStatement(LOAD_SCHEMA_SQL)) {
       statement.setString(1, schema);
       try (ResultSet resultSet = statement.executeQuery()) {
         if (!resultSet.next()) {
           throw new NoSuchSchemaException("No such schema: %s", schema);
         }
+        String comment = resultSet.getString(2);
         return JdbcSchema.builder()
             .withName(schema)
-            .withComment(null)
+            .withComment(StringUtils.isEmpty(comment) ? null : comment)
             .withAuditInfo(AuditInfo.EMPTY)
             .withProperties(Collections.emptyMap())
             .build();
@@ -192,7 +238,7 @@ public class SqlServerSchemaOperations extends JdbcDatabaseOperations {
 
   @Override
   protected boolean supportSchemaComment() {
-    return false;
+    return true;
   }
 
   @Override
@@ -407,6 +453,18 @@ public class SqlServerSchemaOperations extends JdbcDatabaseOperations {
         }
       }
     }
+  }
+
+  /**
+   * SQL Server returns error code 2714 for both duplicate tables and duplicate schemas. The
+   * converter maps 2714 to TableAlreadyExistsException, but in schema context we need
+   * SchemaAlreadyExistsException.
+   */
+  private static RuntimeException toSchemaException(String schema, RuntimeException e) {
+    if (e instanceof TableAlreadyExistsException) {
+      return new SchemaAlreadyExistsException(e, "Schema already exists: %s", schema);
+    }
+    return e;
   }
 
   private static boolean isDependencyError(SQLException e) {

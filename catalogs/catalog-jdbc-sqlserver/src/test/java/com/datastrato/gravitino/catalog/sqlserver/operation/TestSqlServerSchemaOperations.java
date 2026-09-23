@@ -19,11 +19,11 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.StringIdentifier;
 import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NonEmptySchemaException;
+import org.apache.gravitino.exceptions.SchemaAlreadyExistsException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
 
@@ -52,27 +52,65 @@ public class TestSqlServerSchemaOperations {
     Mockito.verify(connection).close();
   }
 
-  @ParameterizedTest
-  @ValueSource(strings = {"probe", "a comment with 'quotes'", " "})
-  void testCreateRejectsCommentBeforeOpeningConnection(String comment) {
-    DataSource dataSource = Mockito.mock(DataSource.class);
-    schemaOps.initialize(
-        dataSource,
-        new SqlServerExceptionConverter(),
-        Collections.singletonMap("jdbc-database", "test_database"));
-    Assertions.assertThrows(
-        UnsupportedOperationException.class,
-        () -> schemaOps.create("probe_schema", comment, Collections.emptyMap()));
-    Mockito.verifyNoInteractions(dataSource);
+  @Test
+  void testCreateWithCommentAddsExtendedPropertyInTransaction() throws Exception {
+    Connection connection = mockDropConnection();
+    Statement statement = connection.createStatement();
+
+    schemaOps.create("probe_schema", "a comment with 'quotes'", Collections.emptyMap());
+
+    InOrder order = Mockito.inOrder(connection, statement);
+    order.verify(connection).setAutoCommit(false);
+    order.verify(statement).executeUpdate("CREATE SCHEMA [probe_schema] AUTHORIZATION [dbo]");
+    order
+        .verify(statement)
+        .executeUpdate(
+            "EXEC sp_addextendedproperty @name=N'MS_Description', "
+                + "@value=N'a comment with ''quotes''', "
+                + "@level0type=N'SCHEMA', @level0name=N'probe_schema'");
+    order.verify(connection).commit();
+    Mockito.verify(connection, Mockito.never()).rollback();
+    Mockito.verify(connection).close();
   }
 
   @Test
-  void testCatalogCreateRejectsComment() {
-    DataSource dataSource = Mockito.mock(DataSource.class);
-    schemaOps.initialize(
-        dataSource,
-        new SqlServerExceptionConverter(),
-        Collections.singletonMap("jdbc-database", "test_database"));
+  void testCreateWithCommentRollsBackWhenPropertyFails() throws Exception {
+    Connection connection = mockDropConnection();
+    Statement statement = connection.createStatement();
+    Mockito.doThrow(new SQLException("denied", "S0001", 229))
+        .when(statement)
+        .executeUpdate(Mockito.startsWith("EXEC sp_addextendedproperty"));
+
+    Assertions.assertThrows(
+        ForbiddenException.class,
+        () -> schemaOps.create("probe_schema", "probe", Collections.emptyMap()));
+
+    Mockito.verify(statement).executeUpdate("CREATE SCHEMA [probe_schema] AUTHORIZATION [dbo]");
+    Mockito.verify(connection).rollback();
+    Mockito.verify(connection, Mockito.never()).commit();
+    Mockito.verify(connection).close();
+  }
+
+  @Test
+  void testCreateMapsDuplicateObjectErrorToSchemaAlreadyExists() throws Exception {
+    Connection connection = mockDropConnection();
+    Statement statement = connection.createStatement();
+    Mockito.doThrow(new SQLException("already exists", "S0001", 2714))
+        .when(statement)
+        .executeUpdate(Mockito.startsWith("CREATE SCHEMA"));
+
+    Assertions.assertThrows(
+        SchemaAlreadyExistsException.class,
+        () -> schemaOps.create("probe_schema", "probe", Collections.emptyMap()));
+    Mockito.verify(connection).rollback();
+  }
+
+  @Test
+  void testCatalogCreateWritesOnlyCallerCommentToSource() throws Exception {
+    // JdbcCatalogOperations appends the Gravitino identifier to the comment; the SQL Server
+    // extended property must hold the caller's text only.
+    Connection connection = mockDropConnection();
+    Statement statement = connection.createStatement();
     try (SqlServerCatalogOperations catalogOperations =
         new SqlServerCatalogOperations(
             new SqlServerExceptionConverter(),
@@ -80,16 +118,58 @@ public class TestSqlServerSchemaOperations {
             schemaOps,
             Mockito.mock(SqlServerTableOperations.class),
             new SqlServerColumnDefaultValueConverter())) {
-      Assertions.assertThrows(
-          UnsupportedOperationException.class,
-          () ->
-              catalogOperations.createSchema(
-                  NameIdentifier.of("probe_schema"),
-                  "probe",
-                  StringIdentifier.newPropertiesWithId(
-                      StringIdentifier.fromId(1L), Collections.emptyMap())));
-      Mockito.verifyNoInteractions(dataSource);
+      catalogOperations.createSchema(
+          NameIdentifier.of("probe_schema"),
+          "probe",
+          StringIdentifier.newPropertiesWithId(
+              StringIdentifier.fromId(1L), Collections.emptyMap()));
     }
+    Mockito.verify(statement)
+        .executeUpdate(
+            "EXEC sp_addextendedproperty @name=N'MS_Description', @value=N'probe', "
+                + "@level0type=N'SCHEMA', @level0name=N'probe_schema'");
+    Mockito.verify(statement, Mockito.never())
+        .executeUpdate(Mockito.contains(StringIdentifier.ID_KEY));
+  }
+
+  @Test
+  void testCatalogCreateWithoutCommentDoesNotWriteProperty() throws Exception {
+    Connection connection = mockDropConnection();
+    Statement statement = connection.createStatement();
+    try (SqlServerCatalogOperations catalogOperations =
+        new SqlServerCatalogOperations(
+            new SqlServerExceptionConverter(),
+            new SqlServerTypeConverter(),
+            schemaOps,
+            Mockito.mock(SqlServerTableOperations.class),
+            new SqlServerColumnDefaultValueConverter())) {
+      catalogOperations.createSchema(
+          NameIdentifier.of("probe_schema"),
+          null,
+          StringIdentifier.newPropertiesWithId(
+              StringIdentifier.fromId(1L), Collections.emptyMap()));
+    }
+    Mockito.verify(statement).executeUpdate("CREATE SCHEMA [probe_schema] AUTHORIZATION [dbo]");
+    Mockito.verify(statement, Mockito.never())
+        .executeUpdate(Mockito.startsWith("EXEC sp_addextendedproperty"));
+    Mockito.verify(connection, Mockito.never()).setAutoCommit(false);
+  }
+
+  @Test
+  void testLoadReturnsSchemaComment() throws Exception {
+    Connection connection = mockDropConnection();
+    PreparedStatement statement = Mockito.mock(PreparedStatement.class);
+    ResultSet result = Mockito.mock(ResultSet.class);
+    Mockito.when(connection.prepareStatement(Mockito.contains("sys.extended_properties")))
+        .thenReturn(statement);
+    Mockito.when(statement.executeQuery()).thenReturn(result);
+    Mockito.when(result.next()).thenReturn(true);
+    Mockito.when(result.getString(1)).thenReturn("probe_schema");
+    Mockito.when(result.getString(2)).thenReturn("probe", (String) null);
+
+    Assertions.assertEquals("probe", schemaOps.load("probe_schema").comment());
+    Assertions.assertNull(schemaOps.load("probe_schema").comment());
+    Mockito.verify(statement, Mockito.times(2)).setString(1, "probe_schema");
   }
 
   @Test
@@ -168,7 +248,7 @@ public class TestSqlServerSchemaOperations {
 
   @Test
   void testSupportSchemaComment() {
-    Assertions.assertFalse(schemaOps.supportSchemaComment());
+    Assertions.assertTrue(schemaOps.supportSchemaComment());
   }
 
   @Test

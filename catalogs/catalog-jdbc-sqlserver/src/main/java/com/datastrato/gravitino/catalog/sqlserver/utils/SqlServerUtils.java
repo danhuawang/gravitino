@@ -43,6 +43,22 @@ public class SqlServerUtils {
   }
 
   /**
+   * Generates SQL to add an extended property (comment) on a schema. SQL Server has no {@code
+   * COMMENT ON SCHEMA}; the {@code MS_Description} extended property is what SQL Server tools show
+   * as the object's description.
+   *
+   * @param schema The schema name
+   * @param comment The comment value
+   * @return The sp_addextendedproperty SQL statement
+   */
+  public static String generateAddSchemaCommentSql(String schema, String comment) {
+    return String.format(
+        "EXEC sp_addextendedproperty @name=N'MS_Description', @value=N'%s', "
+            + "@level0type=N'SCHEMA', @level0name=N'%s'",
+        escapeQuote(comment), escapeQuote(schema));
+  }
+
+  /**
    * Generates SQL to add an extended property (comment) on a table.
    *
    * @param schema The schema name

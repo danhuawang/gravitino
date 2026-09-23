@@ -72,6 +72,8 @@ public abstract class FlinkJdbcSqlServerCatalogIT extends FlinkCommonIT {
 
   @Override
   protected boolean supportSchemaOperationWithCommentAndOptions() {
+    // Schema comments are supported (stored as the MS_Description extended property), but the
+    // gated tests also assert schema properties, which SqlServerSchemaOperations still rejects.
     return false;
   }
 
@@ -538,24 +540,24 @@ public abstract class FlinkJdbcSqlServerCatalogIT extends FlinkCommonIT {
         supportDropCascade());
   }
 
-  /** SQL Server rejects nonempty schema comments without creating the schema. */
+  /** SQL Server preserves schema comments created through Flink SQL. */
   @Test
-  public void testSchemaCommentRejected() {
+  public void testSchemaCommentRoundTrip() {
     doWithCatalog(
         currentCatalog(),
         catalog -> {
-          Exception exception =
-              Assertions.assertThrows(
-                  Exception.class,
-                  () -> sql("CREATE DATABASE test_schema_comment COMMENT 'comment'"));
-          Throwable cause = exception;
-          while (cause.getCause() != null) {
-            cause = cause.getCause();
+          String schema = "test_schema_comment";
+          String comment = "comment";
+          try {
+            TestUtils.assertTableResult(
+                sql("CREATE DATABASE %s COMMENT '%s'", schema, comment), ResultKind.SUCCESS);
+            Assertions.assertTrue(catalog.asSchemas().schemaExists(schema));
+            Assertions.assertEquals(comment, catalog.asSchemas().loadSchema(schema).comment());
+          } finally {
+            if (catalog.asSchemas().schemaExists(schema)) {
+              catalog.asSchemas().dropSchema(schema, false);
+            }
           }
-          Assertions.assertInstanceOf(UnsupportedOperationException.class, cause);
-          Assertions.assertTrue(
-              cause.getMessage().contains("Doesn't support setting schema comment"));
-          Assertions.assertFalse(catalog.asSchemas().schemaExists("test_schema_comment"));
         });
   }
 
