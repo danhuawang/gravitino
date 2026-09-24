@@ -22,6 +22,8 @@ com.aliyun.oss:aliyun-sdk-oss:3.13.0=LICENSE.aliyun-inieditor | Aliyun OSS (Apac
 com.google.api-client:google-api-client:1.24.1=LICENSE.google-cloudshell | Google API Client (Apache-2.0), including CloudShellCredential (BSD-3-Clause)
 com.google.auth:google-auth-library-credentials:1.28.0=LICENSE.google-auth | Google Auth Library (BSD-3-Clause)
 com.google.auth:google-auth-library-oauth2-http:1.28.0=LICENSE.google-auth | Google Auth Library (BSD-3-Clause)
+com.google.auth:google-auth-library-credentials:1.32.1=LICENSE.google-auth | Google Auth Library (BSD-3-Clause)
+com.google.auth:google-auth-library-oauth2-http:1.32.1=LICENSE.google-auth | Google Auth Library (BSD-3-Clause)
 com.azure:*=LICENSE.azure | Microsoft Azure SDK (MIT)
 com.microsoft.azure:msal4j=LICENSE.msal | Microsoft Authentication Library (MIT)
 com.microsoft.azure:msal4j-persistence-extension=LICENSE.msal | Microsoft Authentication persistence extension (MIT)
@@ -48,7 +50,9 @@ com.sun.activation:javax.activation= | JavaBeans Activation Framework (CDDL-1.1)
 javax.xml.bind:jaxb-api= | JAXB API (CDDL-1.1); https://github.com/javaee/jaxb-spec
 org.checkerframework:checker-qual= | Checker Framework qualifiers (MIT)
 org.codehaus.woodstox:stax2-api= | StAX2 API (BSD-2-Clause)
-org.slf4j:*= | SLF4J (MIT)
+# Some SLF4J artifact versions (e.g. slf4j-api 1.7.36) do not bundle their own LICENSE file,
+# so the wildcard always supplies the same SLF4J text shipped inside netty-common.
+org.slf4j:*=LICENSE.netty-slf4j | SLF4J (MIT)
 net.java.dev.jna:*= | Java Native Access (Apache-2.0 selected from dual license)
 # Version-specific rules require an explicit entry for every audited version.
 # These older versions do not contain FastDoubleParser or Schubfach.

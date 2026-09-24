@@ -41,11 +41,8 @@ import org.nosphere.apache.rat.RatTask
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.Locale
-<<<<<<< HEAD
 import java.util.jar.JarFile
-=======
 import java.util.zip.ZipFile
->>>>>>> upstream/branch-1.3
 
 Locale.setDefault(Locale.US)
 
@@ -289,7 +286,11 @@ class LegalFilesTransformer(
   @Internal
   override fun getName(): String = javaClass.simpleName
 
-  override fun canTransformResource(element: FileTreeElement): Boolean = GenerateJarLegalFiles.isLegalResource(element.relativePath.pathString)
+  // The enterprise license addendum is added straight to the jar root, not through the
+  // generated legal archive, so it must pass through untouched instead of being merged away.
+  override fun canTransformResource(element: FileTreeElement): Boolean =
+    element.relativePath.pathString != "META-INF/LICENSE-ENTERPRISE" &&
+      GenerateJarLegalFiles.isLegalResource(element.relativePath.pathString)
 
   override fun transform(context: TransformerContext) {
     context.`is`.close()
@@ -855,44 +856,10 @@ subprojects {
     from(tasks["javadoc"])
   }
 
-<<<<<<< HEAD
-  // Only a module that ships Datastrato proprietary code carries the mixed-distribution
-  // LICENSE/NOTICE and LICENSE-ENTERPRISE. Every other jar keeps the Apache license files
-  // so it stays interchangeable with the upstream artifact of the same name.
+  // Only a module that ships Datastrato proprietary code carries the LICENSE-ENTERPRISE
+  // addendum. Every other jar keeps the generated Apache legal files as-is.
   val shipsEnterpriseCode = shipsEnterpriseCode(project)
-  tasks.withType<Jar> {
-    into("META-INF") {
-      from(rootDir) {
-        if (name == "sourcesJar") {
-          if (shipsEnterpriseCode) {
-            include("LICENSE")
-            include("NOTICE")
-            include("LICENSE-APACHE")
-            include("LICENSE-ENTERPRISE")
-          } else {
-            include("LICENSE-APACHE")
-            rename("LICENSE-APACHE", "LICENSE")
-            include("NOTICE-APACHE.bin")
-            rename("NOTICE-APACHE.bin", "NOTICE")
-          }
-        } else if (project.name == "web") {
-          include("web/web/LICENSE.bin")
-          rename("LICENSE.bin", "LICENSE")
-          include("web/web/NOTICE.bin")
-          rename("NOTICE.bin", "NOTICE")
-        } else if (shipsEnterpriseCode) {
-          include("LICENSE.bin")
-          rename("LICENSE.bin", "LICENSE")
-          include("NOTICE.bin")
-          rename("NOTICE.bin", "NOTICE")
-          include("LICENSE-APACHE")
-          include("LICENSE-ENTERPRISE")
-        } else {
-          include("LICENSE-APACHE.bin")
-          rename("LICENSE-APACHE.bin", "LICENSE")
-          include("NOTICE-APACHE.bin")
-          rename("NOTICE-APACHE.bin", "NOTICE")
-=======
+
   // These notices cover copied production sources, not dependencies declared only in the POM.
   val sourceNoticeNames = mapOf(
     ":api" to listOf("spark", "iceberg"),
@@ -948,7 +915,6 @@ subprojects {
             require(coordinates.size == 1) { "Ambiguous Maven artifact filename $name: $coordinates" }
             coordinates.single()
           }
->>>>>>> upstream/branch-1.3
         }
       )
     }
@@ -967,6 +933,14 @@ subprojects {
     shadowJar.configure {
       dependsOn(bundledLegalFiles)
       transform(LegalFilesTransformer(bundledLegalFiles.get().outputArchive.get().asFile))
+      // Shaded ext jars ship Datastrato proprietary code, so they carry the enterprise
+      // license addendum too; tasks.withType<Jar> above skips ShadowJar tasks.
+      if (shipsEnterpriseCode) {
+        from(rootDir) {
+          include("LICENSE-ENTERPRISE")
+          into("META-INF")
+        }
+      }
     }
   }
   if (project.path == ":clients:cli") {
@@ -978,9 +952,6 @@ subprojects {
     }
   }
 
-<<<<<<< HEAD
-  if (project.name in listOf("web", "web-v2", "docs", "docs-enterprise")) {
-=======
   tasks.withType<Jar> {
     if (this is ShadowJar) return@withType
     if (this is War && project.path in listOf(":web:web", ":web-v2:web")) {
@@ -999,10 +970,17 @@ subprojects {
     }
     dependsOn(legalFiles)
     from(provider { zipTree(legalFiles.get().outputArchive.get().asFile) })
+    // Modules that ship Datastrato proprietary code additionally carry the enterprise
+    // license addendum alongside the generated Apache legal files.
+    if (shipsEnterpriseCode) {
+      from(rootDir) {
+        include("LICENSE-ENTERPRISE")
+        into("META-INF")
+      }
+    }
   }
 
-  if (project.name in listOf("web", "web-v2", "docs")) {
->>>>>>> upstream/branch-1.3
+  if (project.name in listOf("web", "web-v2", "docs", "docs-enterprise")) {
     plugins.apply(NodePlugin::class)
     configure<NodeExtension> {
       version.set("20.19.0")

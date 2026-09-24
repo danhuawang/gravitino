@@ -41,8 +41,10 @@ def legalTests = tasks.register('testMavenLegalFiles') {
       }
       assert failed: "Expected failure: ${message}"
     }
-    ['LICENSE', 'NOTICE'].each { name ->
-      assert file(name).text.trim().startsWith(new File(templates, name).text.trim()): "Maven ${name} differs from the root prefix"
+    // The mixed-distribution root LICENSE is a short pointer to LICENSE-APACHE, not the
+    // Apache text itself, so the Maven template prefix is checked against LICENSE-APACHE.
+    [['LICENSE-APACHE', 'LICENSE'], ['NOTICE', 'NOTICE']].each { rootName, templateName ->
+      assert file(rootName).text.trim().startsWith(new File(templates, templateName).text.trim()): "Maven ${templateName} differs from the root prefix"
     }
     def normalizedRootNotice = file('NOTICE').text.replaceAll(/\s+/, ' ')
     def modules = subprojects.findAll { it.tasks.findByName('generateMavenLegalFiles') != null }
@@ -106,7 +108,7 @@ def legalTests = tasks.register('testMavenLegalFiles') {
     expectFailure('Review upstream NOTICE for Lance Namespace') {
       sourceNoticeFor('Lance Namespace (https://github.com/lance-format/lance-namespace-impls)', [file('lance/NewSource.java').canonicalFile])
     }
-    file('LICENSE').text.split(/\n\s*\n/).each { section ->
+    file('LICENSE-APACHE').text.split(/\n\s*\n/).each { section ->
       def lines = section.readLines().collect { it.trim() }
       def sources = lines.findAll { it.startsWith('./') && it.contains('/src/main/java/') }.collect { file(it).canonicalFile }
       def compiledSources = requireOwnedSources(sources)

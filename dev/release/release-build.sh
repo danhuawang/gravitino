@@ -204,7 +204,6 @@ if [[ "$1" == "package" ]]; then
   echo "Packaging release source tarballs"
   cp -r gravitino gravitino-$GRAVITINO_VERSION-src
 
-<<<<<<< HEAD
   rm -f gravitino-$GRAVITINO_VERSION-src/LICENSE.bin
   rm -f gravitino-$GRAVITINO_VERSION-src/NOTICE.bin
   rm -f gravitino-$GRAVITINO_VERSION-src/LICENSE.trino
@@ -228,8 +227,6 @@ if [[ "$1" == "package" ]]; then
     fi
   done
 
-=======
->>>>>>> upstream/branch-1.3
   rm -f *.asc
   tar cvzf gravitino-$GRAVITINO_VERSION-src.tar.gz --exclude gravitino-$GRAVITINO_VERSION-src/.git gravitino-$GRAVITINO_VERSION-src
   echo $GPG_PASSPHRASE | $GPG --passphrase-fd 0 --armour --output gravitino-$GRAVITINO_VERSION-src.tar.gz.asc \
