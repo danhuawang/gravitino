@@ -270,7 +270,14 @@ Do not treat this binary package as Apache-licensed as a whole.
    Apache HttpComponents Core5
    Helger Profiler
    OpenAPI Tools Jackson Databind Nullable
+<<<<<<< HEAD
    PostgreSQL JDBC Driver
+=======
+   dnsjava
+   PostgreSQL JDBC Driver
+   SQLLine
+   ThreeTen-Extra
+>>>>>>> upstream/branch-1.3
 
    This product bundles various third-party components also under the
    MIT license
@@ -287,8 +294,12 @@ Do not treat this binary package as Apache-licensed as a whole.
    Kyligence/kylinpy
    elarivie/pyReaderWriterLock
    tkem/cachetools
+<<<<<<< HEAD
    Microsoft JDBC Driver for SQL Server (mssql-jdbc)
    FastDoubleParser
+=======
+   gethostname4j
+>>>>>>> upstream/branch-1.3
 
    This product bundles various third-party components also under the
    Boost Software License 1.0
