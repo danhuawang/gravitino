@@ -231,6 +231,7 @@
    ./dev/release/release-util.sh
 
    Apache Iceberg
+   ./spark-connector/spark-common/src/main/java/org/apache/gravitino/spark/connector/SparkTransformConverter.java
    ./api/src/main/java/org/apache/gravitino/exceptions/RESTException.java
    ./catalogs/hive-metastore-common/src/main/java/org/apache/gravitino/hive/CachedClientPool.java
    ./catalogs/hive-metastore-common/src/main/java/org/apache/gravitino/hive/HiveClientPool.java
