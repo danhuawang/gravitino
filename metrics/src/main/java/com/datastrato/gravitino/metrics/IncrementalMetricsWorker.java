@@ -6,6 +6,7 @@ package com.datastrato.gravitino.metrics;
 import com.datastrato.gravitino.metrics.config.MetricsConfig;
 import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.io.Closeable;
 import java.util.List;
@@ -124,6 +125,9 @@ public class IncrementalMetricsWorker implements Closeable {
                         failure);
                   }
                 });
+        if (Thread.currentThread().isInterrupted()) {
+          break;
+        }
       } catch (RuntimeException e) {
         inFlightMetalakes.remove(metalakeId);
         throw e;
@@ -131,7 +135,8 @@ public class IncrementalMetricsWorker implements Closeable {
     }
   }
 
-  private void pollSafely() {
+  @VisibleForTesting
+  void pollSafely() {
     try {
       pollOnce();
     } catch (Exception e) {
@@ -165,6 +170,7 @@ public class IncrementalMetricsWorker implements Closeable {
           scheduleRetry(dirty, "Dashboard metric collection is incomplete", null);
         }
       } catch (Exception e) {
+        MetricsCollectionFailure.rethrowIfFatalOrCancelled(e);
         String message = e.getMessage() == null ? e.toString() : e.getMessage();
         scheduleRetry(dirty, message, e);
       }

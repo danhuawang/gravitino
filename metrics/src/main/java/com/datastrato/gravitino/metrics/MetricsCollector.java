@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
@@ -337,6 +338,7 @@ public class MetricsCollector implements Closeable {
                       metricDataService.deleteDirtyIfRevision(metalake.id(), startupRevision);
                     }
                   } catch (Exception e) {
+                    MetricsCollectionFailure.rethrowIfFatalOrCancelled(e);
                     LOG.error(
                         "[run: {}] Failed to process metrics for metalake: {}",
                         Instant.ofEpochMilli(runTimestamp),
@@ -361,6 +363,7 @@ public class MetricsCollector implements Closeable {
           "[run: {}] Finished collecting metrics data for all users in all metalakes",
           Instant.ofEpochMilli(runTimestamp));
     } catch (Exception e) {
+      MetricsCollectionFailure.rethrowIfFatalOrCancelled(e);
       LOG.error(
           "[run: {}] Failed to list metalakes for dashboard metric collection",
           Instant.ofEpochMilli(runTimestamp),
@@ -537,7 +540,7 @@ public class MetricsCollector implements Closeable {
             TimeUnit.NANOSECONDS.toMillis(publishDurationNanos),
             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - totalStartedAt));
         return outcome;
-      } catch (Exception e) {
+      } catch (Throwable e) {
         if (metricsSource != null) {
           metricsSource.recordFailure();
         }
@@ -861,14 +864,18 @@ public class MetricsCollector implements Closeable {
               catalogFunctionNodes.addAll(functions);
             }
             catalogAssetNodeById.putAll(schemaAssetNodeById);
-          } catch (Exception e) {
-            try {
-              if (!managedSchema && removeMissingSchema(schemaNode.getNameIdent())) {
-                missingSchemaNames.add(schemaNode.getName());
-                continue;
+          } catch (Throwable e) {
+            MetricsCollectionFailure.rethrowIfFatalOrCancelled(e);
+            if (e instanceof Exception) {
+              try {
+                if (!managedSchema && removeMissingSchema(schemaNode.getNameIdent())) {
+                  missingSchemaNames.add(schemaNode.getName());
+                  continue;
+                }
+              } catch (Throwable cleanupFailure) {
+                MetricsCollectionFailure.rethrowIfFatalOrCancelled(cleanupFailure);
+                e.addSuppressed(cleanupFailure);
               }
-            } catch (Exception cleanupFailure) {
-              e.addSuppressed(cleanupFailure);
             }
             throw new CatalogCollectionException(schemaNode.getNameIdent(), e);
           }
@@ -901,15 +908,10 @@ public class MetricsCollector implements Closeable {
           catalogSchemaNodes.forEach(schema -> schema.getChildren().removeAll(removedNodes));
         }
 
-        assetNodeById.putAll(catalogAssetNodeById);
-        schemaNodes.addAll(catalogSchemaNodes);
-        tableNodes.addAll(catalogTableNodes);
-        viewNodes.addAll(catalogViewNodes);
-        functionNodes.addAll(catalogFunctionNodes);
-        filesetNodes.addAll(catalogFilesetNodes);
-        topicNodes.addAll(catalogTopicNodes);
-        modelNodes.addAll(catalogModelNodes);
-      } catch (Exception e) {
+      } catch (Throwable e) {
+        MetricsCollectionFailure.rethrowIfFatalOrCancelled(e);
+        // Keep catalog identity and capabilities, but discard every partially collected child.
+        catalogNode.getChildren().clear();
         failedCatalogNames.add(catalog.name());
         if (e instanceof CatalogCollectionException
             && ((CatalogCollectionException) e).schemaIdentifier != null) {
@@ -917,11 +919,21 @@ public class MetricsCollector implements Closeable {
               catalog.name(), ((CatalogCollectionException) e).schemaIdentifier);
         }
         LOG.warn(
-            "Catalog {} could not be collected; dashboard metrics will publish a safe incomplete"
-                + " result",
+            "Catalog {} could not be collected; partial catalog data will be discarded",
             catalog.name(),
             e);
+        continue;
       }
+
+      // Merge only after collection succeeds; failures in the shared merge must abort the run.
+      assetNodeById.putAll(catalogAssetNodeById);
+      schemaNodes.addAll(catalogSchemaNodes);
+      tableNodes.addAll(catalogTableNodes);
+      viewNodes.addAll(catalogViewNodes);
+      functionNodes.addAll(catalogFunctionNodes);
+      filesetNodes.addAll(catalogFilesetNodes);
+      topicNodes.addAll(catalogTopicNodes);
+      modelNodes.addAll(catalogModelNodes);
     }
 
     // Fetch authorization relative data
@@ -976,8 +988,15 @@ public class MetricsCollector implements Closeable {
         .build();
   }
 
-  private void collectThenCleanMetrics() {
-    collectAllMetrics(PublishMode.CURRENT_AND_HISTORY, System.currentTimeMillis());
+  @VisibleForTesting
+  void collectThenCleanMetrics() {
+    try {
+      collectAllMetrics(PublishMode.CURRENT_AND_HISTORY, System.currentTimeMillis());
+    } catch (CancellationException e) {
+      // End this run without suppressing subsequent executions of the periodic task.
+      LOG.warn("Daily dashboard metric collection was cancelled", e);
+      return;
+    }
     cleanExpiredMetrics();
   }
 
@@ -1013,6 +1032,7 @@ public class MetricsCollector implements Closeable {
   private Map<Long, List<SecurableObject>> getRoleIdToSecurableObjects(
       String metalakeName, Map<Long, AssetNode> assetNodeById) throws IOException {
     Map<Long, List<SecurableObject>> roleIdToSecurableObjects = new HashMap<>();
+    int missingAssetNodeCount = 0;
     List<RoleEntity> roleEntities =
         store.list(NamespaceUtil.ofRole(metalakeName), RoleEntity.class, Entity.EntityType.ROLE);
     Set<Long> roleIds = roleEntities.stream().map(RoleEntity::id).collect(Collectors.toSet());
@@ -1020,7 +1040,8 @@ public class MetricsCollector implements Closeable {
         metricDataService.listSecurableObjectsByRoleIds(roleIds);
     for (SecurableObjectPO po : securableObjectPOs) {
       if (!assetNodeById.containsKey(po.getMetadataObjectId())) {
-        LOG.warn(
+        missingAssetNodeCount++;
+        LOG.debug(
             "Asset node not found for metadataObjectId: {}, skipping securable object type: {}",
             po.getMetadataObjectId(),
             po.getType());
@@ -1039,6 +1060,13 @@ public class MetricsCollector implements Closeable {
       roleIdToSecurableObjects
           .computeIfAbsent(po.getRoleId(), k -> new ArrayList<>())
           .add(securableObject);
+    }
+    if (missingAssetNodeCount > 0) {
+      LOG.warn(
+          "Skipped {} securable objects with unavailable asset nodes while collecting dashboard"
+              + " metrics for metalake {}",
+          missingAssetNodeCount,
+          metalakeName);
     }
     return roleIdToSecurableObjects;
   }
@@ -1283,20 +1311,25 @@ public class MetricsCollector implements Closeable {
       }
     } catch (CatalogCollectionException e) {
       throw e;
-    } catch (Exception e) {
+    } catch (Throwable e) {
+      MetricsCollectionFailure.rethrowIfFatalOrCancelled(e);
       if (namespace.length() == 3) {
         NameIdentifier ident =
             NameIdentifierUtil.ofSchema(namespace.level(0), namespace.level(1), namespace.level(2));
-        try {
-          if (removeMissingSchema(ident)) {
-            schemaNames.removeIf(
-                name ->
-                    HierarchicalSchemaUtil.allScopes(name, HierarchicalSchemaUtil.schemaSeparator())
-                        .contains(ident.name()));
-            return;
+        if (e instanceof Exception) {
+          try {
+            if (removeMissingSchema(ident)) {
+              schemaNames.removeIf(
+                  name ->
+                      HierarchicalSchemaUtil.allScopes(
+                              name, HierarchicalSchemaUtil.schemaSeparator())
+                          .contains(ident.name()));
+              return;
+            }
+          } catch (Throwable cleanupFailure) {
+            MetricsCollectionFailure.rethrowIfFatalOrCancelled(cleanupFailure);
+            e.addSuppressed(cleanupFailure);
           }
-        } catch (Exception cleanupFailure) {
-          e.addSuppressed(cleanupFailure);
         }
         throw new CatalogCollectionException(ident, e);
       }

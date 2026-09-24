@@ -3,9 +3,11 @@
  */
 package com.datastrato.gravitino.metrics;
 
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -23,13 +25,31 @@ import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.server.ServerConfig;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 class TestIncrementalMetricsWorker {
+
+  @Test
+  void testPollFailureDoesNotSuppressNextPoll() {
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricDataService service = mock(MetricDataService.class);
+    when(service.listDueDirtyMetalakes(anyLong(), anyLong(), anyLong()))
+        .thenThrow(new RuntimeException("poll failed"))
+        .thenReturn(Collections.emptyList());
+
+    try (IncrementalMetricsWorker worker = newWorker(collector, service)) {
+      worker.pollSafely();
+      worker.pollSafely();
+
+      verify(service, times(2)).listDueDirtyMetalakes(anyLong(), anyLong(), anyLong());
+    }
+  }
 
   @Test
   void testPollWaitsForStartupMetalakeRegistration() throws Exception {
@@ -225,6 +245,73 @@ class TestIncrementalMetricsWorker {
   }
 
   @Test
+  void testInterruptedCollectionDoesNotScheduleRetry() throws Exception {
+    try {
+      assertAbortedCollectionDoesNotScheduleRetry(
+          new RuntimeException(new InterruptedException("stopping")), CancellationException.class);
+      assertTrue(Thread.currentThread().isInterrupted());
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  @Test
+  void testInterruptedCallerRunStopsCurrentPollBatch() throws Exception {
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricDataService service = mock(MetricDataService.class);
+    IncrementalMetricsWorker worker = newWorker(collector, service);
+    long eventTime = System.currentTimeMillis() - 2_000;
+    MetricDirtyPO interrupted = dirty(13L, 6L, eventTime, null, 0);
+    MetricDirtyPO remaining = dirty(14L, 7L, eventTime, null, 0);
+    when(service.listDueDirtyMetalakes(anyLong(), anyLong(), anyLong()))
+        .thenReturn(Arrays.asList(interrupted, remaining));
+    when(service.getDirtyMetalake(13L)).thenReturn(interrupted);
+    when(collector.metalakeLock(13L)).thenReturn(new Object());
+    when(collector.findActiveMetalake(13L)).thenReturn(Optional.of(mock(BaseMetalake.class)));
+    when(collector.refreshAndPublishDirtyMetalake(any(), any(), anyLong()))
+        .thenThrow(new RuntimeException(new InterruptedException("stopping")));
+    when(collector.submitIncremental(any()))
+        .thenAnswer(
+            invocation -> {
+              CompletableFuture<Void> submitted = new CompletableFuture<>();
+              try {
+                invocation.<Runnable>getArgument(0).run();
+                submitted.complete(null);
+              } catch (Throwable thrown) {
+                submitted.completeExceptionally(thrown);
+              }
+              return submitted;
+            });
+
+    try {
+      worker.pollOnce();
+
+      assertTrue(Thread.currentThread().isInterrupted());
+      verify(collector).submitIncremental(any());
+    } finally {
+      Thread.interrupted();
+      worker.close();
+    }
+  }
+
+  @Test
+  void testCancelledCollectionDoesNotScheduleRetry() throws Exception {
+    CancellationException cancelled = new CancellationException("cancelled");
+    assertSame(
+        cancelled,
+        assertAbortedCollectionDoesNotScheduleRetry(cancelled, CancellationException.class));
+  }
+
+  @Test
+  void testWrappedFatalFailureDoesNotScheduleRetry() throws Exception {
+    Error fatal = new OutOfMemoryError("test");
+    assertSame(
+        fatal,
+        assertAbortedCollectionDoesNotScheduleRetry(
+            new CompletionException(fatal), fatal.getClass()));
+  }
+
+  @Test
   void testIncompleteResultRetainsMarkerAndRecoveryClearsIt() throws Exception {
     MetricsCollector collector = mock(MetricsCollector.class);
     MetricDataService service = mock(MetricDataService.class);
@@ -261,6 +348,43 @@ class TestIncrementalMetricsWorker {
     worker.initialize(config);
     when(collector.areStartupMetalakesRegistered()).thenReturn(true);
     return worker;
+  }
+
+  private static <T extends Throwable> T assertAbortedCollectionDoesNotScheduleRetry(
+      Exception failure, Class<T> expected) throws Exception {
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricDataService service = mock(MetricDataService.class);
+    try (IncrementalMetricsWorker worker = newWorker(collector, service)) {
+      MetricDirtyPO dirty = dirty(13L, 6L, System.currentTimeMillis() - 2_000, null, 0);
+      when(service.listDueDirtyMetalakes(anyLong(), anyLong(), anyLong()))
+          .thenReturn(Collections.singletonList(dirty));
+      when(service.getDirtyMetalake(13L)).thenReturn(dirty);
+      when(collector.metalakeLock(13L)).thenReturn(new Object());
+      when(collector.findActiveMetalake(13L)).thenReturn(Optional.of(mock(BaseMetalake.class)));
+      when(collector.refreshAndPublishDirtyMetalake(any(), any(), anyLong())).thenThrow(failure);
+      CompletableFuture<Void> submitted = new CompletableFuture<>();
+      when(collector.submitIncremental(any()))
+          .thenAnswer(
+              invocation -> {
+                Runnable task = invocation.getArgument(0);
+                try {
+                  task.run();
+                  submitted.complete(null);
+                } catch (Throwable thrown) {
+                  submitted.completeExceptionally(thrown);
+                }
+                return submitted;
+              });
+
+      worker.pollOnce();
+
+      Throwable thrown = submitted.handle((ignored, error) -> error).join();
+      assertTrue(expected.isInstance(thrown));
+      verify(service, never()).deleteDirtyIfRevision(anyLong(), anyLong());
+      verify(service, never())
+          .markRetryIfRevision(anyLong(), anyLong(), anyInt(), anyLong(), any());
+      return expected.cast(thrown);
+    }
   }
 
   private static ServerConfig defaultConfig() {

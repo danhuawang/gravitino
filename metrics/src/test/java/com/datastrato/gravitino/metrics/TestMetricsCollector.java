@@ -35,6 +35,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.ServiceConfigurationError;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import org.apache.gravitino.Catalog;
@@ -77,6 +80,7 @@ import org.apache.gravitino.utils.NamespaceUtil;
 import org.apache.gravitino.utils.ThrowableFunction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
@@ -370,6 +374,22 @@ class TestMetricsCollector {
 
     assertTrue(snapshot.getFailedCatalogNames().contains(relationalCatalogName));
     assertEquals(probe, snapshot.getFailedSchemaIdentifiers().get(relationalCatalogName));
+  }
+
+  @Test
+  void testCleanupLinkageErrorPreservesFailedSchemaIdentifier() throws Exception {
+    NameIdentifier schemaIdent =
+        NameIdentifierUtil.ofSchema(metalakeName, relationalCatalogName, relationalSchemaName);
+    when(tableDispatcher.listTables(
+            NamespaceUtil.ofTable(metalakeName, relationalCatalogName, relationalSchemaName)))
+        .thenThrow(new IllegalStateException("schema unavailable"));
+    when(catalogWrapper.<Boolean>doWithSchemaOps(any()))
+        .thenThrow(new NoClassDefFoundError("provider dependency"));
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().contains(relationalCatalogName));
+    assertEquals(schemaIdent, snapshot.getFailedSchemaIdentifiers().get(relationalCatalogName));
   }
 
   @Test
@@ -845,6 +865,56 @@ class TestMetricsCollector {
   }
 
   @Test
+  void testAbortedStartupRetainsDirtyMarkerAndPropagatesFailure() throws Exception {
+    when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenReturn(ImmutableList.of(metalake()));
+    MetricDirtyPO dirty = mock(MetricDirtyPO.class);
+    when(dirty.getRevision()).thenReturn(8L);
+    when(metricDataService.getDirtyMetalake(mockId)).thenReturn(dirty);
+
+    try (MockedStatic<MetricDataService> mockedService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      ExecutorService executor = mock(ExecutorService.class);
+      setCalculationExecutor(collector, executor);
+      doAnswer(
+              invocation -> {
+                invocation.<Runnable>getArgument(0).run();
+                return null;
+              })
+          .when(executor)
+          .execute(any());
+      for (Throwable failure :
+          new Throwable[] {
+            new ServiceConfigurationError("provider", new OutOfMemoryError("test")),
+            new RuntimeException(new InterruptedException("stopping")),
+            new CancellationException("cancelled")
+          }) {
+        doThrow(failure)
+            .when(catalogManager)
+            .doWithCatalogWrapper(
+                eq(NameIdentifierUtil.ofCatalog(metalakeName, relationalCatalogName)), any());
+        try {
+          Class<? extends Throwable> expected =
+              failure instanceof ServiceConfigurationError
+                  ? OutOfMemoryError.class
+                  : CancellationException.class;
+          assertThrows(expected, () -> collector.collectStartupMetrics(1_300L));
+          assertFalse(collector.isStartupCollectionPending(mockId));
+          verify(metricDataService, never()).deleteDirtyIfRevision(anyLong(), anyLong());
+          verify(metricDataService, never()).replaceCurrentMetrics(anyLong(), anyMap(), anyLong());
+          verify(metricDataService, never())
+              .replaceCurrentMetricsAndMarkDirty(anyLong(), anyMap(), anyLong(), anyLong());
+        } finally {
+          Thread.interrupted();
+        }
+      }
+    }
+  }
+
+  @Test
   void testStartupGateOpensWhenMetalakeListingFails() throws Exception {
     when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
         .thenThrow(new RuntimeException("list failed"));
@@ -860,6 +930,28 @@ class TestMetricsCollector {
 
       assertTrue(collector.isStartupCollectionComplete());
       verify(metricDataService, never()).markMetalakeDirty(anyLong(), anyLong());
+    }
+  }
+
+  @Test
+  void testDailyCancellationDoesNotSuppressNextCollection() throws Exception {
+    when(store.list(Namespace.empty(), BaseMetalake.class, Entity.EntityType.METALAKE))
+        .thenThrow(new CancellationException("cancelled"))
+        .thenReturn(Collections.emptyList());
+
+    try (MockedStatic<MetricDataService> mockedService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      collector.collectThenCleanMetrics();
+      verify(metricDataService, never()).cleanMetricsByTimestamp(anyLong());
+      verify(metricDataService, never()).cleanInvalidMetrics();
+
+      collector.collectThenCleanMetrics();
+      verify(metricDataService).cleanMetricsByTimestamp(anyLong());
+      verify(metricDataService).cleanInvalidMetrics();
     }
   }
 
@@ -884,6 +976,33 @@ class TestMetricsCollector {
               collector.collectAndPublish(
                   metalake, MetricsCollector.PublishMode.CURRENT_ONLY, 2_000L));
       assertSame(previous, collector.getMetalakeSnapshots().get(metalakeName));
+    }
+  }
+
+  @Test
+  void testPublishErrorRestoresPreviousSnapshot() throws Exception {
+    try (MockedStatic<MetricDataService> mockedService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      collector.collectAndPublish(metalake(), MetricsCollector.PublishMode.CURRENT_ONLY, 1_000L);
+      MetalakeSnapshot previous = collector.getMetalakeSnapshots().get(metalakeName);
+      Error failure = new AssertionError("publication failed");
+      doThrow(failure)
+          .when(metricDataService)
+          .replaceCurrentMetrics(eq(mockId), anyMap(), eq(2_000L));
+
+      assertSame(
+          failure,
+          assertThrows(
+              AssertionError.class,
+              () ->
+                  collector.collectAndPublish(
+                      metalake(), MetricsCollector.PublishMode.CURRENT_ONLY, 2_000L)));
+      assertSame(previous, collector.getMetalakeSnapshots().get(metalakeName));
+      verify(metricDataService, never())
+          .replaceCurrentMetricsAndMarkDirty(anyLong(), anyMap(), anyLong(), anyLong());
     }
   }
 
@@ -917,6 +1036,98 @@ class TestMetricsCollector {
 
       List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
       assertMetric(metrics, "by_asset_type::VIEW::asset_count", 0.0, MetricState.COMPLETE);
+    }
+  }
+
+  @Test
+  void testNoClassDefFoundErrorIsIsolatedToCatalog() throws Exception {
+    assertCatalogFailureIsIsolated(new NoClassDefFoundError("provider dependency"));
+  }
+
+  @Test
+  void testServiceConfigurationErrorIsIsolatedToCatalog() throws Exception {
+    assertCatalogFailureIsIsolated(new ServiceConfigurationError("provider configuration"));
+  }
+
+  @Test
+  void testAssertionErrorIsIsolatedToCatalog() throws Exception {
+    assertCatalogFailureIsIsolated(new AssertionError("provider assertion"));
+  }
+
+  @Test
+  void testRuntimeExceptionIsIsolatedToCatalog() throws Exception {
+    assertCatalogFailureIsIsolated(new IllegalStateException("provider unavailable"));
+  }
+
+  @Test
+  void testLateCatalogErrorDiscardsPartialTreeAndIndexes() throws Exception {
+    mockStoredRelationalSchema(41L);
+    when(store.list(
+            NamespaceUtil.ofFunction(metalakeName, relationalCatalogName, relationalSchemaName),
+            FunctionEntity.class,
+            Entity.EntityType.FUNCTION))
+        .thenThrow(new AssertionError("provider failed after collecting tables and views"));
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertEquals(Collections.singleton(relationalCatalogName), snapshot.getFailedCatalogNames());
+    assertEquals(
+        NameIdentifierUtil.ofSchema(metalakeName, relationalCatalogName, relationalSchemaName),
+        snapshot.getFailedSchemaIdentifiers().get(relationalCatalogName));
+    assertTrue(snapshot.getSchemaNodes().isEmpty());
+    assertTrue(snapshot.getTableNodes().isEmpty());
+    assertTrue(snapshot.getViewNodes().isEmpty());
+    assertFalse(snapshot.getAssetNodeById().containsKey(41L));
+    assertTrue(snapshot.getCatalogNodes().iterator().next().getChildren().isEmpty());
+    assertEquals(2, snapshot.getAssetNodeByIdent().size());
+  }
+
+  @Test
+  void testWrappedFatalErrorAbortsWithoutPublishing() throws Exception {
+    Error fatal = new OutOfMemoryError("test");
+    assertSame(
+        fatal,
+        assertCollectionAborted(
+            new ServiceConfigurationError("provider", fatal), fatal.getClass()));
+  }
+
+  @Test
+  void testWrappedInterruptionAbortsWithoutPublishingOrSchemaCleanup() throws Exception {
+    try {
+      assertCollectionAborted(
+          new RuntimeException(new InterruptedException("stopping")), CancellationException.class);
+      assertTrue(Thread.currentThread().isInterrupted());
+      verify(catalogWrapper, never()).doWithSchemaOps(any());
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  @Test
+  void testCancellationAbortsWithoutPublishing() throws Exception {
+    CancellationException cancelled = new CancellationException("cancelled");
+    assertSame(cancelled, assertCollectionAborted(cancelled, CancellationException.class));
+  }
+
+  @Test
+  void testFailedCatalogWithNoMetricRecipientsCompletesWithoutDirtyMarker() throws Exception {
+    when(serverConfig.get(Configs.ENABLE_AUTHORIZATION)).thenReturn(true);
+    when(catalogManager.doWithCatalogWrapper(
+            eq(NameIdentifierUtil.ofCatalog(metalakeName, relationalCatalogName)), any()))
+        .thenThrow(new NoClassDefFoundError("provider dependency"));
+    try (MockedStatic<MetricDataService> mockedService =
+            Mockito.mockStatic(MetricDataService.class);
+        MockedConstruction<MemoizedJcasbinAuthorizer> ignored =
+            Mockito.mockConstruction(MemoizedJcasbinAuthorizer.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      assertEquals(
+          MetricsCollector.CollectionOutcome.COMPLETE,
+          collector.collectAndPublish(
+              metalake(), MetricsCollector.PublishMode.CURRENT_ONLY, 5_000L));
+      verify(metricDataService).replaceCurrentMetrics(mockId, Collections.emptyMap(), 5_000L);
     }
   }
 
@@ -1109,6 +1320,92 @@ class TestMetricsCollector {
     when(store.list(
             NamespaceUtil.ofCatalog(metalakeName), CatalogEntity.class, Entity.EntityType.CATALOG))
         .thenReturn(ImmutableList.of(catalogEntity));
+  }
+
+  private void assertCatalogFailureIsIsolated(Throwable failure) throws Exception {
+    CatalogEntity failed =
+        CatalogEntity.builder()
+            .withId(2L)
+            .withName("failed_catalog")
+            .withNamespace(NamespaceUtil.ofCatalog(metalakeName))
+            .withType(Catalog.Type.RELATIONAL)
+            .withProvider("vendor-custom")
+            .withAuditInfo(
+                AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
+            .build();
+    CatalogEntity healthy =
+        store
+            .list(
+                NamespaceUtil.ofCatalog(metalakeName),
+                CatalogEntity.class,
+                Entity.EntityType.CATALOG)
+            .get(0);
+    when(store.list(
+            NamespaceUtil.ofCatalog(metalakeName), CatalogEntity.class, Entity.EntityType.CATALOG))
+        .thenReturn(ImmutableList.of(failed, healthy));
+    when(catalogManager.doWithCatalogWrapper(eq(failed.nameIdentifier()), any()))
+        .thenThrow(failure);
+
+    try (MockedStatic<MetricDataService> mockedService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+
+      assertEquals(
+          MetricsCollector.CollectionOutcome.INCOMPLETE,
+          collector.collectAndPublish(
+              metalake(), MetricsCollector.PublishMode.CURRENT_AND_HISTORY, 5_000L));
+      ArgumentCaptor<Map<Long, List<MetricPO>>> published = ArgumentCaptor.forClass(Map.class);
+      verify(metricDataService)
+          .replaceCurrentAndAppendHistoryAndMarkDirty(
+              eq(mockId), published.capture(), eq(5_000L), eq(5_000L));
+      List<MetricPO> metrics =
+          published.getValue().get(MetricsCollector.MOCK_USER_ID_FOR_DISABLE_AUTHZ);
+      assertMetric(
+          metrics,
+          "by_catalog::failed_catalog::vendor-custom::asset_count",
+          null,
+          MetricState.UNAVAILABLE);
+      assertMetric(
+          metrics,
+          "by_catalog::rel_catalog::jdbc-postgresql::asset_count",
+          2.0,
+          MetricState.COMPLETE);
+      assertMetric(metrics, "asset_count", 2.0, MetricState.PARTIAL);
+      MetalakeSnapshot snapshot = collector.getMetalakeSnapshots().get(metalakeName);
+      assertEquals(Collections.singleton(failed.name()), snapshot.getFailedCatalogNames());
+      assertEquals(1, snapshot.getTableNodes().size());
+      assertTrue(snapshot.getAssetNodeById().get(failed.id()).getChildren().isEmpty());
+    }
+  }
+
+  private <T extends Throwable> T assertCollectionAborted(Throwable failure, Class<T> expected)
+      throws Exception {
+    try (MockedStatic<MetricDataService> mockedService =
+        Mockito.mockStatic(MetricDataService.class)) {
+      mockedService.when(MetricDataService::getInstance).thenReturn(metricDataService);
+      MetricsCollector collector = MetricsCollector.getInstance();
+      collector.initialize(serverConfig, gravitinoEnv);
+      collector.collectAndPublish(metalake(), MetricsCollector.PublishMode.CURRENT_ONLY, 1_000L);
+      MetalakeSnapshot previous = collector.getMetalakeSnapshots().get(metalakeName);
+      clearInvocations(metricDataService, catalogWrapper);
+      when(tableDispatcher.listTables(
+              NamespaceUtil.ofTable(metalakeName, relationalCatalogName, relationalSchemaName)))
+          .thenThrow(failure);
+
+      T thrown =
+          assertThrows(
+              expected,
+              () ->
+                  collector.collectAndPublish(
+                      metalake(), MetricsCollector.PublishMode.CURRENT_ONLY, 2_000L));
+      assertSame(previous, collector.getMetalakeSnapshots().get(metalakeName));
+      verify(metricDataService, never()).replaceCurrentMetrics(anyLong(), anyMap(), anyLong());
+      verify(metricDataService, never())
+          .replaceCurrentMetricsAndMarkDirty(anyLong(), anyMap(), anyLong(), anyLong());
+      return thrown;
+    }
   }
 
   private static void setCalculationExecutor(MetricsCollector collector, ExecutorService executor)
