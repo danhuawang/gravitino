@@ -43,6 +43,7 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.SupportsNamespaces;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.catalog.ViewCatalog;
+import org.apache.iceberg.hive.HiveCatalogWithMetadataLocationSupport;
 import org.apache.iceberg.io.ResolvingFileIO;
 import org.apache.iceberg.jdbc.JdbcCatalogWithMetadataLocationSupport;
 import org.apache.iceberg.rest.CatalogHandlers;
@@ -113,6 +114,29 @@ public class IcebergCatalogWrapper implements AutoCloseable {
 
   public IcebergConfig getIcebergConfig() {
     return icebergConfig;
+  }
+
+  /**
+   * Returns whether the initialized backend publishes an Iceberg metadata pointer and its integrity
+   * hash in one atomic commit.
+   *
+   * <p>This is the single source of the capability. It is read from the loaded catalog, never
+   * inferred from a driver class or a JDBC URI: Hive commits both under the HMS lock, and a JDBC
+   * catalog answers from the integrity store it provisioned or probed on the real connection at
+   * initialize. Every other backend answers {@code false}.
+   *
+   * @return {@code true} when governed encryption has an atomic metadata-integrity implementation
+   */
+  public boolean atomicIntegrityAvailable() {
+    Catalog loadedCatalog = getCatalog();
+    if (loadedCatalog instanceof HiveCatalogWithMetadataLocationSupport) {
+      return true;
+    }
+    if (loadedCatalog instanceof JdbcCatalogWithMetadataLocationSupport) {
+      return ((JdbcCatalogWithMetadataLocationSupport) loadedCatalog)
+          .supportsAtomicMetadataIntegrity();
+    }
+    return false;
   }
 
   private SupportsNamespaces getNamespaceCatalog() {

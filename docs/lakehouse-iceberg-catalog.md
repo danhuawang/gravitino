@@ -57,6 +57,10 @@ If you are using the Gravitino with Trino, you can pass the Trino Iceberg connec
 
 If you are using the Gravitino with Spark, you can pass the Spark Iceberg connector configuration using prefix `spark.bypass.`. For example, using `spark.bypass.io-impl` to pass the `io-impl` to the Spark Iceberg connector in Spark runtime.
 
+#### Hive Backend
+
+For governed encryption, the Hive backend writes the trusted `metadata_hash` and
+`metadata_location` in the same Hive Metastore create or alter operation.
 
 #### JDBC Backend
 
@@ -67,7 +71,7 @@ If you are using JDBC backend, you must provide properties like `jdbc-user`, `jd
 | `jdbc-user`       | JDBC user name                                                                                          | (none)        | Yes      |
 | `jdbc-password`   | JDBC password                                                                                           | (none)        | Yes      |
 | `jdbc-driver`     | `com.mysql.jdbc.Driver` or `com.mysql.cj.jdbc.Driver` for MySQL, `org.postgresql.Driver` for PostgreSQL | (none)        | Yes      |
-| `jdbc-initialize` | Whether to initialize meta tables when create JDBC catalog                                              | `true`        | No       |
+| `jdbc-initialize` | Whether to create the JDBC catalog tables, including the catalog-local metadata-integrity table         | `true`        | No       |
 
 If you have a JDBC Iceberg catalog prior, you must set `catalog-backend-name` to keep consistent with your Jdbc Iceberg catalog name to operate the prior namespace and tables.
 
@@ -75,6 +79,44 @@ If you have a JDBC Iceberg catalog prior, you must set `catalog-backend-name` to
 Download the corresponding JDBC driver and place it to the `catalogs/lakehouse-iceberg/libs` directory If you are using JDBC backend.
 If you are using multiple JDBC catalog backends, setting `jdbc-initialize` to true may not take effect for RDMS like `Mysql`, you should create Iceberg meta tables explicitly.
 :::
+
+##### JDBC metadata-integrity table
+
+Encrypted Iceberg tables need a Gravitino-managed table, `iceberg_metadata_integrity`, in the same
+catalog database as `iceberg_tables`. PostgreSQL and MySQL are supported.
+
+The packaged scripts contain the expected schema, and you can apply them yourself:
+
+- PostgreSQL: `scripts/enterprise/iceberg-jdbc/postgresql/schema-v1.sql`
+- MySQL: `scripts/enterprise/iceberg-jdbc/mysql/schema-v1.sql`
+
+The schema includes a foreign key from `iceberg_metadata_integrity` to `iceberg_tables`, so the
+database moves or removes a table's integrity row when the table is renamed or dropped. On MySQL,
+the foreign key takes effect only while `foreign_key_checks` is enabled, which is the MySQL
+default.
+
+**Create the table.** With `jdbc-initialize=true` (the default), Gravitino runs the matching script
+when the catalog starts, and you don't need to do anything. If you manage schema changes yourself:
+
+1. Run Iceberg's catalog DDL, so that `iceberg_tables` exists.
+2. Run the matching script. It creates the table if it's absent and doesn't change an existing one.
+3. Restart the catalog. If a governed catalog can't use the table, it doesn't start, and the log
+   shows the database error.
+
+**Privileges.** The catalog's database user needs `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on
+`iceberg_metadata_integrity`. Creating the table also needs schema-change privileges and, on MySQL,
+`REFERENCES` on `iceberg_tables`.
+
+**Startup checks.** When the catalog starts, it checks that the database is PostgreSQL or MySQL,
+that it supports transactions, and, on MySQL, that both tables use InnoDB. With
+`jdbc-initialize=false`, it also checks that the table's columns exist. If a check fails, a governed
+catalog doesn't start. A catalog without encryption configured starts without metadata integrity.
+
+**Tables without an integrity row.** An encrypted table that has no row loads with a warning, and
+its next commit writes the row.
+
+Future schema versions ship explicit upgrade scripts, such as `upgrade-v1-to-v2.sql`. The scripts
+aren't part of the Gravitino entity-store schema or its migrations.
 
 #### REST Catalog Backend
 

@@ -19,6 +19,7 @@
 package org.apache.gravitino.iceberg.common.ops;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -35,10 +36,13 @@ import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.hive.HiveCatalogWithMetadataLocationSupport;
+import org.apache.iceberg.jdbc.JdbcCatalogWithMetadataLocationSupport;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 public class TestIcebergCatalogWrapper {
 
@@ -102,6 +106,50 @@ public class TestIcebergCatalogWrapper {
 
     Assertions.assertEquals(1, TrackingTableMetadataCache.INITIALIZE_COUNT.get());
     Assertions.assertTrue(TrackingTableMetadataCache.CLOSED.get());
+  }
+
+  @Test
+  public void testAtomicIntegrityIsTrueForHiveWithoutAskingTheBackend() throws Exception {
+    // Hive publishes the pointer and the hash under the HMS lock, so the answer is unconditional.
+    HiveCatalogWithMetadataLocationSupport hive =
+        Mockito.mock(HiveCatalogWithMetadataLocationSupport.class);
+
+    Assertions.assertTrue(wrapperWithLoadedCatalog(hive).atomicIntegrityAvailable());
+    Mockito.verifyNoInteractions(hive);
+  }
+
+  @Test
+  public void testAtomicIntegrityForJdbcIsTheCatalogsOwnAnswer() throws Exception {
+    for (boolean supported : new boolean[] {true, false}) {
+      JdbcCatalogWithMetadataLocationSupport jdbc =
+          Mockito.mock(JdbcCatalogWithMetadataLocationSupport.class);
+      Mockito.when(jdbc.supportsAtomicMetadataIntegrity()).thenReturn(supported);
+
+      Assertions.assertEquals(supported, wrapperWithLoadedCatalog(jdbc).atomicIntegrityAvailable());
+      Mockito.verify(jdbc).supportsAtomicMetadataIntegrity();
+    }
+  }
+
+  @Test
+  public void testAtomicIntegrityIsFalseForEveryOtherBackend() throws Exception {
+    Catalog other = Mockito.mock(Catalog.class);
+
+    Assertions.assertFalse(wrapperWithLoadedCatalog(other).atomicIntegrityAvailable());
+    Mockito.verifyNoInteractions(other);
+  }
+
+  /**
+   * Returns a wrapper whose catalog is already loaded, so the capability is read from the backend
+   * class rather than from a connection this test does not have.
+   */
+  private static IcebergCatalogWrapper wrapperWithLoadedCatalog(Catalog loadedCatalog)
+      throws Exception {
+    IcebergCatalogWrapper wrapper =
+        new IcebergCatalogWrapper(new IcebergConfig(unreachableConfig()));
+    Field field = IcebergCatalogWrapper.class.getDeclaredField("catalog");
+    field.setAccessible(true);
+    field.set(wrapper, loadedCatalog);
+    return wrapper;
   }
 
   private static TableMetadataCache invokeGetMetadataCache(IcebergCatalogWrapper wrapper)

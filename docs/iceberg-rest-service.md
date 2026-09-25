@@ -170,6 +170,9 @@ The Gravitino Iceberg REST catalog service uses the memory catalog backend by de
 | `gravitino.iceberg-rest.warehouse`            | The warehouse directory of the Hive catalog, such as `/user/hive/warehouse-hive/`.                                                           | (none)                                                                        | Yes      |
 | `gravitino.iceberg-rest.catalog-backend-name` | The catalog backend name passed to underlying Iceberg catalog backend. Catalog name in JDBC backend is used to isolate namespace and tables. | `hive` for Hive backend, `jdbc` for JDBC backend, `memory` for memory backend | No       |
 
+For governed encryption, the Hive backend writes the trusted `metadata_hash` and
+`metadata_location` in the same Hive Metastore create or alter operation.
+
 #### JDBC Backend Configuration
 
 | Configuration item                            | Description                                                                                                                                                                                                                                                                                                | Default value           | Required |
@@ -180,7 +183,7 @@ The Gravitino Iceberg REST catalog service uses the memory catalog backend by de
 | `gravitino.iceberg-rest.catalog-backend-name` | The catalog name passed to underlying Iceberg catalog backend. Catalog name in JDBC backend is used to isolate namespace and tables.                                                                                                                                                                       | `jdbc` for JDBC backend | No       |
 | `gravitino.iceberg-rest.jdbc-user`            | The username of the JDBC connection.                                                                                                                                                                                                                                                                       | (none)                  | No       |
 | `gravitino.iceberg-rest.jdbc-password`        | The password of the JDBC connection.                                                                                                                                                                                                                                                                       | (none)                  | No       |
-| `gravitino.iceberg-rest.jdbc-initialize`      | Whether to initialize the meta tables when creating the JDBC catalog.                                                                                                                                                                                                                                      | `true`                  | No       |
+| `gravitino.iceberg-rest.jdbc-initialize`      | Whether to create the JDBC catalog tables, including the catalog-local metadata-integrity table.                                                                                                                                                                                                            | `true`                  | No       |
 | `gravitino.iceberg-rest.jdbc-driver`          | `com.mysql.jdbc.Driver` or `com.mysql.cj.jdbc.Driver` for MySQL, `org.postgresql.Driver` for PostgreSQL.                                                                                                                                                                                                   | (none)                  | Yes      |
 | `gravitino.iceberg-rest.jdbc-schema-version`  | The schema version of the JDBC catalog. Defaults to `V1` to enable view support. Set to `V0` only if you need to opt out of view support. Once the underlying database is migrated to V1, this property is no longer required on subsequent restarts.                                                      | `V1`                    | No       |
 | `gravitino.iceberg-rest.jdbc.strict-mode`     | Whether the JDBC catalog runs in strict mode. Defaults to `true` so that creating a table or view in a namespace that does not exist fails with `NoSuchNamespace` (HTTP 404), matching the Iceberg REST specification. Set to `false` to restore the legacy behavior of implicitly creating the namespace. | `true`                  | No       |
@@ -191,6 +194,16 @@ If you have a JDBC Iceberg catalog prior, you must set `catalog-backend-name` to
 Download the corresponding JDBC driver to the `iceberg-rest-server/libs` directory.
 If you are using multiple JDBC catalog backends, setting `jdbc-initialize` to true may not take effect for RDBMS like `Mysql`, you should create Iceberg meta tables explicitly.
 :::
+
+Governed encryption over JDBC supports PostgreSQL and MySQL in v1. Encrypted tables require
+`iceberg_metadata_integrity` in the same transactional catalog database as `iceberg_tables`;
+MySQL requires both tables to use InnoDB. When
+`gravitino.iceberg-rest.jdbc-initialize=false`, provision the table before creating or registering
+encrypted tables; otherwise those operations fail closed while legacy unencrypted operations remain
+available. Static REST configuration does not enable Gravitino policy admission. See
+[JDBC metadata-integrity table](lakehouse-iceberg-catalog.md#jdbc-metadata-integrity-table) for the
+catalog-local schema scripts and fail-closed behavior. Gravitino entity-store migration scripts do
+not provision this catalog database.
 
 #### REST Backend Configuration
 
