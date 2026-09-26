@@ -78,15 +78,13 @@ public class IcebergTable extends BaseTable {
   private IcebergTable() {}
 
   public static Map<String, String> rebuildCreateProperties(Map<String, String> createProperties) {
-    // Gravitino owns the default Iceberg table format version: when it is not explicitly set, stamp
-    // ICEBERG_DEFAULT_FORMAT_VERSION rather than relying on the Iceberg library's version-dependent
-    // default or letting a blank value fail to parse downstream. Brought along with the #940
-    // cherry-pick because main already had this from format-version V3 support (#11957).
+    // Gravitino does not own the Iceberg table format version: a version nobody asked for stays
+    // absent, so the Iceberg catalog resolves it from its own table-override./table-default.
+    // properties. A blank value is dropped rather than forwarded, because it fails to parse
+    // downstream.
     String formatVersion = createProperties.get(IcebergTablePropertiesMetadata.FORMAT_VERSION);
     if (StringUtils.isBlank(formatVersion)) {
-      createProperties.put(
-          IcebergTablePropertiesMetadata.FORMAT_VERSION,
-          String.valueOf(IcebergTablePropertiesMetadata.ICEBERG_DEFAULT_FORMAT_VERSION));
+      createProperties.remove(IcebergTablePropertiesMetadata.FORMAT_VERSION);
     }
 
     String provider = createProperties.get(PROP_PROVIDER);
@@ -112,30 +110,10 @@ public class IcebergTable extends BaseTable {
             .withName(name)
             .withLocation(location)
             .withSchema(schema)
-            .setProperties(toIcebergCreateProperties(rebuildCreateProperties(properties)))
+            .setProperties(rebuildCreateProperties(properties))
             .withPartitionSpec(ToIcebergPartitionSpec.toPartitionSpec(schema, partitioning))
             .withWriteOrder(ToIcebergSortOrder.toSortOrder(schema, sortOrders));
     return builder.build();
-  }
-
-  /**
-   * Copies Gravitino table properties into the set sent to Iceberg at table creation.
-   *
-   * <p>Kept separate from {@link #rebuildCreateProperties(Map)}, which derives Iceberg-meaningful
-   * defaults from Gravitino input. This instead drops the keys Iceberg should never receive, so the
-   * two steps compose as enrich-then-project rather than one method owning both.
-   *
-   * <p>The KMS provider selects Gravitino's configured KMS client and is not Iceberg metadata. The
-   * key ID remains in the returned map because Iceberg uses it to select the encryption key.
-   *
-   * @param gravitinoProperties Gravitino table properties
-   * @return a copy safe to send to Iceberg
-   */
-  @VisibleForTesting
-  static Map<String, String> toIcebergCreateProperties(Map<String, String> gravitinoProperties) {
-    Map<String, String> icebergProperties = Maps.newHashMap(gravitinoProperties);
-    icebergProperties.remove(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER);
-    return icebergProperties;
   }
 
   /**

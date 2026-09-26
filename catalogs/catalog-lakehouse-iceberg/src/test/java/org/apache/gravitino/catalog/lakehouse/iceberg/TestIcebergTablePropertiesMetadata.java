@@ -40,18 +40,15 @@ public class TestIcebergTablePropertiesMetadata {
   }
 
   @Test
-  void testFormatVersionDefaultsToIcebergDefault() {
-    // Gravitino owns the default format version (2).
-    Assertions.assertEquals(
-        IcebergTablePropertiesMetadata.ICEBERG_DEFAULT_FORMAT_VERSION,
-        metadata.getDefaultValue(IcebergTablePropertiesMetadata.FORMAT_VERSION));
+  void testFormatVersionHasNoDefault() {
+    // An unset version is the catalog's to resolve, so Gravitino declares no default.
+    Assertions.assertNull(metadata.getDefaultValue(IcebergTablePropertiesMetadata.FORMAT_VERSION));
   }
 
   @Test
-  void testEmptyFormatVersionResolvesToDefault() {
-    // An unset (empty) value resolves to the Gravitino default via the decoder.
-    Assertions.assertEquals(
-        IcebergTablePropertiesMetadata.ICEBERG_DEFAULT_FORMAT_VERSION,
+  void testBlankFormatVersionDecodesToUnset() {
+    // A blank value is unset, not a Gravitino-chosen version.
+    Assertions.assertNull(
         metadata.getOrDefault(
             ImmutableMap.of(IcebergTablePropertiesMetadata.FORMAT_VERSION, ""),
             IcebergTablePropertiesMetadata.FORMAT_VERSION));
@@ -60,7 +57,7 @@ public class TestIcebergTablePropertiesMetadata {
   @ParameterizedTest
   @ValueSource(strings = {"", "1", "2", "3", "4"})
   void testFormatVersionAcceptsValidValues(String value) {
-    // Empty defers to the default; 1-4 are the versions the bundled Iceberg can write.
+    // Empty defers to the catalog; 1-4 are the versions the bundled Iceberg can write.
     Assertions.assertDoesNotThrow(() -> validateFormatVersion(value));
   }
 

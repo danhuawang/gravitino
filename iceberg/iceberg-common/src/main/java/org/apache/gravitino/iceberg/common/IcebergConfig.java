@@ -397,6 +397,8 @@ public class IcebergConfig extends Config implements OverwriteDefaultConfig {
           .checkValue(value -> value > 0, ConfigConstants.POSITIVE_NUMBER_ERROR_MSG)
           .createWithDefault(720);
 
+  private final boolean governedEncryptionConfigured;
+
   public String getJdbcDriver() {
     return get(JDBC_DRIVER);
   }
@@ -406,19 +408,51 @@ public class IcebergConfig extends Config implements OverwriteDefaultConfig {
   }
 
   public IcebergConfig(Map<String, String> properties) {
+    this(properties, false);
+  }
+
+  /**
+   * Creates an Iceberg configuration with the governance state of the Gravitino catalog it belongs
+   * to. The flag is read from the catalog's raw properties by the caller, because the property
+   * spelling it is read from does not survive the transform into this config.
+   *
+   * @param properties catalog configuration properties
+   * @param governedEncryptionConfigured whether this catalog is governed by Gravitino encryption
+   */
+  public IcebergConfig(Map<String, String> properties, boolean governedEncryptionConfigured) {
     super(false);
     loadFromMap(properties, k -> true);
+    this.governedEncryptionConfigured = governedEncryptionConfigured;
   }
 
   public IcebergConfig() {
     super(false);
+    this.governedEncryptionConfigured = false;
   }
 
+  /**
+   * Returns whether this config came from a Gravitino catalog with governed encryption enabled.
+   *
+   * @return {@code true} when governed encryption is configured
+   */
+  public boolean isGovernedEncryptionConfigured() {
+    return governedEncryptionConfigured;
+  }
+
+  /**
+   * Returns the properties used to initialize the Iceberg catalog backend.
+   *
+   * <p>{@code encryption-kms-source} is Gravitino's KMS binding and is kept out of the backend's
+   * properties. The operator's format-version properties pass through as written.
+   *
+   * @return the Iceberg catalog properties.
+   */
   public Map<String, String> getIcebergCatalogProperties() {
     Map<String, String> config = getAllConfig();
     Map<String, String> transformedConfig =
         IcebergPropertiesUtils.toIcebergCatalogProperties(config);
     transformedConfig.putAll(config);
+    transformedConfig.remove(IcebergConstants.ENCRYPTION_KMS_SOURCE);
     return transformedConfig;
   }
 

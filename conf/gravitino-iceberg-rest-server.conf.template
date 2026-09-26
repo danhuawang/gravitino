@@ -51,6 +51,11 @@ gravitino.iceberg-rest.catalog-backend = memory
 # The warehouse directory of Iceberg catalog
 gravitino.iceberg-rest.warehouse = /tmp
 
+# A catalog that binds an encryption key must also declare Iceberg format version 3, which
+# encryption requires. A keyed create below version 3 is refused, never raised.
+# gravitino.iceberg-rest.table-default.encryption.key-id = my-key
+# gravitino.iceberg-rest.table-default.format-version = 3
+
 # THE CONFIGURATION EXAMPLE FOR JDBC CATALOG BACKEND WITH S3 SUPPORT
 
 # gravitino.iceberg-rest.catalog-backend = jdbc

@@ -35,6 +35,8 @@ import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergEncryptionCatalogBinding;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergFormatVersionResolution;
 import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.credential.Credential;
 import org.apache.gravitino.credential.JdbcCredential;
@@ -258,6 +260,7 @@ public class TestDynamicIcebergConfigProvider {
     catalogProperties.put(
         IcebergConstants.REST_CATALOG_BACKEND_CLIENT_CONNECTION_TIMEOUT_MS, "1234");
     catalogProperties.put(IcebergConstants.REST_CATALOG_BACKEND_CLIENT_SOCKET_TIMEOUT_MS, "5678");
+    catalogProperties.put(IcebergConstants.ENCRYPTION_KMS_SOURCE, "openbao");
 
     IcebergConfig icebergConfig =
         DynamicIcebergConfigProvider.getIcebergConfigFromCatalogProperties(catalogProperties);
@@ -280,6 +283,93 @@ public class TestDynamicIcebergConfigProvider {
         icebergConfig
             .getIcebergCatalogProperties()
             .get(IcebergConstants.ICEBERG_REST_CLIENT_SOCKET_TIMEOUT_MS));
+    Assertions.assertTrue(icebergConfig.isGovernedEncryptionConfigured());
+    Assertions.assertFalse(
+        icebergConfig
+            .getIcebergCatalogProperties()
+            .containsKey(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+  }
+
+  /**
+   * The catalog's plain-spelled {@code table-default.} and {@code table-override.} properties reach
+   * the Iceberg catalog this provider builds, in both the plain and the {@code gravitino.bypass.}
+   * spelling a Gravitino catalog may carry them under.
+   *
+   * <p>This pins forwarding only. Governed encryption does not rely on Iceberg applying these
+   * prefixes: a stage-create does not apply them, so the IRC admits the stage as a create and puts
+   * the catalog's key into the staged metadata itself.
+   */
+  @Test
+  void testTableDefaultAndOverrideEncryptionKeysReachTheIcebergCatalog() {
+    String tableDefaultKeyId = "table-default." + IcebergConstants.ENCRYPTION_KEY_ID;
+    String tableOverrideKeyId = "table-override." + IcebergConstants.ENCRYPTION_KEY_ID;
+    Map<String, String> catalogProperties = new HashMap<>();
+    catalogProperties.put("catalog.backend", "jdbc");
+    catalogProperties.put(IcebergConstants.ENCRYPTION_KMS_SOURCE, "openbao");
+    catalogProperties.put(tableOverrideKeyId, "override-key");
+    catalogProperties.put("gravitino.bypass." + tableDefaultKeyId, "default-key");
+    catalogProperties.put(IcebergFormatVersionResolution.TABLE_OVERRIDE_FORMAT_VERSION, "4");
+    catalogProperties.put(
+        "gravitino.bypass." + IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION, "3");
+
+    Map<String, String> icebergCatalogProperties =
+        DynamicIcebergConfigProvider.getIcebergConfigFromCatalogProperties(catalogProperties)
+            .getIcebergCatalogProperties();
+
+    Assertions.assertEquals("override-key", icebergCatalogProperties.get(tableOverrideKeyId));
+    Assertions.assertEquals("default-key", icebergCatalogProperties.get(tableDefaultKeyId));
+    Assertions.assertEquals(
+        "4",
+        icebergCatalogProperties.get(IcebergFormatVersionResolution.TABLE_OVERRIDE_FORMAT_VERSION));
+    Assertions.assertEquals(
+        "3",
+        icebergCatalogProperties.get(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION));
+  }
+
+  /**
+   * R2 and R9: Gravitino declares no format version of its own, whichever spelling a catalog binds
+   * its encryption key under. The Iceberg catalog gets exactly what the operator wrote, a value of
+   * 2 included, and nothing at all where the operator wrote nothing.
+   */
+  @Test
+  void testACatalogConfigDeclaresNoFormatVersionOfItsOwnForAnyKeySpelling() {
+    for (String keyProperty :
+        new String[] {
+          null,
+          IcebergEncryptionCatalogBinding.TABLE_DEFAULT_KEY_ID,
+          IcebergEncryptionCatalogBinding.TABLE_OVERRIDE_KEY_ID,
+          "gravitino.bypass." + IcebergEncryptionCatalogBinding.TABLE_DEFAULT_KEY_ID,
+          "gravitino.bypass." + IcebergEncryptionCatalogBinding.TABLE_OVERRIDE_KEY_ID
+        }) {
+      Map<String, String> catalogProperties = keyedCatalogProperties();
+      if (keyProperty != null) {
+        catalogProperties.put(keyProperty, "catalog-key");
+      }
+
+      Map<String, String> undeclared =
+          DynamicIcebergConfigProvider.getIcebergConfigFromCatalogProperties(catalogProperties)
+              .getIcebergCatalogProperties();
+
+      Assertions.assertFalse(
+          undeclared.containsKey(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION),
+          String.valueOf(keyProperty));
+
+      catalogProperties.put(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION, "2");
+
+      Assertions.assertEquals(
+          "2",
+          DynamicIcebergConfigProvider.getIcebergConfigFromCatalogProperties(catalogProperties)
+              .getIcebergCatalogProperties()
+              .get(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION),
+          String.valueOf(keyProperty));
+    }
+  }
+
+  private static Map<String, String> keyedCatalogProperties() {
+    Map<String, String> catalogProperties = new HashMap<>();
+    catalogProperties.put("catalog.backend", "jdbc");
+    catalogProperties.put(IcebergConstants.ENCRYPTION_KMS_SOURCE, "openbao");
+    return catalogProperties;
   }
 
   @Test

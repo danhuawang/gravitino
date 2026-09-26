@@ -174,7 +174,8 @@ public class IcebergCatalogUtil {
     }
     JdbcCatalog jdbcCatalog =
         new JdbcCatalogWithMetadataLocationSupport(
-            icebergConfig.get(IcebergConfig.JDBC_INIT_TABLES));
+            icebergConfig.get(IcebergConfig.JDBC_INIT_TABLES),
+            icebergConfig.isGovernedEncryptionConfigured());
 
     // Default to V1 schema to support view operations; can be overridden by explicit config.
     properties.putIfAbsent(IcebergConstants.ICEBERG_JDBC_SCHEMA_VERSION, "V1");
@@ -222,7 +223,8 @@ public class IcebergCatalogUtil {
           icebergCatalogName);
       jdbcCatalog =
           new JdbcCatalogWithMetadataLocationSupport(
-              icebergConfig.get(IcebergConfig.JDBC_INIT_TABLES));
+              icebergConfig.get(IcebergConfig.JDBC_INIT_TABLES),
+              icebergConfig.isGovernedEncryptionConfigured());
       jdbcCatalog.setConf(hdfsConfiguration);
       jdbcCatalog.initialize(icebergCatalogName, properties);
     }
@@ -345,7 +347,7 @@ public class IcebergCatalogUtil {
     if (properties.equals(icebergConfig.getAllConfig())) {
       return icebergConfig;
     }
-    return new IcebergConfig(properties);
+    return new IcebergConfig(properties, icebergConfig.isGovernedEncryptionConfigured());
   }
 
   private static AccessToken loadAccessTokenFromFile(String serviceAccountFile) {

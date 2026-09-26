@@ -20,14 +20,20 @@
 package org.apache.gravitino.iceberg.common;
 
 import com.google.common.collect.ImmutableMap;
+import java.util.HashMap;
 import java.util.Map;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergEncryptionCatalogBinding;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergFormatVersionResolution;
 import org.apache.gravitino.iceberg.common.cache.LocalTableMetadataCache;
 import org.apache.gravitino.server.web.JettyServerConfig;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class TestIcebergConfig {
+
+  private static final String BYPASS_PREFIX = "gravitino.bypass.";
+
   @Test
   public void testLoadIcebergConfig() {
     Map<String, String> properties =
@@ -41,6 +47,61 @@ public class TestIcebergConfig {
 
     IcebergConfig icebergRESTConfig2 = new IcebergConfig(properties);
     Assertions.assertEquals(1000, icebergRESTConfig2.get(JettyServerConfig.WEBSERVER_HTTP_PORT));
+  }
+
+  @Test
+  public void testGovernedEncryptionStateIsPrivate() {
+    IcebergConfig config =
+        new IcebergConfig(ImmutableMap.of(IcebergConstants.ENCRYPTION_KMS_SOURCE, "openbao"), true);
+
+    Assertions.assertTrue(config.isGovernedEncryptionConfigured());
+    Assertions.assertFalse(
+        config.getIcebergCatalogProperties().containsKey(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+    Assertions.assertFalse(new IcebergConfig(ImmutableMap.of()).isGovernedEncryptionConfigured());
+  }
+
+  /**
+   * R2: a keyed catalog declares no format version of its own. Gravitino reads the version Iceberg
+   * would use and refuses an encrypted table below the version encryption needs; it never writes
+   * one. An operator's {@code table-default.format-version} is therefore forwarded verbatim, in
+   * either spelling, including a 2 that will be refused later.
+   */
+  @Test
+  public void testAKeyedConfigDeclaresNoFormatVersionOfItsOwnAndForwardsTheOperatorsVerbatim() {
+    Assertions.assertFalse(
+        keyedConfig(ImmutableMap.of())
+            .getIcebergCatalogProperties()
+            .containsKey(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION));
+    Assertions.assertFalse(
+        new IcebergConfig(ImmutableMap.of(), true)
+            .getIcebergCatalogProperties()
+            .containsKey(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION));
+
+    for (String declared : new String[] {"2", "3"}) {
+      for (String spelling :
+          new String[] {
+            IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION,
+            BYPASS_PREFIX + IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION
+          }) {
+        Map<String, String> forwarded =
+            keyedConfig(ImmutableMap.of(spelling, declared)).getIcebergCatalogProperties();
+        Assertions.assertEquals(declared, forwarded.get(spelling), spelling + "=" + declared);
+        Assertions.assertEquals(1, versionSpellings(forwarded), spelling + "=" + declared);
+      }
+    }
+  }
+
+  /** How many spellings of the table default format version the catalog properties carry. */
+  private static long versionSpellings(Map<String, String> catalogProperties) {
+    return catalogProperties.keySet().stream()
+        .filter(key -> key.endsWith(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION))
+        .count();
+  }
+
+  private static IcebergConfig keyedConfig(Map<String, String> additionalProperties) {
+    Map<String, String> properties = new HashMap<>(additionalProperties);
+    properties.put(IcebergEncryptionCatalogBinding.TABLE_DEFAULT_KEY_ID, "catalog-default-key");
+    return new IcebergConfig(properties, true);
   }
 
   @Test

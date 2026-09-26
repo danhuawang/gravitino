@@ -708,21 +708,22 @@ public class TestIcebergTable {
   }
 
   @Test
-  void testRebuildCreatePropertiesResolvesFormatVersion() {
-    // The format-version mapping Gravitino applies at create time:
-    //   absent -> 2, empty -> 2, "2" -> 2, "3" -> 3.
-    Assertions.assertEquals("2", rebuiltFormatVersion(null));
-    Assertions.assertEquals("2", rebuiltFormatVersion(""));
+  void testRebuildCreatePropertiesLeavesAnOmittedFormatVersionAbsent() {
+    // The format-version mapping Gravitino applies at create time: it stamps no version of its
+    // own, so the Iceberg catalog resolves an omitted one from its table-override./table-default.
+    // properties. A blank value is dropped rather than forwarded, because it fails to parse.
+    //   absent -> absent, empty -> absent, "2" -> "2", "3" -> "3".
+    Assertions.assertNull(rebuiltFormatVersion(null));
+    Assertions.assertNull(rebuiltFormatVersion(""));
     Assertions.assertEquals("2", rebuiltFormatVersion("2"));
     Assertions.assertEquals("3", rebuiltFormatVersion("3"));
   }
 
   /**
-   * The create request composes two steps: {@code rebuildCreateProperties} derives Iceberg
-   * defaults, then {@code toIcebergCreateProperties} drops Gravitino-only keys. Every other test
-   * here supplies an explicit format version, so none of them would notice if the derive step
-   * stopped reaching the request. This omits it, which is the only case that fails if the
-   * composition breaks.
+   * The create request carries the defaults {@code rebuildCreateProperties} derives, and no format
+   * version of Gravitino's own. Every other test here supplies an explicit format version, so none
+   * of them would notice either a derived default that stopped reaching the request or a stamped
+   * version that came back. This omits it, which is the only case that fails if they do.
    */
   @Test
   void testCreateRequestAppliesDerivedDefaultsWhenNotSupplied() {
@@ -748,17 +749,21 @@ public class TestIcebergTable {
 
     Map<String, String> requestProperties = table.toCreateTableRequest().properties();
 
-    Assertions.assertEquals(
-        String.valueOf(IcebergTablePropertiesMetadata.ICEBERG_DEFAULT_FORMAT_VERSION),
-        requestProperties.get(IcebergTablePropertiesMetadata.FORMAT_VERSION));
+    Assertions.assertFalse(
+        requestProperties.containsKey(IcebergTablePropertiesMetadata.FORMAT_VERSION));
     Assertions.assertEquals(
         IcebergTable.ICEBERG_PARQUET_FILE_FORMAT, requestProperties.get(DEFAULT_FILE_FORMAT));
-    Assertions.assertFalse(
-        requestProperties.containsKey(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER));
+    Assertions.assertEquals(
+        "openbao-production",
+        requestProperties.get(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER));
   }
 
+  /**
+   * The KMS provider reaches Iceberg metadata with the key ID, so a table read back through either
+   * API names the provider its key belongs to.
+   */
   @Test
-  void testCreateRequestRemovesKmsProviderButPreservesKeyIdAndFormatVersion() {
+  void testCreateRequestPreservesKmsProviderKeyIdAndFormatVersion() {
     Map<String, String> properties = new HashMap<>();
     properties.put(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER, "openbao-production");
     properties.put(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_ID, "customer-key-v1");
@@ -782,8 +787,9 @@ public class TestIcebergTable {
 
     CreateTableRequest request = table.toCreateTableRequest();
 
-    Assertions.assertFalse(
-        request.properties().containsKey(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER));
+    Assertions.assertEquals(
+        "openbao-production",
+        request.properties().get(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_PROVIDER));
     Assertions.assertEquals(
         "customer-key-v1",
         request.properties().get(IcebergTablePropertiesMetadata.ENCRYPTION_KEY_ID));

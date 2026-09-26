@@ -197,7 +197,11 @@ public class DynamicIcebergConfigProvider implements IcebergConfigProvider {
     properties.putAll(MapUtils.getPrefixMap(catalogProperties, CATALOG_BYPASS_PREFIX));
     properties.putAll(catalogProperties);
 
-    return new IcebergConfig(properties);
+    // The governance flag is read from the catalog's own properties, where every spelling of the
+    // encryption binding is still intact.
+    return new IcebergConfig(
+        properties,
+        StringUtils.isNotBlank(catalogProperties.get(IcebergConstants.ENCRYPTION_KMS_SOURCE)));
   }
 
   @Override

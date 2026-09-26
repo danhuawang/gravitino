@@ -57,6 +57,65 @@ If you are using the Gravitino with Trino, you can pass the Trino Iceberg connec
 
 If you are using the Gravitino with Spark, you can pass the Spark Iceberg connector configuration using prefix `spark.bypass.`. For example, using `spark.bypass.io-impl` to pass the `io-impl` to the Spark Iceberg connector in Spark runtime.
 
+#### Encryption and the Iceberg format version
+
+Encrypted Iceberg tables require format version `3`. Gravitino defines no format-version property of
+its own: the version comes from Iceberg's `format-version` on the request and the catalog's
+`table-override.format-version` and `table-default.format-version`. Gravitino never raises a version.
+It writes one only into a keyed request that names none, and then only the version the catalog
+resolves, because Iceberg does not apply the catalog's properties to a staged create. To run a catalog
+whose tables are encrypted, set two properties together:
+
+1. Bind the key: `table-default.encryption.key-id`, or `table-override.encryption.key-id`.
+2. Declare the version: `table-default.format-version=3`, or a `table-override.format-version` of `3`
+   or more, which is read first.
+
+Both are read under the plain Iceberg spelling and under the `gravitino.bypass.` prefix, the plain
+spelling winning. On a `lakehouse-iceberg` catalog, only the `gravitino.bypass.` spelling of
+`table-default.format-version` and `table-override.format-version` reaches the embedded Iceberg
+catalog: the catalog forwards the `gravitino.bypass.` properties and the properties Gravitino maps
+itself, and no other key. A plain-spelled value is still read when the create is admitted, but
+Iceberg never applies it, so set `gravitino.bypass.table-default.format-version=3` on this catalog.
+On the Iceberg REST service both spellings reach the Iceberg catalog: a static catalog sets
+`gravitino.iceberg-rest.table-default.format-version=3`, a dynamic one the catalog property.
+
+Binding a key or changing the catalog's default affects new tables only. An existing table keeps its
+format version, gains no key, and loads and commits as before. Engines that can read only version-2
+tables cannot read encrypted tables at all; keep the tables they must read on a catalog that binds
+no key.
+
+:::caution
+A catalog that bound an encryption key before this change relied on Gravitino declaring the format
+version for it. Such a catalog refuses every keyed create until you set
+`table-default.format-version=3` on it. No stored data changes, and the catalog itself stays usable
+and alterable.
+:::
+
+When a key applies to a new table, because the catalog binds one or the request supplies
+`encryption.key-id`, the effective format version is the one Iceberg will build the table at, which
+depends on how the table is created:
+
+- A create takes the catalog's `table-override.format-version`, else the request's `format-version`,
+  else the catalog's `table-default.format-version`, else Iceberg's default of `2`.
+- A staged create (`CREATE TABLE AS SELECT`) and the commit that publishes it take the request's
+  `format-version` first, then the override, then the default, then `2`, because Iceberg builds a
+  staged table from the request's own properties.
+- A registered metadata file keeps the version it was written at.
+
+An effective version below `3`, or a request `format-version` that is not a number, is refused with
+`UNSUPPORTED_FORMAT_VERSION` (HTTP 400, an `IllegalArgumentException` on the Iceberg REST service)
+before the policy is evaluated and before any KMS call, on both APIs, and for a `CREATE TABLE AS
+SELECT` at stage, before the query writes. A catalog value that is not a number is a configuration
+error: the create fails with an error naming the property (HTTP 400, no decision ID). Gravitino
+never raises the version: an explicit `format-version=2` with a key is refused, unless a
+`table-override.format-version` of `3` or later replaces it on a plain create, because Iceberg
+applies the override last; and a `table-override.format-version` below `3` refuses every keyed
+create and staged create even when the request asks for `3`; only an operator can lift it. On a
+catalog that binds a key the refusal applies whichever key ends up on the table, because Iceberg
+rebuilds the table from the catalog's own properties when it publishes it. On a catalog that binds
+no key, a table without a key is created plain at the effective version, and a table whose request
+supplies a key follows the rule above.
+
 #### Hive Backend
 
 For governed encryption, the Hive backend writes the trusted `metadata_hash` and
@@ -493,19 +552,19 @@ Pass [Iceberg table properties](https://iceberg.apache.org/docs/1.5.2/configurat
 **Immutable**: Fields that cannot be modified once set.
 :::
 
-| Configuration item        | Description                                                                           | Default value | Required | Reserved | Immutable |
-|---------------------------|---------------------------------------------------------------------------------------|---------------|----------|----------|-----------|
-| `location`                | Iceberg location for table storage.                                                   | (none)        | No       | No       | Yes       |
-| `provider`                | The storage provider for table storage.                                               | (none)        | No       | No       | Yes       |
-| `format`                  | The format of table storage.                                                          | (none)        | No       | No       | Yes       |
-| `format-version`          | The format version of table storage.                                                  | (none)        | No       | No       | Yes       |
-| `comment`                 | The table comment; use the `comment` field in table meta instead.                     | (none)        | No       | Yes      | No        |
-| `creator`                 | The table creator.                                                                    | (none)        | No       | Yes      | No        |
-| `current-snapshot-id`     | The snapshot represents the current state of the table.                               | (none)        | No       | Yes      | No        |
-| `cherry-pick-snapshot-id` | Selecting a specific snapshot in a merge operation.                                   | (none)        | No       | Yes      | No        |
-| `sort-order`              | Iceberg table sort order; use `SortOrder` in table meta instead.                      | (none)        | No       | Yes      | No        |
-| `identifier-fields`       | The identifier fields for defining the table.                                         | (none)        | No       | Yes      | No        |
-| `write.distribution-mode` | Defines distribution of write data; use `distribution` in table meta instead.         | (none)        | No       | Yes      | No        |
+| Configuration item        | Description                                                                                                                                                                                                                                                                         | Default value | Required | Reserved | Immutable |
+|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------|----------|-----------|
+| `location`                | Iceberg location for table storage.                                                                                                                                                                                                                                                 | (none)        | No       | No       | Yes       |
+| `provider`                | The storage provider for table storage.                                                                                                                                                                                                                                             | (none)        | No       | No       | Yes       |
+| `format`                  | The format of table storage.                                                                                                                                                                                                                                                        | (none)        | No       | No       | Yes       |
+| `format-version`          | The Iceberg table format version. Gravitino supports creating tables at versions `1`–`4` (the range the bundled Iceberg version can write). When unset, the version resolves to the catalog's `table-override.format-version`, else its `table-default.format-version`, else Iceberg's default of `2`. Version `3` is required for V3 types such as `variant` and for encryption; version `4` is not yet a finalized Iceberg spec. | (none)        | No       | No       | Yes       |
+| `comment`                 | The table comment; use the `comment` field in table meta instead.                                                                                                                                                                                                                   | (none)        | No       | Yes      | No        |
+| `creator`                 | The table creator.                                                                                                                                                                                                                                                                  | (none)        | No       | Yes      | No        |
+| `current-snapshot-id`     | The snapshot represents the current state of the table.                                                                                                                                                                                                                             | (none)        | No       | Yes      | No        |
+| `cherry-pick-snapshot-id` | Selecting a specific snapshot in a merge operation.                                                                                                                                                                                                                                 | (none)        | No       | Yes      | No        |
+| `sort-order`              | Iceberg table sort order; use `SortOrder` in table meta instead.                                                                                                                                                                                                                    | (none)        | No       | Yes      | No        |
+| `identifier-fields`       | The identifier fields for defining the table.                                                                                                                                                                                                                                       | (none)        | No       | Yes      | No        |
+| `write.distribution-mode` | Defines distribution of write data; use `distribution` in table meta instead.                                                                                                                                                                                                       | (none)        | No       | Yes      | No        |
 
 ### Table Indexes
 
