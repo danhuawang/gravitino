@@ -221,10 +221,11 @@ public final class EncryptionAdmissionService {
   }
 
   /**
-   * Refuses a request on a rule answered before the evaluator runs: the format version (R2, R3, R9)
-   * or the key a staged commit publishes. The identifier still comes from the evaluator's
-   * generator, so message, log and audit record name the same string wherever the refusal was
-   * raised; the record carries no policy fact because no policy took part.
+   * Refuses a request on a rule answered before the evaluator runs: the format version (R2, R3,
+   * R9), a registered or overwritten file's own version (R7), or the key a staged commit publishes.
+   * The identifier still comes from the evaluator's generator, so message, log and audit record
+   * name the same string wherever the refusal was raised; the record carries no policy fact because
+   * no policy took part.
    */
   private EncryptionAdmission deniedBeforeEvaluation(
       AdmissionRequest request,
@@ -470,10 +471,15 @@ public final class EncryptionAdmissionService {
      */
     STAGED_COMMIT,
 
-    /** Registration of an existing Iceberg metadata file. */
+    /**
+     * Registration of an existing Iceberg metadata file, admitted on the key and the format version
+     * the file names (R7): the file is published as it is, at its own version, so a keyed file
+     * below version 3 is refused rather than registered, and no catalog setting changes that either
+     * way.
+     */
     REGISTER,
 
-    /** Re-registration of a table over an existing metadata pointer. */
+    /** Re-registration of a table over an existing metadata pointer, admitted as a registration. */
     OVERWRITE
   }
 
@@ -513,8 +519,9 @@ public final class EncryptionAdmissionService {
     KMS_UNAVAILABLE,
 
     /**
-     * A key applies to a new table and the version it would land at, the catalog's own declaration
-     * or the catalog's override pin is below 3 (R3, R9, R10).
+     * A key applies to a new table and the version it would land at, the catalog's own declaration,
+     * the catalog's override pin or the registered or overwritten file's own version is below 3
+     * (R3, R7, R9, R10).
      */
     UNSUPPORTED_FORMAT_VERSION
   }

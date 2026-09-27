@@ -100,7 +100,9 @@ depends on how the table is created:
 - A staged create (`CREATE TABLE AS SELECT`) and the commit that publishes it take the request's
   `format-version` first, then the override, then the default, then `2`, because Iceberg builds a
   staged table from the request's own properties.
-- A registered metadata file keeps the version it was written at.
+- A registered metadata file keeps the version it was written at. A keyed file at version `1` or
+  `2` is refused, and since no catalog setting can re-version a written file, the remedy is to
+  register a file written at version `3` or later.
 
 An effective version below `3`, or a request `format-version` that is not a number, is refused with
 `UNSUPPORTED_FORMAT_VERSION` (HTTP 400, an `IllegalArgumentException` on the Iceberg REST service)

@@ -172,18 +172,24 @@ public class TestEncryptionAdmissionService {
     for (Operation operation :
         List.of(
             Operation.CREATE, Operation.STAGED_COMMIT, Operation.REGISTER, Operation.OVERWRITE)) {
-      EncryptionAdmission admission = admit(operation, keyProperties(KEY_ID));
+      // R7: a register or an overwrite takes the version of the metadata file it was handed. The
+      // catalog resolves nothing for it, but the file's version still travels with the request, so
+      // that a keyed file below version 3 is refused (R3) -- Iceberg registers such a file without
+      // complaint. It is forwarded unchanged, never rewritten.
+      boolean resolvesAVersion =
+          operation == Operation.CREATE || operation == Operation.STAGED_COMMIT;
+      Map<String, String> requested = new HashMap<>(keyProperties(KEY_ID));
+      if (!resolvesAVersion) {
+        requested.put(IcebergConstants.FORMAT_VERSION, "4");
+      }
+      EncryptionAdmission admission = admit(operation, requested);
       Assertions.assertTrue(admission.admitted(), operation.name());
       Assertions.assertEquals(
           SOURCE, admission.admittedProperties().get(IcebergConstants.ENCRYPTION_KEY_PROVIDER));
       Assertions.assertEquals(
           KEY_ID, admission.admittedProperties().get(IcebergConstants.ENCRYPTION_KEY_ID));
-      // R7: a register or an overwrite takes the version of the metadata file it was handed, so
-      // no version is resolved for it and none is written.
-      boolean resolvesAVersion =
-          operation == Operation.CREATE || operation == Operation.STAGED_COMMIT;
       Assertions.assertEquals(
-          resolvesAVersion ? "3" : null,
+          resolvesAVersion ? "3" : "4",
           admission.admittedProperties().get(IcebergConstants.FORMAT_VERSION),
           operation.name());
       Assertions.assertFalse(
@@ -299,7 +305,8 @@ public class TestEncryptionAdmissionService {
     EncryptionAdmission admission =
         admit(
             Operation.REGISTER,
-            Collections.singletonMap(IcebergConstants.ENCRYPTION_KEY_ID, KEY_ID));
+            Map.of(
+                IcebergConstants.ENCRYPTION_KEY_ID, KEY_ID, IcebergConstants.FORMAT_VERSION, "3"));
 
     Assertions.assertEquals(Outcome.ADMITTED_GOVERNED, admission.outcome());
     Assertions.assertEquals(
@@ -318,7 +325,8 @@ public class TestEncryptionAdmissionService {
     EncryptionAdmission encrypted =
         admit(
             Operation.OVERWRITE,
-            Collections.singletonMap(IcebergConstants.ENCRYPTION_KEY_ID, KEY_ID));
+            Map.of(
+                IcebergConstants.ENCRYPTION_KEY_ID, KEY_ID, IcebergConstants.FORMAT_VERSION, "3"));
 
     Assertions.assertEquals(Outcome.ADMITTED_UNGOVERNED, unencrypted.outcome());
     Assertions.assertFalse(unencrypted.evaluated());
@@ -372,6 +380,31 @@ public class TestEncryptionAdmissionService {
     assertUnsupportedFormatVersion(admission, IcebergFormatVersionResolution.Source.REQUEST);
     Assertions.assertEquals(
         KEY_ID, admission.auditExtras().get(IcebergEncryptionAuditInfos.KEY_ID));
+  }
+
+  /**
+   * R7: a register or an overwrite of a keyed file at version 2 is refused on the file's own
+   * version before the policy, the backend capability or the KMS is consulted, with key validation
+   * on and a policy that would admit the key. The record names no policy and no verdict because
+   * none took part.
+   */
+  @ParameterizedTest(name = "{0}")
+  @EnumSource(
+      value = Operation.class,
+      names = {"REGISTER", "OVERWRITE"})
+  void testAKeyedFileBelowVersionThreeIsRefusedBeforePolicyAndKms(Operation operation) {
+    associate(policy("deny", true, Enforcement.DENY_CREATE, KEY_ID));
+    Map<String, String> requested = new HashMap<>(keyProperties(KEY_ID));
+    requested.put(IcebergConstants.FORMAT_VERSION, "2");
+
+    EncryptionAdmission admission = admit(operation, requested);
+
+    assertUnsupportedFormatVersion(admission, IcebergFormatVersionResolution.Source.FILE);
+    Map<String, String> extras = admission.auditExtras();
+    Assertions.assertFalse(
+        extras.containsKey(IcebergEncryptionAuditInfos.POLICY_NAME), extras.toString());
+    Assertions.assertFalse(
+        extras.containsKey(IcebergEncryptionAuditInfos.COMPLIANCE), extras.toString());
   }
 
   /**

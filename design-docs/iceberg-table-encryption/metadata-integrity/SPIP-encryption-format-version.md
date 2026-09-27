@@ -602,6 +602,7 @@ KMS call.
 | 28  | plain version 1 or 2 on C or D                | load                               | loads as before; no integrity check                    |
 | 29  | plain version 1 or 2, Enforce or Audit policy | load or ordinary commit            | succeeds; policy applies to creates only               |
 | 31  | plain version 2                               | `upgrade-format-version` to 3      | succeeds; stays plain, no key added                    |
+| 32  | keyed version 1 or 2 file                     | register or overwrite              | refused, UFV `(from file)`; no KMS call, no write (R7) |
 
 Row 30 was withdrawn with the promotion design; the other rows keep their numbers.
 
@@ -747,8 +748,9 @@ Abbreviations: **TEAS** `core/…/TestEncryptionAdmissionService`, **TEPR** `cor
 | 28               | DIRECT                                    | AIT, the load after the binding, asserting no integrity row                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 29               | DIRECT                                    | TITED `testPlainTableUnderAnEnforceOrAuditPolicyLoadsAndCommitsWithoutPolicyKmsOrAudit`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 31               | DIRECT                                    | TITED `testReplaceThatUpgradesAPlainTableStaysPlain`. The vehicle is a replace commit carrying `UpgradeFormatVersion(3)`; an ordinary commit carrying the same update is not separately driven                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 32 and D row 6   | DIRECT                                    | TEPR `testEveryOperationOnANewTableIsCheckedForItsFormatVersion` (a keyed `REGISTER` or `OVERWRITE` at 2 is a `Deny` from `file`; with no file version it throws) and `testARegistrationIsHeldToTheFloorButNotToThePin` (under an override of 2 or 4, a keyed file at 3 is forwarded unwritten and one at 2 refused: R10 never applies); TEAS `testAKeyedFileBelowVersionThreeIsRefusedBeforePolicyAndKms` (before policy, capability and KMS; no policy name); TGRS `testAFileIsRefusedOnItsOwnFacts` (a parsed keyed version 2 file is refused and audited, with no backend write)                                                  |
 | A.4 error type   | DIRECT                                    | AIT `assertUnsupportedFormatVersion` (`assertThrowsExactly(IllegalArgumentException)` on both APIs); TITED asserts the audited `ERROR_TYPE`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| A.4 message      | DIRECT                                    | TEPR `testEachRefusalOffersOnlyTheRemedyItsSourceAllows` pins each source's remedy and `testAFileRefusalOffersOnlyARewrite` the `file` source's; TEAS `assertUnsupportedFormatVersion` pins the parenthesised source                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| A.4 message      | DIRECT                                    | TEPR `testEachRefusalOffersOnlyTheRemedyItsSourceAllows` pins each source's remedy and `testARegistrationIsHeldToTheFloorButNotToThePin` the `file` source's; TEAS `assertUnsupportedFormatVersion` pins the parenthesised source                                                                                                                                                                                                                                                                                                                                                                                                     |
 | A.4 audit record | DIRECT                                    | TEAS `testFailuresRaisedBeforeEvaluationCarryOneDecisionIdEverywhere` (reason UFV, KMS `NOT_ATTEMPTED` with validation on, provider and key, no policy name, one decision id)                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Known soft spots, recorded rather than fixed, because each would assert a secondary clause the row's
@@ -861,9 +863,10 @@ One call decides the version and the action together.
  * @param operation selects the precedence: the only place Iceberg's per-path behaviour is encoded
  * @param catalogProperties spellings already collapsed
  * @param requirement null when nothing constrains the version
- * @throws IllegalArgumentException when a catalog property is not a number: a deployment fault, not
- *     a per-request decision. A non-numeric request value is a {@code Deny} instead, so it carries a
- *     decision id and an audit record
+ * @throws IllegalArgumentException when a catalog property is not a number, or a keyed registration
+ *     carries no file version: a deployment or caller fault, not a per-request decision. A
+ *     non-numeric request value is a {@code Deny} instead, so it carries a decision id and an audit
+ *     record
  */
 static FormatVersionOutcome decideFormatVersion(
     Operation operation,
@@ -880,13 +883,16 @@ sealed interface FormatVersionOutcome {
   record Deny(@Nullable Integer effective, Source source, String message)
       implements FormatVersionOutcome {}
 
-  /** The request named a version. Forward it untouched; {@code resolved} is what will land. */
+  /**
+   * The request, or the file being registered, named a version. Forward it untouched; {@code
+   * resolved} is what will land.
+   */
   record Forward(int resolved, Source source) implements FormatVersionOutcome {}
 
   /** The request named none. Write this version into the forwarded properties (R6). */
   record ForwardWriting(int resolved, Source source) implements FormatVersionOutcome {}
 
-  /** No key applies, or the operation takes the version of an existing metadata file. */
+  /** No key applies, so no floor does either. */
   record NotGoverned() implements FormatVersionOutcome {}
 }
 

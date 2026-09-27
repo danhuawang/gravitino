@@ -139,12 +139,18 @@ final class EncryptionPropertyRules {
   }
 
   /**
-   * Says whether an operation is held to the format version rule for encrypted tables (R7): the
-   * operations that name the version of a table that does not exist yet. A registration or an
-   * overwrite publishes a file at the version it was written at, which no catalog setting shaped,
-   * so R10 does not reach it and this admission checks no floor on the file either.
+   * Says whether the version a request lands at is still open, and so resolved through the catalog
+   * (R2): true for a create, the stage of a staged create and the commit that publishes it. A
+   * staged commit is resolved on the {@link IcebergConstants#FORMAT_VERSION} its caller supplies,
+   * the highest {@code upgrade-format-version} it carries. A registration or an overwrite is not:
+   * its file's version is a fact ({@link Source#FILE}), held to the floor (R3, R7) but beyond the
+   * catalog's declaration (R9) and pin (R10).
+   *
+   * @param operation the mutation being admitted
+   * @return {@code true} only for {@link Operation#CREATE}, {@link Operation#STAGE} and {@link
+   *     Operation#STAGED_COMMIT}
    */
-  static boolean checksRequestedFormatVersion(Operation operation) {
+  static boolean resolvesVersionThroughCatalog(Operation operation) {
     return operation == Operation.CREATE
         || operation == Operation.STAGE
         || operation == Operation.STAGED_COMMIT;
@@ -152,7 +158,7 @@ final class EncryptionPropertyRules {
 
   /**
    * Decides the format version a new table would land at, whether that satisfies what encryption
-   * requires, and what the admission forwards (R2, R3, R4, R6, R9, R10); see {@link
+   * requires, and what the admission forwards (R2, R3, R4, R6, R7, R9, R10); see {@link
    * #decideFormatVersion}. Encryption contributes a floor, and only when a key applies (R1): a
    * plain table keeps whatever version its catalog gives it, on every operation.
    *
@@ -167,35 +173,56 @@ final class EncryptionPropertyRules {
 
   /**
    * Resolves a format version against a requirement, in the precedence the operation's path
-   * actually uses (R2); {@link IcebergFormatVersionResolution.Operation} documents that precedence
-   * per path.
+   * actually uses (R2), and holds every path to the requirement (R7); {@link
+   * IcebergFormatVersionResolution.Operation} documents that precedence per path.
    *
    * <p>This is the admission's only resolution of the version: the version that is checked and the
    * version that is forwarded come from the same answer, so the two can never disagree.
    *
-   * <p><b>Why the pin is checked first (R10).</b> A {@code table-override.format-version} below the
-   * floor cannot be rescued by any value a client sends, because on a create Iceberg applies it
-   * last and on the staged paths the same catalog would refuse the identical table on create. So it
-   * is answered before the resolution, and its refusal names the override and the only party who
-   * can change it.
+   * <p><b>Why a registration is answered before the pin (R7).</b> A registration or an overwrite
+   * publishes a file that already exists at its own version, which neither the override nor the
+   * catalog's declaration shaped, so R10 and R9 do not apply; the file's version is checked against
+   * the floor alone. That check is the path's whole purpose: Iceberg checks key-version
+   * compatibility only when it builds new metadata, so a parsed file pairing a key with version 2
+   * registers untouched unless admission refuses it.
+   *
+   * <p><b>Why the pin is checked first on the built paths (R10).</b> A {@code
+   * table-override.format-version} below the floor cannot be rescued by any value a client sends,
+   * because on a create Iceberg applies it last and on the staged paths the same catalog would
+   * refuse the identical table on create. So it is answered before the resolution, and its refusal
+   * names the override and the only party who can change it.
    *
    * @param operation the mutation being admitted
    * @param requestProperties the request's properties; only {@link IcebergConstants#FORMAT_VERSION}
-   *     is read, which the merge never adds, so the effective properties carry the request's value
+   *     is read, which the merge never adds, so the effective properties carry the request's value,
+   *     which on a registration is the version read out of the file
    * @param catalogProperties the owning catalog's properties, spellings collapsed on read
    * @param requirement the floor a feature imposes, or {@code null} when nothing constrains the
    *     version and therefore no refusal is possible
    * @return what the version resolved to and what to do with it
-   * @throws IllegalArgumentException if a format version the catalog declares is malformed: a
-   *     deployment fault, where a malformed request value is a {@link FormatVersionOutcome.Deny}
+   * @throws IllegalArgumentException if a format version the catalog declares is malformed, or a
+   *     registration carries no numeric file version: a fault outside this request, where a
+   *     malformed request value is a {@link FormatVersionOutcome.Deny}
    */
   static FormatVersionOutcome decideFormatVersion(
       Operation operation,
       Map<String, String> requestProperties,
       Map<String, String> catalogProperties,
       @Nullable FormatVersionRequirement requirement) {
-    if (requirement == null || !checksRequestedFormatVersion(operation)) {
+    if (requirement == null) {
       return FormatVersionOutcome.NOT_GOVERNED;
+    }
+
+    String requested =
+        StringUtils.trimToNull(requestProperties.get(IcebergConstants.FORMAT_VERSION));
+
+    if (!resolvesVersionThroughCatalog(operation)) {
+      EffectiveFormatVersion file = resolve(operation, requested, catalogProperties);
+      if (file.version() < requirement.minimum()) {
+        return new FormatVersionOutcome.Deny(
+            file.version(), file.source(), belowFloorMessage(file, requirement));
+      }
+      return new FormatVersionOutcome.Forward(file.version(), file.source());
     }
 
     Optional<Integer> override =
@@ -205,8 +232,6 @@ final class EncryptionPropertyRules {
           override.get(), Source.TABLE_OVERRIDE, pinnedCatalogMessage(override.get(), requirement));
     }
 
-    String requested =
-        StringUtils.trimToNull(requestProperties.get(IcebergConstants.FORMAT_VERSION));
     if (requested != null && parseFormatVersion(requested) == null) {
       return new FormatVersionOutcome.Deny(
           null, Source.REQUEST, malformedRequestMessage(requested, requirement));
@@ -265,6 +290,20 @@ final class EncryptionPropertyRules {
   /** The refusal for a version that resolved below the floor, with the remedy its source allows. */
   private static String belowFloorMessage(
       EffectiveFormatVersion resolved, FormatVersionRequirement requirement) {
+    if (resolved.source() == Source.FILE) {
+      // No request property or catalog setting re-versions a written file, so the only remedy is a
+      // file written at the floor or above.
+      return String.format(
+          "%s is active for this table and requires format-version %d or later, but the metadata "
+              + "file being registered is at format-version %d (from %s). A file at that version "
+              + "cannot carry an encryption key; register a file written at format-version %d or "
+              + "later",
+          requirement.requiredBy(),
+          requirement.minimum(),
+          resolved.version(),
+          resolved.source().token(),
+          requirement.minimum());
+    }
     if (resolved.source() == Source.REQUEST) {
       // Only the client can fix this one: on every path the request's own value outranks the
       // catalog's default, so a raised default would still lose.
@@ -350,13 +389,15 @@ final class EncryptionPropertyRules {
     record Deny(@Nullable Integer effective, Source source, String message)
         implements FormatVersionOutcome {}
 
-    /** The request named a version: forward it untouched. */
+    /**
+     * The request, or the metadata file being registered, named a version: forward it untouched.
+     */
     record Forward(int resolved, Source source) implements FormatVersionOutcome {}
 
     /** The request named none: write {@code resolved} into the forwarded properties (R6). */
     record ForwardWriting(int resolved, Source source) implements FormatVersionOutcome {}
 
-    /** No key applies, or the operation takes the version of an existing metadata file. */
+    /** No key applies, so no floor does either. */
     record NotGoverned() implements FormatVersionOutcome {}
   }
 
@@ -379,7 +420,8 @@ final class EncryptionPropertyRules {
    * assert-create} commit, so without the write a keyed table could still be published below
    * version 3. The write belongs to the key: a request without an admitted key keeps the version it
    * asked for, or none, because nothing about a plain table requires version 3 and the version is
-   * permanent once written (row 15, R7).
+   * permanent once written (row 15). A registration or an overwrite is never written: its file's
+   * version is only checked (R7).
    *
    * @param effective the effective properties that were admitted
    * @param admittedKey the key admission let through: its reference, catalog KMS source and policy

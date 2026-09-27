@@ -27,6 +27,7 @@ import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergFormatVersionResolution;
 import org.apache.gravitino.encryption.AtomicIntegrityCapability;
 import org.apache.gravitino.encryption.EncryptionAdmissionService;
 import org.apache.gravitino.encryption.EncryptionAdmissionService.AdmissionRequest;
@@ -142,7 +143,8 @@ public class TestGovernedRegistrationService {
     Assertions.assertEquals(
         NameIdentifier.of(METALAKE, CATALOG, "schema", "table"), admitted.table());
     Assertions.assertEquals(
-        Map.of(IcebergConstants.ENCRYPTION_KEY_ID, KEY_ID), admitted.requestedProperties());
+        Map.of(IcebergConstants.ENCRYPTION_KEY_ID, KEY_ID, IcebergConstants.FORMAT_VERSION, "3"),
+        admitted.requestedProperties());
     verify(client, times(1)).getKeyProperties(new KmsReference(SOURCE, KEY_ID));
     Assertions.assertEquals(
         Reason.NO_POLICY.code(),
@@ -275,7 +277,7 @@ public class TestGovernedRegistrationService {
         () -> service(admission).register(context, NAMESPACE, request(false)));
 
     Assertions.assertEquals(
-        Map.of(IcebergConstants.ENCRYPTION_KEY_ID, " "),
+        Map.of(IcebergConstants.ENCRYPTION_KEY_ID, " ", IcebergConstants.FORMAT_VERSION, "3"),
         admittedRequest(admission).requestedProperties());
     Map<String, String> extras = RequestContext.takeAuditExtras();
     Assertions.assertEquals(
@@ -336,47 +338,58 @@ public class TestGovernedRegistrationService {
 
     service(admission).register(context, NAMESPACE, request(false));
 
-    Assertions.assertTrue(admittedRequest(admission).requestedProperties().isEmpty());
+    Assertions.assertEquals(
+        Map.of(IcebergConstants.FORMAT_VERSION, "3"),
+        admittedRequest(admission).requestedProperties());
     Assertions.assertEquals(Outcome.ADMITTED_UNGOVERNED, results.get(0).outcome());
     verify(catalogWrapper).registerTable(eq(TABLE), same(metadata), eq(false), eq(true));
     verifyNoInteractions(kmsRegistry);
   }
 
   /**
-   * A file that names a KMS provider other than the catalog's is refused as an invalid key
-   * reference before any KMS call or backend write, even though the key itself would validate.
+   * A registration is refused on the file's own facts (R7): a KMS provider other than the
+   * catalog's, or a key at a format version below 3, is refused before any KMS call or backend
+   * write even though the key itself would validate. The version has to travel from the file for
+   * the second refusal to happen: Iceberg parses and registers a keyed version 2 file without
+   * complaint.
    */
-  @ParameterizedTest
-  @ValueSource(booleans = {false, true})
-  void testFileNamingAnotherKmsProviderIsInvalidReferenceBeforeTheBackend(boolean overwrite) {
+  @ParameterizedTest(name = "{0} overwrite={6}")
+  @MethodSource("filesRefusedOnTheirOwnFacts")
+  void testAFileIsRefusedOnItsOwnFacts(
+      String row,
+      @Nullable String provider,
+      int formatVersion,
+      Reason refusal,
+      String messageFragment,
+      Class<? extends RuntimeException> expected,
+      boolean overwrite) {
     KmsClient client = validKey();
-    metadataFile("foreign-provider", KEY_ID, "aws");
+    metadataFile("own-facts", KEY_ID, provider, formatVersion);
     EncryptionAdmissionService admission = spy(admissionService());
 
-    BadRequestException refusal =
+    RuntimeException thrown =
         Assertions.assertThrows(
-            BadRequestException.class,
-            () -> service(admission).register(context, NAMESPACE, request(overwrite)));
+            expected,
+            () -> service(admission).register(context, NAMESPACE, request(overwrite)),
+            row);
 
-    Assertions.assertTrue(
-        refusal.getMessage().contains("reason=" + Reason.KEY_SOURCE_MISMATCH.code()),
-        refusal.getMessage());
+    Assertions.assertTrue(thrown.getMessage().contains(messageFragment), thrown.getMessage());
     AdmissionRequest admitted = admittedRequest(admission);
-    Assertions.assertEquals(
-        Map.of(
-            IcebergConstants.ENCRYPTION_KEY_ID,
-            KEY_ID,
-            IcebergConstants.ENCRYPTION_KEY_PROVIDER,
-            "aws"),
-        admitted.requestedProperties());
+    Map<String, String> fileProperties = new HashMap<>();
+    fileProperties.put(IcebergConstants.FORMAT_VERSION, String.valueOf(formatVersion));
+    fileProperties.put(IcebergConstants.ENCRYPTION_KEY_ID, KEY_ID);
+    if (provider != null) {
+      fileProperties.put(IcebergConstants.ENCRYPTION_KEY_PROVIDER, provider);
+    }
+    Assertions.assertEquals(fileProperties, admitted.requestedProperties(), row);
     Assertions.assertEquals(
         overwrite ? Operation.OVERWRITE : Operation.REGISTER, admitted.operation());
     Map<String, String> extras = RequestContext.takeAuditExtras();
+    Assertions.assertEquals(refusal.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(expected.getName(), extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    // A file naming no provider is completed from the catalog's KMS source before the refusal.
     Assertions.assertEquals(
-        Reason.KEY_SOURCE_MISMATCH.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
-    Assertions.assertEquals(
-        BadRequestException.class.getName(), extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
-    Assertions.assertEquals("aws", extras.get(IcebergEncryptionAuditInfos.PROVIDER));
+        provider == null ? SOURCE : provider, extras.get(IcebergEncryptionAuditInfos.PROVIDER));
     verify(kmsRegistry, never()).getClient(any());
     verify(client, never()).getKeyProperties(any());
     verify(catalogWrapper, never())
@@ -404,7 +417,9 @@ public class TestGovernedRegistrationService {
             IcebergConstants.ENCRYPTION_KEY_ID,
             KEY_ID,
             IcebergConstants.ENCRYPTION_KEY_PROVIDER,
-            SOURCE),
+            SOURCE,
+            IcebergConstants.FORMAT_VERSION,
+            "3"),
         admittedRequest(admission).requestedProperties());
     verify(client, times(1)).getKeyProperties(new KmsReference(SOURCE, KEY_ID));
     verify(catalogWrapper).registerTable(eq(TABLE), same(metadata), eq(overwrite), eq(true));
@@ -550,6 +565,30 @@ public class TestGovernedRegistrationService {
         () -> new GovernedRegistrationService(admission, catalogWrapperManager, METALAKE, null));
   }
 
+  private static Stream<Arguments> filesRefusedOnTheirOwnFacts() {
+    String fromFile = "(from " + IcebergFormatVersionResolution.Source.FILE.token() + ")";
+    return Stream.of(false, true)
+        .flatMap(
+            overwrite ->
+                Stream.of(
+                    Arguments.of(
+                        "foreign provider",
+                        "aws",
+                        3,
+                        Reason.KEY_SOURCE_MISMATCH,
+                        "reason=" + Reason.KEY_SOURCE_MISMATCH.code(),
+                        BadRequestException.class,
+                        overwrite),
+                    Arguments.of(
+                        "keyed version 2 file",
+                        null,
+                        2,
+                        Reason.UNSUPPORTED_FORMAT_VERSION,
+                        fromFile,
+                        IllegalArgumentException.class,
+                        overwrite)));
+  }
+
   private static Stream<Arguments> reportViolations() {
     return Stream.of(false, true)
         .flatMap(
@@ -635,11 +674,14 @@ public class TestGovernedRegistrationService {
   /** Like {@link #metadataFile(String, String)}, with the file naming its own KMS provider. */
   private TableMetadata metadataFile(
       String name, @Nullable String keyId, @Nullable String provider) {
+    return metadataFile(name, keyId, provider, 3);
+  }
+
+  /** Like {@link #metadataFile(String, String, String)}, at the given format version. */
+  private TableMetadata metadataFile(
+      String name, @Nullable String keyId, @Nullable String provider, int formatVersion) {
     Map<String, String> properties = new HashMap<>();
-    properties.put(TableProperties.FORMAT_VERSION, "3");
-    if (keyId != null) {
-      properties.put(TableProperties.ENCRYPTION_TABLE_KEY, keyId);
-    }
+    properties.put(TableProperties.FORMAT_VERSION, String.valueOf(formatVersion));
     if (provider != null) {
       properties.put(IcebergConstants.ENCRYPTION_KEY_PROVIDER, provider);
     }
@@ -649,6 +691,15 @@ public class TestGovernedRegistrationService {
             PartitionSpec.unpartitioned(),
             "memory://governed-registration/schema/table",
             properties);
+    if (keyId != null) {
+      // Set after the build: newTableMetadata is Iceberg's one key-version compatibility check,
+      // and a file pairing a key with version 2 is what an engine can write and a registration
+      // can name.
+      metadata =
+          TableMetadata.buildFrom(metadata)
+              .setProperties(Map.of(TableProperties.ENCRYPTION_TABLE_KEY, keyId))
+              .build();
+    }
     String location = LOCATION_PREFIX + name + ".metadata.json";
     InMemoryFileIO io = new InMemoryFileIO();
     io.addFile(location, TableMetadataParser.toJson(metadata).getBytes(StandardCharsets.UTF_8));

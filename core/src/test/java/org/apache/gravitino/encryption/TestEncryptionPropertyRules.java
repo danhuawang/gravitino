@@ -290,31 +290,43 @@ public class TestEncryptionPropertyRules {
   }
 
   /**
-   * A create, a stage and the commit that publishes a staged create are held to the rule; the
-   * commit's version reaches the rule as {@code format-version}, folded from its {@code
-   * upgrade-format-version} update. A registration or overwrite takes the version of its metadata
-   * file.
+   * R7: every operation that names a table which does not exist yet is held to the rule, a
+   * registration and an overwrite on the version of their metadata file included, because Iceberg
+   * registers a file that pairs a key with version 2 without complaint. The staged commit's version
+   * reaches the rule as {@code format-version}, folded from its {@code upgrade-format-version}
+   * update. Only a create, a stage and a staged commit resolve their version through the catalog
+   * and get it written back (R2, R6); a registration is held to its file's own version, and its
+   * refusal names the file rather than a request property. A keyed registration that reaches the
+   * rule with no file version is a caller fault, not a decision: every written metadata file
+   * carries one, so the resolver throws rather than refusing, and the fault is never audited as the
+   * registrant's.
    */
   @Test
-  void testACreateAStageOrAStagedCommitIsCheckedForItsRequestedFormatVersion() {
+  void testEveryOperationOnANewTableIsCheckedForItsFormatVersion() {
     Map<String, String> effective =
         Map.of(IcebergConstants.ENCRYPTION_KEY_ID, KEY_ID, IcebergConstants.FORMAT_VERSION, "2");
-    for (Operation operation :
-        new Operation[] {Operation.CREATE, Operation.STAGE, Operation.STAGED_COMMIT}) {
-      Assertions.assertTrue(
-          EncryptionPropertyRules.checksRequestedFormatVersion(operation), "" + operation);
-      Assertions.assertTrue(
-          refusal(EncryptionPropertyRules.formatVersionOutcome(operation, effective, Map.of()))
-              .isPresent(),
-          "" + operation);
-    }
-    for (Operation operation : new Operation[] {Operation.REGISTER, Operation.OVERWRITE}) {
-      Assertions.assertFalse(
-          EncryptionPropertyRules.checksRequestedFormatVersion(operation), "" + operation);
+    for (Operation operation : Operation.values()) {
+      boolean resolves = EncryptionPropertyRules.resolvesVersionThroughCatalog(operation);
       Assertions.assertEquals(
-          Optional.empty(),
-          refusal(EncryptionPropertyRules.formatVersionOutcome(operation, effective, Map.of())),
+          operation != Operation.REGISTER && operation != Operation.OVERWRITE,
+          resolves,
           "" + operation);
+      Source source = resolves ? Source.REQUEST : Source.FILE;
+      FormatVersionOutcome.Deny deny =
+          Assertions.assertInstanceOf(
+              FormatVersionOutcome.Deny.class,
+              EncryptionPropertyRules.formatVersionOutcome(operation, effective, Map.of()),
+              "" + operation);
+      Assertions.assertEquals(Integer.valueOf(2), deny.effective(), "" + operation);
+      Assertions.assertEquals(source, deny.source(), "" + operation);
+      Assertions.assertTrue(
+          deny.message().contains("(from " + source.token() + ")"), deny.message());
+      if (!resolves) {
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> outcome(operation, KEY_ID, null, Map.of()),
+            "" + operation);
+      }
     }
   }
 
@@ -356,20 +368,40 @@ public class TestEncryptionPropertyRules {
   }
 
   /**
-   * R10 stops at the operations Iceberg builds. A registration and an overwrite publish a metadata
-   * file that already exists at its own version; Iceberg does not consult the catalog when it
-   * registers one, so the override never had any bearing on how that file was written and refusing
-   * on its strength would deny a well-formed version 3 table. The carve-out is deliberate.
+   * R10 stops at the operations Iceberg builds; R7 does not. A registration and an overwrite
+   * publish a metadata file that already exists at its own version; Iceberg does not consult the
+   * catalog when it registers one, so the override never had any bearing on how that file was
+   * written and refusing on its strength would deny a well-formed version 3 table. The floor still
+   * applies, on the file's own version: a keyed version 2 file is refused as a file whatever the
+   * override says, an override of 4 included, and a version 3 file is forwarded as it is, never
+   * written over. The refusal offers neither remedy a resolved version would, because nothing the
+   * registrant sends and nothing an operator sets re-versions a written file: it names the one
+   * thing that works, a file written at version 3 or later.
    */
   @Test
-  void testAPinnedCatalogDoesNotRefuseARegisterOrAnOverwrite() {
-    Map<String, String> pinned = catalogOverride("2");
+  void testARegistrationIsHeldToTheFloorButNotToThePin() {
     for (Operation operation : new Operation[] {Operation.REGISTER, Operation.OVERWRITE}) {
-      for (String requested : new String[] {null, "2", "3"}) {
-        Assertions.assertSame(
-            FormatVersionOutcome.NOT_GOVERNED,
-            outcome(operation, KEY_ID, requested, pinned),
-            operation + " requesting " + requested);
+      for (Map<String, String> catalog : List.of(catalogOverride("2"), catalogOverride("4"))) {
+        String cell = operation + " under " + catalog;
+        FormatVersionOutcome.Forward atThree =
+            Assertions.assertInstanceOf(
+                FormatVersionOutcome.Forward.class, outcome(operation, KEY_ID, "3", catalog), cell);
+        Assertions.assertEquals(3, atThree.resolved(), cell);
+        Assertions.assertEquals(Source.FILE, atThree.source(), cell);
+
+        String message =
+            Assertions.assertInstanceOf(
+                    FormatVersionOutcome.Deny.class, outcome(operation, KEY_ID, "2", catalog), cell)
+                .message();
+        Assertions.assertTrue(
+            message.contains("register a file written at format-version 3"), message);
+        Assertions.assertFalse(
+            message.contains(IcebergFormatVersionResolution.TABLE_OVERRIDE_FORMAT_VERSION),
+            message);
+        Assertions.assertFalse(message.contains("Send format-version=3"), message);
+        Assertions.assertFalse(
+            message.contains(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION + "=3"),
+            message);
       }
     }
   }

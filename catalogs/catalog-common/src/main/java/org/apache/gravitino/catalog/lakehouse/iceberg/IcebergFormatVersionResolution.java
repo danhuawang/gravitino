@@ -110,7 +110,11 @@ public final class IcebergFormatVersionResolution {
     TABLE_DEFAULT(TABLE_DEFAULT_FORMAT_VERSION),
     /** Iceberg's built-in default, because nothing named a version. */
     ICEBERG_DEFAULT("iceberg-default"),
-    /** The registered metadata file's own version, which no catalog setting can change. */
+    /**
+     * The metadata file being registered. Its version is a fact of the file on disk, not a
+     * resolution: no catalog setting takes part, and nothing can change it short of rewriting the
+     * file.
+     */
     FILE("file");
 
     private final String token;

@@ -30,9 +30,12 @@ import org.apache.iceberg.rest.responses.LoadTableResponse;
 /**
  * The one governed registration path of the Iceberg REST catalog: reads the referenced metadata
  * file once, admits exactly that object through {@link EncryptionAdmissionService}, and publishes
- * that same object through the catalog wrapper. A refusal by the backend after admission (for
- * example an overwrite of a table that is not enrolled) is rethrown unchanged with the admission's
- * failure audit facts.
+ * that same object through the catalog wrapper. It is admitted as {@link Operation#REGISTER}, or
+ * {@link Operation#OVERWRITE}, with the file's own key, provider and format version, never a
+ * catalog key; the parsed object is published untouched, so the version travels only so a keyed
+ * file below version 3 is refused (R7). A refusal by the backend after admission (for example an
+ * overwrite of a table that is not enrolled) is rethrown unchanged with the admission's failure
+ * audit facts.
  */
 public final class GovernedRegistrationService {
 
@@ -118,12 +121,14 @@ public final class GovernedRegistrationService {
   }
 
   /**
-   * The file's own key binding and any leftover protocol property, never a catalog default:
-   * registration keeps the file's key. Values are read raw, so admission (not metadata parsing)
-   * refuses a blank key or a leftover property, as it would on a create, and audits the refusal.
+   * The file's own key binding, any leftover protocol property and its format version, never a
+   * catalog default: registration keeps the file's key. Values are read raw, so admission (not
+   * metadata parsing) refuses a blank key or a leftover property as it would on a create, and a
+   * keyed file below version 3, which Iceberg parses and registers without complaint.
    */
   private static Map<String, String> requestedProperties(TableMetadata metadata) {
     Map<String, String> properties = new LinkedHashMap<>();
+    properties.put(IcebergConstants.FORMAT_VERSION, String.valueOf(metadata.formatVersion()));
     String keyId = metadata.properties().get(TableProperties.ENCRYPTION_TABLE_KEY);
     if (keyId != null) {
       properties.put(IcebergConstants.ENCRYPTION_KEY_ID, keyId);
