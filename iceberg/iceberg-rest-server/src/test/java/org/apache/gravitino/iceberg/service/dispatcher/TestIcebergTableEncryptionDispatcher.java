@@ -1565,7 +1565,8 @@ public class TestIcebergTableEncryptionDispatcher {
                 }),
             new IcebergEncryptionPolicyEvaluator(
                 IcebergEncryptionKmsKeyValidators.fromRegistry(registry)),
-            table -> backendCapability);
+            table -> backendCapability,
+            true);
     return new IcebergTableEncryptionDispatcher(delegate, METALAKE, admissionService, FEDERATED);
   }
 

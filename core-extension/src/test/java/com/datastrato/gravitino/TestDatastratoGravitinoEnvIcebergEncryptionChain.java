@@ -48,7 +48,7 @@ public class TestDatastratoGravitinoEnvIcebergEncryptionChain {
 
     DatastratoTableHookDispatcher externalHook =
         env.createExternalTableHookDispatcher(
-            externalOperation, catalogManager, policyResolver, keyValidator);
+            externalOperation, catalogManager, policyResolver, keyValidator, true);
 
     Supplier<?> ownerSupplier =
         (Supplier<?>) FieldUtils.readField(externalHook, "ownerDispatcher", true);
@@ -83,7 +83,8 @@ public class TestDatastratoGravitinoEnvIcebergEncryptionChain {
               mock(CatalogManager.class),
               new IcebergEncryptionPolicyResolver(
                   mock(PolicyDispatcher.class), new SinglePolicyChecker()),
-              key -> IcebergEncryptionDecision.KmsValidationStatus.VALID);
+              key -> IcebergEncryptionDecision.KmsValidationStatus.VALID,
+              true);
       Supplier<?> supplier = (Supplier<?>) FieldUtils.readField(hook, "ownerDispatcher", true);
       assertNull(supplier.get());
 

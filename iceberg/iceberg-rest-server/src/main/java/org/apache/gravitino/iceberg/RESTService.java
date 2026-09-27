@@ -39,6 +39,7 @@ import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
 import org.apache.gravitino.encryption.SinglePolicyChecker;
+import org.apache.gravitino.encryption.kms.KmsClientRegistry;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.service.FederatedCatalogWrapper;
 import org.apache.gravitino.iceberg.service.GovernedRegistrationService;
@@ -359,6 +360,7 @@ public class RESTService implements GravitinoAuxiliaryService {
   private static EncryptionAdmissionService encryptionAdmissionService(
       IcebergCatalogWrapperManager catalogWrapperManager) {
     CatalogManager catalogManager = GravitinoEnv.getInstance().catalogManager();
+    KmsClientRegistry kmsRegistry = GravitinoEnv.getInstance().kmsClientRegistry();
     return new EncryptionAdmissionService(
         table -> catalogManager.loadCatalog(catalogIdentifier(table)).properties(),
         Suppliers.memoize(
@@ -366,13 +368,13 @@ public class RESTService implements GravitinoAuxiliaryService {
                 new IcebergEncryptionPolicyResolver(
                     GravitinoEnv.getInstance().policyDispatcher(), new SinglePolicyChecker())),
         new IcebergEncryptionPolicyEvaluator(
-            IcebergEncryptionKmsKeyValidators.fromRegistry(
-                GravitinoEnv.getInstance().kmsClientRegistry())),
+            IcebergEncryptionKmsKeyValidators.fromRegistry(kmsRegistry)),
         table ->
             AtomicIntegrityCapability.of(
                 catalogWrapperManager
                     .getCatalogWrapper(table.namespace().level(1))
-                    .atomicIntegrityAvailable()));
+                    .atomicIntegrityAvailable()),
+        kmsRegistry.validatesKeys());
   }
 
   /**

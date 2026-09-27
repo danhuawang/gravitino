@@ -134,9 +134,9 @@ public class TestIcebergTableEncryptionDispatcher {
   }
 
   /**
-   * Builds the service exactly as the environment does, over the same catalog manager the
-   * dispatcher pre-checks, so these tests exercise the real translation rather than a stub
-   * decision.
+   * Builds the service as the environment does with key validation on, over the same catalog
+   * manager the dispatcher pre-checks, so these tests exercise the real translation rather than a
+   * stub decision.
    */
   private EncryptionAdmissionService admissionService() {
     return new EncryptionAdmissionService(
@@ -149,7 +149,8 @@ public class TestIcebergTableEncryptionDispatcher {
               return IcebergEncryptionDecision.KmsValidationStatus.valueOf(
                   validationStatus.get().name());
             }),
-        table -> capability.get());
+        table -> capability.get(),
+        true);
   }
 
   @Test

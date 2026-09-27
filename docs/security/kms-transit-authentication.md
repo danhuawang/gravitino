@@ -7,9 +7,11 @@ license: "This software is licensed under the Apache License version 2."
 
 ## Overview
 
-Gravitino can inspect key metadata in HashiCorp Vault Transit and OpenBao Transit. Each provider
-authenticates with a bearer token obtained from a named process environment variable. Provider
-configuration stores the variable name, not the bearer token:
+With `gravitino.encryption.validateKeys=true`, the optional server-side key check, Gravitino
+inspects key metadata in HashiCorp Vault Transit and OpenBao Transit. By default the server builds
+no Transit client and makes no Transit call. Each provider authenticates with a bearer token
+obtained from a named process environment variable. Provider configuration stores the variable name,
+not the bearer token:
 
 ```properties
 gravitino.kms.source.production.credential.method=environment_variable

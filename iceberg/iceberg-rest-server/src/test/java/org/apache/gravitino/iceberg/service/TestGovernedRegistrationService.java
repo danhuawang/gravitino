@@ -594,7 +594,8 @@ public class TestGovernedRegistrationService {
         Suppliers.memoize(() -> resolver),
         new IcebergEncryptionPolicyEvaluator(
             IcebergEncryptionKmsKeyValidators.fromRegistry(kmsRegistry)),
-        table -> capability);
+        table -> capability,
+        true);
   }
 
   private static AdmissionRequest admittedRequest(EncryptionAdmissionService admission) {

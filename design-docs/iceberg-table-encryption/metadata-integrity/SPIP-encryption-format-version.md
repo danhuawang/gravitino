@@ -288,11 +288,11 @@ still produce a keyed replacement at the table's existing version. That path is 
 
 ### R8. Check order
 
-Version (R10's pin, then the floor R3, then R9's catalog declaration), then (staged commit only) the commit key check, then policy resolution, then backend
-capability, then the policy allow list, then one KMS validation. The version check is first because it
-is cheap and its answer depends on neither the policy nor the backend: a keyed version 2 request on a
-backend with no integrity store is refused with `UNSUPPORTED_FORMAT_VERSION`, not
-`UNSUPPORTED_BACKEND`.
+Version (R10's pin, then the floor R3, then R9's catalog declaration), then (staged commit only) the
+commit key check, then policy resolution, then backend capability, then the policy allow list, then,
+with `validateKeys=true`, one KMS validation. The version check is first because it is cheap and its
+answer depends on neither the policy nor the backend: a keyed version 2 request on a backend with no
+integrity store is refused with `UNSUPPORTED_FORMAT_VERSION`, not `UNSUPPORTED_BACKEND`.
 
 ### R9. A catalog that binds a key must declare version 3
 
@@ -359,7 +359,7 @@ flowchart TD
   ge3 -->|yes| bind{"catalog binds a key and declares below 3? - R9"}
   bind -->|yes| deny9["400 UNSUPPORTED_FORMAT_VERSION,<br/>source the catalog's declaration - R9"]
   bind -->|no| write["write the resolved version into the<br/>forwarded properties, only if the<br/>request named none - R6"]
-  write --> checks["policy, allow list, one KMS validation - R8"]
+  write --> checks["policy, allow list, KMS validation if validateKeys=true - R8"]
   checks --> pub["published with its trusted integrity row"]
 ```
 
@@ -436,7 +436,7 @@ release, so no deprecation window applies.
                  R2 resolve effective version, in this path's precedence
                          |
                  R3 below 3 and a key applies? --yes--> denied: UNSUPPORTED_FORMAT_VERSION
-                         |                               (audit record, KMS NOT_ATTEMPTED)
+                         |                               (audit record, no KMS call)
                          no
                          v
                  R9 catalog binds a key, declares below 3? --yes--> denied: UNSUPPORTED_FORMAT_VERSION
@@ -551,7 +551,9 @@ A UFV cell where the key is also disallowed reflects R8: the version is checked 
 
 Catalog states: **A** no key, no policy · **B** no key, policy requires encryption · **C**
 `table-default` key · **D** `table-override` key · **E** no key, policy `report` · **F** supported
-backend without an integrity store · **G** standalone or static server (no admission).
+backend without an integrity store · **G** standalone or static server (no admission). KMS
+validations in this table assume `gravitino.encryption.validateKeys=true`; by default no row makes a
+KMS call.
 
 | #   | Catalog                                                         | Request                                 | Expected                                                                                                                                                          |
 | --- | --------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -609,8 +611,9 @@ Both APIs return `400` with error type `IllegalArgumentException`; the Iceberg R
 that type rather than `BadRequestException`. The message names the effective version and its source
 (`request`, `table-override.format-version`, `table-default.format-version`, `iceberg-default`,
 `file`, or the catalog's declaration for R9), the minimum of 3, and the remedy that source admits (Appendix D). The denial audit record carries reason
-`UNSUPPORTED_FORMAT_VERSION`, KMS status `NOT_ATTEMPTED`, the provider and key when known, and no
-policy name.
+`UNSUPPORTED_FORMAT_VERSION`, the provider and key when known, and no policy name. With
+`validateKeys=true` it also carries KMS status `NOT_ATTEMPTED`; by default it has no KMS-validation
+field.
 
 ### A.5 Why a catalog-bound key needs the catalog's declaration (R9)
 
@@ -746,7 +749,7 @@ Abbreviations: **TEAS** `core/…/TestEncryptionAdmissionService`, **TEPR** `cor
 | 31               | DIRECT                                    | TITED `testReplaceThatUpgradesAPlainTableStaysPlain`. The vehicle is a replace commit carrying `UpgradeFormatVersion(3)`; an ordinary commit carrying the same update is not separately driven                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | A.4 error type   | DIRECT                                    | AIT `assertUnsupportedFormatVersion` (`assertThrowsExactly(IllegalArgumentException)` on both APIs); TITED asserts the audited `ERROR_TYPE`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | A.4 message      | DIRECT                                    | TEPR `testEachRefusalOffersOnlyTheRemedyItsSourceAllows` pins each source's remedy and `testAFileRefusalOffersOnlyARewrite` the `file` source's; TEAS `assertUnsupportedFormatVersion` pins the parenthesised source                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| A.4 audit record | DIRECT                                    | TEAS `testFailuresRaisedBeforeEvaluationCarryOneDecisionIdEverywhere` (reason UFV, KMS `NOT_ATTEMPTED`, provider and key, no policy name, one decision id)                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| A.4 audit record | DIRECT                                    | TEAS `testFailuresRaisedBeforeEvaluationCarryOneDecisionIdEverywhere` (reason UFV, KMS `NOT_ATTEMPTED` with validation on, provider and key, no policy name, one decision id)                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Known soft spots, recorded rather than fixed, because each would assert a secondary clause the row's
 headline outcome does not depend on: row 26's "version 3" is not read back; row 22's "warns" is not

@@ -370,39 +370,41 @@ final class EncryptionPropertyRules {
 
   /**
    * Assembles the properties an admitted request is forwarded with. Key properties are rebuilt
-   * exclusively from the validated key, so raw request input is never forwarded after evaluation
-   * and the leftover Apache protocol properties never reach Iceberg.
+   * exclusively from the admitted key, so raw request input is never forwarded after admission and
+   * the leftover Apache protocol properties never reach Iceberg.
    *
    * <p>Where a key applies and the request names no format version, the version {@link
    * #decideFormatVersion} resolved is written (R6): not a raise, but the operator's own
    * declaration, which Iceberg would not apply to staged metadata or to a stage-less {@code
    * assert-create} commit, so without the write a keyed table could still be published below
-   * version 3. The write belongs to the key: a request without a validated key keeps the version it
+   * version 3. The write belongs to the key: a request without an admitted key keeps the version it
    * asked for, or none, because nothing about a plain table requires version 3 and the version is
    * permanent once written (row 15, R7).
    *
    * @param effective the effective properties that were admitted
-   * @param validatedKey the key the evaluator validated, or {@code null} when none was
+   * @param admittedKey the key admission let through: its reference, catalog KMS source and policy
+   *     were checked, but the KMS confirmed it only when {@code gravitino.encryption.validateKeys}
+   *     is true and the operation is not a stage; {@code null} when no key applies
    * @param resolvedFormatVersion the version {@link FormatVersionOutcome.ForwardWriting#resolved()}
    *     carries, or {@code null} when the request named its own or no version rule applies
    * @return an unmodifiable map
    */
   static Map<String, String> admittedProperties(
       Map<String, String> effective,
-      @Nullable KmsReference validatedKey,
+      @Nullable KmsReference admittedKey,
       @Nullable Integer resolvedFormatVersion) {
     Map<String, String> admitted = new LinkedHashMap<>(effective);
     admitted.remove(IcebergConstants.ENCRYPTION_KMS_API);
     admitted.remove(IcebergConstants.ENCRYPTION_KEY_SOURCE);
     admitted.remove(IcebergConstants.ENCRYPTION_KEY_PROVIDER);
     admitted.remove(IcebergConstants.ENCRYPTION_KEY_ID);
-    if (validatedKey != null) {
+    if (admittedKey != null) {
       if (resolvedFormatVersion != null
           && StringUtils.isBlank(admitted.get(IcebergConstants.FORMAT_VERSION))) {
         admitted.put(IcebergConstants.FORMAT_VERSION, String.valueOf(resolvedFormatVersion));
       }
-      admitted.put(IcebergConstants.ENCRYPTION_KEY_PROVIDER, validatedKey.provider());
-      admitted.put(IcebergConstants.ENCRYPTION_KEY_ID, validatedKey.keyId());
+      admitted.put(IcebergConstants.ENCRYPTION_KEY_PROVIDER, admittedKey.provider());
+      admitted.put(IcebergConstants.ENCRYPTION_KEY_ID, admittedKey.keyId());
     }
     return Collections.unmodifiableMap(admitted);
   }

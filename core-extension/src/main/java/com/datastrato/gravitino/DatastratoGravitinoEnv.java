@@ -147,12 +147,14 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             // Capture 'this' so the supplier always resolves through the actual initialized
             // env instance (DatastratoGravitinoEnv or its subclass), not a static singleton.
             () -> datastratoSchemaDispatcher);
+    KmsClientRegistry kmsRegistry = kmsClientRegistry();
     DatastratoTableHookDispatcher tableHookDispatcher =
         createExternalTableHookDispatcher(
             tableOperationDispatcher,
             catalogManager(),
             new IcebergEncryptionPolicyResolver(policyDispatcher(), new SinglePolicyChecker()),
-            IcebergEncryptionKmsKeyValidators.fromRegistry(kmsClientRegistry()));
+            IcebergEncryptionKmsKeyValidators.fromRegistry(kmsRegistry),
+            kmsRegistry.validatesKeys());
     DatastratoTableDispatcher tableNormalizeDispatcher =
         new DatastratoTableNormalizeDispatcher(tableHookDispatcher, catalogManager());
     this.datastratoTableDispatcher =
@@ -256,13 +258,15 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
       DatastratoTableDispatcher tableOperationDispatcher,
       CatalogManager catalogManager,
       IcebergEncryptionPolicyResolver policyResolver,
-      IcebergEncryptionPolicyEvaluator.KmsKeyValidator keyValidator) {
+      IcebergEncryptionPolicyEvaluator.KmsKeyValidator keyValidator,
+      boolean validateKeys) {
     EncryptionAdmissionService admissionService =
         new EncryptionAdmissionService(
             table -> catalogManager.loadCatalog(getCatalogIdentifier(table)).properties(),
             () -> policyResolver,
             new IcebergEncryptionPolicyEvaluator(keyValidator),
-            atomicIntegrityCapability(catalogManager));
+            atomicIntegrityCapability(catalogManager),
+            validateKeys);
     DatastratoTableDispatcher tableEncryptionDispatcher =
         new IcebergTableEncryptionDispatcher(
             tableOperationDispatcher, catalogManager, admissionService);

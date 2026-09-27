@@ -37,6 +37,13 @@ public class Configs {
 
   private Configs() {}
 
+  /** Whether Iceberg admission validates key references against the KMS; off by default. */
+  public static final ConfigEntry<Boolean> ENCRYPTION_VALIDATE_KEYS =
+      new ConfigBuilder("gravitino.encryption.validateKeys")
+          .doc("Validate key references against the KMS during governed Iceberg admission.")
+          .booleanConf()
+          .createWithDefault(false);
+
   public static final String RELATIONAL_ENTITY_STORE = "relational";
   public static final String ENTITY_STORE_KEY = "gravitino.entity.store";
 

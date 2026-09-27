@@ -544,9 +544,10 @@ Azure factories. Two names may share one class, which is how you run more than o
 same kind.
 
 The list is empty by default, and then the server has no KMS clients. Naming a provider without a
-`className`, or with a class the server cannot construct as a `KmsClientFactory`, fails startup.
-Client construction validates local configuration only; the first call to the provider is a later
-key inspection, not startup.
+`className` fails startup. The server builds clients only when `gravitino.encryption.validateKeys`
+is `true`; then a class it cannot construct as a `KmsClientFactory` also fails startup. Client
+construction validates local configuration only; the first call to the provider is a later key
+inspection, not startup.
 
 | Configuration Item                         | Description                                                                                                                                                          | Default Value |
 |--------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
@@ -554,11 +555,24 @@ key inspection, not startup.
 | `gravitino.kms.provider.<name>.className`  | Required factory class name for that instance. The class must have a no-arg constructor and implement `KmsClientFactory`.                                          | (none)        |
 | `gravitino.kms.provider.<name>.<key>`      | Any other property under that name is passed to that factory. Nested dots in `<key>` are allowed, as in `endpoint.region`.                                           | (none)        |
 
-Every name in `providers` needs a matching `.className`. A `gravitino.kms.provider.<name>.*` key
-for a name that is not in the list, or any other `gravitino.kms.*` key, fails startup.
+Every name in `providers` needs a matching `.className`, whatever
+`gravitino.encryption.validateKeys` is set to. A `gravitino.kms.provider.<name>.*` key for a name
+that is not in the list, or any other `gravitino.kms.*` key, fails startup.
 
-Callers name the instance and the key. They do not send `className`. The server already constructed
-the factory for `aws-prod` at startup.
+| Configuration Item                      | Description                                                                                                                                                                                       | Default Value |
+|-----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `gravitino.encryption.validateKeys`     | Validate key references against the KMS during governed Iceberg admission. Policy, key-reference, format-version and metadata-integrity checks run whatever this is set to. The engine still needs a working KMS. | `false`       |
+
+By default, the server parses provider configuration but does not construct KMS clients or inspect
+keys, and the audit record carries no KMS-validation field. A wrong, disabled or inaccessible key
+fails at first write, in the engine's KMS client. A catalog may retain its `encryption-kms-source`
+binding without server provider entries. `true` adds the optional server-side check: the server
+builds the configured clients at startup and checks each key once per governed create, staged
+commit, register or overwrite; a key the KMS rejects is refused with `400`, and an unreachable KMS
+with `503`.
+
+Callers name the instance and the key. They do not send `className`. With `validateKeys=true`, the
+server already constructed the factory for `aws-prod` at startup.
 
 ```text
 # conf/gravitino.conf
@@ -569,9 +583,9 @@ gravitino.kms.provider.aws-dr.className = com.example.kms.AwsCustomKmsClientFact
 gravitino.kms.provider.azure-eu.className = com.example.kms.AzureCustomKmsClientFactory
 ```
 
-That configuration builds three clients: two instances of one custom AWS factory and one custom
-Azure factory. Further `gravitino.kms.provider.<name>.*` keys are factory properties, not a closed
-schema; each factory documents the keys it accepts.
+With `validateKeys=true`, that configuration builds three clients: two instances of one custom AWS
+factory and one custom Azure factory. Further `gravitino.kms.provider.<name>.*` keys are factory
+properties, not a closed schema; each factory documents the keys it accepts.
 
 ## Catalog Properties
 

@@ -24,19 +24,24 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.Configs;
 
 /** Creates, resolves, and owns server-private KMS clients by configured provider. */
 public final class KmsClientRegistry implements AutoCloseable {
 
+  private final boolean validateKeys;
   private final Map<String, KmsClient> clients;
   private volatile boolean closed;
 
   /**
-   * Loads configuration and creates one client for each configured provider by instantiating {@code
-   * gravitino.kms.provider.<name>.className}.
+   * Loads configuration and, when {@code gravitino.encryption.validateKeys} is true, creates one
+   * client for each configured provider by instantiating {@code
+   * gravitino.kms.provider.<name>.className}. With validation off no factory is loaded, so a bad
+   * factory class surfaces only once validation is turned on.
    *
    * @param config Gravitino server configuration
-   * @throws IllegalArgumentException if configuration or factory construction is invalid
+   * @throws IllegalArgumentException if configuration is invalid, or, with validation on, if a
+   *     factory cannot be constructed
    */
   public KmsClientRegistry(Config config) {
     this(config, KmsClientRegistry::loadFactory);
@@ -44,7 +49,8 @@ public final class KmsClientRegistry implements AutoCloseable {
 
   KmsClientRegistry(Config config, FactoryLoader loader) {
     KmsConfig kmsConfig = new KmsConfig(config);
-    if (kmsConfig.providers().isEmpty()) {
+    this.validateKeys = config.get(Configs.ENCRYPTION_VALIDATE_KEYS);
+    if (!validateKeys || kmsConfig.providers().isEmpty()) {
       this.clients = Collections.emptyMap();
       return;
     }
@@ -61,16 +67,27 @@ public final class KmsClientRegistry implements AutoCloseable {
    *
    * <p>The registry owns the returned client. Callers must not close it or use it after the
    * registry is closed. Lookup is by {@link KmsReference#provider()} only; the provider's factory
-   * was loaded at startup from {@code gravitino.kms.provider.<name>.className}.
+   * was loaded at startup from {@code gravitino.kms.provider.<name>.className} when {@code
+   * gravitino.encryption.validateKeys} is true. With validation off no client exists.
    *
    * @param reference key whose provider name selects the client
    * @return client configured for the reference
-   * @throws IllegalArgumentException if the provider is unknown
+   * @throws IllegalArgumentException if the provider is unknown, or validation is off
    * @throws IllegalStateException if the registry is closed
    */
   public KmsClient getClient(KmsReference reference) {
     checkOpen();
     return resolveClient(reference);
+  }
+
+  /**
+   * Tells whether the server validates key references against the KMS. The same setting decides
+   * whether this registry built any client, so admission reads it here rather than again.
+   *
+   * @return the value of {@code gravitino.encryption.validateKeys}
+   */
+  public boolean validatesKeys() {
+    return validateKeys;
   }
 
   /** Closes all configured clients. This operation is idempotent. */

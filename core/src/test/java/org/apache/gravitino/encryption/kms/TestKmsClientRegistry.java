@@ -33,6 +33,7 @@ public class TestKmsClientRegistry {
   private static final String AWS_FACTORY = "test.AwsKmsClientFactory";
   private static final String GCP_FACTORY = "test.GcpKmsClientFactory";
   private static final String AZURE_FACTORY = "test.AzureKmsClientFactory";
+  private static final String VALIDATE_KEYS = "gravitino.encryption.validateKeys";
 
   @Test
   void testEmptyRegistryDoesNotLoadFactories() {
@@ -48,6 +49,73 @@ public class TestKmsClientRegistry {
             IllegalArgumentException.class, () -> registry.getClient(reference));
     Assertions.assertEquals(
         "No KMS client is configured for provider 'primary'", exception.getMessage());
+  }
+
+  @Test
+  void testValidationTurnedOffDoesNotLoadConfiguredFactories() {
+    KmsClientRegistry registry =
+        new KmsClientRegistry(
+            config(
+                VALIDATE_KEYS,
+                "false",
+                "gravitino.kms.providers",
+                "primary",
+                "gravitino.kms.provider.primary.className",
+                AWS_FACTORY),
+            className -> {
+              throw new AssertionError("KMS factory must not be loaded");
+            });
+
+    Assertions.assertFalse(registry.validatesKeys());
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> registry.getClient(new KmsReference("primary", "alias/orders")));
+  }
+
+  @Test
+  void testValidationIsOffUnlessTheOperatorTurnsItOn() {
+    Map<String, String> providers =
+        Map.of(
+            "gravitino.kms.providers",
+            "primary",
+            "gravitino.kms.provider.primary.className",
+            AWS_FACTORY);
+    RecordingFactory factory = new RecordingFactory();
+    KmsReference reference = new KmsReference("primary", "alias/orders");
+
+    // Built without the config(...) helper, which turns validation on.
+    KmsClientRegistry byDefault =
+        new KmsClientRegistry(new MapConfig(providers), loader(Map.of(AWS_FACTORY, factory)));
+    Assertions.assertFalse(byDefault.validatesKeys());
+    Assertions.assertEquals(0, factory.createCount.get());
+    Assertions.assertThrows(IllegalArgumentException.class, () -> byDefault.getClient(reference));
+
+    Map<String, String> turnedOn = new HashMap<>(providers);
+    turnedOn.put(VALIDATE_KEYS, "true");
+    KmsClientRegistry optedIn =
+        new KmsClientRegistry(new MapConfig(turnedOn), loader(Map.of(AWS_FACTORY, factory)));
+    Assertions.assertTrue(optedIn.validatesKeys());
+    Assertions.assertEquals(1, factory.createCount.get());
+    Assertions.assertNotNull(optedIn.getClient(reference));
+  }
+
+  @Test
+  void testExplicitTrueLoadsConfiguredFactory() {
+    RecordingFactory factory = new RecordingFactory();
+    KmsClientRegistry registry =
+        new KmsClientRegistry(
+            config(
+                VALIDATE_KEYS,
+                "true",
+                "gravitino.kms.providers",
+                "primary",
+                "gravitino.kms.provider.primary.className",
+                AWS_FACTORY),
+            loader(Map.of(AWS_FACTORY, factory)));
+
+    Assertions.assertTrue(registry.validatesKeys());
+    registry.getClient(new KmsReference("primary", "alias/orders"));
+    Assertions.assertEquals(1, factory.createCount.get());
   }
 
   @Test
@@ -304,11 +372,16 @@ public class TestKmsClientRegistry {
     Assertions.assertArrayEquals(new Throwable[] {awsFailure}, exception.getSuppressed());
   }
 
+  /**
+   * Validation is on unless a test says otherwise, so every client-construction test, and the
+   * empty-registry test, reaches the branch it names rather than returning early on the default.
+   */
   private static Config config(String... entries) {
     Map<String, String> properties = new HashMap<>();
     for (int index = 0; index < entries.length; index += 2) {
       properties.put(entries[index], entries[index + 1]);
     }
+    properties.putIfAbsent(VALIDATE_KEYS, "true");
     return new MapConfig(properties);
   }
 

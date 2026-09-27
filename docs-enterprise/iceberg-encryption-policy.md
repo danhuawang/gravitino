@@ -75,9 +75,14 @@ flowchart TD
   be -->|no| rules{"breaks required or allowedKeys?"}
   rules -->|"yes, deny-create"| r3["refused"]
   rules -->|"yes, report: violation recorded"| key
-  rules -->|no| key{"key names the catalog's KMS provider and is valid there?"}
-  key -->|"no, or the KMS is unreachable"| r4["refused"]
-  key -->|"yes, or no key"| ok["created"]
+  rules -->|no| key{"key names the catalog's KMS provider?"}
+  key -->|no| r4["refused"]
+  key -->|"no key"| ok["created"]
+  key -->|yes| kms{"gravitino.encryption.validateKeys=true?"}
+  kms -->|"no (default)"| ok
+  kms -->|yes| valid{"KMS says the key is valid?"}
+  valid -->|"no, or the KMS is unreachable"| r5["refused"]
+  valid -->|yes| ok
 ```
 
 1. **Format version.** When a key applies, because the request names one or the catalog binds one,
@@ -95,10 +100,12 @@ flowchart TD
    the policy rules never ran.
 4. **Policy rules.** `required` and `allowedKeys` are checked. Under `deny-create` a violation
    refuses the create; under `report` it is recorded and the create goes on.
-5. **Key.** A key must name the catalog's KMS provider and be valid there. Its reference and
-   provider are checked before `allowedKeys`; the KMS is called after. It is validated once per
-   create; the stage of a `CREATE TABLE AS SELECT` makes no KMS call, and its commit makes the one.
-   An invalid key, or an unreachable KMS, is refused whatever `enforcement` says.
+5. **Key.** A key must name the catalog's KMS provider. Its reference and provider are checked
+   before `allowedKeys`. By default the server makes no KMS call, and a key the KMS cannot use fails
+   in the engine's KMS client at first write. `gravitino.encryption.validateKeys=true` adds the
+   optional server-side check: the KMS is called after `allowedKeys`, once per create; the stage of
+   a `CREATE TABLE AS SELECT` makes no KMS call, and its commit makes the one. An invalid key, or an
+   unreachable KMS, is then refused whatever `enforcement` says.
 
 ## Create a policy
 

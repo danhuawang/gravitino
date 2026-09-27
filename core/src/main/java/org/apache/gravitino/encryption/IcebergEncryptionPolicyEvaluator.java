@@ -52,7 +52,8 @@ public final class IcebergEncryptionPolicyEvaluator {
    * <p>User identity is {@link KmsReference} {@code {provider, keyId}}. Protocol {@code api} is not
    * a table property. The KMS is called only after the requested provider matches the catalog
    * binding. Raw table properties are never returned as validated input; callers must forward only
-   * {@link IcebergEncryptionDecision#validatedKey()}.
+   * {@link IcebergEncryptionDecision#validatedKey()}. With server-side key validation off this is
+   * never called, and the admission service forwards the key {@link #preflight} checked instead.
    *
    * @param resolvedPolicy effective Iceberg encryption policy, if one applies
    * @param catalogKmsSource KMS provider bound to the Iceberg catalog, or {@code null} if unbound
@@ -68,10 +69,12 @@ public final class IcebergEncryptionPolicyEvaluator {
 
   /**
    * Evaluates the same rules as {@link #evaluate} but stops before the KMS call: the preflight of a
-   * stage step, refusing early what the commit's full evaluation would refuse anyway. A key that
-   * passes is returned with {@link IcebergEncryptionDecision.KmsValidationStatus#NOT_ATTEMPTED} and
-   * no validated key, because nothing validated it. Under {@code report} it never refuses, exactly
-   * as the full evaluation never refuses for a policy violation there.
+   * stage step, refusing early what the commit's full evaluation would refuse anyway, and the whole
+   * decision for every terminal operation when {@code gravitino.encryption.validateKeys} is false,
+   * the default. A key that passes is returned with {@link
+   * IcebergEncryptionDecision.KmsValidationStatus#NOT_ATTEMPTED} and no validated key, because
+   * nothing validated it. Under {@code report} it never refuses, exactly as the full evaluation
+   * never refuses for a policy violation there.
    *
    * @param resolvedPolicy effective Iceberg encryption policy, if one applies
    * @param catalogKmsSource KMS provider bound to the Iceberg catalog, or {@code null} if unbound

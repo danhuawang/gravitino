@@ -27,20 +27,21 @@ import org.apache.gravitino.policy.IcebergEncryptionContent;
  * it.
  *
  * <p>The service owns the whole decision: the effective encryption input, KMS-provider completion,
- * the backend's atomic-integrity capability, policy resolution including ambiguity, and the one
- * metadata-only KMS key validation. The format version a new encrypted table would land at is
- * resolved and checked before any of them (R2, R3, R8). It returns a typed {@link
- * EncryptionAdmission} and never throws for a policy or KMS outcome, so a caller only translates
- * its request shape into an {@link AdmissionRequest}, forwards {@link
- * EncryptionAdmission#admittedProperties()} on success, and maps {@link AdmissionFailure#kind()} to
- * its own exception type. No policy branch belongs outside this class; the property arithmetic
- * around the decision lives in {@link EncryptionPropertyRules}.
+ * the backend's atomic-integrity capability, policy resolution including ambiguity, and, when
+ * {@code gravitino.encryption.validateKeys} is true, the one metadata-only KMS key validation. The
+ * format version a new encrypted table would land at is resolved and checked before any of them
+ * (R2, R3, R8). It returns a typed {@link EncryptionAdmission} and never throws for a policy or KMS
+ * outcome, so a caller only translates its request shape into an {@link AdmissionRequest}, forwards
+ * {@link EncryptionAdmission#admittedProperties()} on success, and maps {@link
+ * AdmissionFailure#kind()} to its own exception type. No policy branch belongs outside this class;
+ * the property arithmetic around the decision lives in {@link EncryptionPropertyRules}.
  *
  * <p><b>A staged create: stage prepares, commit decides.</b> The stage step stores nothing, so
  * {@link Operation#STAGE} is only prepared; a refused stage is still audited, as the one record of
  * that attempt. {@link Operation#STAGED_COMMIT} is the authoritative admission, evaluated,
- * validated with the KMS once and audited once, because the server keeps no state between the two,
- * a client may commit {@code assert-create} without staging and the policy may change in between.
+ * validated with the KMS at most once (only when validation is on) and audited once, because the
+ * server keeps no state between the two, a client may commit {@code assert-create} without staging
+ * and the policy may change in between.
  */
 public final class EncryptionAdmissionService {
 
@@ -48,20 +49,23 @@ public final class EncryptionAdmissionService {
   private final Supplier<IcebergEncryptionPolicyResolver> policyResolverSupplier;
   private final IcebergEncryptionPolicyEvaluator policyEvaluator;
   private final Function<NameIdentifier, AtomicIntegrityCapability> capabilityFunction;
+  private final boolean validateKeys;
 
   /**
-   * Creates the admission service.
+   * Creates the admission service, saying whether key references are validated against the KMS.
    *
    * @param catalogProperties properties of the catalog owning the table named by a request
    * @param policyResolverSupplier lazily initialized effective-policy resolver
    * @param policyEvaluator pure decision engine owning the single KMS key validator
    * @param capabilityFunction atomic-integrity capability reported by the loaded catalog
+   * @param validateKeys whether key references are inspected by the KMS before admission
    */
   public EncryptionAdmissionService(
       Function<NameIdentifier, Map<String, String>> catalogProperties,
       Supplier<IcebergEncryptionPolicyResolver> policyResolverSupplier,
       IcebergEncryptionPolicyEvaluator policyEvaluator,
-      Function<NameIdentifier, AtomicIntegrityCapability> capabilityFunction) {
+      Function<NameIdentifier, AtomicIntegrityCapability> capabilityFunction,
+      boolean validateKeys) {
     Preconditions.checkArgument(catalogProperties != null, "catalogProperties cannot be null");
     Preconditions.checkArgument(
         policyResolverSupplier != null, "policyResolverSupplier cannot be null");
@@ -71,11 +75,12 @@ public final class EncryptionAdmissionService {
     this.policyResolverSupplier = policyResolverSupplier;
     this.policyEvaluator = policyEvaluator;
     this.capabilityFunction = capabilityFunction;
+    this.validateKeys = validateKeys;
   }
 
   /**
-   * Admits or refuses one terminal mutation, making at most one KMS call and none for {@link
-   * Operation#STAGE}.
+   * Admits or refuses one terminal mutation, making at most one KMS call: none for {@link
+   * Operation#STAGE}, or when server-side key validation is off.
    *
    * @param request the translated request
    * @return the admission, with admitted properties and audit facts built once
@@ -145,12 +150,15 @@ public final class EncryptionAdmissionService {
       return unsupportedBackend(request, properties, policy, effective);
     }
 
+    // Preflight runs every check except the KMS lookup. A stage publishes nothing yet, and by
+    // default the key is the engine's KMS client's to check, at first write.
     Map<String, String> input = Collections.unmodifiableMap(effective);
     IcebergEncryptionDecision decision =
-        request.operation() == Operation.STAGE
+        request.operation() == Operation.STAGE || !validateKeys
             ? policyEvaluator.preflight(policy, kmsSource, input)
             : policyEvaluator.evaluate(policy, kmsSource, input);
-    return decide(request, policy, decision, effective, resolvedFormatVersion, capability);
+    return decide(
+        request, policy, decision, effective, resolvedFormatVersion, capability, validateKeys);
   }
 
   /**
@@ -226,10 +234,10 @@ public final class EncryptionAdmissionService {
       String explanation) {
     String decisionId = nextDecisionId();
     IcebergEncryptionAuditInfos.Builder extras =
-        IcebergEncryptionAuditInfos.builder()
-            .withDecisionId(decisionId)
-            .withReason(reason)
-            .withKmsValidation(IcebergEncryptionAuditInfos.KmsValidationStatus.NOT_ATTEMPTED);
+        IcebergEncryptionAuditInfos.builder().withDecisionId(decisionId).withReason(reason);
+    if (validateKeys) {
+      extras.withKmsValidation(IcebergEncryptionAuditInfos.KmsValidationStatus.NOT_ATTEMPTED);
+    }
     KmsReference key = EncryptionPropertyRules.providerKey(effective);
     if (key != null) {
       extras.withProviderKey(key);
@@ -293,8 +301,10 @@ public final class EncryptionAdmissionService {
     IcebergEncryptionAuditInfos.Builder extras =
         IcebergEncryptionAuditInfos.builder()
             .withDecisionId(decisionId)
-            .withReason(IcebergEncryptionAuditInfos.Reason.OPERATION_FAILED)
-            .withKmsValidation(IcebergEncryptionAuditInfos.KmsValidationStatus.NOT_ATTEMPTED);
+            .withReason(IcebergEncryptionAuditInfos.Reason.OPERATION_FAILED);
+    if (validateKeys) {
+      extras.withKmsValidation(IcebergEncryptionAuditInfos.KmsValidationStatus.NOT_ATTEMPTED);
+    }
     // The backend is refused before the evaluator runs, so there is no policy verdict to record.
     policy.ifPresent(matched -> extras.withPolicyName(matched.name()));
     KmsReference key = EncryptionPropertyRules.providerKey(effective);
@@ -324,8 +334,9 @@ public final class EncryptionAdmissionService {
       IcebergEncryptionDecision decision,
       Map<String, String> effective,
       @Nullable Integer resolvedFormatVersion,
-      AtomicIntegrityCapability capability) {
-    Map<String, String> auditExtras = auditExtras(policy, decision, effective);
+      AtomicIntegrityCapability capability,
+      boolean validateKeys) {
+    Map<String, String> auditExtras = auditExtras(policy, decision, effective, validateKeys);
     if (decision.admitted()) {
       Outcome outcome =
           policy.isPresent() && capability.supported()
@@ -343,7 +354,11 @@ public final class EncryptionAdmissionService {
       return new EncryptionAdmission(
           outcome,
           EncryptionPropertyRules.admittedProperties(
-              effective, decision.validatedKey(), resolvedFormatVersion),
+              effective,
+              validateKeys
+                  ? decision.validatedKey()
+                  : EncryptionPropertyRules.providerKey(effective),
+              resolvedFormatVersion),
           decision,
           auditExtras,
           null);
@@ -401,10 +416,15 @@ public final class EncryptionAdmissionService {
     }
   }
 
+  /**
+   * Without the optional server-side check the record carries no KMS-validation field at all: "not
+   * attempted" on every record would read as a check that failed to run.
+   */
   private static Map<String, String> auditExtras(
       Optional<PolicyEntity> policy,
       IcebergEncryptionDecision decision,
-      Map<String, String> effective) {
+      Map<String, String> effective,
+      boolean validateKeys) {
     IcebergEncryptionAuditInfos.Builder extras =
         IcebergEncryptionAuditInfos.builder()
             .withDecisionId(decision.decisionId())
@@ -421,7 +441,9 @@ public final class EncryptionAdmissionService {
     if (key != null) {
       extras.withProviderKey(key);
     }
-    extras.withKmsValidation(decision.kmsValidationStatus());
+    if (validateKeys) {
+      extras.withKmsValidation(decision.kmsValidationStatus());
+    }
     return extras.build();
   }
 
@@ -440,10 +462,11 @@ public final class EncryptionAdmissionService {
 
     /**
      * The {@code assert-create} commit that publishes a staged create: the authoritative admission,
-     * with the policy, the one KMS validation and the one audit record. Its key is checked against
-     * the catalog's rather than merged ({@link EncryptionPropertyRules#stagedCommitKeyViolation}),
-     * and the {@code format-version} it is held to is the highest {@code upgrade-format-version}
-     * the commit carries, refused before the KMS rather than raised.
+     * with the policy, the KMS validation when {@code gravitino.encryption.validateKeys} is true,
+     * and the one audit record. Its key is checked against the catalog's rather than merged ({@link
+     * EncryptionPropertyRules#stagedCommitKeyViolation}), and the {@code format-version} it is held
+     * to is the highest {@code upgrade-format-version} the commit carries, refused before the KMS
+     * rather than raised.
      */
     STAGED_COMMIT,
 
@@ -503,10 +526,10 @@ public final class EncryptionAdmissionService {
    * properties exactly as the request carried them.
    *
    * <p>{@code operation} is load-bearing, not a label: it decides which key the request takes
-   * ({@link EncryptionPropertyRules#inheritsCatalogKeys}), whether a KMS call is made and whether a
-   * prepared request carries audit facts. An API that names the wrong operation changes the
-   * decision, which is why the choice is one enum on the request rather than a flag each caller has
-   * to get right.
+   * ({@link EncryptionPropertyRules#inheritsCatalogKeys}), whether a KMS call is made (together
+   * with the server's {@code validateKeys} setting) and whether a prepared request carries audit
+   * facts. An API that names the wrong operation changes the decision, which is why the choice is
+   * one enum on the request rather than a flag each caller has to get right.
    */
   public record AdmissionRequest(
       NameIdentifier table, Operation operation, Map<String, String> requestedProperties) {

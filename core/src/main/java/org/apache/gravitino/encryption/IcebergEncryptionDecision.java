@@ -128,8 +128,10 @@ public final class IcebergEncryptionDecision {
   /**
    * Returns the exact key identity validated for Iceberg.
    *
-   * <p>Callers must forward only this validated key, never the raw table properties. A report-mode
-   * policy violation may contain a validated key that is not on the policy allowlist.
+   * <p>Callers must forward only this validated key, never the raw table properties. When nothing
+   * validated the key, at stage or with server-side key validation off, the admission service
+   * forwards the preflight-checked provider key instead. A report-mode policy violation may contain
+   * a validated key that is not on the policy allowlist.
    *
    * @return validated {@code {provider, keyId}}, or {@code null} when no key was validated
    */

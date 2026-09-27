@@ -103,7 +103,8 @@ public class TestEncryptionAdmissionService {
             table -> {
               capabilityCalls.incrementAndGet();
               return capability.get();
-            });
+            },
+            true);
   }
 
   @Test
@@ -112,22 +113,22 @@ public class TestEncryptionAdmissionService {
         IllegalArgumentException.class,
         () ->
             new EncryptionAdmissionService(
-                null, () -> null, evaluator(), table -> capability.get()));
+                null, () -> null, evaluator(), table -> capability.get(), true));
     Assertions.assertThrows(
         IllegalArgumentException.class,
         () ->
             new EncryptionAdmissionService(
-                table -> catalogProperties, null, evaluator(), table -> capability.get()));
+                table -> catalogProperties, null, evaluator(), table -> capability.get(), true));
     Assertions.assertThrows(
         IllegalArgumentException.class,
         () ->
             new EncryptionAdmissionService(
-                table -> catalogProperties, () -> null, null, table -> capability.get()));
+                table -> catalogProperties, () -> null, null, table -> capability.get(), true));
     Assertions.assertThrows(
         IllegalArgumentException.class,
         () ->
             new EncryptionAdmissionService(
-                table -> catalogProperties, () -> null, evaluator(), null));
+                table -> catalogProperties, () -> null, evaluator(), null, true));
     Assertions.assertThrows(IllegalArgumentException.class, () -> service.admit(null));
     Assertions.assertThrows(
         IllegalArgumentException.class,
@@ -162,6 +163,85 @@ public class TestEncryptionAdmissionService {
     Assertions.assertEquals(
         IcebergEncryptionAuditInfos.KmsValidationStatus.VALID.name(),
         admission.auditExtras().get(IcebergEncryptionAuditInfos.KMS_VALIDATION));
+  }
+
+  @Test
+  void testTerminalOperationsAdmitWithoutTheKmsWhenValidationIsOff() {
+    service = serviceWithValidationOff();
+
+    for (Operation operation :
+        List.of(
+            Operation.CREATE, Operation.STAGED_COMMIT, Operation.REGISTER, Operation.OVERWRITE)) {
+      EncryptionAdmission admission = admit(operation, keyProperties(KEY_ID));
+      Assertions.assertTrue(admission.admitted(), operation.name());
+      Assertions.assertEquals(
+          SOURCE, admission.admittedProperties().get(IcebergConstants.ENCRYPTION_KEY_PROVIDER));
+      Assertions.assertEquals(
+          KEY_ID, admission.admittedProperties().get(IcebergConstants.ENCRYPTION_KEY_ID));
+      // R7: a register or an overwrite takes the version of the metadata file it was handed, so
+      // no version is resolved for it and none is written.
+      boolean resolvesAVersion =
+          operation == Operation.CREATE || operation == Operation.STAGED_COMMIT;
+      Assertions.assertEquals(
+          resolvesAVersion ? "3" : null,
+          admission.admittedProperties().get(IcebergConstants.FORMAT_VERSION),
+          operation.name());
+      Assertions.assertFalse(
+          admission.auditExtras().containsKey(IcebergEncryptionAuditInfos.KMS_VALIDATION),
+          operation.name());
+    }
+
+    EncryptionAdmission wrongSource =
+        admit(
+            Operation.CREATE,
+            Map.of(
+                IcebergConstants.ENCRYPTION_KEY_PROVIDER,
+                "other",
+                IcebergConstants.ENCRYPTION_KEY_ID,
+                KEY_ID));
+    Assertions.assertEquals(Outcome.DENIED, wrongSource.outcome());
+    Assertions.assertEquals(FailureKind.INVALID_REFERENCE, wrongSource.failure().kind());
+
+    associate(policy("deny", true, Enforcement.DENY_CREATE, "allowed-key"));
+    EncryptionAdmission denied = admit(Operation.CREATE, keyProperties(KEY_ID));
+    Assertions.assertEquals(FailureKind.POLICY_DENIED, denied.failure().kind());
+
+    associate(policy("report", true, Enforcement.REPORT, "allowed-key"));
+    EncryptionAdmission reported = admit(Operation.CREATE, keyProperties(KEY_ID));
+    Assertions.assertTrue(reported.admitted());
+    Assertions.assertEquals(
+        IcebergEncryptionAuditInfos.Compliance.VIOLATION.name(),
+        reported.auditExtras().get(IcebergEncryptionAuditInfos.COMPLIANCE));
+    Assertions.assertEquals(
+        KEY_ID, reported.admittedProperties().get(IcebergConstants.ENCRYPTION_KEY_ID));
+  }
+
+  @Test
+  void testRefusalsRecordNoKmsValidationWhenValidationIsOff() {
+    // Without the optional server-side check, "not attempted" on every refusal would read as a
+    // check that failed to run, so the field is left out; the rest of the record names the refusal.
+    service = serviceWithValidationOff();
+    Map<String, String> versionTwo = new HashMap<>(keyProperties(KEY_ID));
+    versionTwo.put(IcebergConstants.FORMAT_VERSION, "2");
+    EncryptionAdmission refusedOnVersion = admit(Operation.CREATE, versionTwo);
+
+    associate(policy("deny", true, Enforcement.DENY_CREATE, "allowed-key"));
+    EncryptionAdmission refusedByPolicy = admit(Operation.CREATE, keyProperties(KEY_ID));
+
+    capability.set(AtomicIntegrityCapability.UNSUPPORTED);
+    EncryptionAdmission refusedOnBackend = admit(Operation.CREATE, keyProperties(KEY_ID));
+
+    Assertions.assertEquals(
+        FailureKind.UNSUPPORTED_FORMAT_VERSION, refusedOnVersion.failure().kind());
+    Assertions.assertEquals(FailureKind.POLICY_DENIED, refusedByPolicy.failure().kind());
+    Assertions.assertEquals(FailureKind.UNSUPPORTED_BACKEND, refusedOnBackend.failure().kind());
+    for (EncryptionAdmission refusal :
+        List.of(refusedOnVersion, refusedByPolicy, refusedOnBackend)) {
+      assertOneDecisionId(refusal);
+      Assertions.assertFalse(
+          refusal.auditExtras().containsKey(IcebergEncryptionAuditInfos.KMS_VALIDATION),
+          refusal.failure().kind().name());
+    }
   }
 
   @Test
@@ -1337,6 +1417,18 @@ public class TestEncryptionAdmissionService {
   private IcebergEncryptionPolicyEvaluator evaluator() {
     return new IcebergEncryptionPolicyEvaluator(
         key -> IcebergEncryptionDecision.KmsValidationStatus.VALID);
+  }
+
+  private EncryptionAdmissionService serviceWithValidationOff() {
+    return new EncryptionAdmissionService(
+        table -> catalogProperties,
+        () -> new IcebergEncryptionPolicyResolver(policyDispatcher, new SinglePolicyChecker()),
+        new IcebergEncryptionPolicyEvaluator(
+            key -> {
+              throw new AssertionError("KMS validator must not be called");
+            }),
+        table -> capability.get(),
+        false);
   }
 
   private EncryptionAdmission admit(Operation operation, Map<String, String> properties) {

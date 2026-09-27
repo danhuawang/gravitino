@@ -59,7 +59,8 @@ names only a key id is admitted with the provider defaulting to the catalog's KM
 
 **Decision.** `EncryptionAdmissionService`, in core, owns the whole decision: effective input
 precedence (catalog default, then request, then catalog override), KMS provider completion,
-backend capability, policy resolution including ambiguity, and key validation. It returns a typed
+backend capability, policy resolution including ambiguity, and, with
+`gravitino.encryption.validateKeys=true`, key validation. It returns a typed
 admission and never throws for policy or KMS outcomes. The Gravitino API dispatcher and the
 Iceberg REST catalog dispatcher translate their request shape into an admission request, forward
 the admitted properties on success, and map a denial to their own exception type. They contain no
@@ -69,14 +70,22 @@ policy logic.
 key-id-only case. Security policy semantics duplicated at two API boundaries drift; one service
 cannot.
 
-#### A2. One key validation per terminal request
+#### A2. At most one key validation per terminal request
 
-**Decision.** The service validates the key with the KMS once per terminal request. The catalog
-wrapper's second confirmation is removed. A staged create is admitted once, at commit, which is the
-terminal publication. Stage stores nothing: it fills in the catalog key, provider and resolved format version
-so the staged metadata names the key the engine encrypts with, and runs a preflight without the KMS.
-A CTAS therefore makes one KMS call and writes one audit record; see
+**Decision.** With `gravitino.encryption.validateKeys=true`, the service validates the key with the
+KMS once per terminal request. The catalog wrapper's second confirmation is removed. A staged create
+is admitted once, at commit, which is the terminal publication. Stage stores nothing: it fills in
+the catalog key, provider and resolved format version so the staged metadata names the key the
+engine encrypts with, and runs a preflight without the KMS. A CTAS therefore makes at most one KMS
+call (only with `validateKeys=true`) and writes one audit record; see
 [design-stage-create-ctas.md](../design-stage-create-ctas.md).
+
+Server-side key inspection is optional (#2179): a wrong, disabled or inaccessible key fails at
+first write, in the engine's KMS client, and some clients cannot give the server KMS access. The
+server setting `gravitino.encryption.validateKeys` therefore defaults to `false`: terminal
+admission runs the preflight checks, which stay fail-closed, forwards the checked key, and writes
+one audit record with no KMS-validation field. `true` adds the one KMS validation for deployments
+that want it.
 
 #### A3. Capability from the catalog
 
@@ -183,7 +192,7 @@ sequenceDiagram
   C->>D: create(properties)
   D->>A: admit(CREATE, properties)
   A->>A: merge input, complete provider, read capability
-  A->>P: resolve policy, validate key once
+  A->>P: resolve policy, validate key once (validateKeys=true)
   P-->>A: decision
   A-->>D: typed admission
   alt DENIED or UNAVAILABLE
@@ -236,7 +245,9 @@ flowchart TD
   ref -- no --> u4["DENIED: INVALID_REFERENCE"]
   ref -- yes --> allow{"key allowed<br/>by policy?"}
   allow -- no --> u5["DENIED: POLICY_DENIED"]
-  allow -- yes --> kms{"KMS validates key?"}
+  allow -- yes --> mode{"validateKeys?"}
+  mode -- "false (default)" --> ok1
+  mode -- true --> kms{"KMS validates key?"}
   kms -- invalid --> u6["DENIED: KMS_KEY_INVALID"]
   kms -- unreachable --> u7["UNAVAILABLE: KMS_UNAVAILABLE"]
   kms -- valid --> ok1["ADMITTED_GOVERNED"]
@@ -276,8 +287,8 @@ path. Each is mostly deletion inside existing classes.
 
 1. **Align on the admission design.** **Acceptance:** A1–A5 recorded and agreed. **Done 2026-09-16.**
 2. **Admission service.** **Acceptance:** neither dispatcher references the policy evaluator; a
-   terminal create makes exactly one KMS call; both APIs return the same failure kind for the same
-   input; the driver-and-URI inference is gone.
+   terminal create makes exactly one KMS call (with `validateKeys=true`); both APIs return the same
+   failure kind for the same input; the driver-and-URI inference is gone.
 3. **Registration path.** **Acceptance:** one file read and one hash derivation per registration;
    the identity transport is gone; the utility has one public registration method.
 4. **Acceptance suite.** **Acceptance:** one parameterised cross-API test proves the same decision

@@ -24,8 +24,9 @@ import org.apache.gravitino.annotation.DeveloperApi;
 /**
  * Creates a server-side KMS client for one configured provider.
  *
- * <p>The server loads an implementation from {@code gravitino.kms.provider.<name>.className}. The
- * class must have a public no-arg constructor.
+ * <p>When {@code gravitino.encryption.validateKeys} is true, the server loads an implementation
+ * from {@code gravitino.kms.provider.<name>.className}. The class must have a public no-arg
+ * constructor.
  */
 @DeveloperApi
 public interface KmsClientFactory {
