@@ -3,6 +3,7 @@
  */
 package com.datastrato.gravitino.encryption;
 
+import static org.apache.gravitino.utils.NameIdentifierUtil.getCatalogIdentifier;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -31,7 +32,12 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergFormatVersionResolution;
+import org.apache.gravitino.encryption.AtomicIntegrityCapability;
+import org.apache.gravitino.encryption.EncryptionAdmissionService;
 import org.apache.gravitino.encryption.IcebergEncryptionDecision;
+import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
 import org.apache.gravitino.encryption.SinglePolicyChecker;
@@ -91,6 +97,7 @@ public class TestIcebergTableEncryptionDispatcher {
   private AtomicInteger validationCalls;
   private Catalog catalog;
   private Table createdTable;
+  private AtomicReference<AtomicIntegrityCapability> capability;
   private IcebergTableEncryptionDispatcher dispatcher;
 
   @BeforeEach
@@ -103,86 +110,88 @@ public class TestIcebergTableEncryptionDispatcher {
     validationCalls = new AtomicInteger();
     catalog = mock(Catalog.class);
     createdTable = mock(Table.class);
+    capability = new AtomicReference<>(AtomicIntegrityCapability.SUPPORTED);
 
     when(catalogManager.loadCatalog(CATALOG)).thenReturn(catalog);
     when(catalog.provider()).thenReturn("lakehouse-iceberg");
-    when(catalog.properties()).thenReturn(ImmutableMap.of("encryption-kms-source", SOURCE));
+    when(catalog.properties())
+        .thenReturn(
+            ImmutableMap.of(
+                "encryption-kms-source",
+                SOURCE,
+                "catalog-backend",
+                "jdbc",
+                "jdbc-driver",
+                "org.postgresql.Driver",
+                "uri",
+                "jdbc:postgresql://localhost/catalog",
+                IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION,
+                "3"));
     when(delegate.createTable(any(), any(), any(), any(), any(), any(), any(), any()))
         .thenReturn(createdTable);
 
-    IcebergEncryptionPolicyResolver resolver =
-        new IcebergEncryptionPolicyResolver(policyDispatcher, new SinglePolicyChecker());
-    dispatcher =
-        new IcebergTableEncryptionDispatcher(
-            delegate,
-            catalogManager,
-            resolver,
-            new IcebergEncryptionPolicyEvaluator(
-                key -> {
-                  validatedKey.set(key);
-                  validationCalls.incrementAndGet();
-                  return IcebergEncryptionDecision.KmsValidationStatus.valueOf(
-                      validationStatus.get().name());
-                }));
+    dispatcher = new IcebergTableEncryptionDispatcher(delegate, catalogManager, admissionService());
+  }
+
+  /**
+   * Builds the service exactly as the environment does, over the same catalog manager the
+   * dispatcher pre-checks, so these tests exercise the real translation rather than a stub
+   * decision.
+   */
+  private EncryptionAdmissionService admissionService() {
+    return new EncryptionAdmissionService(
+        table -> catalogManager.loadCatalog(getCatalogIdentifier(table)).properties(),
+        () -> new IcebergEncryptionPolicyResolver(policyDispatcher, new SinglePolicyChecker()),
+        new IcebergEncryptionPolicyEvaluator(
+            key -> {
+              validatedKey.set(key);
+              validationCalls.incrementAndGet();
+              return IcebergEncryptionDecision.KmsValidationStatus.valueOf(
+                  validationStatus.get().name());
+            }),
+        table -> capability.get());
   }
 
   @Test
   void testNullConstructorAndFactoryArgumentsAreRejectedAsIllegalArguments() {
-    IcebergEncryptionPolicyResolver resolver =
-        new IcebergEncryptionPolicyResolver(policyDispatcher, new SinglePolicyChecker());
-    IcebergEncryptionPolicyEvaluator evaluator =
-        new IcebergEncryptionPolicyEvaluator(
-            key -> IcebergEncryptionDecision.KmsValidationStatus.VALID);
+    EncryptionAdmissionService service = admissionService();
 
     Assertions.assertEquals(
         "dispatcher cannot be null",
         Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () ->
-                    new IcebergTableEncryptionDispatcher(null, catalogManager, resolver, evaluator))
+                () -> new IcebergTableEncryptionDispatcher(null, catalogManager, service))
             .getMessage());
     Assertions.assertEquals(
         "catalogManager cannot be null",
         Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () -> new IcebergTableEncryptionDispatcher(delegate, null, resolver, evaluator))
+                () -> new IcebergTableEncryptionDispatcher(delegate, null, service))
             .getMessage());
     Assertions.assertEquals(
-        "policyResolver cannot be null",
+        "admissionService cannot be null",
         Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () ->
-                    new IcebergTableEncryptionDispatcher(delegate, catalogManager, null, evaluator))
-            .getMessage());
-    Assertions.assertEquals(
-        "policyEvaluator cannot be null",
-        Assertions.assertThrows(
-                IllegalArgumentException.class,
-                () ->
-                    new IcebergTableEncryptionDispatcher(
-                        delegate,
-                        catalogManager,
-                        resolver,
-                        (IcebergEncryptionPolicyEvaluator) null))
+                () -> new IcebergTableEncryptionDispatcher(delegate, catalogManager, null))
             .getMessage());
 
     Assertions.assertEquals(
-        "kmsClientRegistry cannot be null",
+        "registry cannot be null",
         Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () -> IcebergTableEncryptionDispatcher.registryValidator(null))
+                () -> IcebergEncryptionKmsKeyValidators.fromRegistry(null))
             .getMessage());
     Assertions.assertEquals(
         "clientResolver cannot be null",
         Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () -> IcebergTableEncryptionDispatcher.clientResolverValidator(null))
+                () -> IcebergEncryptionKmsKeyValidators.fromClientResolver(null))
             .getMessage());
     Assertions.assertEquals(
-        "kmsClient cannot be null",
+        "client cannot be null",
         Assertions.assertThrows(
                 IllegalArgumentException.class,
-                () -> IcebergTableEncryptionDispatcher.clientValidator(null))
+                () -> IcebergEncryptionKmsKeyValidators.fromClient(null))
             .getMessage());
   }
 
@@ -269,7 +278,9 @@ public class TestIcebergTableEncryptionDispatcher {
 
     Assertions.assertSame(createdTable, create(Collections.emptyMap()));
 
-    Assertions.assertEquals("3", forwardedProperties().get("format-version"));
+    // V6: the policy applied but supplied no key, so the create stays plain at the version it
+    // asked for. A policy never supplies a key, and only a key needs version 3.
+    Assertions.assertFalse(forwardedProperties().containsKey("format-version"));
     Assertions.assertEquals("inherited", takeExtras().get(IcebergEncryptionAuditInfos.POLICY_NAME));
   }
 
@@ -281,7 +292,7 @@ public class TestIcebergTableEncryptionDispatcher {
     Assertions.assertSame(createdTable, create(null));
 
     Map<String, String> forwarded = forwardedProperties();
-    Assertions.assertEquals("3", forwarded.get("format-version"));
+    Assertions.assertFalse(forwarded.containsKey("format-version"));
     Assertions.assertFalse(
         forwarded.containsKey(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER));
     Assertions.assertFalse(
@@ -298,18 +309,25 @@ public class TestIcebergTableEncryptionDispatcher {
         extras.get(IcebergEncryptionAuditInfos.KMS_VALIDATION));
   }
 
+  /**
+   * V6 and lifecycle row 15: a policy in {@code report} mode records the missing key as a violation
+   * and lets the create through. The table is plain, so it is forwarded at the version it asked
+   * for; stamping version 3 on it would make a permanent change to a table that never got a key.
+   */
   @Test
   void testReportMissingRequiredKey() {
     PolicyEntity reportPolicy = policy("report", true, Enforcement.REPORT, KEY_ID);
     associateOnSchema(reportPolicy);
 
-    Assertions.assertSame(createdTable, create(Collections.emptyMap()));
+    Assertions.assertSame(createdTable, create(Collections.singletonMap("format-version", "2")));
 
     Map<String, String> reportEvent = takeExtras();
     Assertions.assertEquals("VIOLATION", reportEvent.get(IcebergEncryptionAuditInfos.COMPLIANCE));
     Assertions.assertEquals(
         Reason.KEY_REQUIRED.code(), reportEvent.get(IcebergEncryptionAuditInfos.REASON));
-    Assertions.assertEquals("3", forwardedProperties().get("format-version"));
+    Map<String, String> forwarded = forwardedProperties();
+    Assertions.assertEquals("2", forwarded.get("format-version"));
+    Assertions.assertFalse(forwarded.containsKey("encryption.key-id"));
   }
 
   @Test
@@ -329,11 +347,10 @@ public class TestIcebergTableEncryptionDispatcher {
   }
 
   @Test
-  void testValidKeyIsSanitizedAndIcebergV3IsStamped() {
+  void testValidKeyIsSanitizedAndForwardedAtTheCatalogDefault() {
     PolicyEntity policy = policy("valid", true, Enforcement.DENY_CREATE, KEY_ID);
     associateOnSchema(policy);
     Map<String, String> properties = keyProperties(KEY_ID);
-    properties.put("format-version", "2");
     properties.put("unrelated", "preserved");
 
     Assertions.assertSame(createdTable, create(properties));
@@ -342,8 +359,8 @@ public class TestIcebergTableEncryptionDispatcher {
     Assertions.assertEquals("3", forwarded.get("format-version"));
     Assertions.assertEquals(SOURCE, forwarded.get("encryption.key-provider"));
     Assertions.assertEquals(KEY_ID, forwarded.get("encryption.key-id"));
-    Assertions.assertFalse(forwarded.containsKey("encryption.kms-api"));
-    Assertions.assertFalse(forwarded.containsKey("encryption.key-source"));
+    Assertions.assertFalse(forwarded.containsKey(IcebergConstants.ENCRYPTION_KMS_API));
+    Assertions.assertFalse(forwarded.containsKey(IcebergConstants.ENCRYPTION_KEY_SOURCE));
     Assertions.assertEquals("preserved", forwarded.get("unrelated"));
     Assertions.assertEquals(1, validationCalls.get());
     Assertions.assertEquals(SOURCE, validatedKey.get().provider());
@@ -418,8 +435,10 @@ public class TestIcebergTableEncryptionDispatcher {
 
   @Test
   void testIncompleteKeyReferenceIsAuditedAndRejectedWithoutValidation() {
+    // A key id alone is completed from the catalog's KMS binding (Q12); a provider with no key id
+    // still names nothing the KMS can be asked about.
     Map<String, String> properties =
-        ImmutableMap.of(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID, KEY_ID);
+        ImmutableMap.of(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER, SOURCE);
 
     IllegalArgumentException exception =
         Assertions.assertThrows(IllegalArgumentException.class, () -> create(properties));
@@ -493,8 +512,7 @@ public class TestIcebergTableEncryptionDispatcher {
         validateWithProperties(key, true, true));
     Assertions.assertEquals(
         IcebergEncryptionDecision.KmsValidationStatus.INVALID,
-        IcebergTableEncryptionDispatcher.clientValidator(ignored -> Optional.empty())
-            .validate(key));
+        IcebergEncryptionKmsKeyValidators.fromClient(ignored -> Optional.empty()).validate(key));
     Assertions.assertEquals(
         IcebergEncryptionDecision.KmsValidationStatus.INVALID,
         validateWithProperties(key, false, true));
@@ -521,13 +539,13 @@ public class TestIcebergTableEncryptionDispatcher {
 
     Assertions.assertEquals(
         IcebergEncryptionDecision.KmsValidationStatus.INVALID,
-        IcebergTableEncryptionDispatcher.clientValidator(invalidClient).validate(key));
+        IcebergEncryptionKmsKeyValidators.fromClient(invalidClient).validate(key));
     Assertions.assertEquals(
         IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE,
-        IcebergTableEncryptionDispatcher.clientValidator(unavailableClient).validate(key));
+        IcebergEncryptionKmsKeyValidators.fromClient(unavailableClient).validate(key));
     Assertions.assertEquals(
         IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE,
-        IcebergTableEncryptionDispatcher.clientValidator(unexpectedFailureClient).validate(key));
+        IcebergEncryptionKmsKeyValidators.fromClient(unexpectedFailureClient).validate(key));
   }
 
   @Test
@@ -539,10 +557,10 @@ public class TestIcebergTableEncryptionDispatcher {
 
     Assertions.assertEquals(
         IcebergEncryptionDecision.KmsValidationStatus.INVALID,
-        IcebergTableEncryptionDispatcher.registryValidator(unknownProviderRegistry).validate(key));
+        IcebergEncryptionKmsKeyValidators.fromRegistry(unknownProviderRegistry).validate(key));
     Assertions.assertEquals(
         IcebergEncryptionDecision.KmsValidationStatus.UNAVAILABLE,
-        IcebergTableEncryptionDispatcher.registryValidator(closedRegistry).validate(key));
+        IcebergEncryptionKmsKeyValidators.fromRegistry(closedRegistry).validate(key));
   }
 
   @Test
@@ -700,8 +718,7 @@ public class TestIcebergTableEncryptionDispatcher {
   @Test
   void testLeftoverProtocolPropAlterIsAudited() {
     TableChange leftover =
-        TableChange.setProperty(
-            IcebergEncryptionPolicyEvaluator.ENCRYPTION_KMS_API, "openbao-transit");
+        TableChange.setProperty(IcebergConstants.ENCRYPTION_KMS_API, "openbao-transit");
     Table altered = mock(Table.class);
     when(delegate.alterTable(TABLE, leftover)).thenReturn(altered);
 
@@ -810,6 +827,83 @@ public class TestIcebergTableEncryptionDispatcher {
     Assertions.assertEquals(0, validationCalls.get());
   }
 
+  /**
+   * Matrix rows 4 and 10 (V2) on the Gravitino API: a key with an explicit version 2 is refused
+   * with an {@link IllegalArgumentException}, which this API answers with HTTP 400, before any
+   * policy lookup or KMS call, and the refusal is audited under the decision id it names.
+   */
+  @Test
+  void testKeyWithExplicitVersionTwoIsRefusedBeforePolicyAndKms() {
+    Map<String, String> clientKey = keyProperties(KEY_ID);
+    clientKey.put("format-version", "2");
+    assertUnsupportedFormatVersion(clientKey, IcebergFormatVersionResolution.Source.REQUEST);
+
+    setUp();
+    useCatalogProperty("gravitino.bypass.table-default.encryption.key-id", "catalog-key");
+    assertUnsupportedFormatVersion(
+        Collections.singletonMap("format-version", "2"),
+        IcebergFormatVersionResolution.Source.REQUEST);
+  }
+
+  /**
+   * Matrix rows 3 and 5 on the Gravitino API: a keyed create naming no version is refused when the
+   * catalog declares no format version of its own, and is otherwise forwarded at the version the
+   * resolution produced, from the catalog's declaration or from the request itself.
+   */
+  @Test
+  void testKeyedCreateIsForwardedAtTheAdmittedVersion() {
+    withoutCatalogProperty(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION);
+    IllegalArgumentException refused =
+        Assertions.assertThrows(
+            IllegalArgumentException.class, () -> create(keyProperties(KEY_ID)));
+    Assertions.assertTrue(
+        refused
+            .getMessage()
+            .contains(IcebergFormatVersionResolution.Source.ICEBERG_DEFAULT.token()),
+        refused.getMessage());
+    Assertions.assertTrue(
+        refused.getMessage().contains(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION),
+        refused.getMessage());
+    Assertions.assertEquals(0, validationCalls.get());
+    verify(delegate, never()).createTable(any(), any(), any(), any(), any(), any(), any(), any());
+
+    setUp();
+    useCatalogProperty(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION, "4");
+    Assertions.assertSame(createdTable, create(keyProperties(KEY_ID)));
+    Assertions.assertEquals("4", forwardedProperties().get("format-version"));
+
+    setUp();
+    Map<String, String> explicitFour = keyProperties(KEY_ID);
+    explicitFour.put("format-version", "4");
+    Assertions.assertSame(createdTable, create(explicitFour));
+    Assertions.assertEquals("4", forwardedProperties().get("format-version"));
+  }
+
+  private void assertUnsupportedFormatVersion(
+      Map<String, String> properties, IcebergFormatVersionResolution.Source source) {
+    IllegalArgumentException exception =
+        Assertions.assertThrows(IllegalArgumentException.class, () -> create(properties));
+
+    Assertions.assertTrue(exception.getMessage().contains("encryption is active"));
+    Assertions.assertTrue(exception.getMessage().contains(source.token()), exception.getMessage());
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.UNSUPPORTED_FORMAT_VERSION.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertTrue(
+        exception
+            .getMessage()
+            .contains("decisionId=" + extras.get(IcebergEncryptionAuditInfos.DECISION_ID)));
+    Assertions.assertEquals(
+        IllegalArgumentException.class.getName(),
+        extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    Assertions.assertEquals(
+        KmsValidationStatus.NOT_ATTEMPTED.name(),
+        extras.get(IcebergEncryptionAuditInfos.KMS_VALIDATION));
+    Assertions.assertEquals(0, validationCalls.get());
+    verifyNoInteractions(policyDispatcher);
+    verify(delegate, never()).createTable(any(), any(), any(), any(), any(), any(), any(), any());
+  }
+
   private Table create(Map<String, String> properties) {
     return dispatcher.createTable(
         TABLE, COLUMNS, "comment", properties, PARTITIONS, DISTRIBUTION, SORT_ORDERS, INDEXES);
@@ -843,13 +937,25 @@ public class TestIcebergTableEncryptionDispatcher {
         .thenReturn(policies);
   }
 
+  private void useCatalogProperty(String key, String value) {
+    Map<String, String> properties = new HashMap<>(catalog.properties());
+    properties.put(key, value);
+    when(catalog.properties()).thenReturn(properties);
+  }
+
+  private void withoutCatalogProperty(String key) {
+    Map<String, String> properties = new HashMap<>(catalog.properties());
+    properties.remove(key);
+    when(catalog.properties()).thenReturn(properties);
+  }
+
   private static IcebergEncryptionDecision.KmsValidationStatus validateWithProperties(
       KmsReference key, boolean enabled, boolean supportsWrapping) {
     KmsKeyProperties properties = mock(KmsKeyProperties.class);
     when(properties.enabled()).thenReturn(enabled);
     when(properties.supportsWrapping()).thenReturn(supportsWrapping);
     KmsClient client = ignored -> Optional.of(properties);
-    return IcebergTableEncryptionDispatcher.clientValidator(client).validate(key);
+    return IcebergEncryptionKmsKeyValidators.fromClient(client).validate(key);
   }
 
   private static Map<String, String> keyProperties(String id) {

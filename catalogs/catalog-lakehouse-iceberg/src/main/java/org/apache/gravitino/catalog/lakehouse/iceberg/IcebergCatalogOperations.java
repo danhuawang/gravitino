@@ -42,8 +42,10 @@ import org.apache.gravitino.connector.CatalogDropAware;
 import org.apache.gravitino.connector.CatalogInfo;
 import org.apache.gravitino.connector.CatalogOperations;
 import org.apache.gravitino.connector.HasPropertyMetadata;
+import org.apache.gravitino.connector.SupportsAtomicIntegrity;
 import org.apache.gravitino.connector.SupportsSchemas;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.exceptions.NoSuchTableException;
@@ -92,7 +94,12 @@ import org.slf4j.LoggerFactory;
 
 /** Operations for interacting with an Apache Iceberg catalog in Apache Gravitino. */
 public class IcebergCatalogOperations
-    implements CatalogOperations, SupportsSchemas, TableCatalog, ViewCatalog, CatalogDropAware {
+    implements CatalogOperations,
+        SupportsSchemas,
+        TableCatalog,
+        ViewCatalog,
+        CatalogDropAware,
+        SupportsAtomicIntegrity {
 
   private static final String ICEBERG_TABLE_DOES_NOT_EXIST_MSG = "Iceberg table does not exist: %s";
 
@@ -127,7 +134,12 @@ public class IcebergCatalogOperations
     resultConf.putAll(gravitinoConfig);
     this.catalogUuid = info.id().toString();
     resultConf.put(IcebergConstants.CATALOG_UUID, catalogUuid);
-    IcebergConfig icebergConfig = new IcebergConfig(resultConf);
+    // The governance flag is read from `conf`, the catalog's own properties, where every spelling
+    // of the encryption binding is still intact; `resultConf` keeps only the properties the
+    // transform carries over.
+    IcebergConfig icebergConfig =
+        new IcebergConfig(
+            resultConf, StringUtils.isNotBlank(conf.get(IcebergConstants.ENCRYPTION_KMS_SOURCE)));
 
     IcebergCatalogWrapper rawWrapper = new IcebergCatalogWrapper(icebergConfig);
 
@@ -139,6 +151,12 @@ public class IcebergCatalogOperations
     this.icebergCatalogWrapperHelper =
         new IcebergCatalogWrapperHelper(icebergCatalogWrapper.getCatalog());
     this.icebergViewCatalogOperations = new IcebergViewCatalogOperations(icebergCatalogWrapper);
+  }
+
+  /** {@inheritDoc} Answered by the initialized wrapper, so the capability has a single source. */
+  @Override
+  public boolean atomicIntegrityAvailable() {
+    return icebergCatalogWrapper != null && icebergCatalogWrapper.atomicIntegrityAvailable();
   }
 
   @Override
@@ -629,6 +647,8 @@ public class IcebergCatalogOperations
     } catch (org.apache.iceberg.exceptions.NoSuchTableException e) {
       LOG.warn("Iceberg table {} does not exist", tableIdent.name());
       return false;
+    } catch (MetadataIntegrityException e) {
+      throw e;
     } catch (Exception e) {
       throw new RuntimeException(e);
     }

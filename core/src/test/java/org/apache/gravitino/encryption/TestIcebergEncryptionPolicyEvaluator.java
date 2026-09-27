@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.policy.IcebergEncryptionContent;
@@ -268,15 +269,15 @@ public class TestIcebergEncryptionPolicyEvaluator {
 
     for (Map<String, String> properties :
         Arrays.asList(
-            ImmutableMap.of(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KMS_API, API),
-            ImmutableMap.of(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_SOURCE, PROVIDER),
+            ImmutableMap.of(IcebergConstants.ENCRYPTION_KMS_API, API),
+            ImmutableMap.of(IcebergConstants.ENCRYPTION_KEY_SOURCE, PROVIDER),
             ImmutableMap.of(
-                IcebergEncryptionPolicyEvaluator.ENCRYPTION_KMS_API,
+                IcebergConstants.ENCRYPTION_KMS_API,
                 API,
                 IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID,
                 KEY_ID),
             ImmutableMap.of(
-                IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_SOURCE,
+                IcebergConstants.ENCRYPTION_KEY_SOURCE,
                 PROVIDER,
                 IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID,
                 KEY_ID),
@@ -285,7 +286,7 @@ public class TestIcebergEncryptionPolicyEvaluator {
                 PROVIDER,
                 IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID,
                 KEY_ID,
-                IcebergEncryptionPolicyEvaluator.ENCRYPTION_KMS_API,
+                IcebergConstants.ENCRYPTION_KMS_API,
                 API))) {
       IcebergEncryptionDecision decision =
           evaluatorThatMustNotValidate().evaluate(Optional.of(reportPolicy), PROVIDER, properties);
@@ -389,6 +390,77 @@ public class TestIcebergEncryptionPolicyEvaluator {
                 () ->
                     evaluator.evaluate(Optional.empty(), PROVIDER, keyProperties(PROVIDER, KEY_ID)))
             .getMessage());
+  }
+
+  /**
+   * The stage preflight applies the full rules but stops before the KMS: an accepted key is
+   * returned as not attempted and unvalidated, and the validator is never called.
+   */
+  @Test
+  void testPreflightAcceptsAnAllowedKeyWithoutCallingTheKms() {
+    IcebergEncryptionDecision decision =
+        evaluatorThatMustNotValidate()
+            .preflight(
+                Optional.of(policy(true, Enforcement.DENY_CREATE, PROVIDER, KEY_ID)),
+                PROVIDER,
+                keyProperties(PROVIDER, KEY_ID));
+
+    Assertions.assertTrue(decision.admitted());
+    Assertions.assertEquals(IcebergEncryptionDecision.Compliance.COMPLIANT, decision.compliance());
+    Assertions.assertEquals(IcebergEncryptionDecision.Reason.COMPLIANT, decision.reason());
+    Assertions.assertEquals(
+        IcebergEncryptionDecision.KmsValidationStatus.NOT_ATTEMPTED,
+        decision.kmsValidationStatus());
+    Assertions.assertNull(decision.validatedKey());
+
+    IcebergEncryptionDecision unpoliced =
+        evaluatorThatMustNotValidate()
+            .preflight(Optional.empty(), PROVIDER, keyProperties(PROVIDER, KEY_ID));
+    Assertions.assertTrue(unpoliced.admitted());
+    Assertions.assertEquals(IcebergEncryptionDecision.Reason.NO_POLICY, unpoliced.reason());
+    Assertions.assertEquals(
+        IcebergEncryptionDecision.KmsValidationStatus.NOT_ATTEMPTED,
+        unpoliced.kmsValidationStatus());
+  }
+
+  /** The preflight refuses under deny-create what the full evaluation would refuse. */
+  @Test
+  void testPreflightRefusesWhatTheFullEvaluationRefusesWithoutCallingTheKms() {
+    IcebergEncryptionPolicyEvaluator evaluator = evaluatorThatMustNotValidate();
+    PolicyEntity deny = policy(true, Enforcement.DENY_CREATE, PROVIDER, "allowed-key");
+
+    IcebergEncryptionDecision offList =
+        evaluator.preflight(Optional.of(deny), PROVIDER, keyProperties(PROVIDER, KEY_ID));
+    IcebergEncryptionDecision missing =
+        evaluator.preflight(Optional.of(deny), PROVIDER, Collections.emptyMap());
+    IcebergEncryptionDecision foreign =
+        evaluator.preflight(Optional.of(deny), PROVIDER, keyProperties("another-kms", KEY_ID));
+
+    Assertions.assertEquals(IcebergEncryptionDecision.Outcome.DENIED, offList.outcome());
+    Assertions.assertEquals(IcebergEncryptionDecision.Reason.KEY_NOT_ALLOWED, offList.reason());
+    Assertions.assertEquals(IcebergEncryptionDecision.Outcome.DENIED, missing.outcome());
+    Assertions.assertEquals(IcebergEncryptionDecision.Reason.KEY_REQUIRED, missing.reason());
+    Assertions.assertEquals(IcebergEncryptionDecision.Outcome.DENIED, foreign.outcome());
+    Assertions.assertEquals(IcebergEncryptionDecision.Reason.KEY_SOURCE_MISMATCH, foreign.reason());
+  }
+
+  /** Under report the preflight never refuses, exactly like the full evaluation. */
+  @Test
+  void testPreflightNeverRefusesAReportedViolation() {
+    IcebergEncryptionPolicyEvaluator evaluator = evaluatorThatMustNotValidate();
+    PolicyEntity report = policy(true, Enforcement.REPORT, PROVIDER, "allowed-key");
+
+    IcebergEncryptionDecision offList =
+        evaluator.preflight(Optional.of(report), PROVIDER, keyProperties(PROVIDER, KEY_ID));
+    IcebergEncryptionDecision missing =
+        evaluator.preflight(Optional.of(report), PROVIDER, Collections.emptyMap());
+
+    Assertions.assertTrue(offList.admitted());
+    Assertions.assertEquals(IcebergEncryptionDecision.Compliance.VIOLATION, offList.compliance());
+    Assertions.assertEquals(IcebergEncryptionDecision.Reason.KEY_NOT_ALLOWED, offList.reason());
+    Assertions.assertNull(offList.validatedKey());
+    Assertions.assertTrue(missing.admitted());
+    Assertions.assertEquals(IcebergEncryptionDecision.Reason.KEY_REQUIRED, missing.reason());
   }
 
   private static IcebergEncryptionPolicyEvaluator evaluatorThatMustNotValidate() {

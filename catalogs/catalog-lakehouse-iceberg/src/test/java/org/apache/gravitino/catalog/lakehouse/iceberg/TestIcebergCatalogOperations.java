@@ -19,18 +19,27 @@
 package org.apache.gravitino.catalog.lakehouse.iceberg;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableMap;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
+import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.connector.CatalogInfo;
+import org.apache.gravitino.connector.SupportsAtomicIntegrity;
 import org.apache.gravitino.exceptions.GravitinoRuntimeException;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.common.ops.IcebergCatalogWrapper;
 import org.apache.gravitino.iceberg.common.utils.IcebergCatalogUtil;
+import org.apache.gravitino.meta.AuditInfo;
 import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -55,6 +64,137 @@ public class TestIcebergCatalogOperations {
                     ImmutableMap.of()));
     Assertions.assertTrue(
         exception.getMessage().contains("Failed to run listNamespace on Iceberg catalog"));
+  }
+
+  @Test
+  public void testInitializeCarriesGovernedEncryptionStatePrivately() {
+    Map<String, String> properties =
+        ImmutableMap.of(
+            IcebergConstants.CATALOG_BACKEND,
+            "memory",
+            IcebergConstants.ENCRYPTION_KMS_SOURCE,
+            "openbao");
+    CatalogInfo catalogInfo =
+        new CatalogInfo(
+            1L,
+            CATALOG,
+            Catalog.Type.RELATIONAL,
+            "lakehouse-iceberg",
+            null,
+            properties,
+            AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build(),
+            Namespace.of(METALAKE));
+
+    try (IcebergCatalogOperations catalogOperations = new IcebergCatalogOperations()) {
+      catalogOperations.initialize(
+          properties, catalogInfo, TestIcebergCatalog.ICEBERG_PROPERTIES_METADATA);
+
+      IcebergConfig config = catalogOperations.icebergCatalogWrapper.getIcebergConfig();
+      Assertions.assertTrue(config.isGovernedEncryptionConfigured());
+      Assertions.assertFalse(
+          config.getIcebergCatalogProperties().containsKey(IcebergConstants.ENCRYPTION_KMS_SOURCE));
+    }
+  }
+
+  /**
+   * R2: Gravitino declares no format version on the Iceberg catalog it loads, whether or not the
+   * catalog binds a {@code table-default.}/{@code table-override.} encryption key in either
+   * spelling. The operator's own {@code table-default.format-version} is the only source, so
+   * nothing here raises a version behind their back; admission refuses a keyed create below 3
+   * instead.
+   */
+  @Test
+  public void testInitializeDeclaresNoFormatVersionWhetherOrNotTheCatalogBindsAKey() {
+    Map<String, String> unkeyed =
+        ImmutableMap.of(
+            IcebergConstants.CATALOG_BACKEND,
+            "memory",
+            IcebergConstants.ENCRYPTION_KMS_SOURCE,
+            "openbao");
+    List<Map<String, String>> catalogs =
+        Arrays.asList(
+            unkeyed,
+            keyedWith(unkeyed, IcebergEncryptionCatalogBinding.TABLE_DEFAULT_KEY_ID),
+            keyedWith(
+                unkeyed,
+                BaseCatalog.CATALOG_BYPASS_PREFIX
+                    + IcebergEncryptionCatalogBinding.TABLE_OVERRIDE_KEY_ID));
+
+    for (Map<String, String> properties : catalogs) {
+      try (IcebergCatalogOperations catalogOperations = new IcebergCatalogOperations()) {
+        catalogOperations.initialize(
+            properties, catalogInfo(properties), TestIcebergCatalog.ICEBERG_PROPERTIES_METADATA);
+
+        IcebergConfig config = catalogOperations.icebergCatalogWrapper.getIcebergConfig();
+        Assertions.assertFalse(
+            config
+                .getIcebergCatalogProperties()
+                .containsKey(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION),
+            properties.toString());
+      }
+    }
+  }
+
+  private static Map<String, String> keyedWith(Map<String, String> base, String keyProperty) {
+    return ImmutableMap.<String, String>builder()
+        .putAll(base)
+        .put(keyProperty, "catalog-key")
+        .build();
+  }
+
+  private static CatalogInfo catalogInfo(Map<String, String> properties) {
+    return new CatalogInfo(
+        1L,
+        CATALOG,
+        Catalog.Type.RELATIONAL,
+        "lakehouse-iceberg",
+        null,
+        properties,
+        AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build(),
+        Namespace.of(METALAKE));
+  }
+
+  /**
+   * The capability core reads has a single source: the initialized catalog. The operations object
+   * only relays what the wrapper answers, and it declares the core interface directly so a proxy
+   * that copies declared interfaces cannot drop it.
+   */
+  @Test
+  public void testAtomicIntegrityAvailableRelaysTheWrapperAnswer() {
+    IcebergCatalogWrapper mockWrapper = mock(IcebergCatalogWrapper.class);
+    IcebergCatalogOperations catalogOperations = new IcebergCatalogOperations();
+
+    Assertions.assertFalse(
+        catalogOperations.atomicIntegrityAvailable(), "an uninitialized catalog reports nothing");
+
+    catalogOperations.icebergCatalogWrapper = mockWrapper;
+    when(mockWrapper.atomicIntegrityAvailable()).thenReturn(true);
+    Assertions.assertTrue(catalogOperations.atomicIntegrityAvailable());
+
+    when(mockWrapper.atomicIntegrityAvailable()).thenReturn(false);
+    Assertions.assertFalse(catalogOperations.atomicIntegrityAvailable());
+
+    Assertions.assertTrue(
+        Arrays.asList(IcebergCatalogOperations.class.getInterfaces())
+            .contains(SupportsAtomicIntegrity.class),
+        "SupportsAtomicIntegrity must be declared directly on the operations class");
+  }
+
+  @Test
+  public void testPurgePreservesDirectMetadataIntegrityType() {
+    IcebergCatalogWrapper mockWrapper = mock(IcebergCatalogWrapper.class);
+    IcebergCatalogOperations catalogOperations = new IcebergCatalogOperations();
+    catalogOperations.icebergCatalogWrapper = mockWrapper;
+    MetadataIntegrityException integrityFailure =
+        new MetadataIntegrityException("unexpected digest detail");
+    NameIdentifier tableIdent = NameIdentifier.of(METALAKE, CATALOG, "schema", "table");
+    doThrow(integrityFailure).when(mockWrapper).purgeTable(any());
+
+    MetadataIntegrityException thrown =
+        Assertions.assertThrows(
+            MetadataIntegrityException.class, () -> catalogOperations.purgeTable(tableIdent));
+
+    Assertions.assertSame(integrityFailure, thrown);
   }
 
   @Test

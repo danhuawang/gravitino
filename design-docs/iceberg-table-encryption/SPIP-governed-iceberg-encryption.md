@@ -344,59 +344,22 @@ when available.
 
 ### B3. Integrity on load
 
-Implements **A3**. Proposed direction matches the earlier detailed design: a **trusted metadata
-record** outside object storage, checked on load.
+Implements **A3**. The accepted [atomic metadata-integrity
+ADR](design-trusted-metadata-integrity.md) supersedes this SPIP's earlier persistence and
+backend-scope proposal.
 
-**Backend scope**
+For v1, governed metadata integrity is supported only for built-in Iceberg catalogs whose pointer
+and hash share one atomic backing-store mutation:
 
+- PostgreSQL or MySQL JDBC stores a catalog-local integrity row beside `iceberg_tables` and updates
+  both through one JDBC connection and transaction. MySQL requires both tables to use InnoDB.
+- Hive stores native HMS `metadata_hash` with `metadata_location` in the same HMS table mutation.
 
-| Backend                         | Integrity                                                                                                                                                  |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| JDBC                            | **v1:** supported (opt-in). Dedicated integrity ledger.                                                                                                    |
-| Hive                            | Follow-up: delegate to Iceberg/HMS integrity where available.                                                                                              |
-| Standalone / REST (and similar) | **Not supported.** We cannot reliably store a trusted metadata record under our control next to the catalog pointer; we do not control that storage layer. |
-
-
-**What we need to track** (trusted record)
-
-
-| Field             | Role                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------- |
-| catalog id        | Gravitino catalog **entity ID** (stable). Not catalog name.                                  |
-| metadata location | Pointer to the current `metadata.json` tip (identifies the table for integrity)              |
-| table key id      | Immutable `encryption.key-id` bound with that pointer (Iceberg opaque string, not an entity) |
-| hash algorithm    | Digest name (v1: `SHA-256`)                                                                  |
-| metadata hash     | Digest bytes (Hive stores Base64 of SHA-256); same algorithm as Iceberg Hive catalog         |
-
-
-**Identity principle**
-
-Do **not** use entity **names** as identifiers; they are not stable (rename / same catalog name
-under different metalakes). Use Gravitino **entity ID / UUID** across the system.
-
-**Proposed key:** `(catalog_id, metadata_location)`.
-
-- **`catalog_id`:** catalog entity ID — globally unique and rename-stable (same idea as async
-  Iceberg REST hard deletion’s `iceberg_cleanup_job.catalog_id` from
-  `catalog.entity().id()`; see
-  [async-iceberg-rest-hard-deletion.md](https://github.com/apache/gravitino/blob/main/design-docs/async-iceberg-rest-hard-deletion.md)).
-  Metalake id is not required in the PK when catalog IDs are globally unique (Jerry’s metalake
-  concern applies to **names**, not entity IDs).
-- **`metadata_location`:** the live table tip we hash/verify. (Deletion instead keys the *dropped*
-  table by `namespace` + `table_name` and carries `metadata_location` as purge payload — same
-  `catalog_id` scope, different secondary key on purpose.)
-
-```sql
-CREATE TABLE iceberg_metadata_integrity (
-  catalog_id BIGINT NOT NULL,              -- Gravitino catalog entity ID; not catalog_name
-  metadata_location VARCHAR(1000) NOT NULL, -- current metadata.json tip
-  table_key_id VARCHAR(2048) NOT NULL,      -- encryption.key-id (opaque Iceberg string)
-  hash_algorithm VARCHAR(32) NOT NULL,      -- v1: 'SHA-256'
-  metadata_hash VARCHAR(128) NOT NULL,      -- Base64(SHA-256) as in Hive, or hex equivalent
-  created_at TIMESTAMP NOT NULL,
-  PRIMARY KEY (catalog_id, metadata_location)
-);
-```
+All other backing paths are outside the v1 governed-integrity guarantee. In particular, the
+rejected shared entity-store ledger cannot atomically commit with a separately stored catalog
+pointer. New encrypted-table registration and same-key registration overwrite use the supported
+backend's atomic pointer-and-hash commit. Plain-to-encrypted and key-changing overwrites are
+rejected.
 
 Do not expose digests on load or in audit payloads; audit may note verification failed (A4).
 
@@ -408,8 +371,8 @@ Iceberg’s encryption docs define which files are encrypted vs what the catalog
 - **Encrypted (engine):** data, delete, manifest, and manifest-list files.
 - **Not encrypted:** `metadata.json` (no data/stats).
 - **Catalog integrity hash:** one digest of the current **table metadata**
-  (`TableMetadata` / `metadata.json` content), kept in a separate trusted store — not a hash of
-  every encrypted data file.
+  (`TableMetadata` / `metadata.json` content), bound to trusted catalog state outside object storage
+  — not a hash of every encrypted data file.
 
 Checksums in a trusted store are an allowed option
 ([Catalog security requirements](https://iceberg.apache.org/docs/latest/encryption/#catalog-security-requirements)).
@@ -434,26 +397,28 @@ load
 **Semantics**
 
 1. **Record trust** on successful encrypted create / commit that publishes a new `metadata.json`
-  (same transaction as the catalog pointer update when possible).
-2. **Verify on load** before returning an encrypted table: compare location + hash (+ key id) to
-  the trusted record.
-3. **Match** → load proceeds. **Mismatch** → exception (exact type deferred).
+  in the same atomic backing-store mutation as the catalog pointer.
+2. **Verify on load** before returning or caching an encrypted table: compare location, hash, and
+  key id (JDBC) to the trusted state read with the pointer. Hive performs the comparison inside
+  native Iceberg refresh and does not independently compare key ids after hash verification.
+3. **Match** → load proceeds. **Mismatch** → JDBC: fail closed with a typed metadata-integrity
+  error whose public message does not disclose the digest (incomplete trusted state also fails
+  closed); Hive: native error through existing mappings, with typed upstream exceptions to follow.
 
 ```mermaid
 sequenceDiagram
   participant Engine as Writer_or_engine
   participant Catalog
   participant Store as Object_store
-  participant Ledger as Integrity_ledger
+  participant Backend as Atomic_catalog_backend
 
   Engine->>Catalog: create_or_commit encrypted table
   Catalog->>Store: write metadata.json
-  Catalog->>Ledger: write trust location_key_hash
-  Note over Catalog,Ledger: same JDBC txn as pointer when possible
+  Catalog->>Backend: atomically write pointer_and_hash
 
   Engine->>Catalog: load table
-  Catalog->>Store: read metadata.json
-  Catalog->>Ledger: read trusted record
+  Catalog->>Backend: read pointer_and_hash consistently
+  Catalog->>Store: read pointed metadata.json
   Catalog->>Catalog: compare hash and key id
   alt match
     Catalog-->>Engine: return table
@@ -462,19 +427,9 @@ sequenceDiagram
   end
 ```
 
-
-
-**Trusted metadata schema (JDBC v1)**
-
-Dedicated integrity ledger only (do not extend Iceberg’s own `iceberg_tables`). Identity columns
-as above: **`PRIMARY KEY (catalog_id, metadata_location)`**, aligned with deletion on `catalog_id`
-scope. Exact ID column type (`BIGINT` vs UUID string) follows existing Gravitino entity ID storage.
-
-Do not mirror the hash into Gravitino `table_meta` as a second authority.
-
-Deferred: exact exception type; opt-in flag naming; enrollment of legacy encrypted tables; Hive
-backend follow-up. Optional denormalized `metalake_id` for ops/debug only — not required for
-uniqueness.
+An encrypted table without an integrity row loads with a warning on both backends and its first
+commit writes the row, while register-overwrite onto it is refused; the Hive backend contract is in
+the Hive SPIP.
 
 ### B4. Audit evidence
 

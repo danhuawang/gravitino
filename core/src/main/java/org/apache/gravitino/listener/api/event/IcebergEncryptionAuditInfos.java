@@ -11,6 +11,7 @@ import java.util.Map;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.annotation.DeveloperApi;
+import org.apache.gravitino.encryption.IcebergEncryptionDecision;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.policy.IcebergEncryptionContent;
 
@@ -27,6 +28,12 @@ public final class IcebergEncryptionAuditInfos {
 
   /** Prefix shared by every Iceberg encryption extra key. */
   public static final String PREFIX = "icebergEncryption.";
+
+  /**
+   * Identifier of the admission decision this record belongs to: the same string the refusal
+   * message carries, so the record can be joined to the response an operator saw.
+   */
+  public static final String DECISION_ID = PREFIX + "decisionId";
 
   /** Matched policy name or comma-separated names. */
   public static final String POLICY_NAME = PREFIX + "policyName";
@@ -134,6 +141,9 @@ public final class IcebergEncryptionAuditInfos {
     /** The configured KMS was unavailable for validation. */
     KMS_SERVICE_UNAVAILABLE("KMS_SERVICE_UNAVAILABLE"),
 
+    /** A new encrypted table asked for a format version encryption cannot use. */
+    UNSUPPORTED_FORMAT_VERSION("UNSUPPORTED_FORMAT_VERSION"),
+
     /** More than one policy applied where the prototype requires one. */
     AMBIGUOUS_POLICY("AMBIGUOUS_POLICY"),
 
@@ -177,6 +187,7 @@ public final class IcebergEncryptionAuditInfos {
   /** Builder for immutable encryption {@code customInfo} extras. */
   public static final class Builder {
 
+    @Nullable private String decisionId;
     private final List<String> policyNames = new ArrayList<>();
     @Nullable private Compliance compliance;
     @Nullable private IcebergEncryptionContent.Enforcement enforcement;
@@ -190,6 +201,18 @@ public final class IcebergEncryptionAuditInfos {
     @Nullable private Class<? extends Exception> errorType;
 
     private Builder() {}
+
+    /**
+     * Sets the identifier of the admission decision this record belongs to.
+     *
+     * @param decisionId decision identifier minted by the policy evaluator
+     * @return this builder
+     */
+    public Builder withDecisionId(String decisionId) {
+      Preconditions.checkArgument(StringUtils.isNotBlank(decisionId), "decisionId cannot be blank");
+      this.decisionId = decisionId;
+      return this;
+    }
 
     /**
      * Sets a single matched policy name.
@@ -237,6 +260,26 @@ public final class IcebergEncryptionAuditInfos {
     }
 
     /**
+     * Sets both dimensions of an applicable policy evaluation from a decision. {@link
+     * IcebergEncryptionDecision.Compliance#NOT_APPLICABLE} has no audit twin and is recorded as a
+     * violation, because a completed action must never fail for lack of one.
+     *
+     * @param compliance decision compliance result
+     * @param enforcement enforcement behavior
+     * @return this builder
+     */
+    public Builder withPolicyEvaluation(
+        IcebergEncryptionDecision.Compliance compliance,
+        IcebergEncryptionContent.Enforcement enforcement) {
+      Preconditions.checkArgument(compliance != null, "compliance cannot be null");
+      return withPolicyEvaluation(
+          compliance == IcebergEncryptionDecision.Compliance.COMPLIANT
+              ? Compliance.COMPLIANT
+              : Compliance.VIOLATION,
+          enforcement);
+    }
+
+    /**
      * Sets the stable reason code.
      *
      * @param reason reason code
@@ -246,6 +289,17 @@ public final class IcebergEncryptionAuditInfos {
       Preconditions.checkArgument(reason != null, "reason cannot be null");
       this.reason = reason;
       return this;
+    }
+
+    /**
+     * Sets the stable reason code from its decision twin of the same name.
+     *
+     * @param reason decision reason
+     * @return this builder
+     */
+    public Builder withReason(IcebergEncryptionDecision.Reason reason) {
+      Preconditions.checkArgument(reason != null, "reason cannot be null");
+      return withReason(Reason.valueOf(reason.name()));
     }
 
     /**
@@ -319,6 +373,17 @@ public final class IcebergEncryptionAuditInfos {
     }
 
     /**
+     * Sets the KMS validation status from its decision twin of the same name.
+     *
+     * @param kmsValidation decision validation status
+     * @return this builder
+     */
+    public Builder withKmsValidation(IcebergEncryptionDecision.KmsValidationStatus kmsValidation) {
+      Preconditions.checkArgument(kmsValidation != null, "kmsValidation cannot be null");
+      return withKmsValidation(KmsValidationStatus.valueOf(kmsValidation.name()));
+    }
+
+    /**
      * Records the exception class for a failed action. The message is discarded so credentials and
      * other secrets cannot leak into extras.
      *
@@ -347,6 +412,7 @@ public final class IcebergEncryptionAuditInfos {
           "A KMS validation result requires a key identity");
 
       ImmutableMap.Builder<String, String> extras = ImmutableMap.builder();
+      putIfPresent(extras, DECISION_ID, decisionId);
       if (!policyNames.isEmpty()) {
         extras.put(POLICY_NAME, String.join(",", policyNames));
       }

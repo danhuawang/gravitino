@@ -80,6 +80,7 @@ dependencies {
   }
   testImplementation("org.scala-lang.modules:scala-collection-compat_$scalaVersion:$scalaCollectionCompatVersion")
   testImplementation(libs.awaitility)
+  testImplementation(libs.h2db)
   // Add Hadoop 3.3+ dependencies since Spark's Hadoop is excluded
   // Required for Iceberg 1.10+ which uses newer Hadoop APIs like FileSystem.openFile()
   testImplementation(libs.hadoop3.client.api)

@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.audit.AuditLog;
 import org.apache.gravitino.audit.v2.SimpleAuditLogV2;
+import org.apache.gravitino.encryption.IcebergEncryptionDecision;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos.Compliance;
 import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos.KmsValidationStatus;
@@ -162,6 +163,32 @@ public class TestIcebergEncryptionAuditInfos {
   }
 
   @Test
+  void testDecisionIdIsRecordedAndRejectedWhenBlank() {
+    Map<String, String> extras =
+        IcebergEncryptionAuditInfos.builder()
+            .withDecisionId("d-42")
+            .withReason(Reason.COMPLIANT)
+            .build();
+
+    Assertions.assertEquals("d-42", extras.get(IcebergEncryptionAuditInfos.DECISION_ID));
+    Assertions.assertEquals(
+        "icebergEncryption.decisionId", IcebergEncryptionAuditInfos.DECISION_ID);
+    Assertions.assertFalse(
+        IcebergEncryptionAuditInfos.builder()
+            .withReason(Reason.COMPLIANT)
+            .build()
+            .containsKey(IcebergEncryptionAuditInfos.DECISION_ID));
+    for (String blank : new String[] {"", "   "}) {
+      Assertions.assertEquals(
+          "decisionId cannot be blank",
+          Assertions.assertThrows(
+                  IllegalArgumentException.class,
+                  () -> IcebergEncryptionAuditInfos.builder().withDecisionId(blank))
+              .getMessage());
+    }
+  }
+
+  @Test
   void testKmsValidationRequiresKeyIdentity() {
     Assertions.assertThrows(
         IllegalArgumentException.class,
@@ -169,6 +196,70 @@ public class TestIcebergEncryptionAuditInfos {
             IcebergEncryptionAuditInfos.builder()
                 .withKmsValidation(KmsValidationStatus.INVALID)
                 .build());
+  }
+
+  @Test
+  void testDecisionEnumsAreAcceptedDirectly() {
+    Map<String, String> extras =
+        IcebergEncryptionAuditInfos.builder()
+            .withPolicyEvaluation(
+                IcebergEncryptionDecision.Compliance.VIOLATION,
+                IcebergEncryptionContent.Enforcement.REPORT)
+            .withReason(IcebergEncryptionDecision.Reason.KEY_NOT_ALLOWED)
+            .withProviderKey(new KmsReference("openbao", "k-1"))
+            .withKmsValidation(IcebergEncryptionDecision.KmsValidationStatus.VALID)
+            .build();
+
+    Assertions.assertEquals("VIOLATION", extras.get(IcebergEncryptionAuditInfos.COMPLIANCE));
+    Assertions.assertEquals("REPORT", extras.get(IcebergEncryptionAuditInfos.ENFORCEMENT));
+    Assertions.assertEquals(
+        Reason.KEY_NOT_ALLOWED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        KmsValidationStatus.VALID.name(), extras.get(IcebergEncryptionAuditInfos.KMS_VALIDATION));
+  }
+
+  /**
+   * A compliance dimension with no audit twin must never fail a completed action, so it is recorded
+   * as a violation rather than rejected.
+   */
+  @Test
+  void testNotApplicableDecisionComplianceIsRecordedAsViolation() {
+    Map<String, String> extras =
+        IcebergEncryptionAuditInfos.builder()
+            .withPolicyEvaluation(
+                IcebergEncryptionDecision.Compliance.NOT_APPLICABLE,
+                IcebergEncryptionContent.Enforcement.DENY_CREATE)
+            .build();
+
+    Assertions.assertEquals("VIOLATION", extras.get(IcebergEncryptionAuditInfos.COMPLIANCE));
+  }
+
+  @Test
+  void testNullDecisionEnumsAreRejectedAsIllegalArguments() {
+    IcebergEncryptionAuditInfos.Builder builder = IcebergEncryptionAuditInfos.builder();
+
+    Assertions.assertEquals(
+        "compliance cannot be null",
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                    builder.withPolicyEvaluation(
+                        (IcebergEncryptionDecision.Compliance) null,
+                        IcebergEncryptionContent.Enforcement.REPORT))
+            .getMessage());
+    Assertions.assertEquals(
+        "reason cannot be null",
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> builder.withReason((IcebergEncryptionDecision.Reason) null))
+            .getMessage());
+    Assertions.assertEquals(
+        "kmsValidation cannot be null",
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                    builder.withKmsValidation((IcebergEncryptionDecision.KmsValidationStatus) null))
+            .getMessage());
   }
 
   @Test
@@ -185,7 +276,8 @@ public class TestIcebergEncryptionAuditInfos {
         Assertions.assertThrows(
                 IllegalArgumentException.class,
                 () ->
-                    builder.withPolicyEvaluation(null, IcebergEncryptionContent.Enforcement.REPORT))
+                    builder.withPolicyEvaluation(
+                        (Compliance) null, IcebergEncryptionContent.Enforcement.REPORT))
             .getMessage());
     Assertions.assertEquals(
         "enforcement cannot be null",
@@ -195,12 +287,15 @@ public class TestIcebergEncryptionAuditInfos {
             .getMessage());
     Assertions.assertEquals(
         "reason cannot be null",
-        Assertions.assertThrows(IllegalArgumentException.class, () -> builder.withReason(null))
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> builder.withReason((IcebergEncryptionAuditInfos.Reason) null))
             .getMessage());
     Assertions.assertEquals(
         "kmsValidation cannot be null",
         Assertions.assertThrows(
-                IllegalArgumentException.class, () -> builder.withKmsValidation(null))
+                IllegalArgumentException.class,
+                () -> builder.withKmsValidation((KmsValidationStatus) null))
             .getMessage());
     Assertions.assertEquals(
         "error cannot be null",
@@ -270,6 +365,7 @@ public class TestIcebergEncryptionAuditInfos {
     Assertions.assertEquals("COMPLIANT", Reason.COMPLIANT.code());
     Assertions.assertEquals("KMS_SERVICE_UNAVAILABLE", Reason.KMS_SERVICE_UNAVAILABLE.code());
     Assertions.assertEquals("AMBIGUOUS_POLICY", Reason.AMBIGUOUS_POLICY.code());
+    Assertions.assertEquals("UNSUPPORTED_FORMAT_VERSION", Reason.UNSUPPORTED_FORMAT_VERSION.code());
     Assertions.assertEquals("METADATA_INTEGRITY_FAILED", Reason.METADATA_INTEGRITY_FAILED.code());
   }
 

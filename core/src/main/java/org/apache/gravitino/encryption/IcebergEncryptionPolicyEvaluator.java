@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.meta.PolicyEntity;
 import org.apache.gravitino.policy.IcebergEncryptionContent;
@@ -25,12 +26,6 @@ public final class IcebergEncryptionPolicyEvaluator {
   /** User table property containing the provider-native KMS key identifier. */
   public static final String ENCRYPTION_KEY_ID = "encryption.key-id";
 
-  /** Rejected leftover Apache table property; {@code api} is resolved from provider config. */
-  public static final String ENCRYPTION_KMS_API = "encryption.kms-api";
-
-  /** Rejected leftover Apache table property; use {@link #ENCRYPTION_KEY_PROVIDER}. */
-  public static final String ENCRYPTION_KEY_SOURCE = "encryption.key-source";
-
   private final KmsKeyValidator keyValidator;
   private final Supplier<String> decisionIdSupplier;
 
@@ -40,7 +35,7 @@ public final class IcebergEncryptionPolicyEvaluator {
    * @param keyValidator metadata-only validator for same-catalog-provider keys
    */
   public IcebergEncryptionPolicyEvaluator(KmsKeyValidator keyValidator) {
-    this(keyValidator, () -> UUID.randomUUID().toString());
+    this(keyValidator, IcebergEncryptionPolicyEvaluator::newDecisionId);
   }
 
   IcebergEncryptionPolicyEvaluator(
@@ -68,6 +63,33 @@ public final class IcebergEncryptionPolicyEvaluator {
       Optional<PolicyEntity> resolvedPolicy,
       @Nullable String catalogKmsSource,
       Map<String, String> tableProperties) {
+    return evaluate(resolvedPolicy, catalogKmsSource, tableProperties, true);
+  }
+
+  /**
+   * Evaluates the same rules as {@link #evaluate} but stops before the KMS call: the preflight of a
+   * stage step, refusing early what the commit's full evaluation would refuse anyway. A key that
+   * passes is returned with {@link IcebergEncryptionDecision.KmsValidationStatus#NOT_ATTEMPTED} and
+   * no validated key, because nothing validated it. Under {@code report} it never refuses, exactly
+   * as the full evaluation never refuses for a policy violation there.
+   *
+   * @param resolvedPolicy effective Iceberg encryption policy, if one applies
+   * @param catalogKmsSource KMS provider bound to the Iceberg catalog, or {@code null} if unbound
+   * @param tableProperties the prepared table-create properties
+   * @return immutable decision; never one whose KMS validation was attempted
+   */
+  public IcebergEncryptionDecision preflight(
+      Optional<PolicyEntity> resolvedPolicy,
+      @Nullable String catalogKmsSource,
+      Map<String, String> tableProperties) {
+    return evaluate(resolvedPolicy, catalogKmsSource, tableProperties, false);
+  }
+
+  private IcebergEncryptionDecision evaluate(
+      Optional<PolicyEntity> resolvedPolicy,
+      @Nullable String catalogKmsSource,
+      Map<String, String> tableProperties,
+      boolean validateWithKms) {
     Preconditions.checkArgument(resolvedPolicy != null, "resolvedPolicy cannot be null");
     Preconditions.checkArgument(tableProperties != null, "tableProperties cannot be null");
 
@@ -79,8 +101,8 @@ public final class IcebergEncryptionPolicyEvaluator {
     String decisionId = nextDecisionId();
 
     boolean leftoverProtocolProperty =
-        tableProperties.containsKey(ENCRYPTION_KMS_API)
-            || tableProperties.containsKey(ENCRYPTION_KEY_SOURCE);
+        tableProperties.containsKey(IcebergConstants.ENCRYPTION_KMS_API)
+            || tableProperties.containsKey(IcebergConstants.ENCRYPTION_KEY_SOURCE);
     boolean anyKeyProperty =
         leftoverProtocolProperty
             || tableProperties.containsKey(ENCRYPTION_KEY_PROVIDER)
@@ -156,6 +178,16 @@ public final class IcebergEncryptionPolicyEvaluator {
           IcebergEncryptionDecision.Reason.KEY_NOT_ALLOWED);
     }
 
+    if (!validateWithKms) {
+      return acceptedKey(
+          decisionId,
+          policyReference,
+          enforcement,
+          allowlistViolation,
+          IcebergEncryptionDecision.KmsValidationStatus.NOT_ATTEMPTED,
+          null);
+    }
+
     IcebergEncryptionDecision.KmsValidationStatus validationStatus =
         keyValidator.validate(requestedKey);
     Preconditions.checkArgument(validationStatus != null, "keyValidator returned null");
@@ -165,21 +197,11 @@ public final class IcebergEncryptionPolicyEvaluator {
 
     switch (validationStatus) {
       case VALID:
-        return new IcebergEncryptionDecision(
+        return acceptedKey(
             decisionId,
-            policy == null
-                ? IcebergEncryptionDecision.Compliance.NOT_APPLICABLE
-                : allowlistViolation
-                    ? IcebergEncryptionDecision.Compliance.VIOLATION
-                    : IcebergEncryptionDecision.Compliance.COMPLIANT,
-            IcebergEncryptionDecision.Outcome.SUCCEEDED,
-            policy == null
-                ? IcebergEncryptionDecision.Reason.NO_POLICY
-                : allowlistViolation
-                    ? IcebergEncryptionDecision.Reason.KEY_NOT_ALLOWED
-                    : IcebergEncryptionDecision.Reason.COMPLIANT,
             policyReference,
             enforcement,
+            allowlistViolation,
             validationStatus,
             requestedKey);
       case INVALID:
@@ -207,6 +229,28 @@ public final class IcebergEncryptionPolicyEvaluator {
       default:
         throw new IllegalStateException("Unexpected KMS validation status: " + validationStatus);
     }
+  }
+
+  /**
+   * Mints a decision identifier from the same generator every {@link IcebergEncryptionDecision}
+   * carries, so a refusal raised before a decision exists is correlated by the same one source.
+   *
+   * @return a fresh decision identifier
+   */
+  String nextDecisionId() {
+    String decisionId = decisionIdSupplier.get();
+    Preconditions.checkArgument(StringUtils.isNotBlank(decisionId), "decisionId cannot be blank");
+    return decisionId;
+  }
+
+  /**
+   * The default generator this evaluator mints from, for callers with no evaluator at hand. Being
+   * static, it ignores any supplier injected into an evaluator instance.
+   *
+   * @return a fresh decision identifier
+   */
+  static String newDecisionId() {
+    return UUID.randomUUID().toString();
   }
 
   @Nullable
@@ -255,6 +299,33 @@ public final class IcebergEncryptionPolicyEvaluator {
         decisionId, policy, enforcement, IcebergEncryptionDecision.Reason.KEY_REQUIRED);
   }
 
+  /** A key the policy lets through; {@code validatedKey} is set only when the KMS confirmed it. */
+  private static IcebergEncryptionDecision acceptedKey(
+      String decisionId,
+      @Nullable IcebergEncryptionDecision.PolicyReference policy,
+      @Nullable Enforcement enforcement,
+      boolean allowlistViolation,
+      IcebergEncryptionDecision.KmsValidationStatus validationStatus,
+      @Nullable KmsReference validatedKey) {
+    return new IcebergEncryptionDecision(
+        decisionId,
+        policy == null
+            ? IcebergEncryptionDecision.Compliance.NOT_APPLICABLE
+            : allowlistViolation
+                ? IcebergEncryptionDecision.Compliance.VIOLATION
+                : IcebergEncryptionDecision.Compliance.COMPLIANT,
+        IcebergEncryptionDecision.Outcome.SUCCEEDED,
+        policy == null
+            ? IcebergEncryptionDecision.Reason.NO_POLICY
+            : allowlistViolation
+                ? IcebergEncryptionDecision.Reason.KEY_NOT_ALLOWED
+                : IcebergEncryptionDecision.Reason.COMPLIANT,
+        policy,
+        enforcement,
+        validationStatus,
+        validatedKey);
+  }
+
   private static IcebergEncryptionDecision policyViolation(
       String decisionId,
       IcebergEncryptionDecision.PolicyReference policy,
@@ -285,12 +356,6 @@ public final class IcebergEncryptionPolicyEvaluator {
       IcebergEncryptionDecision.KmsValidationStatus validationStatus) {
     return new IcebergEncryptionDecision(
         decisionId, compliance, outcome, reason, policy, enforcement, validationStatus, null);
-  }
-
-  private String nextDecisionId() {
-    String decisionId = decisionIdSupplier.get();
-    Preconditions.checkArgument(StringUtils.isNotBlank(decisionId), "decisionId cannot be blank");
-    return decisionId;
   }
 
   /** Metadata-only KMS validation boundary injected into the pure evaluator. */

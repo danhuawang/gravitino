@@ -3,6 +3,8 @@
  */
 package com.datastrato.gravitino;
 
+import static org.apache.gravitino.utils.NameIdentifierUtil.getCatalogIdentifier;
+
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoCatalogDispatcher;
 import com.datastrato.gravitino.catalog.DatastratoFilesetDispatcher;
@@ -41,9 +43,11 @@ import com.datastrato.gravitino.preview.TrinoJdbcDataPreviewOperator;
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.google.common.annotations.VisibleForTesting;
 import java.util.Optional;
+import java.util.function.Function;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.FutureGrantManager;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.OwnerDispatcher;
@@ -57,7 +61,11 @@ import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
 import org.apache.gravitino.catalog.TopicDispatcher;
 import org.apache.gravitino.catalog.ViewDispatcher;
+import org.apache.gravitino.connector.SupportsAtomicIntegrity;
 import org.apache.gravitino.credential.CredentialOperationDispatcher;
+import org.apache.gravitino.encryption.AtomicIntegrityCapability;
+import org.apache.gravitino.encryption.EncryptionAdmissionService;
+import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
 import org.apache.gravitino.encryption.SinglePolicyChecker;
@@ -144,7 +152,7 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
             tableOperationDispatcher,
             catalogManager(),
             new IcebergEncryptionPolicyResolver(policyDispatcher(), new SinglePolicyChecker()),
-            IcebergTableEncryptionDispatcher.registryValidator(kmsClientRegistry()));
+            IcebergEncryptionKmsKeyValidators.fromRegistry(kmsClientRegistry()));
     DatastratoTableDispatcher tableNormalizeDispatcher =
         new DatastratoTableNormalizeDispatcher(tableHookDispatcher, catalogManager());
     this.datastratoTableDispatcher =
@@ -249,11 +257,39 @@ public class DatastratoGravitinoEnv extends GravitinoEnv {
       CatalogManager catalogManager,
       IcebergEncryptionPolicyResolver policyResolver,
       IcebergEncryptionPolicyEvaluator.KmsKeyValidator keyValidator) {
+    EncryptionAdmissionService admissionService =
+        new EncryptionAdmissionService(
+            table -> catalogManager.loadCatalog(getCatalogIdentifier(table)).properties(),
+            () -> policyResolver,
+            new IcebergEncryptionPolicyEvaluator(keyValidator),
+            atomicIntegrityCapability(catalogManager));
     DatastratoTableDispatcher tableEncryptionDispatcher =
         new IcebergTableEncryptionDispatcher(
-            tableOperationDispatcher, catalogManager, policyResolver, keyValidator);
+            tableOperationDispatcher, catalogManager, admissionService);
     return new DatastratoTableHookDispatcher(
         tableEncryptionDispatcher, this::internalOwnerDispatcher);
+  }
+
+  /**
+   * Reads the atomic-integrity capability from the loaded catalog's operations.
+   *
+   * <p>Resolved per request through the leased entry point, never cached: a wrapper retired between
+   * a lookup and its use would leave the operations object gone. The {@code instanceof} is on the
+   * core interface, so no connector class crosses the isolated ClassLoader boundary.
+   *
+   * @param catalogManager manager owning the loaded catalogs
+   * @return the capability function the admission service consults
+   */
+  @VisibleForTesting
+  static Function<NameIdentifier, AtomicIntegrityCapability> atomicIntegrityCapability(
+      CatalogManager catalogManager) {
+    return table ->
+        AtomicIntegrityCapability.of(
+            catalogManager.doWithCatalog(
+                getCatalogIdentifier(table),
+                catalog ->
+                    catalog.ops() instanceof SupportsAtomicIntegrity
+                        && ((SupportsAtomicIntegrity) catalog.ops()).atomicIntegrityAvailable()));
   }
 
   @Override

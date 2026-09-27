@@ -120,6 +120,18 @@ public class IcebergConstants {
   /** Iceberg table property that identifies the key used to encrypt the table. */
   public static final String ENCRYPTION_KEY_ID = "encryption.key-id";
 
+  /**
+   * A leftover Apache spelling for the KMS a table's key came from. Gravitino governs the key
+   * itself, so the property is rejected on a request and never forwarded to a backend or a client.
+   */
+  public static final String ENCRYPTION_KMS_API = "encryption.kms-api";
+
+  /**
+   * A leftover Apache spelling for where a table's key came from. Gravitino governs the key itself,
+   * so the property is rejected on a request and never forwarded to a backend or a client.
+   */
+  public static final String ENCRYPTION_KEY_SOURCE = "encryption.key-source";
+
   public static final String ICEBERG_METRICS_STORE = "metricsStore";
   public static final String ICEBERG_METRICS_STORE_RETAIN_DAYS = "metricsStoreRetainDays";
   public static final String ICEBERG_METRICS_QUEUE_CAPACITY = "metricsQueueCapacity";
