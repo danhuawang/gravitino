@@ -153,8 +153,24 @@ public final class EncryptionAdmissionService {
     return decide(request, policy, decision, effective, resolvedFormatVersion, capability);
   }
 
-  private String nextDecisionId() {
+  /**
+   * Mints a decision identifier from the generator every admission this service uses, so an API
+   * edge that refuses a request on its own is correlated with its audit record the same way.
+   *
+   * @return a fresh decision identifier
+   */
+  public String nextDecisionId() {
     return policyEvaluator.nextDecisionId();
+  }
+
+  /**
+   * Mints a decision identifier where no admission service exists, from the evaluator's default
+   * generator; being static, it ignores any decision-id supplier injected into an evaluator.
+   *
+   * @return a fresh decision identifier
+   */
+  public static String newDecisionId() {
+    return IcebergEncryptionPolicyEvaluator.newDecisionId();
   }
 
   /**

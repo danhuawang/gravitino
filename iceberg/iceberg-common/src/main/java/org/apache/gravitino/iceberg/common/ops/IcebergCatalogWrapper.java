@@ -36,7 +36,10 @@ import org.apache.gravitino.utils.ClassUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.iceberg.BaseTable;
+import org.apache.iceberg.CatalogUtil;
+import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.Transaction;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.Namespace;
@@ -44,14 +47,17 @@ import org.apache.iceberg.catalog.SupportsNamespaces;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.catalog.ViewCatalog;
 import org.apache.iceberg.hive.HiveCatalogWithMetadataLocationSupport;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.ResolvingFileIO;
 import org.apache.iceberg.jdbc.JdbcCatalogWithMetadataLocationSupport;
+import org.apache.iceberg.memory.MemoryCatalogWithMetadataLocationSupport;
 import org.apache.iceberg.rest.CatalogHandlers;
 import org.apache.iceberg.rest.RESTCatalog;
 import org.apache.iceberg.rest.RESTCatalogProperties.SnapshotMode;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.CreateViewRequest;
+import org.apache.iceberg.rest.requests.ImmutableRegisterTableRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
@@ -222,6 +228,69 @@ public class IcebergCatalogWrapper implements AutoCloseable {
 
   public LoadTableResponse registerTable(Namespace namespace, RegisterTableRequest request) {
     return CatalogHandlers.registerTable(getCatalog(), namespace, request);
+  }
+
+  /**
+   * Registers metadata that was already read and admitted, publishing exactly that object through
+   * the backend's registration primitive when it has one.
+   *
+   * <p>Hive, JDBC and the in-memory catalog have that primitive (Hive and JDBC atomic with the
+   * integrity hash when {@link #atomicIntegrityAvailable()}); none reads the file again before
+   * publishing, and the response comes from a load after publishing. A custom catalog has none and
+   * registers by location through {@link #registerTable(Namespace, RegisterTableRequest)}, which
+   * reads the file again with no integrity binding to the admitted object. That is acceptable only
+   * because such a backend reports no atomic integrity, so governed admission refused encrypted
+   * input as an unsupported backend before registration reached this point.
+   *
+   * @param identifier table to register
+   * @param targetMetadata metadata read by {@link #readTableMetadata(String)}
+   * @param overwrite whether to overwrite an existing table registration
+   * @return registered table response
+   */
+  public LoadTableResponse registerTable(
+      TableIdentifier identifier, TableMetadata targetMetadata, boolean overwrite) {
+    Preconditions.checkArgument(identifier != null, "identifier cannot be null");
+    Preconditions.checkArgument(targetMetadata != null, "targetMetadata cannot be null");
+    Catalog loadedCatalog = getCatalog();
+    Table table;
+    if (loadedCatalog instanceof HiveCatalogWithMetadataLocationSupport) {
+      table =
+          ((HiveCatalogWithMetadataLocationSupport) loadedCatalog)
+              .registerTable(identifier, targetMetadata, overwrite);
+    } else if (loadedCatalog instanceof JdbcCatalogWithMetadataLocationSupport) {
+      table =
+          ((JdbcCatalogWithMetadataLocationSupport) loadedCatalog)
+              .registerTable(identifier, targetMetadata, overwrite);
+    } else if (loadedCatalog instanceof MemoryCatalogWithMetadataLocationSupport) {
+      table =
+          ((MemoryCatalogWithMetadataLocationSupport) loadedCatalog)
+              .registerTable(identifier, targetMetadata, overwrite);
+    } else {
+      return registerTable(
+          identifier.namespace(),
+          ImmutableRegisterTableRequest.builder()
+              .name(identifier.name())
+              .metadataLocation(targetMetadata.metadataFileLocation())
+              .overwrite(overwrite)
+              .build());
+    }
+    return LoadTableResponse.builder()
+        .withTableMetadata(((BaseTable) table).operations().current())
+        .build();
+  }
+
+  /**
+   * Reads an unregistered table's metadata once with this catalog's configured FileIO.
+   *
+   * @param metadataLocation metadata file location
+   * @return the parsed metadata with its trusted key and hash
+   */
+  public TableMetadata readTableMetadata(String metadataLocation) {
+    Preconditions.checkArgument(
+        StringUtils.isNotBlank(metadataLocation), "metadataLocation cannot be blank");
+    try (FileIO io = CatalogUtil.loadFileIO(fileIOImpl(), fileIOProperties(), configuration)) {
+      return TableMetadataParser.read(io, metadataLocation);
+    }
   }
 
   /**

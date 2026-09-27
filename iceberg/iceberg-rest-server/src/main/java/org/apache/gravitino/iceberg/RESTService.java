@@ -18,17 +18,30 @@
  */
 package org.apache.gravitino.iceberg;
 
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Suppliers;
 import com.google.common.collect.Lists;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 import javax.inject.Singleton;
 import javax.servlet.Servlet;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.auxiliary.GravitinoAuxiliaryService;
+import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.encryption.AtomicIntegrityCapability;
+import org.apache.gravitino.encryption.EncryptionAdmissionService;
+import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
+import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
+import org.apache.gravitino.encryption.SinglePolicyChecker;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
+import org.apache.gravitino.iceberg.service.FederatedCatalogWrapper;
+import org.apache.gravitino.iceberg.service.GovernedRegistrationService;
 import org.apache.gravitino.iceberg.service.IcebergAuthenticationFilter;
 import org.apache.gravitino.iceberg.service.IcebergCatalogWrapperManager;
 import org.apache.gravitino.iceberg.service.IcebergExceptionMapper;
@@ -38,6 +51,7 @@ import org.apache.gravitino.iceberg.service.IcebergRESTUtils;
 import org.apache.gravitino.iceberg.service.authorization.IcebergRESTServerContext;
 import org.apache.gravitino.iceberg.service.cleanup.IcebergCleanupJobStore;
 import org.apache.gravitino.iceberg.service.cleanup.IcebergCleanupManager;
+import org.apache.gravitino.iceberg.service.dispatcher.IcebergNamespaceEncryptionDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergNamespaceEventDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergNamespaceHookDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergNamespaceOperationDispatcher;
@@ -52,6 +66,7 @@ import org.apache.gravitino.iceberg.service.dispatcher.IcebergViewHookDispatcher
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergViewOperationDispatcher;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergViewOperationExecutor;
 import org.apache.gravitino.iceberg.service.metrics.IcebergMetricsManager;
+import org.apache.gravitino.iceberg.service.provider.DynamicIcebergConfigProvider;
 import org.apache.gravitino.iceberg.service.provider.IcebergConfigProvider;
 import org.apache.gravitino.iceberg.service.provider.IcebergConfigProviderFactory;
 import org.apache.gravitino.listener.EventBus;
@@ -157,8 +172,27 @@ public class RESTService implements GravitinoAuxiliaryService {
 
     // Table: EventDispatcher -> HookDispatcher -> EncryptionDispatcher -> OperationExecutor
     IcebergTableOperationDispatcher icebergTableOperationDispatcher =
-        new IcebergTableEncryptionDispatcher(
-            new IcebergTableOperationExecutor(icebergCatalogWrapperManager, cleanupManager));
+        new IcebergTableOperationExecutor(icebergCatalogWrapperManager, cleanupManager);
+    IcebergTableEncryptionDispatcher icebergTableEncryptionDispatcher;
+    Optional<GovernedRegistrationService> registrationService = Optional.empty();
+    Predicate<String> federatedCatalog = federatedCatalog(icebergCatalogWrapperManager);
+    if (shouldEnableGovernedTableCreate(auxMode, configProvider)) {
+      // Admission requires embedded Gravitino services and catalog names backed by Gravitino
+      // catalog identities.
+      EncryptionAdmissionService admissionService =
+          encryptionAdmissionService(icebergCatalogWrapperManager);
+      icebergTableEncryptionDispatcher =
+          new IcebergTableEncryptionDispatcher(
+              icebergTableOperationDispatcher, metalakeName, admissionService, federatedCatalog);
+      registrationService =
+          Optional.of(
+              new GovernedRegistrationService(
+                  admissionService, icebergCatalogWrapperManager, metalakeName, cleanupManager));
+    } else {
+      icebergTableEncryptionDispatcher =
+          new IcebergTableEncryptionDispatcher(icebergTableOperationDispatcher, federatedCatalog);
+    }
+    icebergTableOperationDispatcher = icebergTableEncryptionDispatcher;
     if (authorizationContext.isAuthorizationEnabled()) {
       icebergTableOperationDispatcher =
           new IcebergTableHookDispatcher(
@@ -178,7 +212,12 @@ public class RESTService implements GravitinoAuxiliaryService {
     IcebergViewOperationDispatcher icebergViewDispatcher =
         new IcebergViewEventDispatcher(icebergViewOperationDispatcher, eventBus, metalakeName);
 
-    // Namespace: EventDispatcher -> HookDispatcher -> OperationExecutor
+    // Namespace: EventDispatcher -> HookDispatcher -> EncryptionDispatcher -> OperationExecutor
+    namespaceOperationDispatcher =
+        registrationService.isPresent()
+            ? new IcebergNamespaceEncryptionDispatcher(
+                namespaceOperationDispatcher, registrationService.get(), federatedCatalog)
+            : new IcebergNamespaceEncryptionDispatcher(namespaceOperationDispatcher);
     if (authorizationContext.isAuthorizationEnabled()) {
       namespaceOperationDispatcher =
           new IcebergNamespaceHookDispatcher(namespaceOperationDispatcher);
@@ -311,6 +350,55 @@ public class RESTService implements GravitinoAuxiliaryService {
     if (server != null) {
       server.join();
     }
+  }
+
+  /**
+   * Builds the one admission service this deployment uses. The policy resolver stays lazy because
+   * the Gravitino policy dispatcher is not ready while the auxiliary service initializes.
+   */
+  private static EncryptionAdmissionService encryptionAdmissionService(
+      IcebergCatalogWrapperManager catalogWrapperManager) {
+    CatalogManager catalogManager = GravitinoEnv.getInstance().catalogManager();
+    return new EncryptionAdmissionService(
+        table -> catalogManager.loadCatalog(catalogIdentifier(table)).properties(),
+        Suppliers.memoize(
+            () ->
+                new IcebergEncryptionPolicyResolver(
+                    GravitinoEnv.getInstance().policyDispatcher(), new SinglePolicyChecker())),
+        new IcebergEncryptionPolicyEvaluator(
+            IcebergEncryptionKmsKeyValidators.fromRegistry(
+                GravitinoEnv.getInstance().kmsClientRegistry())),
+        table ->
+            AtomicIntegrityCapability.of(
+                catalogWrapperManager
+                    .getCatalogWrapper(table.namespace().level(1))
+                    .atomicIntegrityAvailable()));
+  }
+
+  /**
+   * Tells, by catalog name, whether a catalog federates another Iceberg REST catalog, which the
+   * encryption dispatchers pass through untouched.
+   */
+  @VisibleForTesting
+  static Predicate<String> federatedCatalog(IcebergCatalogWrapperManager catalogWrapperManager) {
+    return catalogName ->
+        catalogWrapperManager.getCatalogWrapper(catalogName) instanceof FederatedCatalogWrapper;
+  }
+
+  private static NameIdentifier catalogIdentifier(NameIdentifier table) {
+    return NameIdentifier.of(table.namespace().level(0), table.namespace().level(1));
+  }
+
+  /**
+   * Governed table creation and registration need the auxiliary mode and the dynamic config
+   * provider: only then is a catalog name backed by a Gravitino catalog identity to resolve policy
+   * against. The admission service narrows enforcement further, per request, to catalogs whose
+   * loaded backend reports atomic metadata integrity.
+   */
+  @VisibleForTesting
+  static boolean shouldEnableGovernedTableCreate(
+      boolean auxMode, IcebergConfigProvider configProvider) {
+    return auxMode && configProvider instanceof DynamicIcebergConfigProvider;
   }
 
   private String[] getIcebergRESTPackages(IcebergConfig icebergConfig) {

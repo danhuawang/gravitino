@@ -21,7 +21,10 @@ package org.apache.gravitino.iceberg.common.ops;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -32,13 +35,18 @@ import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.common.cache.SupportsMetadataLocation;
 import org.apache.gravitino.iceberg.common.cache.TableMetadataCache;
 import org.apache.gravitino.iceberg.common.utils.IcebergCatalogUtil;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
+import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.hive.HiveCatalogWithMetadataLocationSupport;
 import org.apache.iceberg.jdbc.JdbcCatalogWithMetadataLocationSupport;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
+import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -214,5 +222,31 @@ public class TestIcebergCatalogWrapper {
     public void close() throws IOException {
       CLOSED.set(true);
     }
+  }
+
+  @Test
+  public void testReadTableMetadataUsesConfiguredFileIO(@TempDir Path tempDir) throws IOException {
+    String keyId = "customer-key-v1";
+    TableMetadata metadata =
+        TableMetadata.newTableMetadata(
+                new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+                PartitionSpec.unpartitioned(),
+                tempDir.resolve("table").toUri().toString(),
+                Collections.emptyMap())
+            .upgradeToFormatVersion(3)
+            .replaceProperties(
+                Collections.singletonMap(TableProperties.ENCRYPTION_TABLE_KEY, keyId));
+    Path metadataFile = tempDir.resolve("v1.metadata.json");
+    Files.write(
+        metadataFile, TableMetadataParser.toJson(metadata).getBytes(StandardCharsets.UTF_8));
+    IcebergCatalogWrapper wrapper =
+        new IcebergCatalogWrapper(
+            new IcebergConfig(Map.of(IcebergConstants.CATALOG_BACKEND, "memory")));
+
+    String location = metadataFile.toUri().toString();
+    TableMetadata read = wrapper.readTableMetadata(location);
+
+    Assertions.assertEquals(location, read.metadataFileLocation());
+    Assertions.assertEquals(keyId, read.properties().get(TableProperties.ENCRYPTION_TABLE_KEY));
   }
 }

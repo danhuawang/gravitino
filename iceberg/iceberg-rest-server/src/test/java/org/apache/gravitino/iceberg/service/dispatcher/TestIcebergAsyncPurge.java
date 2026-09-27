@@ -189,7 +189,8 @@ class TestIcebergAsyncPurge {
                       .registerTable(context(false), DB, registerReq()));
       Assertions.assertTrue(e.getMessage().contains("being purged"), e.getMessage());
     }
-    verify(wrapper, never()).registerTable(any(), any(), anyBoolean());
+    verify(wrapper, never())
+        .registerTable(any(Namespace.class), any(RegisterTableRequest.class), anyBoolean());
   }
 
   @Test
@@ -202,7 +203,8 @@ class TestIcebergAsyncPurge {
       namespaceExecutor(wrapper, Optional.of(cleanup))
           .registerTable(context(false), DB, registerReq());
     }
-    verify(wrapper).registerTable(any(), any(), anyBoolean());
+    verify(wrapper)
+        .registerTable(any(Namespace.class), any(RegisterTableRequest.class), anyBoolean());
   }
 
   // --- helpers ---

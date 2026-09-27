@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
+import org.apache.gravitino.iceberg.service.CatalogWrapperForREST;
 import org.apache.gravitino.iceberg.service.IcebergCatalogWrapperManager;
 import org.apache.gravitino.iceberg.service.cleanup.IcebergCleanupManager;
 import org.apache.gravitino.listener.api.event.IcebergRequestContext;
@@ -129,8 +130,9 @@ public class IcebergNamespaceOperationExecutor implements IcebergNamespaceOperat
     IcebergCleanupHelper.rejectIfBeingPurged(
         cleanupManager, context.catalogName(), namespace, registerTableRequest.name());
 
-    return icebergCatalogWrapperManager
-        .getCatalogWrapper(context.catalogName())
-        .registerTable(namespace, registerTableRequest, context.requestCredentialVending());
+    CatalogWrapperForREST catalogWrapper =
+        icebergCatalogWrapperManager.getCatalogWrapper(context.catalogName());
+    return catalogWrapper.registerTable(
+        namespace, registerTableRequest, context.requestCredentialVending());
   }
 }

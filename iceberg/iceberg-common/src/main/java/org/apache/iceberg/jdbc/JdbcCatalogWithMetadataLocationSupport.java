@@ -25,14 +25,20 @@ import java.io.Closeable;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.iceberg.common.cache.SupportsMetadataLocation;
 import org.apache.iceberg.CatalogProperties;
+import org.apache.iceberg.MetastoreRegisterTableUtils;
+import org.apache.iceberg.Table;
+import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableOperations;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.CommitFailedException;
+import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.jdbc.JdbcTrustedMetadataStore.TableRecord;
 import org.apache.iceberg.jdbc.JdbcUtil.SchemaVersion;
@@ -220,6 +226,29 @@ public class JdbcCatalogWithMetadataLocationSupport extends JdbcCatalog
   }
 
   /**
+   * Registers metadata the caller already read, optionally overwriting an existing registration.
+   * The object passed in is the object published: a new registration commits it (with its integrity
+   * row when the catalog is integrity-aware), and an overwrite hands it to the atomic repoint. The
+   * backend does not read the file again before publishing; the returned table answers from a
+   * verifying load after publishing.
+   *
+   * @param identifier table identifier to register
+   * @param targetMetadata metadata read by the caller; its file location is the one registered
+   * @param overwrite whether to overwrite an existing table registration
+   * @return the registered table
+   */
+  public Table registerTable(
+      TableIdentifier identifier, TableMetadata targetMetadata, boolean overwrite) {
+    return MetastoreRegisterTableUtils.registerTable(
+        this,
+        identifier,
+        targetMetadata.metadataFileLocation(),
+        overwrite,
+        targetMetadata,
+        this::repoint);
+  }
+
+  /**
    * Renames a table through upstream's single autocommit {@code UPDATE} of the pointer row; the
    * integrity row of an encrypted table follows through the foreign key's {@code ON UPDATE
    * CASCADE}, inside that same statement. Upstream opens no transaction, so the cascade is the
@@ -265,6 +294,61 @@ public class JdbcCatalogWithMetadataLocationSupport extends JdbcCatalog
       throw new SQLException(
           "The JDBC database does not report transaction support required for atomic metadata "
               + "integrity");
+    }
+  }
+
+  /**
+   * Register-overwrite callback: repoints the table from the location the utility observed to the
+   * admitted metadata. Integrity-aware catalogs hand the repoint to {@link
+   * IntegrityJdbcTableOperations#overwrite}, after a verifying load of the current metadata; plain
+   * upstream mode uses upstream's compare-and-set of the pointer.
+   */
+  private void repoint(
+      TableIdentifier tableIdentifier,
+      String oldMetadataLocation,
+      String newMetadataLocation,
+      TableMetadata targetMetadata) {
+    if (trustedMetadataStore == null) {
+      repointPlain(tableIdentifier, oldMetadataLocation, newMetadataLocation);
+      return;
+    }
+    IntegrityJdbcTableOperations operations =
+        (IntegrityJdbcTableOperations) newTableOps(tableIdentifier);
+    TableMetadata currentMetadata = operations.current();
+    if (currentMetadata == null) {
+      throw new NoSuchTableException("Table does not exist: %s", tableIdentifier);
+    }
+    if (!Objects.equals(currentMetadata.metadataFileLocation(), oldMetadataLocation)) {
+      throw new CommitFailedException(
+          "Cannot overwrite table %s: metadata location changed from %s to %s",
+          tableIdentifier, oldMetadataLocation, currentMetadata.metadataFileLocation());
+    }
+    operations.overwrite(currentMetadata, targetMetadata);
+  }
+
+  private void repointPlain(
+      TableIdentifier tableIdentifier, String oldMetadataLocation, String newMetadataLocation) {
+    try {
+      int updatedRecords =
+          JdbcUtil.updateTable(
+              jdbcSchemaVersion,
+              jdbcConnections,
+              jdbcCatalogName,
+              tableIdentifier,
+              newMetadataLocation,
+              oldMetadataLocation);
+
+      if (updatedRecords == 1) {
+        LOG.debug("Successfully committed to existing table: {}", tableIdentifier);
+      } else {
+        throw new CommitFailedException(
+            "Failed to update table %s from catalog %s", tableIdentifier, jdbcCatalogName);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new UncheckedInterruptedException(e, "Interrupted during commit");
+    } catch (SQLException e) {
+      throw new UncheckedSQLException(e, "Unknown failure");
     }
   }
 

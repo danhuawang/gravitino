@@ -19,6 +19,12 @@
 
 package org.apache.iceberg.jdbc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.times;
+
 import com.google.common.collect.ImmutableMap;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
@@ -44,9 +50,11 @@ import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.OutputFile;
@@ -55,6 +63,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 /**
@@ -119,6 +128,16 @@ public class TestJdbcCatalogWithMetadataLocationSupport {
 
     Assertions.assertFalse(catalog.supportsAtomicMetadataIntegrity());
     Assertions.assertFalse(catalog.newTableOps(existing) instanceof IntegrityJdbcTableOperations);
+    BaseTable table = (BaseTable) catalog.loadTable(existing);
+    TableMetadata firstMetadata = table.operations().current();
+    table.updateProperties().set("revision", "2").commit();
+    TableMetadata secondMetadata = table.operations().current();
+    catalog.registerTable(existing, firstMetadata, true);
+    Assertions.assertEquals(
+        firstMetadata.metadataFileLocation(), catalog.metadataLocation(existing));
+    catalog.registerTable(existing, secondMetadata, true);
+    Assertions.assertEquals(
+        secondMetadata.metadataFileLocation(), catalog.metadataLocation(existing));
     catalog.renameTable(existing, renamed);
     Assertions.assertTrue(catalog.tableExists(renamed));
     Assertions.assertTrue(catalog.dropTable(renamed, false));
@@ -286,6 +305,126 @@ public class TestJdbcCatalogWithMetadataLocationSupport {
         IcebergMetadataIntegrity.metadataHash(metadata), integrity.metadataHash);
     Assertions.assertEquals(
         metadataLocation, ((BaseTable) registered).operations().current().metadataFileLocation());
+    catalog.close();
+  }
+
+  @Test
+  void testRegisterTableOverwrite() throws Exception {
+    JdbcCatalogWithMetadataLocationSupport catalog =
+        initializedCatalog(h2Uri("register_overwrite"), "jdbc_overwrite");
+    Namespace namespace = Namespace.of("ns");
+    catalog.createNamespace(namespace);
+    TableIdentifier ident = TableIdentifier.of(namespace, "t");
+
+    BaseTable table = (BaseTable) catalog.createTable(ident, SCHEMA);
+    TableMetadata metadataV1 = table.operations().current();
+
+    table.updateProperties().set("version", "v2").commit();
+    TableMetadata metadataV2 = table.operations().current();
+
+    catalog.registerTable(ident, metadataV1, true);
+    Assertions.assertEquals(metadataV1.metadataFileLocation(), catalog.metadataLocation(ident));
+    Assertions.assertFalse(
+        ((BaseTable) catalog.loadTable(ident)).properties().containsKey("version"));
+
+    catalog.registerTable(ident, metadataV2, true);
+    Assertions.assertEquals(metadataV2.metadataFileLocation(), catalog.metadataLocation(ident));
+    Assertions.assertEquals(
+        "v2", ((BaseTable) catalog.loadTable(ident)).properties().get("version"));
+
+    Assertions.assertThrows(
+        AlreadyExistsException.class, () -> catalog.registerTable(ident, metadataV2, false));
+    catalog.close();
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false", "true"})
+  void testParsedEncryptedRegistrationCreatesPointerAndIntegrityAtomically(boolean overwrite)
+      throws Exception {
+    String uri = h2Uri("register_encrypted");
+    String catalogName = "jdbc_register";
+    JdbcCatalogWithMetadataLocationSupport catalog = initializedCatalog(uri, catalogName);
+    Namespace namespace = Namespace.of("ns");
+    TableIdentifier identifier = TableIdentifier.of(namespace, "encrypted");
+    catalog.createNamespace(namespace);
+    Table table = createEncryptedTable(catalog, identifier);
+    TableMetadata metadata = ((BaseTable) table).operations().current();
+    String metadataLocation = metadata.metadataFileLocation();
+    Assertions.assertTrue(catalog.dropTable(identifier, false));
+
+    Table registered = catalog.registerTable(identifier, metadata, overwrite);
+
+    IntegrityRow integrity = loadIntegrityRow(uri, catalogName, identifier);
+    Assertions.assertEquals(metadataLocation, loadPointer(uri, catalogName, identifier));
+    Assertions.assertEquals(metadataLocation, integrity.metadataLocation);
+    Assertions.assertEquals("kms-key-1", integrity.keyId);
+    Assertions.assertEquals(
+        IcebergMetadataIntegrity.metadataHash(metadata), integrity.metadataHash);
+    Assertions.assertEquals(
+        metadataLocation, ((BaseTable) registered).operations().current().metadataFileLocation());
+    catalog.close();
+  }
+
+  @Test
+  void testEncryptedSameKeyOverwriteUpdatesBothRecordsAndRollsBackTogether() throws Exception {
+    String uri = h2Uri("register_encrypted_overwrite");
+    String catalogName = "jdbc_register_overwrite";
+    JdbcCatalogWithMetadataLocationSupport catalog = initializedCatalog(uri, catalogName);
+    Namespace namespace = Namespace.of("ns");
+    TableIdentifier identifier = TableIdentifier.of(namespace, "encrypted");
+    catalog.createNamespace(namespace);
+    BaseTable table = (BaseTable) createEncryptedTable(catalog, identifier);
+    TableMetadata firstMetadata = table.operations().current();
+    String firstLocation = firstMetadata.metadataFileLocation();
+    table.updateProperties().set("revision", "2").commit();
+    TableMetadata secondMetadata = table.operations().current();
+
+    catalog.registerTable(identifier, firstMetadata, true);
+
+    IntegrityRow firstIntegrity = loadIntegrityRow(uri, catalogName, identifier);
+    Assertions.assertEquals(firstLocation, loadPointer(uri, catalogName, identifier));
+    Assertions.assertEquals(firstLocation, firstIntegrity.metadataLocation);
+    Assertions.assertEquals(
+        IcebergMetadataIntegrity.metadataHash(firstMetadata), firstIntegrity.metadataHash);
+
+    addLocationConstraint(uri, firstLocation);
+    Assertions.assertThrows(
+        UncheckedSQLException.class, () -> catalog.registerTable(identifier, secondMetadata, true));
+    Assertions.assertEquals(firstLocation, loadPointer(uri, catalogName, identifier));
+    Assertions.assertEquals(
+        firstLocation, loadIntegrityRow(uri, catalogName, identifier).metadataLocation);
+    catalog.close();
+  }
+
+  @Test
+  void testRegistrationPublishesParsedMetadataWithoutReadingItAgain() throws Exception {
+    String uri = h2Uri("register_single_derive");
+    String catalogName = "jdbc_register_single_derive";
+    JdbcCatalogWithMetadataLocationSupport catalog = initializedCatalog(uri, catalogName);
+    Namespace namespace = Namespace.of("ns");
+    TableIdentifier identifier = TableIdentifier.of(namespace, "encrypted");
+    catalog.createNamespace(namespace);
+    BaseTable table = (BaseTable) createEncryptedTable(catalog, identifier);
+    String location = table.operations().current().metadataFileLocation();
+    Assertions.assertTrue(catalog.dropTable(identifier, false));
+
+    TableMetadata target;
+    try (MockedStatic<TableMetadataParser> parser =
+            mockStatic(TableMetadataParser.class, CALLS_REAL_METHODS);
+        MockedStatic<IcebergMetadataIntegrity> integrity =
+            mockStatic(IcebergMetadataIntegrity.class, CALLS_REAL_METHODS)) {
+      target = TableMetadataParser.read(table.io(), location);
+      catalog.registerTable(identifier, target, false);
+
+      parser.verify(() -> TableMetadataParser.read(any(FileIO.class), anyString()), times(1));
+      integrity.verify(() -> IcebergMetadataIntegrity.derive(any()), times(1));
+      integrity.verify(() -> IcebergMetadataIntegrity.metadataHash(any()), times(1));
+    }
+
+    Assertions.assertEquals(location, loadPointer(uri, catalogName, identifier));
+    Assertions.assertEquals(
+        IcebergMetadataIntegrity.metadataHash(target),
+        loadIntegrityRow(uri, catalogName, identifier).metadataHash);
     catalog.close();
   }
 

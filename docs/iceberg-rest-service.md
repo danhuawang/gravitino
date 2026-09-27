@@ -200,7 +200,7 @@ Governed encryption over JDBC supports PostgreSQL and MySQL in v1. Encrypted tab
 MySQL requires both tables to use InnoDB. When
 `gravitino.iceberg-rest.jdbc-initialize=false`, provision the table before creating or registering
 encrypted tables; otherwise those operations fail closed while legacy unencrypted operations remain
-available. Static REST configuration does not enable Gravitino policy admission. See
+available. See
 [JDBC metadata-integrity table](lakehouse-iceberg-catalog.md#jdbc-metadata-integrity-table) for the
 catalog-local schema scripts and fail-closed behavior. Gravitino entity-store migration scripts do
 not provision this catalog database.
@@ -210,6 +210,8 @@ not provision this catalog database.
 Use the REST backend to proxy another Iceberg REST catalog server (IRC2). The Gravitino Iceberg REST service acts as IRC1 and forwards catalog operations to IRC2.
 
 By default, when the backend catalog is a REST catalog, IRC1 skips authorization and behaves as a proxy. IRC2 handles authorization. If you want IRC1 to keep authorization checks, set `gravitino.iceberg-rest.disable-rest-authz=false`.
+
+Governed encryption does not apply to a REST backend. IRC1 forwards every table request to IRC2 untouched, including encryption properties, and returns IRC2's response unchanged. IRC1 does not resolve encryption policies, validate encryption keys, block changes to encryption key properties, verify table metadata, or write encryption audit records for these tables; an encryption policy attached to the catalog has no effect. IRC2 owns encryption, keys, and metadata integrity for its tables.
 
 | Configuration item                                         | Description                                                                                                                                                      | Default value | Required |
 |------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------|
@@ -259,6 +261,26 @@ If IRC2 does not enforce authorization, keeping `gravitino.iceberg-rest.disable-
 | `gravitino.iceberg-rest.catalog-backend-impl` | The fully-qualified class name of a custom catalog implementation, only worked if `catalog-backend` is `custom`.              | (none)        | No       |
 
 If you want to use a custom Iceberg Catalog as `catalog-backend`, you can add a corresponding jar file to the classpath and load a custom Iceberg Catalog implementation by specifying the `catalog-backend-impl` property.
+
+### Encryption governance
+
+Encryption governance (encryption policies, the format-version rules and encryption audit records)
+applies only when both hold:
+
+- the Iceberg REST service runs as an auxiliary service inside the Gravitino server
+  (`gravitino.auxService.names` includes `iceberg-rest`), and
+- `gravitino.iceberg-rest.catalog-config-provider=dynamic-config-provider`.
+
+It then applies to every catalog except one whose `catalog-backend` is `rest` (see
+[REST Backend Configuration](#rest-backend-configuration)). Encrypted tables also need a backend with
+metadata integrity: Hive, or JDBC on PostgreSQL or MySQL.
+
+In every other deployment, the service forwards requests unchanged. That means a standalone Iceberg
+REST server with either provider, or an auxiliary service with `static-config-provider`. It resolves
+no encryption policy and checks no format version. It still refuses a commit that sets or removes an
+existing table's encryption key or provider, or sets a legacy `encryption.kms-api` or
+`encryption.key-source` property, and records that refusal and any encryption-key change in the
+audit log.
 
 ### Multi-Catalog Configuration
 

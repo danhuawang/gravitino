@@ -21,6 +21,8 @@ package org.apache.gravitino.iceberg;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.codahale.metrics.MetricRegistry;
 import io.prometheus.client.exporter.MetricsServlet;
@@ -29,10 +31,16 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
+import org.apache.gravitino.iceberg.service.CatalogWrapperForREST;
+import org.apache.gravitino.iceberg.service.FederatedCatalogWrapper;
+import org.apache.gravitino.iceberg.service.IcebergCatalogWrapperManager;
 import org.apache.gravitino.iceberg.service.IcebergRESTUtils;
+import org.apache.gravitino.iceberg.service.provider.DynamicIcebergConfigProvider;
+import org.apache.gravitino.iceberg.service.provider.StaticIcebergConfigProvider;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.metrics.MetricsSystem;
 import org.apache.gravitino.rest.RESTUtils;
@@ -51,6 +59,41 @@ import org.mockito.Mockito;
 public class TestRESTService {
 
   @TempDir private Path warehouse;
+
+  @Test
+  void testGovernedTableCreateRequiresAuxiliaryGravitinoManagedCatalog() {
+    StaticIcebergConfigProvider staticProvider = new StaticIcebergConfigProvider();
+    DynamicIcebergConfigProvider dynamicProvider = new DynamicIcebergConfigProvider();
+
+    assertFalse(
+        RESTService.shouldEnableGovernedTableCreate(false, staticProvider),
+        "Standalone IRC has no embedded policy or KMS services");
+    assertFalse(
+        RESTService.shouldEnableGovernedTableCreate(true, staticProvider),
+        "Configuration-file catalog names are not Gravitino catalog identities");
+    assertFalse(
+        RESTService.shouldEnableGovernedTableCreate(false, dynamicProvider),
+        "A Gravitino-managed catalog alone does not provide embedded policy or KMS services");
+    assertTrue(
+        RESTService.shouldEnableGovernedTableCreate(true, dynamicProvider),
+        "Auxiliary dynamic catalogs must retain governed policy enforcement");
+  }
+
+  /**
+   * The encryption dispatchers learn which catalogs are pass-through from the loaded catalog
+   * itself: only a catalog served by {@link FederatedCatalogWrapper} is federated.
+   */
+  @Test
+  void testFederatedCatalogIsTheOneServedByAFederatedWrapper() {
+    IcebergCatalogWrapperManager manager = mock(IcebergCatalogWrapperManager.class);
+    when(manager.getCatalogWrapper("federated")).thenReturn(mock(FederatedCatalogWrapper.class));
+    when(manager.getCatalogWrapper("local")).thenReturn(mock(CatalogWrapperForREST.class));
+
+    Predicate<String> federated = RESTService.federatedCatalog(manager);
+
+    assertTrue(federated.test("federated"));
+    assertFalse(federated.test("local"));
+  }
 
   /**
    * RESTService.initServer() previously registered /metrics and /prometheus/metrics (added by

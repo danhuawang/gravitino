@@ -29,8 +29,8 @@ import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Request-path helpers shared by the table and namespace executors for async table purge. */
-final class IcebergCleanupHelper {
+/** Async table purge helpers shared by the executors and the governed registration service. */
+public final class IcebergCleanupHelper {
 
   private static final Logger LOG = LoggerFactory.getLogger(IcebergCleanupHelper.class);
 
@@ -52,8 +52,13 @@ final class IcebergCleanupHelper {
    * Reusing the name before its files are gone would let the new table share the old table's
    * storage prefix. A name with no resolvable catalog entity cannot have a cleanup job, so it stays
    * usable.
+   *
+   * @param cleanupManager the async purge manager, empty when async purge is unavailable
+   * @param catalogName the catalog of the table
+   * @param namespace the namespace of the table
+   * @param tableName the table name
    */
-  static void rejectIfBeingPurged(
+  public static void rejectIfBeingPurged(
       Optional<IcebergCleanupManager> cleanupManager,
       String catalogName,
       Namespace namespace,

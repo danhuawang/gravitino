@@ -20,6 +20,7 @@
 package org.apache.gravitino.iceberg.service.dispatcher;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.iceberg.service.IcebergRESTUtils;
@@ -47,6 +48,7 @@ import org.apache.gravitino.listener.api.event.IcebergRequestContext;
 import org.apache.gravitino.listener.api.event.IcebergUpdateNamespaceEvent;
 import org.apache.gravitino.listener.api.event.IcebergUpdateNamespaceFailureEvent;
 import org.apache.gravitino.listener.api.event.IcebergUpdateNamespacePreEvent;
+import org.apache.gravitino.utils.RequestContext;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
@@ -242,14 +244,26 @@ public class IcebergNamespaceEventDispatcher implements IcebergNamespaceOperatio
       loadTableResponse =
           operationDispatcher.registerTable(context, namespace, registerTableRequest);
     } catch (Exception e) {
+      IcebergRequestContext failureContext = contextWithAuditExtras(context);
       eventBus.dispatchEvent(
-          new IcebergRegisterTableFailureEvent(context, nameIdentifier, registerTableRequest, e));
+          new IcebergRegisterTableFailureEvent(
+              failureContext, nameIdentifier, registerTableRequest, e));
       throw e;
     }
 
+    IcebergRequestContext successContext = contextWithAuditExtras(context);
     eventBus.dispatchEvent(
         new IcebergRegisterTableEvent(
-            context, nameIdentifier, registerTableRequest, loadTableResponse));
+            successContext, nameIdentifier, registerTableRequest, loadTableResponse));
     return loadTableResponse;
+  }
+
+  /**
+   * Takes extras stashed on {@link RequestContext} and returns a context that carries them. The
+   * take is destructive so a later operation on the same thread cannot see this request's extras.
+   */
+  private static IcebergRequestContext contextWithAuditExtras(IcebergRequestContext context) {
+    Map<String, String> extras = RequestContext.takeAuditExtras();
+    return extras.isEmpty() ? context : context.withAuditExtras(extras);
   }
 }

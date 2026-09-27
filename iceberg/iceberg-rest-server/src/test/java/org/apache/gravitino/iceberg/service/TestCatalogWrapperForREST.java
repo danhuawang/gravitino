@@ -19,9 +19,14 @@
 
 package org.apache.gravitino.iceberg.service;
 
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -34,18 +39,24 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergEncryptionCatalogBinding;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergFormatVersionResolution;
 import org.apache.gravitino.credential.CredentialConstants;
 import org.apache.gravitino.credential.CredentialPrivilege;
 import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.service.extension.DummyCredentialProvider;
+import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.BaseTransaction;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.MetadataUpdate;
@@ -65,6 +76,8 @@ import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NotAuthorizedException;
 import org.apache.iceberg.exceptions.ServiceFailureException;
 import org.apache.iceberg.io.ResolvingFileIO;
+import org.apache.iceberg.jdbc.JdbcCatalogWithMetadataLocationSupport;
+import org.apache.iceberg.memory.MemoryCatalogWithMetadataLocationSupport;
 import org.apache.iceberg.rest.RESTCatalog;
 import org.apache.iceberg.rest.auth.AuthProperties;
 import org.apache.iceberg.rest.credentials.Credential;
@@ -79,6 +92,9 @@ import org.apache.iceberg.rest.responses.LoadTableResponseParser;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 
 public class TestCatalogWrapperForREST {
 
@@ -1469,6 +1485,52 @@ public class TestCatalogWrapperForREST {
     }
   }
 
+  /**
+   * R7, matrix row 18: an engine never learns the catalog's key binding or the format version the
+   * operator paired with it (R2), so a REPLACE TABLE it builds from its own table defaults cannot
+   * add them. Neither spelling of {@code table-default.}/{@code table-override.encryption.key-id}
+   * and no {@code table-default.format-version} reaches the config {@code /v1/config} sends
+   * clients.
+   */
+  @Test
+  void testKeyBindingAndDefaultVersionAreNotSentToClients() throws Exception {
+    String bypass = "gravitino.bypass.";
+    Map<String, String> config = new HashMap<>();
+    config.put(IcebergConstants.CATALOG_BACKEND, "memory");
+    config.put(IcebergEncryptionCatalogBinding.TABLE_DEFAULT_KEY_ID, "catalog-key");
+    config.put(IcebergEncryptionCatalogBinding.TABLE_OVERRIDE_KEY_ID, "catalog-override-key");
+    config.put(bypass + IcebergEncryptionCatalogBinding.TABLE_DEFAULT_KEY_ID, "catalog-key");
+    config.put(
+        bypass + IcebergEncryptionCatalogBinding.TABLE_OVERRIDE_KEY_ID, "catalog-override-key");
+    config.put(IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION, "3");
+
+    try (CatalogWrapperForREST wrapper =
+        new CatalogWrapperForREST("keyed-client-config-test", new IcebergConfig(config, true))) {
+      Map<String, String> catalogProperties =
+          wrapper.getIcebergConfig().getIcebergCatalogProperties();
+      Assertions.assertEquals(
+          "catalog-key",
+          catalogProperties.get(IcebergEncryptionCatalogBinding.TABLE_DEFAULT_KEY_ID));
+
+      Set<String> withheld = new HashSet<>(config.keySet());
+      withheld.remove(IcebergConstants.CATALOG_BACKEND);
+      withheld.add(bypass + IcebergFormatVersionResolution.TABLE_DEFAULT_FORMAT_VERSION);
+
+      // The first is what /v1/config serves; the second is what it is built from.
+      for (Map<String, String> configToClients :
+          List.of(wrapper.getCatalogConfigToClient(), wrapper.buildCatalogConfigToClients())) {
+        for (String key : withheld) {
+          Assertions.assertFalse(configToClients.containsKey(key), key);
+        }
+        Assertions.assertTrue(
+            configToClients.keySet().stream()
+                .noneMatch(
+                    key -> key.contains("table-default.") || key.contains("table-override.")),
+            configToClients.toString());
+      }
+    }
+  }
+
   @Test
   void testFederatedRegisterTableIncludesRemoteConfig() throws Exception {
     Namespace namespace = Namespace.of("db");
@@ -1629,5 +1691,89 @@ public class TestCatalogWrapperForREST {
     } finally {
       server.stop(0);
     }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdbc", "memory"})
+  void testParsedRegistrationOnLocalBackendPublishesTheParsedObject(String backendKind) {
+    CatalogWrapperForREST wrapper = mock(CatalogWrapperForREST.class, CALLS_REAL_METHODS);
+    TableMetadata target = mock(TableMetadata.class);
+    TableIdentifier identifier = TableIdentifier.of(Namespace.of("db"), "tbl");
+    TableMetadata published =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            "s3://bucket/db/tbl",
+            Collections.emptyMap());
+    TableOperations operations = mock(TableOperations.class);
+    when(operations.current()).thenReturn(published);
+    BaseTable table = mock(BaseTable.class);
+    when(table.operations()).thenReturn(operations);
+    Catalog backend;
+    if ("memory".equals(backendKind)) {
+      MemoryCatalogWithMetadataLocationSupport memory =
+          mock(MemoryCatalogWithMetadataLocationSupport.class);
+      when(memory.registerTable(identifier, target, true)).thenReturn(table);
+      backend = memory;
+    } else {
+      JdbcCatalogWithMetadataLocationSupport jdbc =
+          mock(JdbcCatalogWithMetadataLocationSupport.class);
+      when(jdbc.registerTable(identifier, target, true)).thenReturn(table);
+      backend = jdbc;
+    }
+    doReturn(backend).when(wrapper).getCatalog();
+
+    LoadTableResponse response = wrapper.registerTable(identifier, target, true, false);
+
+    Assertions.assertSame(published, response.tableMetadata());
+    if (backend instanceof MemoryCatalogWithMetadataLocationSupport) {
+      verify((MemoryCatalogWithMetadataLocationSupport) backend)
+          .registerTable(same(identifier), same(target), eq(true));
+    } else {
+      verify((JdbcCatalogWithMetadataLocationSupport) backend)
+          .registerTable(same(identifier), same(target), eq(true));
+    }
+    verify(backend, never()).registerTable(any(), anyString(), anyBoolean());
+    verify(target, never()).metadataFileLocation();
+    verify(wrapper, never())
+        .registerTable(any(Namespace.class), any(RegisterTableRequest.class), anyBoolean());
+  }
+
+  /**
+   * A custom backend has no primitive that accepts validated metadata, so registration falls back
+   * to the request form (the backend re-reads the file) instead of refusing with 406.
+   */
+  @Test
+  void testParsedRegistrationOnCustomBackendFallsBackToTheRequestForm() {
+    CatalogWrapperForREST wrapper = mock(CatalogWrapperForREST.class, CALLS_REAL_METHODS);
+    TableMetadata target = mock(TableMetadata.class);
+    String location = "s3://bucket/db/tbl/metadata/v1.metadata.json";
+    when(target.metadataFileLocation()).thenReturn(location);
+    TableIdentifier identifier = TableIdentifier.of(Namespace.of("db"), "tbl");
+    TableMetadata published =
+        TableMetadata.newTableMetadata(
+            new Schema(Types.NestedField.required(1, "id", Types.LongType.get())),
+            PartitionSpec.unpartitioned(),
+            "s3://bucket/db/tbl",
+            Collections.emptyMap());
+    TableOperations operations = mock(TableOperations.class);
+    when(operations.current()).thenReturn(published);
+    BaseTable table = mock(BaseTable.class);
+    when(table.operations()).thenReturn(operations);
+    Catalog custom = mock(Catalog.class);
+    when(custom.registerTable(identifier, location, true)).thenReturn(table);
+    doReturn(custom).when(wrapper).getCatalog();
+
+    LoadTableResponse response = wrapper.registerTable(identifier, target, true, false);
+
+    Assertions.assertSame(published, response.tableMetadata());
+    Assertions.assertFalse(wrapper.atomicIntegrityAvailable());
+    verify(custom).registerTable(eq(identifier), eq(location), eq(true));
+    ArgumentCaptor<RegisterTableRequest> forwarded =
+        ArgumentCaptor.forClass(RegisterTableRequest.class);
+    verify(wrapper).registerTable(eq(identifier.namespace()), forwarded.capture());
+    Assertions.assertEquals("tbl", forwarded.getValue().name());
+    Assertions.assertEquals(location, forwarded.getValue().metadataLocation());
+    Assertions.assertTrue(forwarded.getValue().overwrite());
   }
 }

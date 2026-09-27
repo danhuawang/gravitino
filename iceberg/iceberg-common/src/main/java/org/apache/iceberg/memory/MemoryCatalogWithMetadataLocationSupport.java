@@ -24,7 +24,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.apache.gravitino.iceberg.common.cache.SupportsMetadataLocation;
+import org.apache.iceberg.MetastoreRegisterTableUtils;
+import org.apache.iceberg.Table;
+import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.inmemory.InMemoryCatalog;
 
 public class MemoryCatalogWithMetadataLocationSupport extends InMemoryCatalog
@@ -38,9 +42,41 @@ public class MemoryCatalogWithMetadataLocationSupport extends InMemoryCatalog
     loadFields();
   }
 
+  /**
+   * Registers metadata the caller already read, optionally overwriting an existing registration.
+   * The object passed in is the object published: the backend does not read the file again.
+   *
+   * @param identifier table identifier to register
+   * @param targetMetadata metadata read by the caller; its file location is the one registered
+   * @param overwrite whether to overwrite an existing table registration
+   * @return the registered table
+   */
+  public Table registerTable(
+      TableIdentifier identifier, TableMetadata targetMetadata, boolean overwrite) {
+    return MetastoreRegisterTableUtils.registerTable(
+        this,
+        identifier,
+        targetMetadata.metadataFileLocation(),
+        overwrite,
+        targetMetadata,
+        this::overwriteMetadataLocation);
+  }
+
   @Override
   public String metadataLocation(TableIdentifier tableIdentifier) {
     return tableStore.get(tableIdentifier);
+  }
+
+  private void overwriteMetadataLocation(
+      TableIdentifier tableIdentifier,
+      String oldMetadataLocation,
+      String newMetadataLocation,
+      TableMetadata targetMetadata) {
+    if (!tableStore.replace(tableIdentifier, oldMetadataLocation, newMetadataLocation)) {
+      throw new CommitFailedException(
+          "Cannot overwrite table %s metadata location from %s to %s",
+          tableIdentifier, oldMetadataLocation, newMetadataLocation);
+    }
   }
 
   private void loadFields() {

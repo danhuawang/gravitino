@@ -22,8 +22,10 @@ package org.apache.iceberg.memory;
 import java.util.Collections;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.types.Types;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -52,5 +54,33 @@ public class TestMemoryCatalogWithMetadataLocationSupport {
     // delete table
     catalog.dropTable(tableIdentifier);
     Assertions.assertNull(catalog.metadataLocation(tableIdentifier));
+  }
+
+  @Test
+  void testRegisterTableOverwrite() {
+    MemoryCatalogWithMetadataLocationSupport catalog =
+        new MemoryCatalogWithMetadataLocationSupport();
+    catalog.initialize("memory", Collections.emptyMap());
+    catalog.createNamespace(Namespace.of("ns"));
+    TableIdentifier ident = TableIdentifier.of("ns", "t");
+
+    BaseTable table = (BaseTable) catalog.createTable(ident, SCHEMA);
+    TableMetadata metadataV1 = table.operations().current();
+
+    table.updateProperties().set("version", "v2").commit();
+    TableMetadata metadataV2 = table.operations().current();
+
+    catalog.registerTable(ident, metadataV1, true);
+    Assertions.assertEquals(metadataV1.metadataFileLocation(), catalog.metadataLocation(ident));
+    Assertions.assertFalse(
+        ((BaseTable) catalog.loadTable(ident)).properties().containsKey("version"));
+
+    catalog.registerTable(ident, metadataV2, true);
+    Assertions.assertEquals(metadataV2.metadataFileLocation(), catalog.metadataLocation(ident));
+    Assertions.assertEquals(
+        "v2", ((BaseTable) catalog.loadTable(ident)).properties().get("version"));
+
+    Assertions.assertThrows(
+        AlreadyExistsException.class, () -> catalog.registerTable(ident, metadataV2, false));
   }
 }
