@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import javax.inject.Singleton;
 import javax.servlet.Servlet;
@@ -38,9 +39,11 @@ import org.apache.gravitino.encryption.EncryptionAdmissionService;
 import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
+import org.apache.gravitino.encryption.MetadataIntegrityFailureClassifier.CatalogFacts;
 import org.apache.gravitino.encryption.SinglePolicyChecker;
 import org.apache.gravitino.encryption.kms.KmsClientRegistry;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
+import org.apache.gravitino.iceberg.common.ops.IcebergCatalogWrapper;
 import org.apache.gravitino.iceberg.service.FederatedCatalogWrapper;
 import org.apache.gravitino.iceberg.service.GovernedRegistrationService;
 import org.apache.gravitino.iceberg.service.IcebergAuthenticationFilter;
@@ -184,14 +187,25 @@ public class RESTService implements GravitinoAuxiliaryService {
           encryptionAdmissionService(icebergCatalogWrapperManager);
       icebergTableEncryptionDispatcher =
           new IcebergTableEncryptionDispatcher(
-              icebergTableOperationDispatcher, metalakeName, admissionService, federatedCatalog);
+              icebergTableOperationDispatcher,
+              metalakeName,
+              admissionService,
+              federatedCatalog,
+              catalogFacts(icebergCatalogWrapperManager, true));
       registrationService =
           Optional.of(
               new GovernedRegistrationService(
-                  admissionService, icebergCatalogWrapperManager, metalakeName, cleanupManager));
+                  admissionService,
+                  icebergCatalogWrapperManager,
+                  metalakeName,
+                  cleanupManager,
+                  catalogFacts(icebergCatalogWrapperManager, true)));
     } else {
       icebergTableEncryptionDispatcher =
-          new IcebergTableEncryptionDispatcher(icebergTableOperationDispatcher, federatedCatalog);
+          new IcebergTableEncryptionDispatcher(
+              icebergTableOperationDispatcher,
+              federatedCatalog,
+              catalogFacts(icebergCatalogWrapperManager, false));
     }
     icebergTableOperationDispatcher = icebergTableEncryptionDispatcher;
     if (authorizationContext.isAuthorizationEnabled()) {
@@ -385,6 +399,30 @@ public class RESTService implements GravitinoAuxiliaryService {
   static Predicate<String> federatedCatalog(IcebergCatalogWrapperManager catalogWrapperManager) {
     return catalogName ->
         catalogWrapperManager.getCatalogWrapper(catalogName) instanceof FederatedCatalogWrapper;
+  }
+
+  /**
+   * Names, by catalog name, what a catalog is for the purpose of classifying a failed request.
+   *
+   * <p>One wrapper lookup answers all three facts, so governance cannot disagree with federation
+   * about the same catalog: two independent lookups that can disagree are exactly the bug this
+   * avoids. An ungoverned deployment is still wired, with {@code governed} false, so the backend is
+   * known and the recording branch short-circuits on governance alone.
+   *
+   * @param catalogWrapperManager manager owning the loaded IRC catalogs
+   * @param governed whether this deployment admits creates through an admission service at all
+   * @return the facts for the named catalog, never {@code null}
+   */
+  @VisibleForTesting
+  static Function<String, CatalogFacts> catalogFacts(
+      IcebergCatalogWrapperManager catalogWrapperManager, boolean governed) {
+    return catalogName -> {
+      IcebergCatalogWrapper wrapper = catalogWrapperManager.getCatalogWrapper(catalogName);
+      return CatalogFacts.of(
+          wrapper.catalogBackend(),
+          governed && !(wrapper instanceof FederatedCatalogWrapper),
+          AtomicIntegrityCapability.of(wrapper.atomicIntegrityAvailable()));
+    };
   }
 
   private static NameIdentifier catalogIdentifier(NameIdentifier table) {

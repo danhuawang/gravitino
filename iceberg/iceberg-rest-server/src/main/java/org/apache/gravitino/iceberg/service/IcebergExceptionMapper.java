@@ -26,6 +26,7 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.ext.ExceptionMapper;
 import javax.ws.rs.ext.Provider;
+import org.apache.gravitino.exceptions.EncryptionKeyRepointException;
 import org.apache.gravitino.exceptions.IllegalNameIdentifierException;
 import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
@@ -141,6 +142,12 @@ public class IcebergExceptionMapper implements ExceptionMapper<Throwable> {
 
   public static Response toRESTResponse(Throwable ex) {
     ServerHealth.getInstance().recordFailure(ex);
+    if (ex instanceof EncryptionKeyRepointException) {
+      // The status lookup below is by exact class and the body names that class. The typed refusal
+      // exists for the audit classifier upstream of here; on the wire it is the plain
+      // IllegalArgumentException the Iceberg REST client reconstructs, whichever route raised it.
+      ex = new IllegalArgumentException(ex.getMessage(), ex);
+    }
     if (ex instanceof MetadataIntegrityException) {
       LOG.warn("Iceberg table metadata integrity verification failed:", ex);
       return Response.status(METADATA_INTEGRITY_ERROR_CODE)

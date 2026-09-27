@@ -20,6 +20,7 @@ package org.apache.gravitino.iceberg.service;
 
 import javax.ws.rs.NotFoundException;
 import javax.ws.rs.core.Response;
+import org.apache.gravitino.exceptions.EncryptionKeyRepointException;
 import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.TokenExpiredException;
 import org.apache.gravitino.server.web.ServerHealth;
@@ -86,6 +87,31 @@ public class TestIcebergExceptionMapper {
     Assertions.assertNull(error.stack());
     Assertions.assertFalse(error.toString().contains("secret-a"));
     Assertions.assertFalse(error.toString().contains("secret-b"));
+  }
+
+  /**
+   * The status lookup is by exact class and the body names that class, so a key-repoint refusal
+   * reaching the mapper as itself would answer 500 under a type the Iceberg REST client does not
+   * reconstruct. A standalone or statically configured server lets the backend's typed refusal
+   * reach here unconverted, so the mapper converts it: 400, typed {@code IllegalArgumentException},
+   * message kept, whichever route raised it.
+   */
+  @Test
+  public void testKeyRepointRefusalIsA400TypedIllegalArgumentException() {
+    EncryptionKeyRepointException repoint =
+        new EncryptionKeyRepointException(
+            "Cannot change the encryption key of table %s by re-registering it", "ns.orders");
+
+    for (Exception raised :
+        new Exception[] {repoint, new IllegalArgumentException(repoint.getMessage(), repoint)}) {
+      Response response = icebergExceptionMapper.toResponse(raised);
+
+      Assertions.assertEquals(400, response.getStatus());
+      ErrorResponse error = (ErrorResponse) response.getEntity();
+      Assertions.assertEquals(400, error.code());
+      Assertions.assertEquals(IllegalArgumentException.class.getSimpleName(), error.type());
+      Assertions.assertEquals(repoint.getMessage(), error.message());
+    }
   }
 
   /** Checks that errors retain their type and nested causes in the response. */

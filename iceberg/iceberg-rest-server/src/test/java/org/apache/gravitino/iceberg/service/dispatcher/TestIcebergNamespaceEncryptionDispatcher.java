@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import org.apache.gravitino.encryption.EncryptionAdmissionService;
+import org.apache.gravitino.exceptions.EncryptionKeyRepointException;
 import org.apache.gravitino.iceberg.service.FederatedCatalogWrapper;
 import org.apache.gravitino.iceberg.service.GovernedRegistrationService;
 import org.apache.gravitino.iceberg.service.IcebergCatalogWrapperManager;
@@ -86,6 +87,23 @@ public class TestIcebergNamespaceEncryptionDispatcher {
     verify(delegate).registerTable(same(context), same(NAMESPACE), same(request));
     verifyNoInteractions(registrationService);
     Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
+  }
+
+  /** A standalone route passes a backend key-repoint refusal through unchanged. */
+  @Test
+  void testStandaloneRegistrationRethrowsKeyRepointRefusalUnchanged() {
+    IcebergNamespaceEncryptionDispatcher dispatcher =
+        new IcebergNamespaceEncryptionDispatcher(delegate);
+    EncryptionKeyRepointException repoint =
+        new EncryptionKeyRepointException(
+            "Cannot change the encryption key of table %s by re-registering it", "schema.table");
+    when(delegate.registerTable(context, NAMESPACE, request)).thenThrow(repoint);
+
+    EncryptionKeyRepointException thrown =
+        Assertions.assertThrows(
+            EncryptionKeyRepointException.class,
+            () -> dispatcher.registerTable(context, NAMESPACE, request));
+    Assertions.assertSame(repoint, thrown);
   }
 
   @Test

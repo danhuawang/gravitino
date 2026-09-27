@@ -8,12 +8,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.encryption.EncryptionAdmissionService;
 import org.apache.gravitino.encryption.EncryptionAdmissionService.AdmissionRequest;
 import org.apache.gravitino.encryption.EncryptionAdmissionService.EncryptionAdmission;
 import org.apache.gravitino.encryption.EncryptionAdmissionService.Operation;
+import org.apache.gravitino.encryption.MetadataIntegrityFailureClassifier;
+import org.apache.gravitino.encryption.MetadataIntegrityFailureClassifier.CatalogFacts;
 import org.apache.gravitino.iceberg.common.utils.IcebergIdentifierUtils;
 import org.apache.gravitino.iceberg.service.cleanup.IcebergCleanupManager;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergCleanupHelper;
@@ -35,7 +39,12 @@ import org.apache.iceberg.rest.responses.LoadTableResponse;
  * catalog key; the parsed object is published untouched, so the version travels only so a keyed
  * file below version 3 is refused (R7). A refusal by the backend after admission (for example an
  * overwrite of a table that is not enrolled) is rethrown unchanged with the admission's failure
- * audit facts.
+ * audit facts; that includes a typed key-repoint refusal, which {@link IcebergExceptionMapper}
+ * converts for the wire on every route.
+ *
+ * <p>A backend refusal is also classified for metadata integrity, whether or not admission
+ * evaluated the request: an overwrite that strips a table's key names no key, yet its key-repoint
+ * refusal is exactly the fact the audit record carries.
  */
 public final class GovernedRegistrationService {
 
@@ -43,6 +52,7 @@ public final class GovernedRegistrationService {
   private final IcebergCatalogWrapperManager catalogWrapperManager;
   private final String metalakeName;
   private final Optional<IcebergCleanupManager> cleanupManager;
+  private final Optional<Function<String, CatalogFacts>> catalogFacts;
 
   /**
    * Creates the registration service.
@@ -57,6 +67,25 @@ public final class GovernedRegistrationService {
       IcebergCatalogWrapperManager catalogWrapperManager,
       String metalakeName,
       Optional<IcebergCleanupManager> cleanupManager) {
+    this(admissionService, catalogWrapperManager, metalakeName, cleanupManager, null);
+  }
+
+  /**
+   * Creates the registration service.
+   *
+   * @param admissionService the admission service shared by every governed request
+   * @param catalogWrapperManager manager owning the loaded IRC catalogs
+   * @param metalakeName metalake containing the dynamically configured IRC catalogs
+   * @param cleanupManager async purge manager, used to refuse a name still being purged
+   * @param catalogFacts names, by catalog name, what a catalog is for the purpose of classifying a
+   *     backend refusal, or {@code null} to record no integrity facts
+   */
+  public GovernedRegistrationService(
+      EncryptionAdmissionService admissionService,
+      IcebergCatalogWrapperManager catalogWrapperManager,
+      String metalakeName,
+      Optional<IcebergCleanupManager> cleanupManager,
+      @Nullable Function<String, CatalogFacts> catalogFacts) {
     Preconditions.checkArgument(admissionService != null, "admissionService cannot be null");
     Preconditions.checkArgument(
         catalogWrapperManager != null, "catalogWrapperManager cannot be null");
@@ -67,6 +96,7 @@ public final class GovernedRegistrationService {
     this.catalogWrapperManager = catalogWrapperManager;
     this.metalakeName = metalakeName;
     this.cleanupManager = cleanupManager;
+    this.catalogFacts = Optional.ofNullable(catalogFacts);
   }
 
   /**
@@ -100,24 +130,57 @@ public final class GovernedRegistrationService {
     if (!admission.admitted()) {
       RuntimeException rejection =
           EncryptionAdmissionRejections.toRestException(admission.failure());
-      RequestContext.setAuditExtras(
+      RequestContext.mergeAuditExtras(
           EncryptionAdmissionService.auditExtrasWithError(admission.auditExtras(), rejection));
       throw rejection;
     }
 
+    CatalogFacts facts = catalogFacts(context.catalogName());
     try {
       LoadTableResponse response =
           catalogWrapper.registerTable(
               identifier, metadata, request.overwrite(), context.requestCredentialVending());
-      RequestContext.setAuditExtras(admission.auditExtras());
+      RequestContext.mergeAuditExtras(admission.auditExtras());
       return response;
     } catch (RuntimeException e) {
       if (admission.evaluated()) {
-        RequestContext.setAuditExtras(
+        RequestContext.mergeAuditExtras(
             EncryptionAdmissionService.auditExtrasForCreateFailure(admission.auditExtras(), e));
       }
+      recordMetadataIntegrityFailure(facts, e);
       throw e;
     }
+  }
+
+  /**
+   * Names what the request's catalog is before registration runs.
+   *
+   * <p>The lookup is an audit probe, so a failure yields {@code null}: it can neither prevent a
+   * registration nor replace the backend refusal the caller must receive.
+   */
+  @Nullable
+  private CatalogFacts catalogFacts(String catalogName) {
+    if (!catalogFacts.isPresent()) {
+      return null;
+    }
+    try {
+      return catalogFacts.get().apply(catalogName);
+    } catch (RuntimeException ignored) {
+      return null;
+    }
+  }
+
+  /**
+   * Records what a backend refusal says about metadata integrity, for a governed catalog only. The
+   * failure is classified by type, never by message, and the caller rethrows it unchanged.
+   */
+  private static void recordMetadataIntegrityFailure(
+      @Nullable CatalogFacts facts, RuntimeException failure) {
+    if (facts == null || !facts.encryptionGoverned()) {
+      return;
+    }
+    MetadataIntegrityFailureClassifier.classify(failure, facts)
+        .ifPresent(RequestContext::mergeAuditExtras);
   }
 
   /**

@@ -13,6 +13,7 @@ import static org.mockito.Mockito.same;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 import com.datastrato.gravitino.catalog.DatastratoTableDispatcher;
 import com.google.common.collect.ImmutableMap;
@@ -32,8 +33,12 @@ import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.Privilege;
 import org.apache.gravitino.catalog.CatalogManager;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergFormatVersionResolution;
+import org.apache.gravitino.connector.BaseCatalog;
+import org.apache.gravitino.connector.CatalogOperations;
+import org.apache.gravitino.connector.SupportsAtomicIntegrity;
 import org.apache.gravitino.encryption.AtomicIntegrityCapability;
 import org.apache.gravitino.encryption.EncryptionAdmissionService;
 import org.apache.gravitino.encryption.IcebergEncryptionDecision;
@@ -47,6 +52,7 @@ import org.apache.gravitino.encryption.kms.KmsKeyProperties;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.exceptions.AmbiguousPolicyException;
 import org.apache.gravitino.exceptions.ConnectionFailedException;
+import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.exceptions.NoSuchMetadataObjectException;
 import org.apache.gravitino.exceptions.NoSuchSchemaException;
 import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos;
@@ -69,6 +75,7 @@ import org.apache.gravitino.rel.expressions.sorts.SortOrder;
 import org.apache.gravitino.rel.expressions.transforms.Transform;
 import org.apache.gravitino.rel.indexes.Index;
 import org.apache.gravitino.utils.RequestContext;
+import org.apache.gravitino.utils.ThrowableFunction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,6 +103,8 @@ public class TestIcebergTableEncryptionDispatcher {
   private AtomicReference<KmsReference> validatedKey;
   private AtomicInteger validationCalls;
   private Catalog catalog;
+  private BaseCatalog loadedCatalog;
+  private CatalogOperations catalogOps;
   private Table createdTable;
   private AtomicReference<AtomicIntegrityCapability> capability;
   private IcebergTableEncryptionDispatcher dispatcher;
@@ -109,10 +118,15 @@ public class TestIcebergTableEncryptionDispatcher {
     validatedKey = new AtomicReference<>();
     validationCalls = new AtomicInteger();
     catalog = mock(Catalog.class);
+    loadedCatalog = mock(BaseCatalog.class);
+    catalogOps =
+        mock(
+            CatalogOperations.class, withSettings().extraInterfaces(SupportsAtomicIntegrity.class));
     createdTable = mock(Table.class);
     capability = new AtomicReference<>(AtomicIntegrityCapability.SUPPORTED);
 
     when(catalogManager.loadCatalog(CATALOG)).thenReturn(catalog);
+    stubAtomicIntegrityProbe();
     when(catalog.provider()).thenReturn("lakehouse-iceberg");
     when(catalog.properties())
         .thenReturn(
@@ -131,6 +145,22 @@ public class TestIcebergTableEncryptionDispatcher {
         .thenReturn(createdTable);
 
     dispatcher = new IcebergTableEncryptionDispatcher(delegate, catalogManager, admissionService());
+  }
+
+  /**
+   * Runs the dispatcher's atomic-integrity probe against a mocked loaded catalog, so the lambda it
+   * hands {@link CatalogManager#doWithCatalog} is the thing under test rather than a canned answer.
+   */
+  private void stubAtomicIntegrityProbe() {
+    when(loadedCatalog.ops()).thenReturn(catalogOps);
+    when(((SupportsAtomicIntegrity) catalogOps).atomicIntegrityAvailable())
+        .thenAnswer(invocation -> capability.get().supported());
+    when(catalogManager.doWithCatalog(eq(CATALOG), any()))
+        .thenAnswer(
+            invocation -> {
+              ThrowableFunction<BaseCatalog, Object> probe = invocation.getArgument(1);
+              return probe.apply(loadedCatalog);
+            });
   }
 
   /**
@@ -655,7 +685,9 @@ public class TestIcebergTableEncryptionDispatcher {
     Assertions.assertSame(altered, dispatcher.alterTable(TABLE, change));
 
     verify(delegate).alterTable(TABLE, change);
-    verifyNoInteractions(catalogManager);
+    // The catalog is now read before the body, to know what to classify a failure against; the
+    // policy layer is still untouched and nothing is stashed.
+    verifyNoInteractions(policyDispatcher);
     Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
     Assertions.assertEquals(0, validationCalls.get());
   }
@@ -824,7 +856,8 @@ public class TestIcebergTableEncryptionDispatcher {
     Assertions.assertSame(entities, dispatcher.listEntities(namespace));
     Assertions.assertSame(preview, dispatcher.preview(TABLE, Entity.EntityType.TABLE, 10, COLUMNS));
 
-    verifyNoInteractions(catalogManager, policyDispatcher);
+    verifyNoInteractions(policyDispatcher);
+    Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
     Assertions.assertEquals(0, validationCalls.get());
   }
 
@@ -903,6 +936,180 @@ public class TestIcebergTableEncryptionDispatcher {
     Assertions.assertEquals(0, validationCalls.get());
     verifyNoInteractions(policyDispatcher);
     verify(delegate, never()).createTable(any(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  /**
+   * A JDBC backend refuses a tampered pointer with the typed {@link MetadataIntegrityException}, so
+   * a plain load on a governed catalog records the precise reason. Nothing else moves: the very
+   * instance the delegate threw is what the caller receives.
+   */
+  @Test
+  void testJdbcTamperOnLoadIsRecordedAndRethrownByIdentity() {
+    MetadataIntegrityException failure =
+        new MetadataIntegrityException("metadata pointer does not match trusted state");
+    when(delegate.loadTable(TABLE)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(
+            MetadataIntegrityException.class, () -> dispatcher.loadTable(TABLE)));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.METADATA_INTEGRITY_FAILED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        IcebergCatalogBackend.JDBC.name(), extras.get(IcebergEncryptionAuditInfos.BACKEND));
+    Assertions.assertEquals("true", extras.get(IcebergEncryptionAuditInfos.ENCRYPTION_GOVERNED));
+    Assertions.assertEquals(
+        AtomicIntegrityCapability.SUPPORTED.name(),
+        extras.get(IcebergEncryptionAuditInfos.INTEGRITY_EXPECTED));
+    Assertions.assertEquals(
+        MetadataIntegrityException.class.getName(),
+        extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+  }
+
+  /**
+   * Native Hive refuses an integrity violation with a bare, cause-less {@link RuntimeException}, so
+   * it is recorded as context — {@code NATIVE_LOAD_FAILURE} — and never as the typed reason a JDBC
+   * tamper earns. The privileged overload is exercised here because it is the one a caller forgets.
+   */
+  @Test
+  void testBareHiveRefusalOnPrivilegedLoadIsRecordedAsNativeLoadFailure() {
+    useCatalogProperty(IcebergConstants.CATALOG_BACKEND, "hive");
+    capability.set(AtomicIntegrityCapability.UNSUPPORTED);
+    Set<Privilege.Name> privileges = Collections.singleton(Privilege.Name.SELECT_TABLE);
+    RuntimeException failure =
+        new RuntimeException("Hash of metadata loaded from storage differs from HMS-stored hash");
+    when(delegate.loadTable(TABLE, privileges)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(
+            RuntimeException.class, () -> dispatcher.loadTable(TABLE, privileges)));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals("NATIVE_LOAD_FAILURE", extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertNotEquals(
+        Reason.METADATA_INTEGRITY_FAILED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        IcebergCatalogBackend.HIVE.name(), extras.get(IcebergEncryptionAuditInfos.BACKEND));
+    Assertions.assertEquals(
+        AtomicIntegrityCapability.UNSUPPORTED.name(),
+        extras.get(IcebergEncryptionAuditInfos.INTEGRITY_EXPECTED));
+  }
+
+  /**
+   * W-2's accepted consequence: an ungoverned catalog detects and refuses the tamper exactly as
+   * before, and records nothing. The capability probe is not run either, so an ungoverned load does
+   * not pay for a catalog lease it has no use for.
+   */
+  @Test
+  void testUngovernedCatalogRecordsNothingOnATamper() {
+    withoutCatalogProperty(IcebergConstants.ENCRYPTION_KMS_SOURCE);
+    MetadataIntegrityException failure = new MetadataIntegrityException("tampered");
+    when(delegate.loadTable(TABLE)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(
+            MetadataIntegrityException.class, () -> dispatcher.loadTable(TABLE)));
+
+    Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
+    verify(catalogManager, never()).doWithCatalog(eq(CATALOG), any());
+  }
+
+  /**
+   * Both load overloads are reached for every catalog type, so without the provider guard a Paimon
+   * catalog configured with {@code catalog-backend=hive} would have an ordinary failure written
+   * into a security audit log as a Hive integrity signal.
+   */
+  @Test
+  void testNonIcebergProviderRecordsNothingOnABareFailure() {
+    when(catalog.provider()).thenReturn("lakehouse-paimon");
+    useCatalogProperty(IcebergConstants.CATALOG_BACKEND, "hive");
+    RuntimeException failure = new RuntimeException("paimon load failed");
+    when(delegate.loadTable(TABLE)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(RuntimeException.class, () -> dispatcher.loadTable(TABLE)));
+
+    Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
+  }
+
+  /**
+   * Everything noisy on the Hive refresh and commit paths wraps a cause, so a cause is what
+   * separates an integrity refusal from an unreachable metastore. A wrapped failure records
+   * nothing.
+   */
+  @Test
+  void testRuntimeFailureCarryingACauseRecordsNothing() {
+    useCatalogProperty(IcebergConstants.CATALOG_BACKEND, "hive");
+    RuntimeException failure =
+        new RuntimeException("metastore operation failed", new IllegalStateException("thrift"));
+    when(delegate.loadTable(TABLE)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(RuntimeException.class, () -> dispatcher.loadTable(TABLE)));
+
+    Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
+  }
+
+  /**
+   * The create catch wraps the whole method, so a tamper raised by the physical create is recorded
+   * alongside the create-failure facts rather than displacing them. Integrity outranks the generic
+   * reason, and brings its own error type with it.
+   */
+  @Test
+  void testTamperOnPhysicalCreateOutranksTheCreateFailureReason() {
+    MetadataIntegrityException failure = new MetadataIntegrityException("tampered on create");
+    when(delegate.createTable(any(), any(), any(), any(), any(), any(), any(), any()))
+        .thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(
+            MetadataIntegrityException.class, () -> create(keyProperties(KEY_ID))));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.METADATA_INTEGRITY_FAILED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        MetadataIntegrityException.class.getName(),
+        extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    Assertions.assertEquals(
+        IcebergCatalogBackend.JDBC.name(), extras.get(IcebergEncryptionAuditInfos.BACKEND));
+    Assertions.assertEquals(KEY_ID, extras.get(IcebergEncryptionAuditInfos.KEY_ID));
+  }
+
+  /**
+   * An alter that is both an encryption-property alter and an integrity refusal resolves by rank,
+   * not by the order the two catches ran: integrity takes the reason and the error type, and the
+   * alter's own facts are kept rather than overwritten.
+   */
+  @Test
+  void testTamperOnEncryptionAlterOutranksButKeepsTheAlterFacts() {
+    TableChange provider =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_PROVIDER, SOURCE);
+    TableChange keyId =
+        TableChange.setProperty(IcebergEncryptionPolicyEvaluator.ENCRYPTION_KEY_ID, KEY_ID);
+    MetadataIntegrityException failure = new MetadataIntegrityException("tampered on alter");
+    when(delegate.alterTable(TABLE, provider, keyId)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(
+            MetadataIntegrityException.class, () -> dispatcher.alterTable(TABLE, provider, keyId)));
+
+    Map<String, String> extras = takeExtras();
+    Assertions.assertEquals(
+        Reason.METADATA_INTEGRITY_FAILED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        MetadataIntegrityException.class.getName(),
+        extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    Assertions.assertEquals(SOURCE, extras.get(IcebergEncryptionAuditInfos.ATTEMPTED_PROVIDER));
+    Assertions.assertEquals(KEY_ID, extras.get(IcebergEncryptionAuditInfos.ATTEMPTED_KEY_ID));
   }
 
   private Table create(Map<String, String> properties) {

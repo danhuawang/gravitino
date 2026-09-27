@@ -179,6 +179,13 @@ its next commit writes the row.
 Future schema versions ship explicit upgrade scripts, such as `upgrade-v1-to-v2.sql`. The scripts
 aren't part of the Gravitino entity-store schema or its migrations.
 
+#### Metadata-integrity audit records
+
+For governed Hive and JDBC catalogs, Gravitino adds classified metadata-integrity refusal facts to
+the request's audit line without changing the response. See
+[Iceberg metadata-integrity audit fields](gravitino-server-config.md#iceberg-metadata-integrity-audit-fields)
+for the fields, reason semantics, privacy boundary, and Hive retry behavior.
+
 #### REST Catalog Backend
 
 For the REST catalog backend, `warehouse` identifies the catalog in the Iceberg REST spec. In the Gravitino Iceberg REST server, `warehouse` maps to the catalog name. An empty value means the default catalog.

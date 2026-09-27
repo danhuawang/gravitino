@@ -24,6 +24,8 @@ import org.apache.gravitino.encryption.EncryptionAdmissionService.AdmissionFailu
 import org.apache.gravitino.encryption.EncryptionAdmissionService.AdmissionRequest;
 import org.apache.gravitino.encryption.EncryptionAdmissionService.EncryptionAdmission;
 import org.apache.gravitino.encryption.EncryptionAdmissionService.Operation;
+import org.apache.gravitino.encryption.MetadataIntegrityFailureClassifier;
+import org.apache.gravitino.encryption.MetadataIntegrityFailureClassifier.CatalogFacts;
 import org.apache.gravitino.iceberg.common.utils.IcebergIdentifierUtils;
 import org.apache.gravitino.iceberg.service.EncryptionAdmissionRejections;
 import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos;
@@ -58,6 +60,10 @@ import org.apache.iceberg.rest.responses.PlanTableScanResponse;
  * the invariants apply. A federated catalog is pass-through in either mode: the remote Iceberg REST
  * catalog performs every commit and owns encryption for its tables, so its requests are forwarded
  * untouched, with no admission, immutable-property check or encryption audit.
+ *
+ * <p><b>A refused tamper is recorded, not detected here.</b> Hive and JDBC refuse a tampered
+ * metadata pointer on their own; the dispatcher classifies that failure on its way out, records it
+ * for a governed catalog, and rethrows it unchanged.
  */
 public final class IcebergTableEncryptionDispatcher implements IcebergTableOperationDispatcher {
 
@@ -87,16 +93,34 @@ public final class IcebergTableEncryptionDispatcher implements IcebergTableOpera
   private final String metalakeName;
   private final Optional<EncryptionAdmissionService> admissionService;
   private final Predicate<String> federatedCatalog;
+  private final Optional<Function<String, CatalogFacts>> catalogFacts;
 
   /**
-   * Creates an IRC encryption invariant and audit dispatcher.
+   * Creates an IRC encryption invariant and audit dispatcher that knows nothing about its catalogs'
+   * backends, and so records no metadata-integrity failure.
    *
    * @param dispatcher underlying IRC table dispatcher
    * @param federatedCatalog whether a catalog, by name, is federated and so passed through
    */
   public IcebergTableEncryptionDispatcher(
       IcebergTableOperationDispatcher dispatcher, Predicate<String> federatedCatalog) {
-    this(dispatcher, "invariant-only", null, federatedCatalog);
+    this(dispatcher, federatedCatalog, null);
+  }
+
+  /**
+   * Creates an IRC encryption invariant and audit dispatcher with no admission service.
+   *
+   * @param dispatcher underlying IRC table dispatcher
+   * @param federatedCatalog tells, by catalog name, whether a catalog federates another Iceberg
+   *     REST catalog, whose requests are forwarded untouched
+   * @param catalogFacts names, by catalog name, what a catalog is for the purpose of classifying a
+   *     failure, or {@code null} when the deployment cannot answer
+   */
+  public IcebergTableEncryptionDispatcher(
+      IcebergTableOperationDispatcher dispatcher,
+      Predicate<String> federatedCatalog,
+      @Nullable Function<String, CatalogFacts> catalogFacts) {
+    this(dispatcher, "invariant-only", null, federatedCatalog, catalogFacts);
   }
 
   /**
@@ -107,12 +131,15 @@ public final class IcebergTableEncryptionDispatcher implements IcebergTableOpera
    * @param admissionService service owning the whole admission decision, or {@code null} for
    *     invariant-only handling
    * @param federatedCatalog whether a catalog, by name, is federated and so passed through
+   * @param catalogFacts what a catalog is, by name, for classifying a failure, or {@code null} when
+   *     the deployment cannot answer
    */
   public IcebergTableEncryptionDispatcher(
       IcebergTableOperationDispatcher dispatcher,
       String metalakeName,
       @Nullable EncryptionAdmissionService admissionService,
-      Predicate<String> federatedCatalog) {
+      Predicate<String> federatedCatalog,
+      @Nullable Function<String, CatalogFacts> catalogFacts) {
     Preconditions.checkArgument(dispatcher != null, "dispatcher cannot be null");
     Preconditions.checkArgument(
         StringUtils.isNotBlank(metalakeName), "metalakeName cannot be blank");
@@ -121,6 +148,7 @@ public final class IcebergTableEncryptionDispatcher implements IcebergTableOpera
     this.metalakeName = metalakeName;
     this.admissionService = Optional.ofNullable(admissionService);
     this.federatedCatalog = federatedCatalog;
+    this.catalogFacts = Optional.ofNullable(catalogFacts);
   }
 
   /** {@inheritDoc} */
@@ -131,19 +159,25 @@ public final class IcebergTableEncryptionDispatcher implements IcebergTableOpera
     Preconditions.checkArgument(namespace != null, "namespace cannot be null");
     Preconditions.checkArgument(createTableRequest != null, "createTableRequest cannot be null");
 
-    if (!admissionService.isPresent() || isFederated(context)) {
-      return dispatcher.createTable(context, namespace, createTableRequest);
-    }
+    CatalogFacts facts = catalogFacts(context);
+    try {
+      if (!admissionService.isPresent() || isFederated(context)) {
+        return dispatcher.createTable(context, namespace, createTableRequest);
+      }
 
-    TableIdentifier tableIdentifier = TableIdentifier.of(namespace, createTableRequest.name());
-    Operation operation = createTableRequest.stageCreate() ? Operation.STAGE : Operation.CREATE;
-    EncryptionAdmission admission =
-        admit(context, tableIdentifier, operation, createTableRequest.properties());
-    return runAdmitted(
-        admission,
-        admitted ->
-            dispatcher.createTable(
-                context, namespace, withAdmittedProperties(createTableRequest, admitted)));
+      TableIdentifier tableIdentifier = TableIdentifier.of(namespace, createTableRequest.name());
+      Operation operation = createTableRequest.stageCreate() ? Operation.STAGE : Operation.CREATE;
+      EncryptionAdmission admission =
+          admit(context, tableIdentifier, operation, createTableRequest.properties());
+      return runAdmitted(
+          admission,
+          admitted ->
+              dispatcher.createTable(
+                  context, namespace, withAdmittedProperties(createTableRequest, admitted)));
+    } catch (RuntimeException e) {
+      recordMetadataIntegrityFailure(facts, e);
+      throw e;
+    }
   }
 
   /** {@inheritDoc} */
@@ -156,29 +190,36 @@ public final class IcebergTableEncryptionDispatcher implements IcebergTableOpera
     Preconditions.checkArgument(tableIdentifier != null, "tableIdentifier cannot be null");
     Preconditions.checkArgument(updateTableRequest != null, "updateTableRequest cannot be null");
 
-    if (isFederated(context)) {
-      return dispatcher.updateTable(context, tableIdentifier, updateTableRequest);
-    }
+    CatalogFacts facts = catalogFacts(context);
+    try {
+      if (isFederated(context)) {
+        return dispatcher.updateTable(context, tableIdentifier, updateTableRequest);
+      }
 
-    boolean stagedCreateCommit = isStagedCreateCommit(updateTableRequest);
-    if (stagedCreateCommit && admissionService.isPresent()) {
-      EncryptionAdmission admission =
-          admit(
-              context,
-              tableIdentifier,
-              Operation.STAGED_COMMIT,
-              stagedCreateProperties(updateTableRequest));
-      return runAdmitted(
-          admission,
-          admitted ->
-              updateAfterInvariants(
-                  context,
-                  tableIdentifier,
-                  withAdmittedProperties(updateTableRequest, admitted),
-                  true));
-    }
+      boolean stagedCreateCommit = isStagedCreateCommit(updateTableRequest);
+      if (stagedCreateCommit && admissionService.isPresent()) {
+        EncryptionAdmission admission =
+            admit(
+                context,
+                tableIdentifier,
+                Operation.STAGED_COMMIT,
+                stagedCreateProperties(updateTableRequest));
+        return runAdmitted(
+            admission,
+            admitted ->
+                updateAfterInvariants(
+                    context,
+                    tableIdentifier,
+                    withAdmittedProperties(updateTableRequest, admitted),
+                    true));
+      }
 
-    return updateAfterInvariants(context, tableIdentifier, updateTableRequest, stagedCreateCommit);
+      return updateAfterInvariants(
+          context, tableIdentifier, updateTableRequest, stagedCreateCommit);
+    } catch (RuntimeException e) {
+      recordMetadataIntegrityFailure(facts, e);
+      throw e;
+    }
   }
 
   private LoadTableResponse updateAfterInvariants(
@@ -244,7 +285,13 @@ public final class IcebergTableEncryptionDispatcher implements IcebergTableOpera
   @Override
   public LoadTableResponse loadTable(
       IcebergRequestContext context, TableIdentifier tableIdentifier) {
-    return dispatcher.loadTable(context, tableIdentifier);
+    CatalogFacts facts = catalogFacts(context);
+    try {
+      return dispatcher.loadTable(context, tableIdentifier);
+    } catch (RuntimeException e) {
+      recordMetadataIntegrityFailure(facts, e);
+      throw e;
+    }
   }
 
   /** {@inheritDoc} */
@@ -290,6 +337,50 @@ public final class IcebergTableEncryptionDispatcher implements IcebergTableOpera
 
   private boolean isFederated(IcebergRequestContext context) {
     return federatedCatalog.test(context.catalogName());
+  }
+
+  /**
+   * Names what the request's catalog is, before the operation runs.
+   *
+   * <p>Resolved up front, never from inside an operation catch: the lookup reaches the catalog
+   * wrapper and can itself fail. A failed audit probe yields {@code null}, so it can neither
+   * prevent the operation nor replace the exception the caller is about to receive.
+   *
+   * <p>A deployment that cannot answer, and a request carrying no context, yield {@code null}, so
+   * nothing is recorded rather than something being guessed.
+   */
+  @Nullable
+  private CatalogFacts catalogFacts(@Nullable IcebergRequestContext context) {
+    if (context == null || !catalogFacts.isPresent()) {
+      return null;
+    }
+    try {
+      return catalogFacts.get().apply(context.catalogName());
+    } catch (RuntimeException ignored) {
+      return null;
+    }
+  }
+
+  /**
+   * Records what a failed operation says about metadata integrity, and nothing else.
+   *
+   * <p>Detection already happened in the backend: Hive and JDBC refuse a tampered metadata pointer
+   * on their own, and this only carries that refusal into the audit record, which the reason codes
+   * otherwise never reach. The failure is classified, never inspected for a message, and the caller
+   * rethrows it unchanged.
+   *
+   * <p>The gate is the catalog, not the request: a governed catalog records even on a plain load,
+   * where no admission was evaluated, and an ungoverned one records nothing even on a backend that
+   * detected the tamper. A federated catalog is never governed here, because its integrity belongs
+   * to the remote catalog that commits for it.
+   */
+  private static void recordMetadataIntegrityFailure(
+      @Nullable CatalogFacts facts, RuntimeException failure) {
+    if (facts == null || !facts.encryptionGoverned()) {
+      return;
+    }
+    MetadataIntegrityFailureClassifier.classify(failure, facts)
+        .ifPresent(RequestContext::mergeAuditExtras);
   }
 
   private EncryptionAdmission admit(
@@ -484,31 +575,9 @@ public final class IcebergTableEncryptionDispatcher implements IcebergTableOpera
   }
 
   // A staged commit stashes twice: the commit's key facts from updateAfterInvariants, then the
-  // admission's. Merge so the second does not erase the first.
+  // admission's. The stash merges, so the first survives the second.
   private static void stashAuditExtras(Map<String, String> extras) {
-    if (extras == null || extras.isEmpty()) {
-      RequestContext.setAuditExtras(extras);
-      return;
-    }
-    Map<String, String> existing = RequestContext.takeAuditExtras();
-    if (existing.isEmpty()) {
-      RequestContext.setAuditExtras(extras);
-      return;
-    }
-    Map<String, String> merged = new LinkedHashMap<>(existing);
-    merged.putAll(extras);
-    putIfPresent(merged, existing, IcebergEncryptionAuditInfos.PREFIX + "addedEncryptionKeyIds");
-    putIfPresent(merged, existing, IcebergEncryptionAuditInfos.PREFIX + "removedEncryptionKeyIds");
-    putIfPresent(merged, existing, IcebergEncryptionAuditInfos.PREFIX + "commitId");
-    RequestContext.setAuditExtras(merged);
-  }
-
-  private static void putIfPresent(
-      Map<String, String> target, Map<String, String> source, String key) {
-    String value = source.get(key);
-    if (value != null) {
-      target.put(key, value);
-    }
+    RequestContext.mergeAuditExtras(extras);
   }
 
   private NameIdentifier gravitinoIdentifier(

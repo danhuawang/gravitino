@@ -19,8 +19,11 @@
 
 package org.apache.gravitino.utils;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import java.util.Map;
+import javax.annotation.Nullable;
+import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos;
 
 /**
  * Holds per-request context data in a {@link ThreadLocal} so that event classes constructed on the
@@ -47,7 +50,9 @@ import java.util.Map;
  *       failed" case, because that failure entry comes from the filter's own HTTP-status check, not
  *       from a second operation-layer flag.
  *   <li><b>auditExtras</b> — optional {@code customInfo} facts stashed by an inner dispatcher and
- *       consumed by the outer event dispatcher so one operation still produces one event.
+ *       consumed by the outer event dispatcher so one operation still produces one event. Several
+ *       contributors may stash for one operation, so they are merged under an explicit precedence
+ *       rather than replaced — see {@link #mergeAuditExtras(Map)}.
  *   <li><b>requestQueryParams</b> — the current request's query parameters, captured raw (not
  *       redacted — see {@code AuditLogRedactor}) once per request by {@code RequestContextFilter}
  *       and read (non-destructively) by every {@link org.apache.gravitino.listener.api.event.Event}
@@ -163,14 +168,40 @@ public class RequestContext {
   }
 
   /**
-   * Stashes optional audit extras for the current request thread. An inner dispatcher calls this
-   * before returning or throwing so the outer event dispatcher can attach the extras to the
-   * existing table event.
+   * Merges optional audit extras into the stash for the current request thread. An inner dispatcher
+   * calls this before returning or throwing so the outer event dispatcher can attach the extras to
+   * the existing table event.
    *
-   * <p>A {@code null} or empty map clears any previously stashed extras.
+   * <p>This is the only setter main code uses. More than one contributor can record facts for one
+   * operation — a staged-create commit records both the create evaluation and the commit's key
+   * updates — so a plain replace would silently drop whichever ran first. A {@code null} or empty
+   * map is a no-op: a contributor with nothing to say must not retract what an earlier one
+   * recorded.
+   *
+   * <p>Precedence between two contributors is the audit vocabulary's business, not this class's, so
+   * it is delegated to {@link IcebergEncryptionAuditInfos#merge(Map, Map)}, which owns the reason
+   * codes it ranks.
+   *
+   * @param extras optional {@code customInfo} facts, or {@code null} when there are none
+   */
+  public static void mergeAuditExtras(@Nullable Map<String, String> extras) {
+    if (extras == null || extras.isEmpty()) {
+      return;
+    }
+    AUDIT_EXTRAS.set(IcebergEncryptionAuditInfos.merge(AUDIT_EXTRAS.get(), extras));
+  }
+
+  /**
+   * Replaces any audit extras stashed for the current request thread, clearing them when the map is
+   * {@code null} or empty.
+   *
+   * <p>Retained for tests, which need to plant an exact stash without the precedence rules of
+   * {@link #mergeAuditExtras(Map)} in the way. Main code must not call it: an unconditional replace
+   * is what lost a second contributor's facts.
    *
    * @param extras optional {@code customInfo} facts, or {@code null} to clear
    */
+  @VisibleForTesting
   public static void setAuditExtras(Map<String, String> extras) {
     if (extras == null || extras.isEmpty()) {
       AUDIT_EXTRAS.remove();

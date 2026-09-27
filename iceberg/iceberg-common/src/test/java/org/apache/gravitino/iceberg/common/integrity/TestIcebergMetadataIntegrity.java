@@ -10,6 +10,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.Map;
 import javax.annotation.Nullable;
+import org.apache.gravitino.exceptions.EncryptionKeyRepointException;
 import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.iceberg.common.integrity.IcebergMetadataIntegrity.TrustedMetadata;
 import org.apache.iceberg.PartitionSpec;
@@ -151,14 +152,17 @@ public class TestIcebergMetadataIntegrity {
       {null, "kms-key-1"}, {"kms-key-1", "kms-key-2"}, {"kms-key-1", null},
     };
     for (String[] transition : transitions) {
-      IllegalArgumentException e =
+      EncryptionKeyRepointException e =
           Assertions.assertThrows(
-              IllegalArgumentException.class,
+              EncryptionKeyRepointException.class,
               () ->
                   IcebergMetadataIntegrity.requireSameEncryptionKey(
                       IDENTIFIER, metadataWithKey(transition[0]), metadataWithKey(transition[1])),
               transition[0] + " -> " + transition[1]);
       Assertions.assertTrue(e.getMessage().contains("re-registering"), e.getMessage());
+      // The refusal stays a bad request for every caller that does not know the type.
+      Assertions.assertInstanceOf(IllegalArgumentException.class, e);
+      Assertions.assertTrue(e.getMessage().contains(IDENTIFIER.toString()), e.getMessage());
     }
   }
 

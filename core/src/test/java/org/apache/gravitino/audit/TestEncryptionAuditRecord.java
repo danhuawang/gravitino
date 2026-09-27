@@ -17,6 +17,8 @@ import java.util.stream.Collectors;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.audit.v2.SimpleFormatterV2;
 import org.apache.gravitino.catalog.TableDispatcher;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
+import org.apache.gravitino.encryption.AtomicIntegrityCapability;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.listener.TableEventDispatcher;
 import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos;
@@ -67,6 +69,12 @@ public class TestEncryptionAuditRecord {
           .withVerified(true)
           .withKmsValidation(KmsValidationStatus.VALID)
           .withError(new IllegalStateException("never written"))
+          // The backend facts A-1 adds. This fixture is the completeness guard for the key set: a
+          // key that is declared but never proven to reach the written line fails the assertion
+          // below, which is why every new key is recorded here.
+          .withBackend(IcebergCatalogBackend.HIVE)
+          .withEncryptionGoverned(true)
+          .withIntegrityExpected(AtomicIntegrityCapability.of(true))
           .build();
 
   @BeforeEach

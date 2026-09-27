@@ -123,6 +123,19 @@ public class IcebergCatalogWrapper implements AutoCloseable {
   }
 
   /**
+   * Returns the configured Iceberg backend this wrapper serves.
+   *
+   * <p>Read from the catalog configuration at construction, so it answers without initializing the
+   * catalog. It names what the catalog is, not what it can do: see {@link
+   * #atomicIntegrityAvailable()} for the capability, which only the loaded catalog can answer.
+   *
+   * @return the catalog backend
+   */
+  public IcebergCatalogBackend catalogBackend() {
+    return catalogBackend;
+  }
+
+  /**
    * Returns whether the initialized backend publishes an Iceberg metadata pointer and its integrity
    * hash in one atomic commit.
    *

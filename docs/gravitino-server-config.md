@@ -439,6 +439,25 @@ fixed list of keys the server itself always uses (e.g. `http.method`, `http.stat
 is exempt from that substring check, since otherwise `auth.method` would be masked for merely
 containing "auth".
 
+##### Iceberg metadata-integrity audit fields
+
+When a governed Iceberg catalog classifies an existing Hive or JDBC metadata-integrity refusal,
+the request's `customInfo` includes these fields:
+
+| Field | Meaning |
+|-------|---------|
+| `icebergEncryption.reason` | `METADATA_INTEGRITY_FAILED` for a typed integrity or key-repoint refusal. `NATIVE_LOAD_FAILURE` identifies the exact, cause-less runtime failure shape produced by Hive; it provides context for log correlation and is not proof of tampering. |
+| `icebergEncryption.backend` | The Iceberg catalog backend, such as `HIVE` or `JDBC`. |
+| `icebergEncryption.encryptionGoverned` | Whether Gravitino's encryption admission service governs the catalog. |
+| `icebergEncryption.integrityExpected` | `SUPPORTED` when the backend commits the metadata pointer and integrity hash atomically; otherwise `UNSUPPORTED`. |
+| `icebergEncryption.errorType` | The classified exception's Java type. |
+
+The audit record never copies the exception message. Correlate the reason and error type with the
+server log for diagnostic detail. An Iceberg REST client can retry an eligible Hive HTTP 500 GET,
+so one client operation may produce more than one Hive audit line. JDBC metadata hash and
+enrollment refusals answer HTTP 412 and are not retried this way; key-repoint refusals remain HTTP
+400.
+
 Every request that reaches the server produces at least one audit entry, even one whose operation
 has no dedicated `Event` subclass: `HttpAuditFilter` dispatches a generic fallback event (method,
 URI, status code, and the same auto-captured query parameters) for any request where no

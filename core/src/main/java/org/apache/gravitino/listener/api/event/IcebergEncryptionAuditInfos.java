@@ -6,11 +6,14 @@ package org.apache.gravitino.listener.api.event;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.annotation.DeveloperApi;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
+import org.apache.gravitino.encryption.AtomicIntegrityCapability;
 import org.apache.gravitino.encryption.IcebergEncryptionDecision;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.policy.IcebergEncryptionContent;
@@ -18,10 +21,17 @@ import org.apache.gravitino.policy.IcebergEncryptionContent;
 /**
  * {@code customInfo} keys and builder for Iceberg encryption facts on existing table events.
  *
- * <p>SPIP B4 hangs A4 evidence on {@link OperationType#CREATE_TABLE}, {@link
- * OperationType#ALTER_TABLE}, and {@link OperationType#LOAD_TABLE}. This helper produces extras
- * only: policy name, compliance, enforcement, reason, and key identity as {@code {provider,
- * keyId}}. It never carries key material or KMS credentials.
+ * <p>Extras ride the seven operations whose event dispatchers harvest them: the Iceberg REST
+ * catalog's {@code createTable}, {@code updateTable}, {@code loadTable} and {@code registerTable},
+ * and the Gravitino API's {@code createTable}, {@code alterTable} and {@code loadTable}. Those
+ * surface as {@link OperationType#CREATE_TABLE}, {@link OperationType#ALTER_TABLE}, {@link
+ * OperationType#LOAD_TABLE} and {@link OperationType#REGISTER_TABLE}. No other operation harvests
+ * extras, so stashing any here for one would leave them to be picked up by a later operation on the
+ * same request and attributed to the wrong table.
+ *
+ * <p>This helper produces extras only: policy name, compliance, enforcement, reason, the backend
+ * facts an integrity record carries, and key identity as {@code {provider, keyId}}. It never
+ * carries key material or KMS credentials.
  */
 @DeveloperApi
 public final class IcebergEncryptionAuditInfos {
@@ -77,6 +87,42 @@ public final class IcebergEncryptionAuditInfos {
   /** Exception class name for a failed action. Never the exception message. */
   public static final String ERROR_TYPE = PREFIX + "errorType";
 
+  /**
+   * Iceberg catalog backend the failing request ran against, as {@link
+   * IcebergCatalogBackend#name()}. It is what tells an operator whether a reason was produced by a
+   * typed backend refusal or inferred from a native one.
+   */
+  public static final String BACKEND = PREFIX + "backend";
+
+  /**
+   * Whether an admission service governs encryption on this catalog. An ungoverned catalog records
+   * nothing, so the value is a fact about the record's own reachability.
+   */
+  public static final String ENCRYPTION_GOVERNED = PREFIX + "encryptionGoverned";
+
+  /**
+   * Whether the catalog can publish an Iceberg metadata pointer and its integrity hash in one
+   * atomic commit, as {@link AtomicIntegrityCapability#name()}.
+   */
+  public static final String INTEGRITY_EXPECTED = PREFIX + "integrityExpected";
+
+  /** Rank of a reason code this class does not know. Lowest, so an unknown code never wins. */
+  private static final int RANK_UNKNOWN = 0;
+
+  /** Rank of {@link Reason#OPERATION_FAILED}: a real outcome, but the least specific one. */
+  private static final int RANK_GENERIC = 10;
+
+  /** Rank shared by every reason an admission or a commit observation mints. */
+  private static final int RANK_ADMISSION = 20;
+
+  /** Rank of the Hive context reason: above every admission reason, below a proven violation. */
+  private static final int RANK_NATIVE = 30;
+
+  /** Rank of {@link Reason#METADATA_INTEGRITY_FAILED}: nothing outranks a tamper. */
+  private static final int RANK_INTEGRITY = 40;
+
+  private static final Map<String, Integer> REASON_RANKS = reasonRanks();
+
   private IcebergEncryptionAuditInfos() {}
 
   /**
@@ -86,6 +132,91 @@ public final class IcebergEncryptionAuditInfos {
    */
   public static Builder builder() {
     return new Builder();
+  }
+
+  /**
+   * Merges freshly produced extras into extras already stashed for the same request, under the
+   * precedence the audit record needs:
+   *
+   * <ol>
+   *   <li>Empty or {@code null} {@code incoming} leaves {@code existing} alone. A contributor with
+   *       nothing to say must never retract what an earlier one recorded.
+   *   <li>{@link #REASON} and {@link #ERROR_TYPE} move as one unit. A record carrying one
+   *       contributor's reason next to another's error class is worse than either alone, so
+   *       whichever reason wins brings its own error type, or the absence of one.
+   *   <li>The winning reason is the higher-ranked one: a proven integrity violation outranks the
+   *       Hive context reason, which outranks every admission reason, which outranks the generic
+   *       {@link Reason#OPERATION_FAILED}. Equal rank goes to {@code incoming}, which is closer to
+   *       the throw. A code this class does not know ranks lowest rather than failing the request.
+   *   <li>Every other key is filled, never overwritten. A late contributor adds the facts it owns
+   *       without disturbing the decision id, policy, compliance or key identities an earlier one
+   *       recorded.
+   * </ol>
+   *
+   * @param existing extras already stashed for this request, or {@code null} when none are
+   * @param incoming extras the current contributor produced, or {@code null} when it has none
+   * @return the merged extras, never {@code null}
+   */
+  public static Map<String, String> merge(
+      @Nullable Map<String, String> existing, @Nullable Map<String, String> incoming) {
+    if (incoming == null || incoming.isEmpty()) {
+      return existing == null ? ImmutableMap.of() : ImmutableMap.copyOf(existing);
+    }
+    if (existing == null || existing.isEmpty()) {
+      return ImmutableMap.copyOf(incoming);
+    }
+
+    Map<String, String> merged = new LinkedHashMap<>(existing);
+    incoming.forEach(merged::putIfAbsent);
+
+    Map<String, String> reasonWinner = reasonWinner(existing, incoming);
+    if (reasonWinner != null) {
+      merged.put(REASON, reasonWinner.get(REASON));
+      String errorType = reasonWinner.get(ERROR_TYPE);
+      if (errorType == null) {
+        merged.remove(ERROR_TYPE);
+      } else {
+        merged.put(ERROR_TYPE, errorType);
+      }
+    }
+    return ImmutableMap.copyOf(merged);
+  }
+
+  /**
+   * Returns the map whose reason and error type the merge keeps, or {@code null} when neither side
+   * names a reason and the error type is left to the fill rule.
+   */
+  @Nullable
+  private static Map<String, String> reasonWinner(
+      Map<String, String> existing, Map<String, String> incoming) {
+    String existingReason = existing.get(REASON);
+    String incomingReason = incoming.get(REASON);
+    if (existingReason == null && incomingReason == null) {
+      return null;
+    }
+    if (incomingReason == null) {
+      return existing;
+    }
+    if (existingReason == null) {
+      return incoming;
+    }
+    return rank(incomingReason) >= rank(existingReason) ? incoming : existing;
+  }
+
+  private static int rank(String reasonCode) {
+    Integer rank = REASON_RANKS.get(reasonCode);
+    return rank == null ? RANK_UNKNOWN : rank;
+  }
+
+  private static Map<String, Integer> reasonRanks() {
+    Map<String, Integer> ranks = new LinkedHashMap<>();
+    for (Reason reason : Reason.values()) {
+      ranks.put(reason.code(), RANK_ADMISSION);
+    }
+    ranks.put(Reason.NATIVE_LOAD_FAILURE.code(), RANK_NATIVE);
+    ranks.put(Reason.METADATA_INTEGRITY_FAILED.code(), RANK_INTEGRITY);
+    ranks.put(Reason.OPERATION_FAILED.code(), RANK_GENERIC);
+    return ImmutableMap.copyOf(ranks);
   }
 
   /** Policy compliance result of an applicable evaluation. */
@@ -165,6 +296,11 @@ public final class IcebergEncryptionAuditInfos {
     /** Iceberg metadata failed integrity verification. */
     METADATA_INTEGRITY_FAILED("METADATA_INTEGRITY_FAILED"),
 
+    /**
+     * A Hive backend refused a load with a bare, cause-less failure; context only, never a cause.
+     */
+    NATIVE_LOAD_FAILURE("NATIVE_LOAD_FAILURE"),
+
     /** The encryption action failed for a reason not represented by a narrower code. */
     OPERATION_FAILED("OPERATION_FAILED");
 
@@ -199,6 +335,9 @@ public final class IcebergEncryptionAuditInfos {
     @Nullable private Boolean verified;
     @Nullable private KmsValidationStatus kmsValidation;
     @Nullable private Class<? extends Exception> errorType;
+    @Nullable private IcebergCatalogBackend backend;
+    @Nullable private Boolean encryptionGoverned;
+    @Nullable private AtomicIntegrityCapability integrityExpected;
 
     private Builder() {}
 
@@ -397,6 +536,42 @@ public final class IcebergEncryptionAuditInfos {
     }
 
     /**
+     * Sets the Iceberg catalog backend the failing request ran against.
+     *
+     * @param backend Iceberg catalog backend
+     * @return this builder
+     */
+    public Builder withBackend(IcebergCatalogBackend backend) {
+      Preconditions.checkArgument(backend != null, "backend cannot be null");
+      this.backend = backend;
+      return this;
+    }
+
+    /**
+     * Sets whether an admission service governs encryption on this catalog.
+     *
+     * @param encryptionGoverned whether the catalog is governed
+     * @return this builder
+     */
+    public Builder withEncryptionGoverned(boolean encryptionGoverned) {
+      this.encryptionGoverned = encryptionGoverned;
+      return this;
+    }
+
+    /**
+     * Sets whether the catalog publishes an Iceberg metadata pointer and its integrity hash in one
+     * atomic commit.
+     *
+     * @param integrityExpected atomic metadata-integrity capability of the catalog
+     * @return this builder
+     */
+    public Builder withIntegrityExpected(AtomicIntegrityCapability integrityExpected) {
+      Preconditions.checkArgument(integrityExpected != null, "integrityExpected cannot be null");
+      this.integrityExpected = integrityExpected;
+      return this;
+    }
+
+    /**
      * Builds immutable extras. Empty optional fields are omitted.
      *
      * @return encryption extras
@@ -410,6 +585,9 @@ public final class IcebergEncryptionAuditInfos {
               || kmsValidation == KmsValidationStatus.NOT_ATTEMPTED
               || providerKey != null,
           "A KMS validation result requires a key identity");
+      Preconditions.checkArgument(
+          reason != Reason.NATIVE_LOAD_FAILURE || backend == IcebergCatalogBackend.HIVE,
+          "A NATIVE_LOAD_FAILURE reason requires backend HIVE");
 
       ImmutableMap.Builder<String, String> extras = ImmutableMap.builder();
       putIfPresent(extras, DECISION_ID, decisionId);
@@ -433,6 +611,15 @@ public final class IcebergEncryptionAuditInfos {
       putIfPresent(extras, KMS_VALIDATION, kmsValidation);
       if (errorType != null) {
         extras.put(ERROR_TYPE, errorType.getName());
+      }
+      if (backend != null) {
+        extras.put(BACKEND, backend.name());
+      }
+      if (encryptionGoverned != null) {
+        extras.put(ENCRYPTION_GOVERNED, Boolean.toString(encryptionGoverned));
+      }
+      if (integrityExpected != null) {
+        extras.put(INTEGRITY_EXPECTED, integrityExpected.name());
       }
       return extras.build();
     }

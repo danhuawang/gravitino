@@ -13,6 +13,8 @@ import javax.annotation.Nullable;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.audit.AuditLog;
 import org.apache.gravitino.audit.v2.SimpleAuditLogV2;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
+import org.apache.gravitino.encryption.AtomicIntegrityCapability;
 import org.apache.gravitino.encryption.IcebergEncryptionDecision;
 import org.apache.gravitino.encryption.kms.KmsReference;
 import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos.Compliance;
@@ -315,6 +317,15 @@ public class TestIcebergEncryptionAuditInfos {
         Assertions.assertThrows(
                 IllegalArgumentException.class, () -> builder.withAttemptedProviderKey(null))
             .getMessage());
+    Assertions.assertEquals(
+        "backend cannot be null",
+        Assertions.assertThrows(IllegalArgumentException.class, () -> builder.withBackend(null))
+            .getMessage());
+    Assertions.assertEquals(
+        "integrityExpected cannot be null",
+        Assertions.assertThrows(
+                IllegalArgumentException.class, () -> builder.withIntegrityExpected(null))
+            .getMessage());
   }
 
   @Test
@@ -367,6 +378,131 @@ public class TestIcebergEncryptionAuditInfos {
     Assertions.assertEquals("AMBIGUOUS_POLICY", Reason.AMBIGUOUS_POLICY.code());
     Assertions.assertEquals("UNSUPPORTED_FORMAT_VERSION", Reason.UNSUPPORTED_FORMAT_VERSION.code());
     Assertions.assertEquals("METADATA_INTEGRITY_FAILED", Reason.METADATA_INTEGRITY_FAILED.code());
+    Assertions.assertEquals("NATIVE_LOAD_FAILURE", Reason.NATIVE_LOAD_FAILURE.code());
+  }
+
+  @Test
+  void testBackendFactsRoundTripUnderTheSharedPrefix() {
+    Map<String, String> extras =
+        IcebergEncryptionAuditInfos.builder()
+            .withReason(Reason.METADATA_INTEGRITY_FAILED)
+            .withBackend(IcebergCatalogBackend.JDBC)
+            .withEncryptionGoverned(true)
+            .withIntegrityExpected(AtomicIntegrityCapability.SUPPORTED)
+            .build();
+
+    Assertions.assertEquals("icebergEncryption.backend", IcebergEncryptionAuditInfos.BACKEND);
+    Assertions.assertEquals(
+        "icebergEncryption.encryptionGoverned", IcebergEncryptionAuditInfos.ENCRYPTION_GOVERNED);
+    Assertions.assertEquals(
+        "icebergEncryption.integrityExpected", IcebergEncryptionAuditInfos.INTEGRITY_EXPECTED);
+    Assertions.assertEquals("JDBC", extras.get(IcebergEncryptionAuditInfos.BACKEND));
+    Assertions.assertEquals("true", extras.get(IcebergEncryptionAuditInfos.ENCRYPTION_GOVERNED));
+    Assertions.assertEquals(
+        "SUPPORTED", extras.get(IcebergEncryptionAuditInfos.INTEGRITY_EXPECTED));
+
+    Map<String, String> ungoverned =
+        IcebergEncryptionAuditInfos.builder()
+            .withReason(Reason.METADATA_INTEGRITY_FAILED)
+            .withBackend(IcebergCatalogBackend.MEMORY)
+            .withEncryptionGoverned(false)
+            .withIntegrityExpected(AtomicIntegrityCapability.UNSUPPORTED)
+            .build();
+
+    Assertions.assertEquals("MEMORY", ungoverned.get(IcebergEncryptionAuditInfos.BACKEND));
+    Assertions.assertEquals(
+        "false", ungoverned.get(IcebergEncryptionAuditInfos.ENCRYPTION_GOVERNED));
+    Assertions.assertEquals(
+        "UNSUPPORTED", ungoverned.get(IcebergEncryptionAuditInfos.INTEGRITY_EXPECTED));
+  }
+
+  @Test
+  void testBackendFactsAreOmittedWhenUnset() {
+    Map<String, String> extras =
+        IcebergEncryptionAuditInfos.builder().withReason(Reason.COMPLIANT).build();
+
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.BACKEND));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.ENCRYPTION_GOVERNED));
+    Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.INTEGRITY_EXPECTED));
+  }
+
+  /**
+   * {@code NATIVE_LOAD_FAILURE} is inferred from the shape of a bare Hive failure, so it is only
+   * ever honest on a Hive backend. Any other backend must fail the build rather than mislabel the
+   * record.
+   */
+  @Test
+  void testNativeLoadFailureRequiresHiveBackend() {
+    Map<String, String> hive =
+        IcebergEncryptionAuditInfos.builder()
+            .withReason(Reason.NATIVE_LOAD_FAILURE)
+            .withBackend(IcebergCatalogBackend.HIVE)
+            .withEncryptionGoverned(true)
+            .withIntegrityExpected(AtomicIntegrityCapability.SUPPORTED)
+            .withError(new RuntimeException("bare"))
+            .build();
+
+    Assertions.assertEquals("NATIVE_LOAD_FAILURE", hive.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals("HIVE", hive.get(IcebergEncryptionAuditInfos.BACKEND));
+
+    Assertions.assertEquals(
+        "A NATIVE_LOAD_FAILURE reason requires backend HIVE",
+        Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                    IcebergEncryptionAuditInfos.builder()
+                        .withReason(Reason.NATIVE_LOAD_FAILURE)
+                        .build())
+            .getMessage());
+    for (IcebergCatalogBackend backend : IcebergCatalogBackend.values()) {
+      if (backend == IcebergCatalogBackend.HIVE) {
+        continue;
+      }
+      Assertions.assertEquals(
+          "A NATIVE_LOAD_FAILURE reason requires backend HIVE",
+          Assertions.assertThrows(
+                  IllegalArgumentException.class,
+                  () ->
+                      IcebergEncryptionAuditInfos.builder()
+                          .withReason(Reason.NATIVE_LOAD_FAILURE)
+                          .withBackend(backend)
+                          .build())
+              .getMessage());
+    }
+  }
+
+  /**
+   * D6: the integrity records this helper gained emit no {@code metadataLocation} and no {@code
+   * verified}. Both keys stay defined for a later change, and unset until one arrives.
+   */
+  @Test
+  void testIntegrityFactsEmitNoMetadataLocationOrVerifiedFlag() {
+    Map<String, String> typed =
+        IcebergEncryptionAuditInfos.builder()
+            .withReason(Reason.METADATA_INTEGRITY_FAILED)
+            .withBackend(IcebergCatalogBackend.JDBC)
+            .withEncryptionGoverned(true)
+            .withIntegrityExpected(AtomicIntegrityCapability.SUPPORTED)
+            .withError(new IllegalStateException("tampered"))
+            .build();
+    Map<String, String> nativeHive =
+        IcebergEncryptionAuditInfos.builder()
+            .withReason(Reason.NATIVE_LOAD_FAILURE)
+            .withBackend(IcebergCatalogBackend.HIVE)
+            .withEncryptionGoverned(true)
+            .withIntegrityExpected(AtomicIntegrityCapability.UNSUPPORTED)
+            .withError(new RuntimeException("bare"))
+            .build();
+
+    for (Map<String, String> extras : Arrays.asList(typed, nativeHive)) {
+      Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.METADATA_LOCATION));
+      Assertions.assertFalse(extras.containsKey(IcebergEncryptionAuditInfos.VERIFIED));
+      Assertions.assertTrue(extras.containsKey(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    }
+    Assertions.assertEquals(
+        IllegalStateException.class.getName(), typed.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    Assertions.assertEquals(
+        RuntimeException.class.getName(), nativeHive.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
   }
 
   private static TableInfo tableInfo(@Nullable Map<String, String> properties) {

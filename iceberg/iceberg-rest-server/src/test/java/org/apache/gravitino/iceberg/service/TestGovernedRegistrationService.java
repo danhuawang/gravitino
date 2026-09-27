@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import org.apache.gravitino.NameIdentifier;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergFormatVersionResolution;
 import org.apache.gravitino.encryption.AtomicIntegrityCapability;
@@ -37,10 +38,12 @@ import org.apache.gravitino.encryption.EncryptionAdmissionService.Outcome;
 import org.apache.gravitino.encryption.IcebergEncryptionKmsKeyValidators;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyEvaluator;
 import org.apache.gravitino.encryption.IcebergEncryptionPolicyResolver;
+import org.apache.gravitino.encryption.MetadataIntegrityFailureClassifier.CatalogFacts;
 import org.apache.gravitino.encryption.kms.KmsClient;
 import org.apache.gravitino.encryption.kms.KmsClientRegistry;
 import org.apache.gravitino.encryption.kms.KmsKeyProperties;
 import org.apache.gravitino.encryption.kms.KmsReference;
+import org.apache.gravitino.exceptions.EncryptionKeyRepointException;
 import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos;
 import org.apache.gravitino.listener.api.event.IcebergEncryptionAuditInfos.Reason;
@@ -233,6 +236,133 @@ public class TestGovernedRegistrationService {
     Assertions.assertEquals(
         MetadataIntegrityException.class.getName(),
         extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+  }
+
+  /**
+   * A backend's key-repoint refusal is recorded under its own type and rethrown as it is, like any
+   * other backend refusal: the wire conversion belongs to {@link IcebergExceptionMapper}, which
+   * every route shares, so the typed exception stays recognisable up to it.
+   */
+  @Test
+  void testKeyRepointRefusalIsRecordedTypedAndRethrownUnchanged() {
+    validKey();
+    TableMetadata metadata = metadataFile("repoint", KEY_ID);
+    EncryptionKeyRepointException repoint = repointRefusal();
+    when(catalogWrapper.registerTable(TABLE, metadata, true, true)).thenThrow(repoint);
+    EncryptionAdmissionService admission = spy(admissionService());
+
+    EncryptionKeyRepointException thrown =
+        Assertions.assertThrows(
+            EncryptionKeyRepointException.class,
+            () -> service(admission).register(context, NAMESPACE, request(true)));
+
+    Assertions.assertSame(repoint, thrown);
+
+    Map<String, String> extras = RequestContext.takeAuditExtras();
+    Assertions.assertEquals(
+        Reason.TABLE_CREATE_FAILED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        EncryptionKeyRepointException.class.getName(),
+        extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+  }
+
+  /**
+   * An overwrite that would strip a table's key names no key, so admission evaluates nothing, yet
+   * the backend's key-repoint refusal is the integrity fact the audit record exists to carry. On a
+   * governed catalog it is recorded as {@code METADATA_INTEGRITY_FAILED} with the catalog's facts.
+   */
+  @Test
+  void testKeyStripRefusedByTheBackendIsRecordedWithoutAnAdmission() {
+    TableMetadata metadata = metadataFile("strip", null);
+    when(catalogWrapper.registerTable(TABLE, metadata, true, true)).thenThrow(repointRefusal());
+    EncryptionAdmissionService admission = spy(admissionService());
+    List<EncryptionAdmission> results = new ArrayList<>();
+    doAnswer(invocation -> recordResult(results, invocation)).when(admission).admit(any());
+
+    Assertions.assertThrows(
+        EncryptionKeyRepointException.class,
+        () -> service(admission, true).register(context, NAMESPACE, request(true)));
+
+    Assertions.assertFalse(results.get(0).evaluated());
+    Map<String, String> extras = RequestContext.takeAuditExtras();
+    Assertions.assertEquals(
+        Reason.METADATA_INTEGRITY_FAILED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        EncryptionKeyRepointException.class.getName(),
+        extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+    Assertions.assertEquals(
+        IcebergCatalogBackend.JDBC.name(), extras.get(IcebergEncryptionAuditInfos.BACKEND));
+    Assertions.assertEquals("true", extras.get(IcebergEncryptionAuditInfos.ENCRYPTION_GOVERNED));
+  }
+
+  /**
+   * On an evaluated admission the integrity reason outranks the create-failure reason the admission
+   * recorded for the same refusal, and takes its error type.
+   */
+  @Test
+  void testKeyRepointRefusalOnAGovernedCatalogIsRecordedAsAnIntegrityFailure() {
+    validKey();
+    TableMetadata metadata = metadataFile("rekey", KEY_ID);
+    when(catalogWrapper.registerTable(TABLE, metadata, true, true)).thenThrow(repointRefusal());
+
+    Assertions.assertThrows(
+        EncryptionKeyRepointException.class,
+        () -> service(admissionService(), true).register(context, NAMESPACE, request(true)));
+
+    Map<String, String> extras = RequestContext.takeAuditExtras();
+    Assertions.assertEquals(
+        Reason.METADATA_INTEGRITY_FAILED.code(), extras.get(IcebergEncryptionAuditInfos.REASON));
+    Assertions.assertEquals(
+        EncryptionKeyRepointException.class.getName(),
+        extras.get(IcebergEncryptionAuditInfos.ERROR_TYPE));
+  }
+
+  /** An ungoverned catalog records no integrity facts, even where the backend refused a repoint. */
+  @Test
+  void testKeyStripOnAnUngovernedCatalogRecordsNothing() {
+    TableMetadata metadata = metadataFile("strip-ungoverned", null);
+    when(catalogWrapper.registerTable(TABLE, metadata, true, true)).thenThrow(repointRefusal());
+
+    Assertions.assertThrows(
+        EncryptionKeyRepointException.class,
+        () -> service(admissionService(), false).register(context, NAMESPACE, request(true)));
+
+    Assertions.assertTrue(RequestContext.takeAuditExtras().isEmpty());
+  }
+
+  /** A failed audit-facts probe cannot prevent the backend registration from succeeding. */
+  @Test
+  void testCatalogFactsFailureDoesNotPreventRegistration() {
+    TableMetadata metadata = metadataFile("facts-unavailable", null);
+    LoadTableResponse response = mock(LoadTableResponse.class);
+    when(catalogWrapper.registerTable(TABLE, metadata, false, true)).thenReturn(response);
+
+    Assertions.assertSame(
+        response,
+        serviceWithFailingCatalogFacts(admissionService())
+            .register(context, NAMESPACE, request(false)));
+  }
+
+  /** A failed audit-facts probe cannot replace the backend refusal the caller must receive. */
+  @Test
+  void testCatalogFactsFailureDoesNotReplaceRegistrationFailure() {
+    TableMetadata metadata = metadataFile("facts-unavailable-failure", null);
+    MetadataIntegrityException failure = new MetadataIntegrityException("tampered");
+    when(catalogWrapper.registerTable(TABLE, metadata, false, true)).thenThrow(failure);
+
+    Assertions.assertSame(
+        failure,
+        Assertions.assertThrows(
+            RuntimeException.class,
+            () ->
+                serviceWithFailingCatalogFacts(admissionService())
+                    .register(context, NAMESPACE, request(false))));
+  }
+
+  /** The refusal {@code IcebergMetadataIntegrity.requireSameEncryptionKey} raises on a repoint. */
+  private static EncryptionKeyRepointException repointRefusal() {
+    return new EncryptionKeyRepointException(
+        "Cannot change the encryption key of table %s by re-registering it", TABLE);
   }
 
   /**
@@ -621,6 +751,31 @@ public class TestGovernedRegistrationService {
   private GovernedRegistrationService service(EncryptionAdmissionService admission) {
     return new GovernedRegistrationService(
         admission, catalogWrapperManager, METALAKE, Optional.empty());
+  }
+
+  /** A service that classifies backend refusals against a JDBC catalog, governed or not. */
+  private GovernedRegistrationService service(
+      EncryptionAdmissionService admission, boolean governed) {
+    return new GovernedRegistrationService(
+        admission,
+        catalogWrapperManager,
+        METALAKE,
+        Optional.empty(),
+        catalogName ->
+            CatalogFacts.of(
+                IcebergCatalogBackend.JDBC, governed, AtomicIntegrityCapability.SUPPORTED));
+  }
+
+  private GovernedRegistrationService serviceWithFailingCatalogFacts(
+      EncryptionAdmissionService admission) {
+    return new GovernedRegistrationService(
+        admission,
+        catalogWrapperManager,
+        METALAKE,
+        Optional.empty(),
+        catalogName -> {
+          throw new IllegalStateException("catalog facts unavailable");
+        });
   }
 
   private EncryptionAdmissionService admissionService() {

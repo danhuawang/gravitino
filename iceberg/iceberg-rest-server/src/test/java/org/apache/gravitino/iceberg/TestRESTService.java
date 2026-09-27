@@ -18,6 +18,7 @@
  */
 package org.apache.gravitino.iceberg;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,6 +35,9 @@ import java.util.Set;
 import java.util.function.Predicate;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
+import org.apache.gravitino.encryption.AtomicIntegrityCapability;
+import org.apache.gravitino.encryption.MetadataIntegrityFailureClassifier.CatalogFacts;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.service.CatalogWrapperForREST;
 import org.apache.gravitino.iceberg.service.FederatedCatalogWrapper;
@@ -93,6 +97,39 @@ public class TestRESTService {
 
     assertTrue(federated.test("federated"));
     assertFalse(federated.test("local"));
+  }
+
+  /**
+   * One wrapper lookup answers every fact a failure is classified against, so governance cannot
+   * disagree with federation about the same catalog. An ungoverned deployment still names the
+   * backend: what suppresses the record is governance, not a missing fact.
+   */
+  @Test
+  void testCatalogFactsComeFromOneWrapperLookup() {
+    IcebergCatalogWrapperManager manager = mock(IcebergCatalogWrapperManager.class);
+    CatalogWrapperForREST local = mock(CatalogWrapperForREST.class);
+    when(local.catalogBackend()).thenReturn(IcebergCatalogBackend.HIVE);
+    when(local.atomicIntegrityAvailable()).thenReturn(true);
+    FederatedCatalogWrapper federated = mock(FederatedCatalogWrapper.class);
+    when(federated.catalogBackend()).thenReturn(IcebergCatalogBackend.REST);
+    when(federated.atomicIntegrityAvailable()).thenReturn(false);
+    when(manager.getCatalogWrapper("local")).thenReturn(local);
+    when(manager.getCatalogWrapper("federated")).thenReturn(federated);
+
+    CatalogFacts governed = RESTService.catalogFacts(manager, true).apply("local");
+    assertEquals(IcebergCatalogBackend.HIVE, governed.backend());
+    assertTrue(governed.encryptionGoverned());
+    assertEquals(AtomicIntegrityCapability.SUPPORTED, governed.integrityExpected());
+
+    // A federated catalog's integrity belongs to the remote catalog that commits for it.
+    CatalogFacts remote = RESTService.catalogFacts(manager, true).apply("federated");
+    assertEquals(IcebergCatalogBackend.REST, remote.backend());
+    assertFalse(remote.encryptionGoverned());
+    assertEquals(AtomicIntegrityCapability.UNSUPPORTED, remote.integrityExpected());
+
+    CatalogFacts ungoverned = RESTService.catalogFacts(manager, false).apply("local");
+    assertEquals(IcebergCatalogBackend.HIVE, ungoverned.backend());
+    assertFalse(ungoverned.encryptionGoverned());
   }
 
   /**

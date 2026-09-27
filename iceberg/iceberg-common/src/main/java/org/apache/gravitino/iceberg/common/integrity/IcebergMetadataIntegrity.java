@@ -11,6 +11,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.Objects;
 import javax.annotation.Nullable;
+import org.apache.gravitino.exceptions.EncryptionKeyRepointException;
 import org.apache.gravitino.exceptions.MetadataIntegrityException;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
@@ -143,7 +144,7 @@ public final class IcebergMetadataIntegrity {
    * @param identifier the table identifier
    * @param current the table's current metadata
    * @param target the metadata to publish
-   * @throws IllegalArgumentException if the target carries a different encryption key than the
+   * @throws EncryptionKeyRepointException if the target carries a different encryption key than the
    *     current metadata, including a key appearing or disappearing
    */
   public static void requireSameEncryptionKey(
@@ -151,9 +152,8 @@ public final class IcebergMetadataIntegrity {
     String currentKeyId = current.properties().get(TableProperties.ENCRYPTION_TABLE_KEY);
     String targetKeyId = target.properties().get(TableProperties.ENCRYPTION_TABLE_KEY);
     if (!Objects.equals(currentKeyId, targetKeyId)) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Cannot change the encryption key of table %s by re-registering it", identifier));
+      throw new EncryptionKeyRepointException(
+          "Cannot change the encryption key of table %s by re-registering it", identifier);
     }
   }
 
