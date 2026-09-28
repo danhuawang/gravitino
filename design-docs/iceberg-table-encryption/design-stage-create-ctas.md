@@ -12,7 +12,8 @@ encrypts with it.
 **Revised after review (2026-09-18).** A stage stores nothing, so it no longer makes a full
 admission. Stage prepares the table: it fills in the key and refuses early what the commit would
 refuse anyway. Commit is the one authoritative decision: policy, the KMS check when
-`gravitino.encryption.validateKeys=true`, and a single audit record.
+`gravitino.encryption.validateKeys=true`, and one terminal encryption decision. Stage and commit
+each produce an operation audit line; a successful stage carries no encryption decision.
 
 ## 1. Problem
 
@@ -35,13 +36,13 @@ answers is what else stage does, and what is left for commit.
 
 | Step | Does | Does not |
 | --- | --- | --- |
-| **Stage** (`Operation.STAGE`) | Fills in the catalog key, provider and resolved format version with the same merge as a create. Preflight, all without KMS: the backend can publish atomically, the format-version rule, the policy check. | Call the KMS. Write an audit record on success. Store anything, including an integrity hash. |
-| **Commit** (`Operation.STAGED_COMMIT`) | Checks the key against the catalog rules, evaluates the policy, validates the key with the KMS once when `validateKeys=true`, writes the one audit record, publishes the metadata pointer and its integrity hash in one atomic backend mutation. | Inherit a key: files are already written under the key stage named. |
+| **Stage** (`Operation.STAGE`) | Fills in the catalog key, provider and resolved format version with the same merge as a create. Preflight, all without KMS: the backend can publish atomically, the format-version rule, the policy check. | Call the KMS. Attach encryption decision facts on success. Store anything, including an integrity hash. |
+| **Commit** (`Operation.STAGED_COMMIT`) | Checks the key against the catalog rules, evaluates the policy, validates the key with the KMS once when `validateKeys=true`, attaches the terminal encryption decision to the commit audit line, and publishes the metadata pointer and its integrity hash in one atomic backend mutation. | Inherit a key: files are already written under the key stage named. |
 
 - **Stage is not authoritative.** Its preflight only refuses early what commit would refuse anyway,
   so a disallowed key fails before the query runs rather than after it has written data.
-- **A refused stage writes a denial record.** It is the only record of that attempt. A successful
-  stage writes nothing: nothing was created.
+- **A refused stage records its denial.** A successful stage still produces an operation audit
+  line, but carries no encryption decision because nothing was published.
 - **Commit is admitted in full** because the server keeps no state between stage and commit, a
   client can commit `assert-create` without staging, and the policy may change in between.
 - Gravitino applies catalog key rules itself on every write path and never relies on Iceberg to
@@ -65,7 +66,7 @@ sequenceDiagram
     A->>A: denial audit record
     A-->>E: 400, before any data is written
   else prepared
-    A-->>D: prepared properties (no audit record)
+    A-->>D: prepared properties (no encryption decision)
     D->>H: stageTableCreate(prepared properties)
     H-->>E: staged metadata naming the key (nothing stored)
     Note over E: runs the query, writes files with that key
@@ -77,7 +78,7 @@ sequenceDiagram
     opt gravitino.encryption.validateKeys=true
       A->>K: validate key (the only KMS call)
     end
-    A->>A: the one audit record
+    A->>A: the terminal encryption decision
     A-->>D: ADMITTED, DENIED or UNAVAILABLE
     D->>H: commit
     Note over H: pointer + integrity hash in one atomic mutation<br/>(JDBC integrity row, Hive table parameters)
@@ -94,14 +95,14 @@ flowchart TD
   v -->|yes| r{"resolve policy"}
   r -->|ambiguous| adeny["400 AMBIGUOUS_POLICY + denial record"]
   r -->|"resolved, or none"| g{"a policy applies<br/>or a key applies?"}
-  g -->|no| fwd["stage as requested, no record"]
+  g -->|no| fwd["stage as requested, no encryption decision"]
   g -->|yes| c{"a key applies<br/>or the policy requires one?"}
   c -->|no| p
   c -->|yes| b{"backend publishes pointer<br/>and hash atomically?"}
   b -->|no| bdeny["400 UNSUPPORTED_BACKEND + denial record"]
   b -->|yes| p{"policy allows the key?<br/>(no KMS)"}
   p -->|"no, enforce"| deny["400 POLICY_DENIED + denial record"]
-  p -->|"yes, or report"| ok["stage with prepared properties, no record"]
+  p -->|"yes, or report"| ok["stage with prepared properties, no encryption decision"]
 ```
 
 ### Commit key check
@@ -113,7 +114,7 @@ flowchart TD
   c["assert-create commit"] --> ov{"catalog override key?"}
   ov -->|yes| eq{"key == override?"}
   eq -->|no| deny["DENIED: INVALID_REFERENCE"]
-  eq -->|yes| pol["policy + KMS + audit record"]
+  eq -->|yes| pol["policy + KMS + encryption decision"]
   ov -->|no| def{"catalog default key and commit has none?"}
   def -->|yes| deny
   def -->|no| pol
@@ -181,20 +182,24 @@ test says otherwise; without it every keyed create is refused on version (R3):
 4. **Stage refuses on version early.** Key with explicit `format-version=2`, or key with no version
    on a catalog declaring none: 400 `UNSUPPORTED_FORMAT_VERSION` at stage, one denial record, no KMS
    call.
-5. **Stage under report.** Report policy, key not on the list: staged; no record at stage.
+5. **Stage under report.** Report policy, key not on the list: staged; no encryption decision at
+   stage.
 6. **Round trip, one decision.** Stage, then commit built through Iceberg's `RESTSessionCatalog` or
    `RESTTableOperations` (not by hand): the table names the key; exactly one KMS call (with
-   `validateKeys=true`; none by default) and one audit record, both at commit; the report violation
-   of test 5 is recorded once, at commit.
+   `validateKeys=true`; none by default) and one terminal encryption decision, both at commit. The
+   stage operation line has no encryption facts; the report violation of test 5 appears only on
+   the commit line.
 7. **Commit without stage.** `assert-create` with no stage and no key on a keyed catalog: DENIED,
    no KMS call.
 8. **Commit with a different key** than stage returned, on an override catalog: DENIED
    `INVALID_REFERENCE`, no KMS call.
 9. **KMS rejects at commit** (with `validateKeys=true`). The key passes stage; the KMS rejects it at
-   commit: 400 at commit, one audit record; the table does not exist.
+   commit: 400 at commit, one terminal encryption decision on the commit failure line; the table
+   does not exist.
 10. **Policy changes between stage and commit.** The key is allowed at stage and removed from the
     allow list before commit: DENIED at commit.
-11. **Unkeyed catalog, no policy.** Stage and commit are forwarded unchanged; no KMS call, no record.
+11. **Unkeyed catalog, no policy.** Stage and commit are forwarded unchanged; no KMS call and no
+    encryption decision.
 12. **Unsupported backend refused at stage.** Encrypted stage on a backend without atomic integrity:
     400 `UNSUPPORTED_BACKEND` at stage, no KMS call, the backend is not called.
 13. **CTAS publishes a verified table.** After the round trip of test 6 the table's integrity hash is
@@ -202,50 +207,59 @@ test says otherwise; without it every keyed create is refused on version (R3):
 14. **Integrity store unavailable at commit.** Nothing is published and the table does not exist.
 15. **Federated CTAS.** Stage and commit are forwarded untouched; no admission, no hash.
 
-Integration (PostgreSQL, MySQL, Hive): tests 6, 9, 13 and the CTAS journey through the real server,
-including a tampered `metadata.json` after a CTAS being refused on load.
-Later, outside the current ITs: an engine CTAS end to end, checking that the written files are
-encrypted with the admitted key (Appendix A.3).
+Integration coverage on PostgreSQL, MySQL and Hive proves stage preparation, terminal KMS
+validation and publication of matching metadata integrity state.
+`IcebergEncryptionAtomicIntegrityIT.testRestClientStagedCreateCarriesCatalogKeyAndValidatesOnceAtCommit`
+covers the JDBC round trip;
+`IcebergEncryptionHiveIntegrityIT.testCtasOnAKeyedHiveCatalogPublishesVersionKeyAndIntegrity`
+covers Hive. `testCtasUnderAKeyTheKmsRejectsIsRefusedAtCommit` covers terminal KMS rejection in
+both suites. Separate integrity tests cover metadata files or trusted backend state changed out of
+band; CTAS does not need a separate tamper matrix. An engine CTAS that verifies encrypted data
+files remains outside these ITs (Appendix A.3).
 
 ## 5. Critical user journeys
 
 Keyed catalogs declare `table-default.format-version=3`; on one that does not, every journey below
 that stages a key without naming a version is refused at stage instead (R3, R5).
 
-KMS and audit counts are per CTAS. "Late" means after the query has written its files. KMS counts
-and journeys 5 and 6 assume `gravitino.encryption.validateKeys=true`; by default a CTAS makes no
-server KMS call, and a key the KMS rejects fails in the engine's KMS client during the write.
+KMS and encryption-decision counts are per CTAS; each request also produces its operation audit
+line. "Late" means after the query has written its files. KMS counts and journeys 5 and 6 assume
+`gravitino.encryption.validateKeys=true`; by default a CTAS makes no server KMS call, and a key the
+KMS rejects fails in the engine's KMS client during the write.
 
 | # | Journey | Before this revision | This design |
 | --- | --- | --- | --- |
-| 1 | CTAS on a keyed catalog, allowed key | created; KMS 2, audit 2 | created; **KMS 1, audit 1** |
+| 1 | CTAS on a keyed catalog, allowed key | created; KMS 2, encryption decisions 2 | created; **KMS 1, encryption decision 1** |
 | 2 | Enforce policy, key not on the allow list | 400 at stage; audit 1 | 400 at stage; 1 denial record |
 | 3 | Report policy, key not on the list | created; 2 violation records | created; **1 violation record** |
 | 4 | Key plus explicit `format-version=2` | refused at stage | 400 `UNSUPPORTED_FORMAT_VERSION` at stage |
 | 5 | KMS rejects the key (disabled) | 400 at stage | 400 at commit, late |
 | 6 | KMS unreachable | 503 at stage | 503 at commit, late; the commit can be retried |
-| 7 | Engine aborts after stage | an "admitted" record for a table that never exists | nothing recorded |
+| 7 | Engine aborts after stage | an "admitted" record for a table that never exists | stage operation recorded without an encryption decision |
 | 8 | `assert-create` with no stage and no key | DENIED at commit, no KMS | same |
 | 9 | Commit carries a different key than stage returned | DENIED `INVALID_REFERENCE` | same |
 | 10 | Policy changes between stage and commit | DENIED at commit, late | same: commit decides |
-| 11 | Unkeyed catalog, no policy | forwarded, no KMS, no record | same |
+| 11 | Unkeyed catalog, no policy | forwarded, no KMS, no encryption decision | same |
 | 12 | Encrypted CTAS on a backend without atomic integrity | 400 `UNSUPPORTED_BACKEND` at stage | same, via the preflight, no KMS |
 | 13 | Load right after a CTAS | verified against the hash the commit wrote | same |
-| 14 | `metadata.json` tampered after a CTAS, then loaded | refused as an integrity failure | same |
+| 14 | Metadata or trusted backend state changed out of band, followed by a refresh | refused as an integrity failure | same |
 | 15 | Integrity store unavailable at commit | commit fails closed, files orphaned | same |
 | 16 | CTAS on a federated catalog | refused if encrypted (before #2121) | forwarded untouched, no hash |
 
 ## 6. Decisions
 
-- **Stage prepares; commit decides.** One audit record per CTAS, at commit. With
+- **Stage prepares; commit decides.** One terminal encryption decision per CTAS, on the commit
+  audit line. With
   `gravitino.encryption.validateKeys=true`, commit also makes the one KMS validation; by default it
   decides and records the result without server-side KMS inspection.
 - **Preflight at stage** keeps the early refusal for policy and format version, so a disallowed key
-  does not cost a full query. It calls no KMS and records only refusals.
+  does not cost a full query. It calls no KMS and contributes encryption decision facts only for
+  refusals.
 - **Accepted trade-off (with `validateKeys=true`):** a key the KMS rejects, or an unreachable KMS,
   is refused only at commit, after the files are written (journeys 5, 6). In practice the engine
   needs the same KMS to encrypt, so it usually fails during the write first.
-- **An abandoned CTAS leaves no record** (journey 7): nothing was created.
+- **An abandoned CTAS has no terminal encryption decision** (journey 7): its stage operation
+  remains recorded, but no table was published.
 - Out of scope: `REPLACE TABLE` and `REPLACE TABLE AS SELECT` on an existing table. They are not
   staged creates and this design does not cover them.
 

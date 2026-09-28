@@ -38,6 +38,7 @@ import org.apache.iceberg.ClientPool;
 import org.apache.iceberg.MetastoreRegisterTableUtils;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
+import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.exceptions.CommitFailedException;
@@ -74,6 +75,25 @@ public class HiveCatalogWithMetadataLocationSupport extends ClosableHiveCatalog
         overwrite,
         targetMetadata,
         this::overwriteMetadataLocation);
+  }
+
+  /**
+   * Registers a table from an existing metadata file, optionally overwriting an existing
+   * registration. The metadata file is read once; that parsed object is the object published, so
+   * policy admission performed by the caller applies to exactly what lands in the metastore.
+   *
+   * @param identifier table identifier to register
+   * @param metadataFileLocation location of the metadata file to register
+   * @param overwrite whether to overwrite an existing table registration
+   * @return the registered table
+   */
+  @Override
+  public Table registerTable(
+      TableIdentifier identifier, String metadataFileLocation, boolean overwrite) {
+    return registerTable(
+        identifier,
+        TableMetadataParser.read(newTableOps(identifier).io().newInputFile(metadataFileLocation)),
+        overwrite);
   }
 
   @Override

@@ -84,8 +84,12 @@ dependencies {
   testImplementation(project(":bundles:iceberg-azure-bundle"))
   testImplementation(project(":core", "testArtifacts"))
   testImplementation(project(":integration-test-common", "testArtifacts"))
+  testImplementation(project(":datastrato-server"))
   testImplementation(project(":server-common", "testArtifacts"))
   testImplementation(project(":server"))
+
+  testRuntimeOnly(project(":plugins:idp-basic"))
+  testRuntimeOnly(project(":plugins:scim"))
 
   testImplementation("org.scala-lang.modules:scala-collection-compat_$scalaVersion:$scalaCollectionCompatVersion")
   testImplementation("org.apache.iceberg:iceberg-spark-runtime-${sparkMajorVersion}_$scalaVersion:$icebergVersion")
@@ -127,6 +131,7 @@ dependencies {
   // Required for Iceberg 1.10+ which uses newer Hadoop APIs like FileSystem.openFile()
   testImplementation(libs.hadoop3.client.api)
   testImplementation(libs.hadoop3.client.runtime)
+  testCompileOnly(libs.hive2.metastore)
 
   testRuntimeOnly(libs.junit.jupiter.engine)
 }

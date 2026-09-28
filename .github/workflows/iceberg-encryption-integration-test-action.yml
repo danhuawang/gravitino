@@ -1,0 +1,90 @@
+name: Iceberg Encryption Integration Test Action
+
+# Runs the encryption and metadata-integrity integration tests. They are embedded mode only:
+# the suites register an in-JVM KMS factory through customConfigs, which a packaged server on its
+# own classpath cannot load, so every one of them is disabled in deploy mode.
+on:
+  workflow_call:
+    inputs:
+      architecture:
+        required: true
+        description: 'Architecture of the platform'
+        type: string
+      java-version:
+        required: true
+        description: 'Java version'
+        type: string
+    secrets:
+      ENTERPRISE_TEST_PUBLIC_KEY_URI:
+        required: true
+      PRIVATE_REPO_ACCESS_TOKEN:
+        required: true
+      ENTERPRISE_TEST_LICENSE_KEY:
+        required: true
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+
+jobs:
+  start-runner:
+    name: JDK${{ inputs.java-version }}
+    runs-on: gcp-arc-runners
+    timeout-minutes: 60
+    env:
+      PLATFORM: ${{ inputs.architecture }}
+      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+          cache: 'gradle'
+          cache-dependency-path: |
+            **/*.gradle*
+            **/gradle-wrapper.properties
+            gradle/libs.versions.toml
+            gradle.properties
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Check required command
+        run: |
+          dev/ci/check_commands.sh
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Package Gravitino
+        run: |
+          ./gradlew compileDistribution -PskipWeb=true -x test
+
+      - name: Free up disk space
+        run: |
+          dev/ci/util_free_space.sh
+
+      - name: Iceberg Encryption Integration Test
+        id: integrationTest
+        # Embedded mode only; see the note at the top of this file.
+        run: |
+          ./gradlew -PskipTests -PtestMode=embedded -PskipDockerTests=false -PskipWeb=true :iceberg:iceberg-rest-server:test --tests "*IcebergEncryption*IT"
+
+      - name: Upload integrate tests reports
+        uses: actions/upload-artifact@v7
+        if: ${{ (failure() && steps.integrationTest.outcome == 'failure') || contains(github.event.pull_request.labels.*.name, 'upload log') }}
+        with:
+          name: iceberg-encryption-integrate-test-reports-${{ inputs.java-version }}
+          path: |
+            build/reports
+            iceberg/iceberg-rest-server/build/reports
+            iceberg/iceberg-rest-server/build/*.log
+            distribution/package/logs/gravitino-server.out
+            distribution/package/logs/gravitino-server.log

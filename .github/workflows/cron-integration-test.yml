@@ -4,7 +4,7 @@ name: Cron Integration Test
 # routine coverage stays in the dedicated run-ci-gated workflows.
 #
 # Phase-1 suites (gvfs-fuse, web-ui, frontend, contrib-catalog are excluded):
-#   backend, spark, flink, maintenance, python, trino, access-control,
+#   backend, spark, flink, maintenance, iceberg-encryption, python, trino, access-control,
 #   iceberg-rest-trino, mcp, idp, trino-multi-version, lance, multi-instance
 
 run-name: Enterprise IT (${{ inputs.suites || 'all' }}) caller=${{ inputs.caller_run_id || 'manual' }}
@@ -55,6 +55,7 @@ jobs:
       spark: ${{ steps.parse.outputs.spark }}
       flink: ${{ steps.parse.outputs.flink }}
       maintenance: ${{ steps.parse.outputs.maintenance }}
+      iceberg-encryption: ${{ steps.parse.outputs.iceberg-encryption }}
       python: ${{ steps.parse.outputs.python }}
       trino: ${{ steps.parse.outputs.trino }}
       access-control: ${{ steps.parse.outputs.access-control }}
@@ -82,6 +83,7 @@ jobs:
               "spark",
               "flink",
               "maintenance",
+              "iceberg-encryption",
               "python",
               "trino",
               "access-control",
@@ -155,6 +157,21 @@ jobs:
     with:
       architecture: linux/amd64
       java-version: ${{ needs.select-suites.outputs.java-version }}
+
+  iceberg-encryption:
+    name: iceberg-encryption
+    needs: select-suites
+    if: needs.select-suites.outputs.iceberg-encryption == 'true'
+    uses: ./.github/workflows/iceberg-encryption-integration-test-action.yml
+    with:
+      architecture: linux/amd64
+      java-version: ${{ needs.select-suites.outputs.java-version }}
+    secrets:
+      ENTERPRISE_TEST_PUBLIC_KEY_URI: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      PRIVATE_REPO_ACCESS_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      ENTERPRISE_TEST_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   python:
     name: python

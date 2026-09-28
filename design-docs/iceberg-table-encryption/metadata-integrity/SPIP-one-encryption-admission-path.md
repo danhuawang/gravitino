@@ -77,15 +77,16 @@ KMS once per terminal request. The catalog wrapper's second confirmation is remo
 is admitted once, at commit, which is the terminal publication. Stage stores nothing: it fills in
 the catalog key, provider and resolved format version so the staged metadata names the key the
 engine encrypts with, and runs a preflight without the KMS. A CTAS therefore makes at most one KMS
-call (only with `validateKeys=true`) and writes one audit record; see
+call (only with `validateKeys=true`) and records one terminal encryption decision on the commit
+audit line. Stage and commit still produce their own operation audit lines; see
 [design-stage-create-ctas.md](../design-stage-create-ctas.md).
 
 Server-side key inspection is optional (#2179): a wrong, disabled or inaccessible key fails at
 first write, in the engine's KMS client, and some clients cannot give the server KMS access. The
 server setting `gravitino.encryption.validateKeys` therefore defaults to `false`: terminal
 admission runs the preflight checks, which stay fail-closed, forwards the checked key, and writes
-one audit record with no KMS-validation field. `true` adds the one KMS validation for deployments
-that want it.
+one encryption decision with no KMS-validation field on the terminal operation's audit line. `true`
+adds the one KMS validation for deployments that want it.
 
 #### A3. Capability from the catalog
 
@@ -118,10 +119,10 @@ bound to the admitted object and checked on every subsequent load, which fails c
 **Decision.** The service returns one of `ADMITTED_GOVERNED`, `ADMITTED_UNGOVERNED`, `DENIED`,
 `UNAVAILABLE`, with the admitted properties, audit facts built once, and on failure one of
 `AMBIGUOUS_POLICY`, `UNSUPPORTED_BACKEND`, `INVALID_REFERENCE`, `POLICY_DENIED`,
-`KMS_KEY_INVALID`, `KMS_UNAVAILABLE` with a decision id and message. Each API keeps only its own
-exception translation at the edge. The same vocabulary is used by the audit reasons and by the
-central failure classifier planned for the end of the stack, so a failure means the same thing in
-a response, in the system log and in the audit log.
+`KMS_KEY_INVALID`, `KMS_UNAVAILABLE`, `UNSUPPORTED_FORMAT_VERSION` with a decision id and message.
+Each API keeps only its own exception translation at the edge. The same vocabulary is used by the
+audit reasons and by the central failure classifier planned for the end of the stack, so a failure
+means the same thing in a response, in the system log and in the audit log.
 
 ## Q2. Non-goals and scope requirements — what are we not trying to solve?
 
@@ -291,8 +292,9 @@ path. Each is mostly deletion inside existing classes.
    failure kind for the same input; the driver-and-URI inference is gone.
 3. **Registration path.** **Acceptance:** one file read and one hash derivation per registration;
    the identity transport is gone; the utility has one public registration method.
-4. **Acceptance suite.** **Acceptance:** one parameterised cross-API test proves the same decision
-   and audit result on both APIs for every failure kind.
+4. **Acceptance suite.** **Acceptance:** representative requests prove cross-API exception mapping,
+   real-backend publication and written audit facts. The admission-service and dispatcher unit
+   tests cover the complete failure-kind matrix.
 5. **Documentation.** This proposal finalised against the code.
 
 ## Appendix A. Implementation change plan
@@ -318,6 +320,7 @@ inside it fails closed on the next load.
 
 ### G3. Native Hive failures
 
-Until Apache Iceberg ships a typed integrity exception, native Hive verification failures are not
-classified and propagate as native errors. Recorded in the Hive sibling's errata; the classifier at
-the end of the stack maps them once a type exists.
+Native Hive verification failures retain their native exceptions and responses. On governed
+catalogs, an exact, cause-less `RuntimeException` from Hive adds `NATIVE_LOAD_FAILURE` audit context;
+this does not establish tampering. A typed integrity or key-repoint refusal adds
+`METADATA_INTEGRITY_FAILED`.

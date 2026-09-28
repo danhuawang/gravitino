@@ -65,6 +65,7 @@ public class IcebergExceptionMapper implements ExceptionMapper<Throwable> {
   private static final Map<Class<? extends Exception>, Integer> EXCEPTION_ERROR_CODES =
       ImmutableMap.<Class<? extends Exception>, Integer>builder()
           .put(IllegalArgumentException.class, 400)
+          .put(BadRequestException.class, 400)
           .put(ValidationException.class, 400)
           .put(IllegalNameIdentifierException.class, 400)
           .put(MetadataIntegrityException.class, METADATA_INTEGRITY_ERROR_CODE)

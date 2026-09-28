@@ -389,7 +389,10 @@ public class BaseIT {
     if (testMode != null && testMode.equals(ITUtils.EMBEDDED_TEST_MODE)) {
       MiniGravitinoContext context =
           new MiniGravitinoContext(
-              customConfigs, ignoreIcebergAuxRestService, ignoreLanceAuxRestService);
+              customConfigs,
+              ignoreIcebergAuxRestService,
+              ignoreLanceAuxRestService,
+              this::startMiniGravitinoServer);
       miniGravitino = new MiniGravitino(context);
       miniGravitino.start();
       serverConfig = miniGravitino.getServerConfig();
@@ -462,6 +465,11 @@ public class BaseIT {
     } else {
       client = GravitinoAdminClient.builder(serverUri).build();
     }
+  }
+
+  /** Starts the server implementation used by embedded integration tests. */
+  protected void startMiniGravitinoServer(String[] args) throws Exception {
+    GravitinoServer.main(args);
   }
 
   @BeforeAll
