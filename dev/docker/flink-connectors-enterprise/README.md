@@ -1,57 +1,25 @@
 # Datastrato Enterprise Flink Connector
 
-Copy this runtime JAR onto an existing Flink classpath, then configure Flink
-against a Datastrato Enterprise server.
+> **📖 Full Documentation**: See [Flink Connector Enterprise Documentation](../../../docs-enterprise/flink-connector/flink-connector-enterprise.md) for complete installation, configuration, and usage instructions.
+
+## Overview
 
 Image: `datastrato/enterprise-flink-connector:{version}`
 
-This is the Datastrato Enterprise connector image. In addition to the open
-source Apache Gravitino Flink connector, it includes the Datastrato Enterprise
-adapters (for example Oracle and SQL Server).
+This image packages the open source Apache Gravitino Flink connector with Datastrato Enterprise adapters (Oracle, SQL Server, etc.). Use it as a Kubernetes init container or unpack it on a VM to install the connector JARs.
 
-This image is not a Flink runtime. Use it as a Kubernetes init container, or
-unpack it on a VM, to copy one versioned JAR.
+**Supported Flink versions**: 1.18, 1.19, 1.20 (Scala 2.12)
 
-## Server compatibility
+## ⚠️ Important Notes
 
-The connector must not be newer than the Gravitino server it connects to.
-`GravitinoClientBase` checks the version on the first metadata call, and a
-connector newer than the server fails that check; the failure surfaces as a
-catalog store that never loads. Match the connector image version to the
-server version, or keep it lower.
+- **Version Compatibility**: The connector must not be newer than the Gravitino server. Match versions or keep the connector version lower.
+- **Mount Location**: Mount JARs at `/opt/flink/usrlib` (not `/opt/flink/lib`) on the Flink main container.
+- **Extra JARs**: JDBC catalogs need the Flink JDBC connector (`flink-connector-jdbc`) and database drivers on the same classpath.
+- **PostgreSQL Catalogs**: Set `jdbc-database` and `flink.bypass.default-database` so `USE CATALOG` has a default database.
 
-## Supported versions
-
-| Flink  | Scala  | Directory                |
-|--------|--------|--------------------------|
-| 1.18   | 2.12   | `/connectors/flink-1.18` |
-| 1.19   | 2.12   | `/connectors/flink-1.19` |
-| 1.20   | 2.12   | `/connectors/flink-1.20` |
-
-Each directory contains the open source runtime JAR
-(`gravitino-flink-connector-runtime-<flink>_2.12-<version>.jar`) and the
-Enterprise extension JAR (`datastrato-flink-connector-ext-<flink>_2.12-<version>.jar`),
-which adds the Oracle and SQL Server catalogs. Both go into Flink's `lib/`;
-the extension is discovered automatically. Do not mix JARs from
-different Flink minor versions. `LICENSE` and `NOTICE` are in `/licenses` in
-the image.
-
-## Install
-
-Mount `/target` and set `FLINK_VERSION`. The entrypoint copies the matching
-JAR into that directory.
-
-| Variable              | Default | Description                                              |
-|-----------------------|---------|----------------------------------------------------------|
-| `FLINK_VERSION`       | `1.20`  | `1.18`, `1.19`, or `1.20`.                               |
-| `COPY_ENTERPRISE_EXT` | `true`  | Set to `false` to copy only the open source runtime JAR. |
+## Installation
 
 ### Kubernetes
-
-Mount an empty volume at `/target` in the init container, and at
-`/opt/flink/usrlib` on the Flink main container. Do not mount over
-`/opt/flink/lib`. Match `FLINK_VERSION` to `spec.image` /
-`spec.flinkVersion`.
 
 ```yaml
 volumes:
@@ -73,13 +41,9 @@ containers:
         mountPath: /opt/flink/usrlib
 ```
 
-To pick up a new connector image or settings, redeploy the `FlinkDeployment`
-so the init container runs again.
+To update, redeploy the `FlinkDeployment` so the init container runs again.
 
-### VM / on-premises
-
-Run the image once against the Flink `lib` directory, or unpack the JAR by
-hand:
+### VM / On-Premises
 
 ```bash
 docker run --rm \
@@ -88,35 +52,13 @@ docker run --rm \
   datastrato/enterprise-flink-connector:{version}
 ```
 
-Then restart JobManager and TaskManager so the catalog store loads.
+Then restart JobManager and TaskManager.
 
-### Extra JARs
+## Configuration
 
-This image ships only the connector runtime. JDBC catalogs also need, on the
-same classpath:
+Set these in `flink-conf.yaml`, `FlinkDeployment.spec.flinkConfiguration`, or `TableEnvironment`.
 
-- the Flink JDBC connector for that Flink minor, for example
-  `flink-connector-jdbc-3.3.0-1.20.jar` for Flink 1.20
-- the database JDBC driver
-
-For PostgreSQL catalogs, set `jdbc-database` and
-`flink.bypass.default-database` so `USE CATALOG` has a default database.
-
-## Configure
-
-Set these in `flink-conf.yaml`, `FlinkDeployment.spec.flinkConfiguration`, or
-`TableEnvironment`.
-
-Set `table.catalog-store.gravitino.gravitino.uri` to the server REST URL the
-engine can reach, then configure Basic or OAuth2. In the cluster this is
-usually `http://{service}.{namespace}.svc.cluster.local:8090`. A published
-HTTPS URL works the same way; it is not tied to the auth type.
-
-Auth type is `client.auth.type`. The OAuth2 token path key is `tokenPath`.
-(The three connectors name these two settings differently; the Flink names
-are as shown here.)
-
-### Basic
+### Basic Authentication
 
 ```yaml
 table.catalog-store.kind: gravitino
@@ -127,11 +69,7 @@ table.catalog-store.gravitino.gravitino.client.basic.username: admin
 table.catalog-store.gravitino.gravitino.client.basic.password: {password}
 ```
 
-### OAuth2
-
-The connector authenticates with the client-credentials grant against any
-OAuth2 server. The example below uses Azure AD; a Keycloak realm token
-endpoint works the same way.
+### OAuth2 Authentication
 
 ```yaml
 table.catalog-store.kind: gravitino
@@ -144,25 +82,9 @@ table.catalog-store.gravitino.gravitino.client.oauth2.credential: {client_id}:{c
 table.catalog-store.gravitino.gravitino.client.oauth2.scope: {client_id}/.default
 ```
 
-### Properties
+## Catalog Names
 
-| Property                                                                                                    | Required | Notes                               |
-|-------------------------------------------------------------------------------------------------------------|----------|-------------------------------------|
-| `table.catalog-store.kind`                                                                                  | Yes      | Must be `gravitino`.                |
-| `table.catalog-store.gravitino.gravitino.uri`                                                               | Yes      | Server REST URL.                    |
-| `table.catalog-store.gravitino.gravitino.metalake`                                                          | Yes      | Metalake name.                      |
-| `table.catalog-store.gravitino.gravitino.client.auth.type`                                                  | Yes      | `basic` or `oauth2`.                |
-| `table.catalog-store.gravitino.gravitino.client.basic.username` / `.password`                               | Basic    | Basic credentials.                  |
-| `table.catalog-store.gravitino.gravitino.client.oauth2.serverUri` / `.tokenPath` / `.credential` / `.scope` | OAuth2   | OAuth2 client-credentials settings. |
-
-Optional client settings use the prefix
-`table.catalog-store.gravitino.gravitino.client.`, for example
-`table.catalog-store.gravitino.gravitino.client.socketTimeoutMs`.
-
-## Catalog names
-
-Use the metalake catalog name directly, for example `catalog_postgres`. There
-is no `<metalake>.<catalog>` form. Names must not start with a digit.
+Use metalake catalog names directly, e.g., `catalog_postgres`. Names must not start with a digit.
 
 ```sql
 SHOW CATALOGS;
@@ -172,6 +94,14 @@ SHOW TABLES FROM `public`;
 SELECT * FROM catalog_postgres.`public`.my_table LIMIT 20;
 ```
 
-Session-only catalogs
-(`table.catalog-store.gravitino.gravitino.enableSessionCatalogSupport=true`)
-do not survive a redeploy.
+**Note**: Session-only catalogs (`enableSessionCatalogSupport=true`) do not survive a redeploy.
+
+## Additional Resources
+
+For detailed information on:
+- Supported versions and directories
+- Properties reference
+- Extra JARs (JDBC connectors and drivers)
+- Troubleshooting
+
+Please refer to the [complete documentation](../../../docs-enterprise/flink-connector/flink-connector-enterprise.md).

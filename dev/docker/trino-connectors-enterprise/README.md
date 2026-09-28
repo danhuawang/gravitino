@@ -1,80 +1,26 @@
 # Datastrato Enterprise Trino Connector
 
-Copy this plugin into an existing Trino or Starburst installation, then
-configure it against a Datastrato Enterprise server.
+> **📖 Full Documentation**: See [Trino Connector Enterprise Documentation](../../../docs-enterprise/trino-connector/trino-connector-enterprise.md) for complete installation, configuration, and usage instructions.
+
+## Overview
 
 Image: `datastrato/enterprise-trino-connector:{version}`
 
-This is the Datastrato Enterprise connector image. In addition to the open
-source Apache Gravitino Trino connector, it includes the Datastrato Enterprise
-adapters (for example Oracle and SQL Server).
+This image packages the open source Apache Gravitino Trino connector with Datastrato Enterprise adapters (Oracle, SQL Server, etc.). Use it as a Kubernetes init container or unpack it on a VM to install the connector plugin.
 
-This image is not a Trino server. Use it as a Kubernetes init container, or
-unpack it on a VM, to place one version band under Trino's `plugin/`
-directory.
+**Supported Trino/Starburst versions**: 435–478
 
-## Server compatibility
+## ⚠️ Important Notes
 
-The connector must not be newer than the Gravitino server it connects to.
-`GravitinoClientBase` checks the version on the first metadata poll, and a
-connector newer than the server fails that check inside `loadMetalake`; the
-failure is swallowed, so no catalog appears and nothing is logged. Match the
-connector image version to the server version, or keep it lower.
+- **Version Compatibility**: The connector must not be newer than the Gravitino server. Match versions or keep the connector version lower to avoid silent failures.
+- **JDBC Drivers**: This image ships NO JDBC drivers. Gravitino JDBC catalogs (MySQL, PostgreSQL) use Trino's own connectors. Ensure `plugin/mysql` or `plugin/postgresql` exist in your Trino installation.
+- **Logging**: The connector emits no logs unless the coordinator JVM is started with `-Dlog4j.configurationFile=/etc/trino/log4j2.properties`.
 
-Supported Trino/Starburst server versions are **435–478**. On an unsupported
-Trino version, set `gravitino.trino.skip-version-validation=true` to load
-anyway (untested).
-
-## Supported versions
-
-Trino and Starburst **435–478**:
-
-| Trino version | Band directory              |
-|---------------|-----------------------------|
-| 435–439       | `/connectors/trino-435-439` |
-| 440–445       | `/connectors/trino-440-445` |
-| 446–451       | `/connectors/trino-446-451` |
-| 452–468       | `/connectors/trino-452-468` |
-| 469–472       | `/connectors/trino-469-472` |
-| 473–478       | `/connectors/trino-473-478` |
-
-Each band is a full plugin directory: the connector JAR, its dependencies,
-the Enterprise extension JAR (`datastrato-trino-connector-ext-<version>.jar`,
-which adds the Oracle and SQL Server catalogs and is discovered automatically
-from the same plugin directory), `LICENSE`, `NOTICE`, and this README. Install
-**exactly one** band.
-
-## JDBC drivers
-
-This image ships **no** JDBC drivers, by design. A Gravitino JDBC catalog
-(for example MySQL or PostgreSQL) is served by Trino's own `mysql` /
-`postgresql` connector, and the JDBC driver comes from that Trino plugin
-(`plugin/mysql`, `plugin/postgresql`) — not from this image. Standard Trino and
-Starburst distributions already include those plugins, so no driver setup is
-needed.
-
-If you run your own Trino and have removed the `mysql` or `postgresql` plugin,
-reinstall it (that is where the driver lives); a driver placed in the Gravitino
-plugin directory would not be used, as Trino isolates each plugin's classpath.
-
-## Install
-
-Mount `/target` and set `TRINO_VERSION`. The entrypoint copies the matching
-band into that directory.
-
-| Variable              | Default | Description                                             |
-|-----------------------|---------|---------------------------------------------------------|
-| `TRINO_VERSION`       | `478`   | Trino server version. Resolved to a band automatically. |
-| `COPY_ENTERPRISE_EXT` | `true`  | Set to `false` to copy only the open source connector.  |
+## Installation
 
 ### Kubernetes
 
-Mount an empty volume at `/target` in the init container, and at the plugin
-path on the coordinator and every worker. The last path component must be
-`gravitino`.
-
-The usual plugin path on the official Helm chart is
-`/usr/lib/trino/plugin/gravitino`.
+Mount an empty volume at `/target` in the init container, and at the plugin path on the coordinator and every worker. The last path component must be `gravitino`.
 
 ```yaml
 volumes:
@@ -96,13 +42,7 @@ containers:
         mountPath: /usr/lib/trino/plugin/gravitino
 ```
 
-To pick up a new connector image or catalog properties, roll the coordinator
-and worker pods so the init container runs again.
-
-### VM / on-premises
-
-Run the image once against the target plugin directory, or unpack a band by
-hand:
+### VM / On-Premises
 
 ```bash
 docker run --rm \
@@ -111,10 +51,9 @@ docker run --rm \
   datastrato/enterprise-trino-connector:{version}
 ```
 
-The directory name under `plugin/` must be `gravitino`. Repeat on the
-coordinator and every worker, then restart each Trino process.
+Repeat on coordinator and all workers, then restart Trino.
 
-### Trino server settings
+### Trino Server Settings
 
 On the coordinator:
 
@@ -122,63 +61,27 @@ On the coordinator:
 catalog.management=dynamic
 ```
 
-On Kubernetes, when catalogs are stored on disk, also set on the coordinator:
+## Configuration
 
-```properties
-catalog.store=file
-```
+Create `/etc/trino/catalog/gravitino.properties`. On Helm charts, set these under `catalogs.gravitino`.
 
-### Logging
-
-The connector emits nothing at any level unless the coordinator JVM is
-started with a Log4j 2 configuration file:
-
-```
--Dlog4j.configurationFile=/etc/trino/log4j2.properties
-```
-
-Without it, the version and registration failures above are invisible. This
-mirrors the Apache 1.3.0 installation page.
-
-## Configure
-
-Create the Trino catalog file
-`/etc/trino/catalog/gravitino.properties`. On the official Helm chart, set
-the same keys under `catalogs.gravitino`; the chart writes that file. The
-file name (`gravitino`) is the Trino catalog that hosts the connector. It is
-not the plugin directory under `/usr/lib/trino/plugin/gravitino`.
-
-Set `gravitino.uri` to the server REST URL the engine can reach, then
-configure Basic or OAuth2. In the cluster this is usually
-`http://{service}.{namespace}.svc.cluster.local:8090`. A published HTTPS URL
-works the same way; it is not tied to the auth type.
-
-`gravitino.client.authType` accepts `simple`, `basic`, `oauth2`, or
-`kerberos`. The OAuth2 token path key is `gravitino.client.oauth2.path`.
-
-### Basic
+### Basic Authentication
 
 ```properties
 connector.name=gravitino
 gravitino.uri=http://gravitino.example.svc.cluster.local:8090
 gravitino.metalake=test
-gravitino.use-single-metalake=false
 gravitino.client.authType=basic
 gravitino.client.basic.username=admin
 gravitino.client.basic.password={password}
 ```
 
-### OAuth2
-
-The connector authenticates with the client-credentials grant against any
-OAuth2 server. The example below uses Azure AD; a Keycloak realm token
-endpoint works the same way.
+### OAuth2 Authentication
 
 ```properties
 connector.name=gravitino
 gravitino.uri=http://gravitino.example.svc.cluster.local:8090
 gravitino.metalake=test
-gravitino.use-single-metalake=false
 gravitino.client.authType=oauth2
 gravitino.client.oauth2.serverUri=https://login.microsoftonline.com
 gravitino.client.oauth2.credential={client_id}:{client_secret}
@@ -186,107 +89,42 @@ gravitino.client.oauth2.path={tenant_id}/oauth2/v2.0/token
 gravitino.client.oauth2.scope={client_id}/.default
 ```
 
-### Worker credentials on a distributed cluster
+### Worker Credentials (Distributed Clusters)
 
-The connector registers catalogs by issuing `CREATE CATALOG` over JDBC to the
-coordinator. Secret values are stripped from the catalog definition sent to
-workers, so a literal password or credential leaves distributed queries
-failing with `REMOTE_TASK_ERROR`. Reference secrets by environment variable
-instead: map a property to an env var with the
-`gravitino.dynamic-catalog.environment-variable.` prefix, and the connector
-writes `${ENV:...}` into the worker catalog definition.
+Secret values are stripped from worker catalog definitions. Reference secrets by environment variable:
 
 ```properties
-# Property -> env var. The connector emits the property as '${ENV:VAR}' in the worker catalog.
 gravitino.dynamic-catalog.environment-variable.gravitino.client.oauth2.credential=GRAVITINO_CLIENT_CREDENTIAL
 gravitino.dynamic-catalog.environment-variable.gravitino.iceberg.rest-catalog.oauth2.credential=IRC_CLIENT_CREDENTIAL
 ```
 
-Set the matching env vars (`GRAVITINO_CLIENT_CREDENTIAL`, etc.) on the
-coordinator and every worker.
+Set the matching env vars on coordinator and all workers (e.g., via Kubernetes `envFrom` with a `Secret`).
 
-### Connecting to a TLS-enabled coordinator
-
-The internal JDBC connection to the coordinator must trust the coordinator's
-certificate, or `CREATE CATALOG` fails with a PKIX error and no catalogs
-appear. Configure the `trino.jdbc.*` properties in the same catalog file:
+### TLS-Enabled Coordinator
 
 ```properties
 trino.jdbc.user=admin
 trino.jdbc.password={trino_password}
 trino.jdbc.ssl.truststore.path=/etc/trino/truststore.jks
 trino.jdbc.ssl.truststore.password={truststore_password}
-# Required when the deployment only allows CREATE CATALOG with a privileged role.
-trino.jdbc.roles=system:sysadmin
 ```
 
-`trino.jdbc.ssl.enabled` may be omitted when `discovery.uri` uses `https`; it
-is derived from that scheme. The `trino.jdbc.*` values are used by the
-coordinator only and are never copied into the catalogs the connector
-creates.
+## Catalog Names
 
-### Iceberg REST routing
-
-`lakehouse-iceberg` catalogs are routed through the Gravitino Iceberg REST
-server (IRC), a 1.3 feature enabled by default. The IRC endpoint is
-discovered from the server automatically.
-
-| Property                                 | Default      | Notes                                                                                                           |
-|------------------------------------------|--------------|-----------------------------------------------------------------------------------------------------------------|
-| `gravitino.iceberg.rest-routing-enabled` | `true`       | Route non-REST Iceberg catalogs through IRC. Set `false` for legacy catalog-backend translation.                |
-| `gravitino.iceberg.rest-uri`             | (discovered) | Override the discovered IRC endpoint. In multi-metalake mode use `gravitino.iceberg.rest-uri.{metalake}`.       |
-| `gravitino.iceberg.rest-catalog.`        | (none)       | Passthrough prefix rewritten to `iceberg.rest-catalog.`, e.g. `gravitino.iceberg.rest-catalog.security=OAUTH2`. |
-
-### Identity forwarding
-
-To have the Gravitino server authorize each end user instead of the shared
-service identity, forward the Trino session user:
-
-| Property                                          | Default | Notes                                                                       |
-|---------------------------------------------------|---------|-----------------------------------------------------------------------------|
-| `gravitino.client.session.forwardUser`            | `false` | Per-session Gravitino client. Supported with `authType=simple` or `oauth2`. |
-| `gravitino.client.session.userTokenCredentialKey` | `token` | Extra-credential key carrying the forwarded OAuth2 token.                   |
-
-### Properties
-
-| Property                                                                 | Required | Notes                                                     |
-|--------------------------------------------------------------------------|----------|-----------------------------------------------------------|
-| `connector.name`                                                         | Yes      | Must be `gravitino`.                                      |
-| `gravitino.metalake`                                                     | Yes      | Metalake on the server.                                   |
-| `gravitino.uri`                                                          | Yes      | Server REST URL.                                          |
-| `gravitino.use-single-metalake`                                          | No       | Default `true`. See catalog names.                        |
-| `gravitino.client.authType`                                              | Yes      | `simple`, `basic`, `oauth2`, or `kerberos`.               |
-| `gravitino.client.basic.username` / `.password`                          | Basic    | Basic credentials.                                        |
-| `gravitino.client.oauth2.serverUri` / `.path` / `.credential` / `.scope` | OAuth2   | OAuth2 client-credentials settings.                       |
-| `trino.jdbc.user` / `.password`                                          | No       | Internal JDBC connection to the coordinator.              |
-| `trino.jdbc.ssl.enabled`                                                 | No       | Derived from `discovery.uri` scheme when unset.           |
-| `trino.jdbc.ssl.truststore.path` / `.password` / `.type`                 | No       | Coordinator certificate trust.                            |
-| `trino.jdbc.ssl.keystore.path` / `.password` / `.type`                   | No       | Client certificate for mutual TLS.                        |
-| `trino.jdbc.ssl.verification`                                            | No       | `FULL` (default), `CA`, or `NONE` (troubleshooting only). |
-| `trino.jdbc.roles`                                                       | No       | Session roles, e.g. `system:sysadmin`.                    |
-| `trino.jdbc.properties.`                                                 | No       | Passthrough prefix for arbitrary JDBC driver properties.  |
-| `gravitino.iceberg.rest-routing-enabled`                                 | No       | Default `true`.                                           |
-| `gravitino.iceberg.rest-uri`                                             | No       | Override discovered IRC endpoint.                         |
-| `gravitino.iceberg.rest-catalog.`                                        | No       | IRC passthrough prefix.                                   |
-| `gravitino.client.session.forwardUser`                                   | No       | Forward the session user.                                 |
-| `gravitino.trino.skip-version-validation`                                | No       | Default `false`.                                          |
-
-Optional client settings use the prefix `gravitino.client.`, for example
-`gravitino.client.socketTimeoutMs`.
-
-New metalake catalogs can appear after the plugin is loaded, on the refresh
-interval (`gravitino.metadata.refresh-interval-seconds`, default `10`).
-
-## Catalog names
-
-- `gravitino.use-single-metalake=true` (default): `<catalog_name>`, for
-  example `hive`.
-- `gravitino.use-single-metalake=false`: `<metalake_name>.<catalog_name>`,
-  for example `test.hive`.
-
-`gravitino` is the connector catalog. Metalake catalogs are registered
-separately.
+- `gravitino.use-single-metalake=true` (default): catalogs appear as `<catalog_name>`, e.g. `hive`
+- `gravitino.use-single-metalake=false`: catalogs appear as `<metalake_name>.<catalog_name>`, e.g. `test.hive`
 
 ```sql
 SHOW CATALOGS;
 ```
+
+## Additional Resources
+
+For detailed information on:
+- Supported versions and band directories
+- Iceberg REST routing configuration
+- Identity forwarding and per-user authorization
+- Complete properties reference
+- Troubleshooting
+
+Please refer to the [complete documentation](../../../docs-enterprise/trino-connector/trino-connector-enterprise.md).

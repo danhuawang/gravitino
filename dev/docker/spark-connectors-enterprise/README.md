@@ -1,56 +1,25 @@
 # Datastrato Enterprise Spark Connector
 
-Copy this runtime JAR onto an existing Spark classpath, then configure Spark
-against a Datastrato Enterprise server.
+> **📖 Full Documentation**: See [Spark Connector Enterprise Documentation](../../../docs-enterprise/spark-connector/spark-connector-enterprise.md) for complete installation, configuration, and usage instructions.
+
+## Overview
 
 Image: `datastrato/enterprise-spark-connector:{version}`
 
-This is the Datastrato Enterprise connector image. In addition to the open
-source Apache Gravitino Spark connector, it includes the Datastrato Enterprise
-adapters (for example Oracle and SQL Server).
+This image packages the open source Apache Gravitino Spark connector with Datastrato Enterprise adapters (Oracle, SQL Server, etc.). Use it as a Kubernetes init container or unpack it on a VM to install the connector JARs.
 
-This image is not a Spark runtime. Use it as a Kubernetes init container, or
-unpack it on a VM, to copy one versioned JAR.
+**Supported Spark versions**: 3.3, 3.4, 3.5 (Scala 2.12, 2.13)
 
-## Server compatibility
+## ⚠️ Important Notes
 
-The connector must not be newer than the Gravitino server it connects to.
-`GravitinoClientBase` checks the version on the first metadata call, and a
-connector newer than the server fails that check; the failure surfaces as a
-catalog that never loads. Match the connector image version to the server
-version, or keep it lower.
+- **Version Compatibility**: The connector must not be newer than the Gravitino server. Match versions or keep the connector version lower.
+- **Classpath Location**: Mount JARs **outside** `/opt/spark/jars` (e.g., `/opt/gravitino/jars`) to avoid conflicts. Use `spark.driver/executor.extraClassPath`.
+- **Plugin Append**: If `spark.plugins` is already set, append `GravitinoSparkPlugin` (comma-separated) rather than replacing it.
+- **Extra JARs**: JDBC catalogs need database drivers. Iceberg catalogs need `iceberg-spark-runtime` and `iceberg-aws-bundle` (for S3).
 
-## Supported versions
-
-| Spark | Scala      | Directory                                                  |
-|-------|------------|------------------------------------------------------------|
-| 3.3   | 2.12       | `/connectors/spark-3.3_2.12`                               |
-| 3.4   | 2.12, 2.13 | `/connectors/spark-3.4_2.12`, `/connectors/spark-3.4_2.13` |
-| 3.5   | 2.12, 2.13 | `/connectors/spark-3.5_2.12`, `/connectors/spark-3.5_2.13` |
-
-Each directory contains the open source runtime JAR
-(`gravitino-spark-connector-runtime-<spark>_<scala>-<version>.jar`) and the
-Enterprise extension JAR (`datastrato-spark-connector-ext-<spark>_<scala>-<version>.jar`),
-which adds the Oracle and SQL Server catalogs. Both must be on the classpath;
-the extension is discovered automatically. `LICENSE` and `NOTICE` are in
-`/licenses` in the image.
-
-## Install
-
-Mount `/target` and set the Spark and Scala versions. The entrypoint copies
-the matching JAR into that directory.
-
-| Variable              | Default | Description                                              |
-|-----------------------|---------|----------------------------------------------------------|
-| `SPARK_VERSION`       | `3.5`   | `3.3`, `3.4`, or `3.5`.                                  |
-| `SCALA_VERSION`       | `2.12`  | `2.12` or `2.13`. Spark 3.3 is 2.12 only.                |
-| `COPY_ENTERPRISE_EXT` | `true`  | Set to `false` to copy only the open source runtime JAR. |
+## Installation
 
 ### Kubernetes
-
-Mount an empty volume at `/target` in the init container, and at a path
-**outside** `/opt/spark/jars` on both driver and executor. Put that path on
-the classpath. Do not mount over `/opt/spark/jars` or `/opt/spark/conf`.
 
 ```yaml
 volumes:
@@ -71,7 +40,7 @@ driver:
       volumeMounts:
         - name: spark-jars
           mountPath: /target
-# Repeat the same volumeMount and initContainer on the executor.
+# Repeat volumeMount and initContainer on executor
 sparkConf:
   "spark.plugins": "org.apache.gravitino.spark.connector.plugin.GravitinoSparkPlugin"
   "spark.driver.extraClassPath": "/opt/gravitino/jars/*"
@@ -83,12 +52,7 @@ sparkConf:
   "spark.sql.gravitino.basic.password": "{password}"
 ```
 
-To pick up a new connector image or settings, submit a new job or roll the
-pods so the init container runs again.
-
-### VM / on-premises
-
-Run the image once against a classpath directory, or unpack the JAR by hand:
+### VM / On-Premises
 
 ```bash
 docker run --rm \
@@ -97,46 +61,11 @@ docker run --rm \
   datastrato/enterprise-spark-connector:{version}
 ```
 
-Then add that directory with `--jars` or via `spark.driver.extraClassPath`
-and `spark.executor.extraClassPath`.
+Then use `--jars` or set `spark.driver.extraClassPath` and `spark.executor.extraClassPath`.
 
-### The `spark.plugins` value is appended, not replaced
+## Configuration
 
-Packaged Spark distributions often set `spark.plugins` already. A bare
-assignment silently disables the platform's own plugins. Append
-`GravitinoSparkPlugin` to any existing value (comma-separated) rather than
-overwriting it.
-
-### Extra JARs
-
-This image ships only the connector runtime.
-
-- JDBC catalogs need the database driver on the same classpath.
-- Iceberg catalogs need a matching `iceberg-spark-runtime` JAR and
-  `spark.sql.gravitino.enableIcebergSupport=true`.
-- Iceberg on S3 also needs `iceberg-aws-bundle` (matching the Iceberg
-  version) on the driver and executor classpath. `S3FileIO` uses AWS SDK v2
-  from that bundle; without it, the first use of vended credentials fails
-  with `NoClassDefFoundError`. Images that reach S3 only through Hadoop S3A
-  do not ship it.
-
-## Configure
-
-Set these in `spark-defaults.conf`, `spark-submit --conf`, or
-`SparkApplication.spec.sparkConf`.
-
-Set `spark.sql.gravitino.uri` to the server REST URL the engine can reach,
-then configure Basic or OAuth2. In the cluster this is usually
-`http://{service}.{namespace}.svc.cluster.local:8090`. A published HTTPS URL
-works the same way; it is not tied to the auth type.
-
-Note the two prefixes: auth settings are `spark.sql.gravitino.authType`,
-`spark.sql.gravitino.basic.*`, and `spark.sql.gravitino.oauth2.*` (no
-`client.` segment), while optional Gravitino client tuning uses
-`spark.sql.gravitino.client.`. Both match `GravitinoSparkConfig`. The OAuth2
-token path key is `spark.sql.gravitino.oauth2.tokenPath`.
-
-### Basic
+### Basic Authentication
 
 ```properties
 spark.plugins=org.apache.gravitino.spark.connector.plugin.GravitinoSparkPlugin
@@ -147,11 +76,7 @@ spark.sql.gravitino.basic.username=admin
 spark.sql.gravitino.basic.password={password}
 ```
 
-### OAuth2
-
-The connector authenticates with the client-credentials grant against any
-OAuth2 server. The example below uses Azure AD; a Keycloak realm token
-endpoint works the same way.
+### OAuth2 Authentication
 
 ```properties
 spark.plugins=org.apache.gravitino.spark.connector.plugin.GravitinoSparkPlugin
@@ -164,46 +89,36 @@ spark.sql.gravitino.oauth2.credential={client_id}:{client_secret}
 spark.sql.gravitino.oauth2.scope={client_id}/.default
 ```
 
-### Iceberg REST routing
+### Iceberg Support
 
-`hive` and `jdbc` backed Iceberg catalogs are routed through the Gravitino
-Iceberg REST server (IRC), a 1.3 feature enabled by default. The IRC endpoint
-is discovered from the server automatically.
+For Iceberg catalogs, add:
 
-| Property                                           | Default      | Notes                                                                                                                        |
-|----------------------------------------------------|--------------|------------------------------------------------------------------------------------------------------------------------------|
-| `spark.sql.gravitino.iceberg.rest-routing-enabled` | `true`       | Route Iceberg catalogs through IRC. Set `false` for legacy native-backend translation.                                       |
-| `spark.sql.gravitino.iceberg.rest-uri`             | (discovered) | Override the discovered IRC endpoint.                                                                                        |
-| `spark.sql.gravitino.iceberg.reuseOAuth2`          | `true`       | Reuse the Gravitino OAuth2 client config for IRC. Set `false` to supply an independent IRC config or when IRC is not OAuth2. |
-| `spark.sql.gravitino.iceberg.rest.`                | (none)       | Passthrough prefix for IRC client config, e.g. `rest.auth.type`.                                                             |
+```properties
+spark.sql.gravitino.enableIcebergSupport=true
+```
 
-### Properties
+And place these JARs on the classpath:
+- `iceberg-spark-runtime-{spark_version}_{scala_version}-{iceberg_version}.jar`
+- `iceberg-aws-bundle-{iceberg_version}.jar` (if using S3)
 
-| Property                                                                         | Required | Notes                                                                        |
-|----------------------------------------------------------------------------------|----------|------------------------------------------------------------------------------|
-| `spark.plugins`                                                                  | Yes      | `org.apache.gravitino.spark.connector.plugin.GravitinoSparkPlugin` (append). |
-| `spark.sql.gravitino.uri`                                                        | Yes      | Server REST URL.                                                             |
-| `spark.sql.gravitino.metalake`                                                   | Yes      | Metalake name.                                                               |
-| `spark.sql.gravitino.authType`                                                   | Yes      | `simple`, `basic`, or `oauth2`.                                              |
-| `spark.sql.gravitino.basic.username` / `.password`                               | Basic    | Basic credentials.                                                           |
-| `spark.sql.gravitino.oauth2.serverUri` / `.tokenPath` / `.credential` / `.scope` | OAuth2   | OAuth2 client-credentials settings.                                          |
-| `spark.sql.gravitino.enableIcebergSupport`                                       | No       | Set `true` for Iceberg catalogs.                                             |
-| `spark.sql.gravitino.iceberg.rest-routing-enabled`                               | No       | Default `true`.                                                              |
-| `spark.sql.gravitino.iceberg.reuseOAuth2`                                        | No       | Default `true`.                                                              |
+Iceberg REST routing is enabled by default (`spark.sql.gravitino.iceberg.rest-routing-enabled=true`).
 
-Optional client settings use the prefix `spark.sql.gravitino.client.`, for
-example `spark.sql.gravitino.client.socketTimeoutMs`.
+## Catalog Names
 
-## Catalog names
-
-Use the metalake catalog name directly, for example `catalog_postgres`. There
-is no `<metalake>.<catalog>` form.
-
-`SHOW CATALOGS` lists only `spark_catalog` until you `USE` another catalog.
-Prefer fully qualified names:
+Use metalake catalog names directly, e.g., `catalog_postgres`. Fully qualified names are recommended:
 
 ```sql
 SHOW DATABASES IN catalog_postgres;
 SHOW TABLES IN catalog_postgres.public;
 SELECT * FROM catalog_postgres.public.my_table LIMIT 20;
 ```
+
+## Additional Resources
+
+For detailed information on:
+- Supported versions and directories
+- Iceberg REST routing configuration
+- Properties reference
+- Troubleshooting
+
+Please refer to the [complete documentation](../../../docs-enterprise/spark-connector/spark-connector-enterprise.md).
