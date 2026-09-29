@@ -527,21 +527,20 @@ paths:
     put:
       tags:
         - users
-      summary: Batch update user enabled
+      summary: Batch update identity-store user enabled status
       operationId: batchUpdateUserEnabled
       description: |
-        Batch-update the `enabled` flag on metalake `user_meta` by username.
+        Batch-update the instance-scoped `enabled` status for users selected through a metalake.
+        Every listed username must exist in the target metalake. Users backed by an active
+        `scim_user_meta` row are updated there; other users are updated in `idp_user_meta`.
+        `user_meta` is not modified.
 
-        Validates that every listed user exists under the metalake and has no SCIM
-        `externalId`. Only then is a single UPDATE run against `user_meta`. Otherwise the
-        request fails and no user is updated.
+        Identity-store status is shared across metalakes, so changing a username affects that
+        identity wherever it is used. This operation therefore requires `SERVICE_ADMIN`; the
+        metalake parameter scopes user validation and selection, not the stored enabled status.
 
-        This does **not** update Directory / identity-store Status (`idp_user_meta` or
-        `scim_user_meta`). For Local Directory Suspend / Activate use
-        `PUT /internal/security/directory/users/enabled`. Provisioned Status is managed by SCIM /
-        the IdP, not this API.
-
-        Missing metalake returns 404. Missing users or users with `externalId` return 400.
+        The update is transactional. Missing metalake returns 404. Missing users or a concurrent
+        identity-store change return 400, and no updates are committed.
 
       requestBody:
         required: true
@@ -699,40 +698,6 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /internal/security/metalakes/{metalake}/users/idp:
-    parameters:
-      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
-      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
-    get:
-      tags:
-        - users
-      summary: List built-in IdP users with metalake membership status
-      operationId: listSecurityIdpUsers
-      description: |
-        List built-in IdP users for the security UI picker used when adding a local user.
-
-        Each item has `name` and `status`. `status` is `true` when that username is already in
-        this metalake.
-
-      responses:
-        "200":
-          description: Returns the list of IdP users
-          content:
-            application/vnd.gravitino.v1+json:
-              schema:
-                $ref: "#/components/schemas/IdpUserNameListResponse"
-        "404":
-          description: Not Found - The target metalake does not exist
-          content:
-            application/vnd.gravitino.v1+json:
-              schema:
-                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
-              examples:
-                NoSuchMetalakeException:
-                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
-        "5xx":
-          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
-
 components:
   schemas:
     IdentitySource:
@@ -822,36 +787,6 @@ components:
           description: Group names for the user
           items:
             type: string
-
-    IdpNameStatus:
-      type: object
-      required:
-        - name
-        - status
-      properties:
-        name:
-          type: string
-          description: Built-in IdP username or group name
-        status:
-          type: boolean
-          description: >
-            Whether the identity is already added to this metalake. `true` means it already exists
-            in the metalake.
-
-    IdpUserNameListResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-          description: Status code of the response
-          enum:
-            - 0
-        users:
-          type: array
-          description: Built-in IdP users with metalake membership status
-          items:
-            $ref: "#/components/schemas/IdpNameStatus"
 
     ExtendedUser:
       allOf:

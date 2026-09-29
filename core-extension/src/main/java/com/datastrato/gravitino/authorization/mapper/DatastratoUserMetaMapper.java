@@ -195,11 +195,6 @@ public interface DatastratoUserMetaMapper {
 
   @SelectProvider(
       type = DatastratoUserMetaSQLProviderFactory.class,
-      method = "listUsersWithMetalakeStatus")
-  List<IdpNameStatusPO> listUsersWithMetalakeStatus(@Param("metalakeName") String metalakeName);
-
-  @SelectProvider(
-      type = DatastratoUserMetaSQLProviderFactory.class,
       method = "listUsersByMetalakeWithOrigin")
   List<IdpNameStatusPO.UserWithOrigin> listUsersByMetalakeWithOrigin(
       @Param("metalakeName") String metalakeName);

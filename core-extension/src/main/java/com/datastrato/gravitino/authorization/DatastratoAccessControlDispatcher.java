@@ -692,41 +692,6 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
   }
 
   /**
-   * Lists built-in IdP users and whether each is already added to the metalake.
-   *
-   * <p>One JOIN from {@code metalake_meta} to {@code idp_user_meta} and {@code user_meta}.
-   *
-   * @param metalake The metalake name.
-   * @return IdP usernames with metalake membership status.
-   * @throws NoSuchMetalakeException If the metalake does not exist.
-   */
-  public IdpNameStatus[] listIdpUsers(String metalake) {
-    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
-    List<IdpNameStatusPO> rows =
-        SessionUtils.getWithoutCommit(
-            DatastratoUserMetaMapper.class, mapper -> mapper.listUsersWithMetalakeStatus(metalake));
-    return IdpNameStatus.fromJoinResult(IdpNameStatusPO.toStatuses(rows), metalake);
-  }
-
-  /**
-   * Lists built-in IdP groups and whether each is already added to the metalake.
-   *
-   * <p>One JOIN from {@code metalake_meta} to {@code idp_group_meta} and {@code group_meta}.
-   *
-   * @param metalake The metalake name.
-   * @return IdP group names with metalake membership status.
-   * @throws NoSuchMetalakeException If the metalake does not exist.
-   */
-  public IdpNameStatus[] listIdpGroups(String metalake) {
-    Preconditions.checkArgument(StringUtils.isNotBlank(metalake), "metalake cannot be blank");
-    List<IdpNameStatusPO> rows =
-        SessionUtils.getWithoutCommit(
-            DatastratoGroupMetaMapper.class,
-            mapper -> mapper.listGroupsWithMetalakeStatus(metalake));
-    return IdpNameStatus.fromJoinResult(IdpNameStatusPO.toStatuses(rows), metalake);
-  }
-
-  /**
    * Lists distinct active usernames from {@code scim_user_meta}, {@code idp_user_meta}, and {@code
    * jit_user_meta} (instance-scoped, names only).
    *
@@ -1133,8 +1098,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    *
    * @param metalake The metalake name.
    * @param roles The role names.
-   * @param users The user names.
-   * @param groups The group names.
+   * @param users The user names, or {@code null} or empty.
+   * @param groups The group names, or {@code null} or empty.
    */
   public void assignRolesToPrincipals(
       String metalake, List<String> roles, List<String> users, List<String> groups) {
@@ -1149,9 +1114,6 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
 
     List<String> userNames = users == null ? Collections.emptyList() : users;
     List<String> groupNames = groups == null ? Collections.emptyList() : groups;
-    Preconditions.checkArgument(
-        !userNames.isEmpty() || !groupNames.isEmpty(),
-        "At least one user or group must be specified");
     Preconditions.checkArgument(
         userNames.stream().allMatch(StringUtils::isNotBlank), "user name cannot be blank");
     Preconditions.checkArgument(

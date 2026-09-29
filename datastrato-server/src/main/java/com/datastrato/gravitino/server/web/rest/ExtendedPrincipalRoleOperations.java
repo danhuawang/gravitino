@@ -42,8 +42,10 @@ import org.apache.gravitino.authorization.Role;
 import org.apache.gravitino.authorization.User;
 import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
+import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.metalake.MetalakeManager;
 import org.apache.gravitino.metrics.MetricNames;
+import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.NameBindings;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
@@ -57,6 +59,12 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 @NameBindings.AccessControlInterfaces
 @Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}")
 public class ExtendedPrincipalRoleOperations {
+  private static final String ROLE_ASSIGNMENT_AUTHORIZATION_EXPRESSION =
+      "METALAKE::OWNER || (METALAKE::MANAGE_GRANTS && METALAKE::CREATE_ROLE)";
+  private static final String USER_ASSIGNMENT_AUTHORIZATION_EXPRESSION =
+      "METALAKE::OWNER || METALAKE::MANAGE_USERS";
+  private static final String GROUP_ASSIGNMENT_AUTHORIZATION_EXPRESSION =
+      "METALAKE::OWNER || METALAKE::MANAGE_GROUPS";
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
   private final EntityStore entityStore;
@@ -136,7 +144,8 @@ public class ExtendedPrincipalRoleOperations {
    * Assigns multiple roles to multiple users and groups.
    *
    * <p>Roles that do not exist are created without privileges. Users and groups that exist in the
-   * built-in IdP but not in the metalake are added to the metalake before assignment.
+   * built-in IdP but not in the metalake are added to the metalake before assignment. When both
+   * users and groups are empty, this operation only creates missing roles.
    *
    * @param metalake The metalake name.
    * @param request The roles, users, and groups to assign.
@@ -149,10 +158,7 @@ public class ExtendedPrincipalRoleOperations {
       name = "internal-assign-roles-to-principals." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-assign-roles-to-principals", absolute = true)
-  @AuthorizationExpression(
-      expression =
-          "METALAKE::OWNER || (METALAKE::MANAGE_GRANTS && METALAKE::CREATE_ROLE"
-              + " && METALAKE::MANAGE_USERS && METALAKE::MANAGE_GROUPS)")
+  @AuthorizationExpression(expression = ROLE_ASSIGNMENT_AUTHORIZATION_EXPRESSION)
   public Response assignRolesToPrincipals(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -163,6 +169,7 @@ public class ExtendedPrincipalRoleOperations {
           () -> {
             Preconditions.checkArgument(request != null, "request cannot be null");
             request.validate();
+            checkPrincipalAssignmentAuthorization(metalake, request);
             accessControlDispatcher.assignRolesToPrincipals(
                 metalake, request.getRoles(), request.getUsers(), request.getGroups());
             return Utils.ok(new BaseResponse(0));
@@ -170,6 +177,27 @@ public class ExtendedPrincipalRoleOperations {
     } catch (Exception e) {
       return ExceptionHandlers.handleRoleException(OperationType.GRANT, "", metalake, e);
     }
+  }
+
+  static void checkPrincipalAssignmentAuthorization(
+      String metalake, RoleAssignmentRequest request) {
+    if (request.getUsers() != null && !request.getUsers().isEmpty()) {
+      checkMetalakeAuthorization(metalake, USER_ASSIGNMENT_AUTHORIZATION_EXPRESSION, "users");
+    }
+    if (request.getGroups() != null && !request.getGroups().isEmpty()) {
+      checkMetalakeAuthorization(metalake, GROUP_ASSIGNMENT_AUTHORIZATION_EXPRESSION, "groups");
+    }
+  }
+
+  private static void checkMetalakeAuthorization(
+      String metalake, String expression, String principalType) {
+    if (MetadataAuthzHelper.checkAccess(
+        NameIdentifierUtil.ofMetalake(metalake), Entity.EntityType.METALAKE, expression)) {
+      return;
+    }
+    throw new ForbiddenException(
+        "Not authorized to assign roles to %s in metalake '%s' with expression '%s'",
+        principalType, metalake, expression);
   }
 
   private Role[] loadVisibleRoles(String metalake) {

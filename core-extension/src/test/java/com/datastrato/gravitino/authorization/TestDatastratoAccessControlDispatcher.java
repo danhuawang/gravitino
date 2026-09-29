@@ -497,6 +497,53 @@ public class TestDatastratoAccessControlDispatcher {
   }
 
   @Test
+  public void testAssignRolesToPrincipalsWithoutPrincipals() {
+    AccessControlDispatcher delegate = mock(AccessControlDispatcher.class);
+    EntityStore batchEntityStore = mock(EntityStore.class);
+    DatastratoRoleMetaService roleMetaService = mock(DatastratoRoleMetaService.class);
+    DatastratoAccessControlDispatcher dispatcher =
+        new DatastratoAccessControlDispatcher(
+            delegate,
+            batchEntityStore,
+            mock(IdpUserGroupManager.class),
+            roleMetaService,
+            mock(DatastratoUserMetaService.class),
+            mock(EventBus.class));
+    RoleEntity role =
+        RoleEntity.builder()
+            .withNamespace(
+                Namespace.of(
+                    METALAKE, Entity.SYSTEM_CATALOG_RESERVED_NAME, Entity.ROLE_SCHEMA_NAME))
+            .withId(10L)
+            .withName("batch-role")
+            .withProperties(Collections.emptyMap())
+            .withSecurableObjects(Collections.emptyList())
+            .withAuditInfo(auditInfo)
+            .build();
+    Mockito.when(delegate.getRole(METALAKE, "batch-role"))
+        .thenThrow(new NoSuchRoleException("Role batch-role does not exist"));
+    Mockito.when(
+            delegate.createRole(
+                METALAKE, "batch-role", Collections.emptyMap(), Collections.emptyList()))
+        .thenReturn(role);
+
+    Assertions.assertDoesNotThrow(
+        () ->
+            dispatcher.assignRolesToPrincipals(
+                METALAKE,
+                Lists.newArrayList("batch-role"),
+                Collections.emptyList(),
+                Collections.emptyList()));
+
+    verify(roleMetaService)
+        .batchAssignRolesToPrincipals(
+            Lists.newArrayList(role), Collections.emptyList(), Collections.emptyList());
+    verify(delegate)
+        .createRole(METALAKE, "batch-role", Collections.emptyMap(), Collections.emptyList());
+    verify(batchEntityStore, never()).batchGet(anyList(), any(), any());
+  }
+
+  @Test
   public void testExtendedSecurityBlankMetalakeValidation() {
     DatastratoAccessControlDispatcher dispatcher =
         new DatastratoAccessControlDispatcher(
@@ -504,8 +551,6 @@ public class TestDatastratoAccessControlDispatcher {
             mock(EntityStore.class),
             mock(IdpUserGroupManager.class));
 
-    Assertions.assertThrows(IllegalArgumentException.class, () -> dispatcher.listIdpUsers(" "));
-    Assertions.assertThrows(IllegalArgumentException.class, () -> dispatcher.listIdpGroups(""));
     Assertions.assertThrows(
         IllegalArgumentException.class, () -> dispatcher.getExtendedUser(" ", "alice"));
     Assertions.assertThrows(

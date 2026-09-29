@@ -24,27 +24,6 @@ public class DatastratoGroupMetaBaseSQLProvider {
   private static final String JIT_GROUP_ALIAS = "jg";
 
   /**
-   * Lists active IdP group names with whether each is already in the metalake.
-   *
-   * @param metalakeName The metalake name.
-   * @return JOIN SQL.
-   */
-  public String listGroupsWithMetalakeStatus(@Param("metalakeName") String metalakeName) {
-    return "SELECT ig.group_name AS name,"
-        + " CASE WHEN gt.group_name IS NOT NULL THEN 1 ELSE 0 END AS status"
-        + " FROM "
-        + MetalakeMetaMapper.TABLE_NAME
-        + " mt LEFT JOIN "
-        + DatastratoGroupMetaMapper.IDP_GROUP_TABLE_NAME
-        + " ig ON ig.deleted_at = 0 LEFT JOIN "
-        + GROUP_TABLE_NAME
-        + " gt ON gt.group_name = ig.group_name AND gt.deleted_at = 0"
-        + " AND gt.metalake_id = mt.metalake_id"
-        + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
-        + " ORDER BY ig.group_name";
-  }
-
-  /**
    * Lists distinct active group names from identity stores and metalake-only {@code group_meta}
    * rows.
    *

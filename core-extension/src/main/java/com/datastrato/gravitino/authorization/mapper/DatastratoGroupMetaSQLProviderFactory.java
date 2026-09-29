@@ -23,10 +23,6 @@ public class DatastratoGroupMetaSQLProviderFactory {
 
   private DatastratoGroupMetaSQLProviderFactory() {}
 
-  public static String listGroupsWithMetalakeStatus(@Param("metalakeName") String metalakeName) {
-    return getProvider().listGroupsWithMetalakeStatus(metalakeName);
-  }
-
   /**
    * Lists all active Local IdP group names from {@code idp_group_meta}.
    *

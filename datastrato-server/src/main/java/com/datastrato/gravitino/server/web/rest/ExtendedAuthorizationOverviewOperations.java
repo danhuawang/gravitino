@@ -116,7 +116,7 @@ public class ExtendedAuthorizationOverviewOperations {
       name = "internal-get-authorization-overview." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-get-authorization-overview", absolute = true)
-  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  @AuthorizationExpression(expression = "")
   public Response getAuthorizationOverview(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -155,6 +155,7 @@ public class ExtendedAuthorizationOverviewOperations {
 
             Map<String, CatalogAccumulator> catalogs = new LinkedHashMap<>();
             Map<String, RoleAccumulator> roleAccumulators = new LinkedHashMap<>();
+            Set<String> metalakePrivilegedRoles = new LinkedHashSet<>();
             Arrays.stream(roles)
                 .forEach(
                     role -> {
@@ -168,11 +169,27 @@ public class ExtendedAuthorizationOverviewOperations {
                               role.name(), role.auditInfo().createTime(), assignCount);
                       roleAccumulators.put(role.name(), roleAccumulator);
                       role.securableObjects()
-                          .forEach(object -> collectRoleObject(catalogs, roleAccumulator, object));
+                          .forEach(
+                              object ->
+                                  collectRoleObject(
+                                      catalogs, roleAccumulator, object, metalakePrivilegedRoles));
                     });
 
             Map<String, Catalog> catalogsByName =
-                catalogs.isEmpty() ? Collections.emptyMap() : loadCatalogsByName(metalake);
+                catalogs.isEmpty() && metalakePrivilegedRoles.isEmpty()
+                    ? Collections.emptyMap()
+                    : loadCatalogsByName(metalake);
+            if (!metalakePrivilegedRoles.isEmpty()) {
+              catalogsByName
+                  .keySet()
+                  .forEach(
+                      catalogName -> {
+                        CatalogAccumulator catalog =
+                            catalogs.computeIfAbsent(catalogName, CatalogAccumulator::new);
+                        catalog.roles.addAll(metalakePrivilegedRoles);
+                        catalog.privilegedRoles.addAll(metalakePrivilegedRoles);
+                      });
+            }
             CatalogAuthorizationDTO[] catalogDTOs =
                 catalogs.values().stream()
                     .map(
@@ -283,12 +300,16 @@ public class ExtendedAuthorizationOverviewOperations {
   private void collectRoleObject(
       Map<String, CatalogAccumulator> catalogs,
       RoleAccumulator roleAccumulator,
-      SecurableObject object) {
+      SecurableObject object,
+      Set<String> metalakePrivilegedRoles) {
     if (object.privileges().isEmpty()) {
       return;
     }
 
     boolean privileged = hasWriteOrAdminPrivilege(object);
+    if (privileged && object.type() == MetadataObject.Type.METALAKE) {
+      metalakePrivilegedRoles.add(roleAccumulator.name);
+    }
     roleAccumulator.objectCount++;
     roleAccumulator.privilegeCount += object.privileges().size();
     String catalogName = catalogName(object);

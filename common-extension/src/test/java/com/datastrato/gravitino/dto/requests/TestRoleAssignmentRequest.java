@@ -38,6 +38,13 @@ public class TestRoleAssignmentRequest {
             new RoleAssignmentRequest(
                     List.of("reader", "writer"), List.of("alice"), List.of("analysts"))
                 .validate());
+    Assertions.assertDoesNotThrow(
+        () -> new RoleAssignmentRequest(List.of("reader"), null, null).validate());
+    Assertions.assertDoesNotThrow(
+        () ->
+            new RoleAssignmentRequest(
+                    List.of("reader"), Collections.emptyList(), Collections.emptyList())
+                .validate());
 
     Assertions.assertThrows(
         IllegalArgumentException.class,
@@ -46,15 +53,6 @@ public class TestRoleAssignmentRequest {
         IllegalArgumentException.class,
         () ->
             new RoleAssignmentRequest(Collections.emptyList(), List.of("alice"), null).validate());
-    Assertions.assertThrows(
-        IllegalArgumentException.class,
-        () -> new RoleAssignmentRequest(List.of("reader"), null, null).validate());
-    Assertions.assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            new RoleAssignmentRequest(
-                    List.of("reader"), Collections.emptyList(), Collections.emptyList())
-                .validate());
     Assertions.assertThrows(
         IllegalArgumentException.class,
         () -> new RoleAssignmentRequest(List.of("reader"), List.of(" "), null).validate());

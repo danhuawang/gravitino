@@ -7,14 +7,15 @@ import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.RoleAssignment;
+import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
-import com.datastrato.gravitino.dto.authorization.IdpNameStatusDTO;
+import com.datastrato.gravitino.dto.authorization.RoleAssignmentDetailsDTO;
 import com.datastrato.gravitino.dto.requests.LocalUserAddRequest;
 import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
-import com.datastrato.gravitino.dto.responses.IdpUserNameListResponse;
 import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
 import com.datastrato.gravitino.server.web.InternalApiPaths;
 import com.google.common.collect.Lists;
@@ -54,10 +55,8 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 @NameBindings.AccessControlInterfaces
 @Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/users")
 public class ExtendedMetalakeUserOperations {
-  private static final String METALAKE_SECURITY_AUTHORIZATION_EXPRESSION =
-      "SERVICE_ADMIN && METALAKE::OWNER";
   private static final String USER_MANAGEMENT_AUTHORIZATION_EXPRESSION =
-      "SERVICE_ADMIN && (METALAKE::OWNER || METALAKE::MANAGE_USERS)";
+      "METALAKE::OWNER || METALAKE::MANAGE_USERS";
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
   private final EntityStore entityStore;
@@ -87,7 +86,7 @@ public class ExtendedMetalakeUserOperations {
       name = "internal-list-metalake-users." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-metalake-users", absolute = true)
-  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  @AuthorizationExpression(expression = "")
   public Response listUsers(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -106,37 +105,6 @@ public class ExtendedMetalakeUserOperations {
                     users,
                     user -> NameIdentifierUtil.ofUser(metalake, user.name()));
             return Utils.ok(new ExtendedUserListResponse(users));
-          });
-    } catch (Exception e) {
-      return ExceptionHandlers.handleUserException(OperationType.LIST, "", metalake, e);
-    }
-  }
-
-  /**
-   * Lists built-in IdP users and whether each is already added to the metalake.
-   *
-   * @param metalake The metalake name.
-   * @return IdP usernames with {@code status}.
-   */
-  @GET
-  @Path("idp")
-  @Produces("application/vnd.gravitino.v1+json")
-  @Timed(
-      name = "internal-list-metalake-idp-users." + MetricNames.HTTP_PROCESS_DURATION,
-      absolute = true)
-  @ResponseMetered(name = "internal-list-metalake-idp-users", absolute = true)
-  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
-  public Response listIdpUsers(
-      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
-          String metalake) {
-    try {
-      return Utils.doAs(
-          httpRequest,
-          () -> {
-            MetalakeManager.checkMetalakeInUse(metalake);
-            return Utils.ok(
-                new IdpUserNameListResponse(
-                    IdpNameStatusDTO.from(accessControlDispatcher.listIdpUsers(metalake))));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.LIST, "", metalake, e);
@@ -190,7 +158,8 @@ public class ExtendedMetalakeUserOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "internal-get-metalake-user." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "internal-get-metalake-user", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF")
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION)
   public Response getUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -226,7 +195,8 @@ public class ExtendedMetalakeUserOperations {
       name = "internal-list-groups-for-user." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-groups-for-user", absolute = true)
-  @AuthorizationExpression(expression = "(SERVICE_ADMIN && METALAKE::OWNER) || USER::SELF")
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION)
   public Response listGroupsForUser(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -236,9 +206,16 @@ public class ExtendedMetalakeUserOperations {
           httpRequest,
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
-            return Utils.ok(
-                new ExtendedGroupListResponse(
-                    accessControlDispatcher.listExtendedGroupsForUser(metalake, user)));
+            ExtendedGroupDTO[] groups =
+                accessControlDispatcher.listExtendedGroupsForUser(metalake, user);
+            groups =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.GROUP,
+                    groups,
+                    group -> NameIdentifierUtil.ofGroup(metalake, group.name()));
+            return Utils.ok(new ExtendedGroupListResponse(groups));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.LIST, user, metalake, e);
@@ -246,7 +223,8 @@ public class ExtendedMetalakeUserOperations {
   }
 
   /**
-   * Batch-updates {@code enabled} for users under a metalake.
+   * Batch-updates instance-scoped identity-store {@code enabled} status for users selected through
+   * a metalake.
    *
    * @param metalake The metalake name.
    * @param request User names and target enabled value.
@@ -259,7 +237,7 @@ public class ExtendedMetalakeUserOperations {
       name = "internal-batch-update-user-enabled." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-batch-update-user-enabled", absolute = true)
-  @AuthorizationExpression(expression = USER_MANAGEMENT_AUTHORIZATION_EXPRESSION)
+  @AuthorizationExpression(expression = "SERVICE_ADMIN")
   public Response batchUpdateUserEnabled(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -296,7 +274,8 @@ public class ExtendedMetalakeUserOperations {
       name = "internal-list-user-role-assignments." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-user-role-assignments", absolute = true)
-  @AuthorizationExpression(expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF")
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION)
   public Response listUserRoleAssignments(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -306,12 +285,20 @@ public class ExtendedMetalakeUserOperations {
           httpRequest,
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
-            return Utils.ok(
-                new RoleAssignmentDetailsListResponse(
-                    RoleAssignmentDTOConverter.toDTOs(
-                        metalake,
-                        accessControlDispatcher.listRoleAssignmentsByUser(metalake, user),
-                        entityStore.relationOperations())));
+            RoleAssignment[] assignments =
+                accessControlDispatcher.listRoleAssignmentsByUser(metalake, user);
+            assignments =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.ROLE,
+                    assignments,
+                    assignment -> NameIdentifierUtil.ofRole(metalake, assignment.role().name()));
+            RoleAssignmentDetailsDTO[] details =
+                RoleAssignmentDTOConverter.toDTOs(
+                    metalake, assignments, entityStore.relationOperations());
+            details = MetadataListingHelper.filterRoleAssignmentDetails(metalake, details);
+            return Utils.ok(new RoleAssignmentDetailsListResponse(details));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleUserException(OperationType.GET, user, metalake, e);

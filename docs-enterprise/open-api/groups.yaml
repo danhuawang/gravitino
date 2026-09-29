@@ -485,40 +485,6 @@ paths:
         "5xx":
           $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
 
-  /internal/security/metalakes/{metalake}/groups/idp:
-    parameters:
-      - $ref: "./openapi.yaml#/components/parameters/InternalOriginHeader"
-      - $ref: "../../docs/open-api/openapi.yaml#/components/parameters/metalake"
-    get:
-      tags:
-        - groups
-      summary: List built-in IdP groups with metalake membership status
-      operationId: listSecurityIdpGroups
-      description: |
-        List built-in IdP groups for the security UI picker used when adding a local group.
-
-        Each item has `name` and `status`. `status` is `true` when that group name is already in
-        this metalake.
-
-      responses:
-        "200":
-          description: Returns the list of IdP groups
-          content:
-            application/vnd.gravitino.v1+json:
-              schema:
-                $ref: "#/components/schemas/IdpGroupNameListResponse"
-        "404":
-          description: Not Found - The target metalake does not exist
-          content:
-            application/vnd.gravitino.v1+json:
-              schema:
-                $ref: "../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
-              examples:
-                NoSuchMetalakeException:
-                  $ref: "../../docs/open-api/metalakes.yaml#/components/examples/NoSuchMetalakeException"
-        "5xx":
-          $ref: "../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
-
 components:
   schemas:
     IdentitySource:
@@ -555,36 +521,6 @@ components:
               description: >
                 Number of metalake users in the group (Members). Counted from IdP membership for
                 Local, SCIM membership for Provisioned, and metalake membership otherwise.
-
-    IdpNameStatus:
-      type: object
-      required:
-        - name
-        - status
-      properties:
-        name:
-          type: string
-          description: Built-in IdP group name
-        status:
-          type: boolean
-          description: >
-            Whether the group is already added to this metalake. `true` means it already exists
-            in the metalake.
-
-    IdpGroupNameListResponse:
-      type: object
-      properties:
-        code:
-          type: integer
-          format: int32
-          description: Status code of the response
-          enum:
-            - 0
-        groups:
-          type: array
-          description: Built-in IdP groups with metalake membership status
-          items:
-            $ref: "#/components/schemas/IdpNameStatus"
 
     ExtendedGroupListResponse:
       type: object

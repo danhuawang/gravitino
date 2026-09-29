@@ -18,7 +18,6 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
-import com.datastrato.gravitino.authorization.IdpNameStatus;
 import com.datastrato.gravitino.authorization.RoleAssignment;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
@@ -28,7 +27,6 @@ import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
-import com.datastrato.gravitino.dto.responses.IdpGroupNameListResponse;
 import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
 import com.google.common.collect.Lists;
 import java.io.IOException;
@@ -188,6 +186,24 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
   }
 
   @Test
+  public void testGetGroupAuthorization() throws NoSuchMethodException {
+    Method method =
+        ExtendedMetalakeGroupOperations.class.getMethod("getGroup", String.class, String.class);
+    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+    Assertions.assertNotNull(expression);
+    Assertions.assertEquals(
+        AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION,
+        expression.expression());
+
+    Parameter[] parameters = method.getParameters();
+    Assertions.assertEquals(
+        Entity.EntityType.METALAKE,
+        parameters[0].getAnnotation(AuthorizationMetadata.class).type());
+    Assertions.assertEquals(
+        Entity.EntityType.GROUP, parameters[1].getAnnotation(AuthorizationMetadata.class).type());
+  }
+
+  @Test
   public void testListGroupRoleAssignments() throws IOException {
     when(accessControlDispatcher.listRoleAssignmentsByGroup("metalake", "group1"))
         .thenReturn(new RoleAssignment[] {buildAssignment("role1")});
@@ -236,30 +252,33 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
   }
 
   @Test
-  public void testListGroupRoleAssignmentsAuthorization() throws NoSuchMethodException {
-    Method method =
-        ExtendedMetalakeGroupOperations.class.getMethod(
-            "listGroupRoleAssignments", String.class, String.class);
-    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
-    Assertions.assertNotNull(expression);
-    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
+  public void testGroupRelatedReadAuthorization() throws NoSuchMethodException {
+    for (String methodName : List.of("listUsersForGroup", "listGroupRoleAssignments")) {
+      Method method =
+          ExtendedMetalakeGroupOperations.class.getMethod(methodName, String.class, String.class);
+      AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+      Assertions.assertNotNull(expression);
+      Assertions.assertEquals(
+          AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION,
+          expression.expression());
 
-    Parameter[] parameters = method.getParameters();
-    Assertions.assertEquals(
-        Entity.EntityType.METALAKE,
-        parameters[0].getAnnotation(AuthorizationMetadata.class).type());
-    Assertions.assertEquals(
-        Entity.EntityType.GROUP, parameters[1].getAnnotation(AuthorizationMetadata.class).type());
+      Parameter[] parameters = method.getParameters();
+      Assertions.assertEquals(
+          Entity.EntityType.METALAKE,
+          parameters[0].getAnnotation(AuthorizationMetadata.class).type());
+      Assertions.assertEquals(
+          Entity.EntityType.GROUP, parameters[1].getAnnotation(AuthorizationMetadata.class).type());
+    }
   }
 
   @Test
-  public void testAddGroupAuthorization() throws NoSuchMethodException {
-    Method method =
+  public void testGroupManagementAuthorization() throws NoSuchMethodException {
+    Method addGroup =
         ExtendedMetalakeGroupOperations.class.getMethod(
             "addGroup", String.class, LocalGroupAddRequest.class);
-    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
+    AuthorizationExpression expression = addGroup.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
-    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
+    Assertions.assertEquals("METALAKE::OWNER || METALAKE::MANAGE_GROUPS", expression.expression());
   }
 
   @Test
@@ -276,7 +295,45 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
   }
 
   @Test
-  public void testListGroupsRequiresServiceAdminAndFiltersByPrivilege() throws Exception {
+  public void testListGroupUsersFiltersByPrivilege() throws Exception {
+    String metalake = "metalake";
+    when(accessControlDispatcher.listExtendedUsersForGroup(metalake, "contractors"))
+        .thenReturn(
+            new ExtendedUserDTO[] {
+              ExtendedUserDTO.from(buildUser("visible"), true),
+              ExtendedUserDTO.from(buildUser("hidden"), true)
+            });
+    ExtendedMetalakeGroupOperations operations = new ExtendedMetalakeGroupOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq(metalake),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.USER),
+                      Mockito.any(ExtendedUserDTO[].class),
+                      Mockito.any()))
+          .thenAnswer(
+              invocation -> {
+                ExtendedUserDTO[] candidates = invocation.getArgument(3);
+                return new ExtendedUserDTO[] {candidates[0]};
+              });
+
+      Response response = operations.listUsersForGroup(metalake, "contractors");
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      ExtendedUserListResponse body = (ExtendedUserListResponse) response.getEntity();
+      Assertions.assertEquals(1, body.getUsers().length);
+      Assertions.assertEquals("visible", body.getUsers()[0].name());
+    }
+  }
+
+  @Test
+  public void testListGroupsRequiresNoServiceAdminAndFiltersByPrivilege() throws Exception {
     String metalake = "metalake";
     when(accessControlDispatcher.listExtendedGroups(metalake))
         .thenReturn(
@@ -285,8 +342,7 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
               ExtendedGroupDTO.from(buildGroup(2L, "hidden", List.of()), IdentitySource.LOCAL, 1)
             });
     Method method = ExtendedMetalakeGroupOperations.class.getMethod("listGroups", String.class);
-    Assertions.assertEquals(
-        "SERVICE_ADMIN", method.getAnnotation(AuthorizationExpression.class).expression());
+    Assertions.assertEquals("", method.getAnnotation(AuthorizationExpression.class).expression());
 
     ExtendedMetalakeGroupOperations operations = new ExtendedMetalakeGroupOperations();
     FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
@@ -315,18 +371,6 @@ public class TestExtendedMetalakeGroupOperations extends JerseyTest {
       Assertions.assertEquals(1, body.getGroups().length);
       Assertions.assertEquals("visible", body.getGroups()[0].name());
     }
-  }
-
-  @Test
-  public void testListIdpGroups() {
-    when(accessControlDispatcher.listIdpGroups("metalake"))
-        .thenReturn(new IdpNameStatus[] {new IdpNameStatus("contractors", false)});
-
-    IdpGroupNameListResponse body =
-        get("/internal/security/metalakes/metalake/groups/idp")
-            .readEntity(IdpGroupNameListResponse.class);
-    Assertions.assertEquals("contractors", body.getGroups()[0].getName());
-    Assertions.assertFalse(body.getGroups()[0].isStatus());
   }
 
   @Test

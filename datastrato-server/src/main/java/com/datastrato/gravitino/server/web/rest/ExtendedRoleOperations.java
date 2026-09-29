@@ -52,9 +52,7 @@ import org.slf4j.LoggerFactory;
 public class ExtendedRoleOperations {
   private static final Logger LOG = LoggerFactory.getLogger(ExtendedRoleOperations.class);
   private static final String ROLE_MEMBERSHIP_AUTHORIZATION_EXPRESSION =
-      "SERVICE_ADMIN && ("
-          + AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION
-          + ")";
+      AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION;
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
 

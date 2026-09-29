@@ -7,13 +7,14 @@ import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
+import com.datastrato.gravitino.authorization.RoleAssignment;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
-import com.datastrato.gravitino.dto.authorization.IdpNameStatusDTO;
+import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
+import com.datastrato.gravitino.dto.authorization.RoleAssignmentDetailsDTO;
 import com.datastrato.gravitino.dto.requests.LocalGroupAddRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
-import com.datastrato.gravitino.dto.responses.IdpGroupNameListResponse;
 import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
 import com.datastrato.gravitino.server.web.InternalApiPaths;
 import javax.servlet.http.HttpServletRequest;
@@ -49,8 +50,8 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
 @NameBindings.AccessControlInterfaces
 @Path(InternalApiPaths.PREFIX + "/security/metalakes/{metalake}/groups")
 public class ExtendedMetalakeGroupOperations {
-  private static final String METALAKE_SECURITY_AUTHORIZATION_EXPRESSION =
-      "SERVICE_ADMIN && METALAKE::OWNER";
+  private static final String GROUP_MANAGEMENT_AUTHORIZATION_EXPRESSION =
+      "METALAKE::OWNER || METALAKE::MANAGE_GROUPS";
 
   private final DatastratoAccessControlDispatcher accessControlDispatcher;
   private final EntityStore entityStore;
@@ -80,7 +81,7 @@ public class ExtendedMetalakeGroupOperations {
       name = "internal-list-metalake-groups." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-metalake-groups", absolute = true)
-  @AuthorizationExpression(expression = "SERVICE_ADMIN")
+  @AuthorizationExpression(expression = "")
   public Response listGroups(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake) {
@@ -117,7 +118,8 @@ public class ExtendedMetalakeGroupOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "internal-get-metalake-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "internal-get-metalake-group", absolute = true)
-  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION)
   public Response getGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -137,37 +139,6 @@ public class ExtendedMetalakeGroupOperations {
   }
 
   /**
-   * Lists built-in IdP groups and whether each is already added to the metalake.
-   *
-   * @param metalake The metalake name.
-   * @return IdP group names with {@code status}.
-   */
-  @GET
-  @Path("idp")
-  @Produces("application/vnd.gravitino.v1+json")
-  @Timed(
-      name = "internal-list-metalake-idp-groups." + MetricNames.HTTP_PROCESS_DURATION,
-      absolute = true)
-  @ResponseMetered(name = "internal-list-metalake-idp-groups", absolute = true)
-  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
-  public Response listIdpGroups(
-      @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
-          String metalake) {
-    try {
-      return Utils.doAs(
-          httpRequest,
-          () -> {
-            MetalakeManager.checkMetalakeInUse(metalake);
-            return Utils.ok(
-                new IdpGroupNameListResponse(
-                    IdpNameStatusDTO.from(accessControlDispatcher.listIdpGroups(metalake))));
-          });
-    } catch (Exception e) {
-      return ExceptionHandlers.handleGroupException(OperationType.LIST, "", metalake, e);
-    }
-  }
-
-  /**
    * Adds an existing local IdP group into a metalake.
    *
    * @param metalake The metalake name.
@@ -178,7 +149,7 @@ public class ExtendedMetalakeGroupOperations {
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "internal-add-metalake-group." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "internal-add-metalake-group", absolute = true)
-  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
+  @AuthorizationExpression(expression = GROUP_MANAGEMENT_AUTHORIZATION_EXPRESSION)
   public Response addGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -221,7 +192,8 @@ public class ExtendedMetalakeGroupOperations {
       name = "internal-list-users-for-group." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-users-for-group", absolute = true)
-  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION)
   public Response listUsersForGroup(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -231,9 +203,16 @@ public class ExtendedMetalakeGroupOperations {
           httpRequest,
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
-            return Utils.ok(
-                new ExtendedUserListResponse(
-                    accessControlDispatcher.listExtendedUsersForGroup(metalake, group)));
+            ExtendedUserDTO[] users =
+                accessControlDispatcher.listExtendedUsersForGroup(metalake, group);
+            users =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.USER,
+                    users,
+                    user -> NameIdentifierUtil.ofUser(metalake, user.name()));
+            return Utils.ok(new ExtendedUserListResponse(users));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.LIST, group, metalake, e);
@@ -254,7 +233,8 @@ public class ExtendedMetalakeGroupOperations {
       name = "internal-list-group-role-assignments." + MetricNames.HTTP_PROCESS_DURATION,
       absolute = true)
   @ResponseMetered(name = "internal-list-group-role-assignments", absolute = true)
-  @AuthorizationExpression(expression = METALAKE_SECURITY_AUTHORIZATION_EXPRESSION)
+  @AuthorizationExpression(
+      expression = AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION)
   public Response listGroupRoleAssignments(
       @PathParam("metalake") @AuthorizationMetadata(type = Entity.EntityType.METALAKE)
           String metalake,
@@ -264,12 +244,20 @@ public class ExtendedMetalakeGroupOperations {
           httpRequest,
           () -> {
             MetalakeManager.checkMetalakeInUse(metalake);
-            return Utils.ok(
-                new RoleAssignmentDetailsListResponse(
-                    RoleAssignmentDTOConverter.toDTOs(
-                        metalake,
-                        accessControlDispatcher.listRoleAssignmentsByGroup(metalake, group),
-                        entityStore.relationOperations())));
+            RoleAssignment[] assignments =
+                accessControlDispatcher.listRoleAssignmentsByGroup(metalake, group);
+            assignments =
+                MetadataListingHelper.filterByExpression(
+                    metalake,
+                    AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION,
+                    Entity.EntityType.ROLE,
+                    assignments,
+                    assignment -> NameIdentifierUtil.ofRole(metalake, assignment.role().name()));
+            RoleAssignmentDetailsDTO[] details =
+                RoleAssignmentDTOConverter.toDTOs(
+                    metalake, assignments, entityStore.relationOperations());
+            details = MetadataListingHelper.filterRoleAssignmentDetails(metalake, details);
+            return Utils.ok(new RoleAssignmentDetailsListResponse(details));
           });
     } catch (Exception e) {
       return ExceptionHandlers.handleGroupException(OperationType.GET, group, metalake, e);

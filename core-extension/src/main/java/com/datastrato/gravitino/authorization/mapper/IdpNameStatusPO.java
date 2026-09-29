@@ -3,7 +3,6 @@
  */
 package com.datastrato.gravitino.authorization.mapper;
 
-import com.datastrato.gravitino.authorization.IdpNameStatus;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
 import com.datastrato.gravitino.dto.authorization.ExtendedUserDTO;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
@@ -24,66 +23,16 @@ import org.apache.gravitino.storage.relational.utils.POConverters;
 /**
  * MyBatis row types for built-in IdP JOIN queries.
  *
- * <p>The top-level type maps IdP picker rows ({@code name} + {@code status}). Nested types map
- * metalake user/group list rows with identity-store origin. All are read-only and are not written
- * to the database.
+ * <p>Nested types map metalake user/group list rows with identity-store origin. All are read-only
+ * and are not written to the database.
  */
 public class IdpNameStatusPO {
-
-  private String name;
-  private Integer status;
-
-  /**
-   * @return The IdP user or group name, or {@code null} when the metalake exists but the IdP has no
-   *     identities.
-   */
-  public String getName() {
-    return name;
-  }
-
-  /**
-   * @param name The IdP user or group name.
-   */
-  public void setName(String name) {
-    this.name = name;
-  }
-
-  /**
-   * @return {@code 1} if the name is already in the metalake, otherwise {@code 0}.
-   */
-  public Integer getStatus() {
-    return status;
-  }
-
-  /**
-   * @param status {@code 1} if already in the metalake, otherwise {@code 0}.
-   */
-  public void setStatus(Integer status) {
-    this.status = status;
-  }
 
   /**
    * @return {@code true} when a SQL {@code 0/1} flag column is set.
    */
   public static boolean isFlagTrue(Integer flag) {
     return flag != null && flag != 0;
-  }
-
-  /**
-   * Converts picker JOIN rows to {@link IdpNameStatus} values.
-   *
-   * @param rows Picker JOIN rows.
-   * @return Status values.
-   */
-  public static List<IdpNameStatus> toStatuses(List<IdpNameStatusPO> rows) {
-    if (rows == null || rows.isEmpty()) {
-      return List.of();
-    }
-    List<IdpNameStatus> result = new ArrayList<>(rows.size());
-    for (IdpNameStatusPO row : rows) {
-      result.add(new IdpNameStatus(row.getName(), isFlagTrue(row.getStatus())));
-    }
-    return result;
   }
 
   /**

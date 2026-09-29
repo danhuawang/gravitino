@@ -124,10 +124,6 @@ public class DatastratoUserMetaSQLProviderFactory {
     return getProvider().batchInsertIdpUserGroupRels(relations);
   }
 
-  public static String listUsersWithMetalakeStatus(@Param("metalakeName") String metalakeName) {
-    return getProvider().listUsersWithMetalakeStatus(metalakeName);
-  }
-
   public static String getUserByMetalakeWithOrigin(
       @Param("metalakeName") String metalakeName, @Param("userName") String userName) {
     return getProvider().getUserByMetalakeWithOrigin(metalakeName, userName);

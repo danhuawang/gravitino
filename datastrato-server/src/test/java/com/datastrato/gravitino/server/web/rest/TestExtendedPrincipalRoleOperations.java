@@ -49,6 +49,7 @@ import org.apache.gravitino.dto.authorization.OwnerDTO;
 import org.apache.gravitino.dto.responses.BaseResponse;
 import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
+import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.lock.LockManager;
 import org.apache.gravitino.meta.AuditInfo;
@@ -57,6 +58,7 @@ import org.apache.gravitino.meta.GroupEntity;
 import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.rest.RESTUtils;
+import org.apache.gravitino.server.authorization.MetadataAuthzHelper;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationExpression;
 import org.apache.gravitino.server.authorization.annotations.AuthorizationMetadata;
 import org.apache.gravitino.server.authorization.expression.AuthorizationExpressionConstants;
@@ -166,6 +168,106 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
             Lists.newArrayList("reader", "writer"),
             Lists.newArrayList("alice", "bob"),
             Lists.newArrayList("analysts", "admins"));
+  }
+
+  /** Tests creating roles without assigning users or groups. */
+  @Test
+  public void testAssignRolesToPrincipalsWithoutPrincipals() {
+    RoleAssignmentRequest request =
+        new RoleAssignmentRequest(
+            Lists.newArrayList("reader"), Collections.emptyList(), Collections.emptyList());
+
+    try (MockedStatic<MetadataAuthzHelper> authorization =
+        Mockito.mockStatic(MetadataAuthzHelper.class)) {
+      ExtendedPrincipalRoleOperations.checkPrincipalAssignmentAuthorization("metalake1", request);
+      authorization.verifyNoInteractions();
+    }
+
+    Response response =
+        target("/internal/security/metalakes/metalake1/assignments/roles")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .put(entity(request, MediaType.APPLICATION_JSON_TYPE));
+
+    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+    verify(ACCESS_CONTROL_DISPATCHER)
+        .assignRolesToPrincipals(
+            "metalake1",
+            Lists.newArrayList("reader"),
+            Collections.emptyList(),
+            Collections.emptyList());
+  }
+
+  /** Tests requiring user-management permission only when users are assigned. */
+  @Test
+  public void testAssignRolesToUsersChecksUserManagementAuthorization() {
+    String expression = "METALAKE::OWNER || METALAKE::MANAGE_USERS";
+    RoleAssignmentRequest request =
+        new RoleAssignmentRequest(List.of("reader"), List.of("alice"), Collections.emptyList());
+
+    try (MockedStatic<MetadataAuthzHelper> authorization =
+        Mockito.mockStatic(MetadataAuthzHelper.class)) {
+      authorization
+          .when(
+              () ->
+                  MetadataAuthzHelper.checkAccess(
+                      NameIdentifierUtil.ofMetalake("metalake1"),
+                      Entity.EntityType.METALAKE,
+                      expression))
+          .thenReturn(true);
+
+      ExtendedPrincipalRoleOperations.checkPrincipalAssignmentAuthorization("metalake1", request);
+      authorization.verify(
+          () ->
+              MetadataAuthzHelper.checkAccess(
+                  NameIdentifierUtil.ofMetalake("metalake1"),
+                  Entity.EntityType.METALAKE,
+                  expression));
+    }
+  }
+
+  /** Tests requiring group-management permission only when groups are assigned. */
+  @Test
+  public void testAssignRolesToGroupsChecksGroupManagementAuthorization() {
+    String expression = "METALAKE::OWNER || METALAKE::MANAGE_GROUPS";
+    RoleAssignmentRequest request =
+        new RoleAssignmentRequest(List.of("reader"), Collections.emptyList(), List.of("analysts"));
+
+    try (MockedStatic<MetadataAuthzHelper> authorization =
+        Mockito.mockStatic(MetadataAuthzHelper.class)) {
+      authorization
+          .when(
+              () ->
+                  MetadataAuthzHelper.checkAccess(
+                      NameIdentifierUtil.ofMetalake("metalake1"),
+                      Entity.EntityType.METALAKE,
+                      expression))
+          .thenReturn(true);
+
+      ExtendedPrincipalRoleOperations.checkPrincipalAssignmentAuthorization("metalake1", request);
+      authorization.verify(
+          () ->
+              MetadataAuthzHelper.checkAccess(
+                  NameIdentifierUtil.ofMetalake("metalake1"),
+                  Entity.EntityType.METALAKE,
+                  expression));
+    }
+  }
+
+  /** Tests rejecting user assignments without user-management permission. */
+  @Test
+  public void testAssignRolesToUsersRejectsMissingUserManagementAuthorization() {
+    RoleAssignmentRequest request =
+        new RoleAssignmentRequest(List.of("reader"), List.of("alice"), Collections.emptyList());
+
+    try (MockedStatic<MetadataAuthzHelper> authorization =
+        Mockito.mockStatic(MetadataAuthzHelper.class)) {
+      Assertions.assertThrows(
+          ForbiddenException.class,
+          () ->
+              ExtendedPrincipalRoleOperations.checkPrincipalAssignmentAuthorization(
+                  "metalake1", request));
+    }
   }
 
   /** Tests rejecting an assignment request without roles. */
@@ -485,8 +587,7 @@ public class TestExtendedPrincipalRoleOperations extends JerseyTest {
     AuthorizationExpression assignExpression =
         assignRoles.getAnnotation(AuthorizationExpression.class);
     Assertions.assertEquals(
-        "METALAKE::OWNER || (METALAKE::MANAGE_GRANTS && METALAKE::CREATE_ROLE"
-            + " && METALAKE::MANAGE_USERS && METALAKE::MANAGE_GROUPS)",
+        "METALAKE::OWNER || (METALAKE::MANAGE_GRANTS && METALAKE::CREATE_ROLE)",
         assignExpression.expression());
     Assertions.assertEquals(
         Entity.EntityType.METALAKE,

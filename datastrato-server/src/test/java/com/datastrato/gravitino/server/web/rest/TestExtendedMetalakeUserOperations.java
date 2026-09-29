@@ -21,7 +21,6 @@ import static org.mockito.Mockito.when;
 
 import com.datastrato.gravitino.ExtendedDatastratoGravitinoEnv;
 import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
-import com.datastrato.gravitino.authorization.IdpNameStatus;
 import com.datastrato.gravitino.authorization.RoleAssignment;
 import com.datastrato.gravitino.authorization.UserWithGroups;
 import com.datastrato.gravitino.dto.authorization.ExtendedGroupDTO;
@@ -33,7 +32,6 @@ import com.datastrato.gravitino.dto.requests.UserEnabledBatchUpdateRequest;
 import com.datastrato.gravitino.dto.responses.ExtendedGroupListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserListResponse;
 import com.datastrato.gravitino.dto.responses.ExtendedUserResponse;
-import com.datastrato.gravitino.dto.responses.IdpUserNameListResponse;
 import com.datastrato.gravitino.dto.responses.RoleAssignmentDetailsListResponse;
 import com.google.common.collect.Lists;
 import java.io.IOException;
@@ -177,7 +175,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
   }
 
   @Test
-  public void testListUsersRequiresServiceAdminAndFiltersByPrivilege() throws Exception {
+  public void testListUsersRequiresNoServiceAdminAndFiltersByPrivilege() throws Exception {
     String metalake = "metalake";
     when(accessControlDispatcher.listUsersWithGroups(metalake))
         .thenReturn(
@@ -185,8 +183,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
                 new UserWithGroups(buildUser("visible"), List.of(), IdentitySource.LOCAL),
                 new UserWithGroups(buildUser("hidden"), List.of(), IdentitySource.LOCAL)));
     Method method = ExtendedMetalakeUserOperations.class.getMethod("listUsers", String.class);
-    Assertions.assertEquals(
-        "SERVICE_ADMIN", method.getAnnotation(AuthorizationExpression.class).expression());
+    Assertions.assertEquals("", method.getAnnotation(AuthorizationExpression.class).expression());
 
     ExtendedMetalakeUserOperations operations = new ExtendedMetalakeUserOperations();
     FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
@@ -302,7 +299,8 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
     Assertions.assertEquals(
-        "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF", expression.expression());
+        AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION,
+        expression.expression());
   }
 
   @Test
@@ -313,7 +311,8 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
     Assertions.assertEquals(
-        "(SERVICE_ADMIN && METALAKE::OWNER) || USER::SELF", expression.expression());
+        AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION,
+        expression.expression());
   }
 
   @Test
@@ -321,7 +320,7 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     Method method = ExtendedMetalakeUserOperations.class.getMethod("listUsers", String.class);
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
-    Assertions.assertEquals("SERVICE_ADMIN", expression.expression());
+    Assertions.assertEquals("", expression.expression());
   }
 
   @Test
@@ -330,15 +329,14 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
         ExtendedMetalakeUserOperations.class.getMethod(
             "addUser", String.class, LocalUserAddRequest.class);
     Assertions.assertEquals(
-        "SERVICE_ADMIN && (METALAKE::OWNER || METALAKE::MANAGE_USERS)",
+        "METALAKE::OWNER || METALAKE::MANAGE_USERS",
         addMethod.getAnnotation(AuthorizationExpression.class).expression());
 
     Method enabledMethod =
         ExtendedMetalakeUserOperations.class.getMethod(
             "batchUpdateUserEnabled", String.class, UserEnabledBatchUpdateRequest.class);
     Assertions.assertEquals(
-        "SERVICE_ADMIN && (METALAKE::OWNER || METALAKE::MANAGE_USERS)",
-        enabledMethod.getAnnotation(AuthorizationExpression.class).expression());
+        "SERVICE_ADMIN", enabledMethod.getAnnotation(AuthorizationExpression.class).expression());
     Assertions.assertEquals(
         Entity.EntityType.METALAKE,
         enabledMethod.getParameters()[0].getAnnotation(AuthorizationMetadata.class).type());
@@ -430,7 +428,8 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
     Assertions.assertEquals(
-        "METALAKE::OWNER || METALAKE::MANAGE_USERS || USER::SELF", expression.expression());
+        AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION,
+        expression.expression());
 
     Parameter[] parameters = method.getParameters();
     Assertions.assertEquals(
@@ -478,28 +477,133 @@ public class TestExtendedMetalakeUserOperations extends JerseyTest {
   }
 
   @Test
-  public void testListIdpUsers() {
-    when(accessControlDispatcher.listIdpUsers("metalake"))
+  public void testListUserGroupsFiltersByPrivilege() throws Exception {
+    String metalake = "metalake";
+    when(accessControlDispatcher.listExtendedGroupsForUser(metalake, "alice"))
         .thenReturn(
-            new IdpNameStatus[] {
-              new IdpNameStatus("alice", true), new IdpNameStatus("bob", false)
+            new ExtendedGroupDTO[] {
+              ExtendedGroupDTO.from(buildGroup("visible"), true, 0),
+              ExtendedGroupDTO.from(buildGroup("hidden"), true, 0)
             });
+    ExtendedMetalakeUserOperations operations = new ExtendedMetalakeUserOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      Mockito.eq(metalake),
+                      Mockito.eq(
+                          AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION),
+                      Mockito.eq(Entity.EntityType.GROUP),
+                      Mockito.any(ExtendedGroupDTO[].class),
+                      Mockito.any()))
+          .thenAnswer(
+              invocation -> {
+                ExtendedGroupDTO[] candidates = invocation.getArgument(3);
+                return new ExtendedGroupDTO[] {candidates[0]};
+              });
 
-    Response response = get("/internal/security/metalakes/metalake/users/idp");
-    Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
-    IdpUserNameListResponse body = response.readEntity(IdpUserNameListResponse.class);
-    Assertions.assertEquals("alice", body.getUsers()[0].getName());
-    Assertions.assertTrue(body.getUsers()[0].isStatus());
-    Assertions.assertEquals("bob", body.getUsers()[1].getName());
-    Assertions.assertFalse(body.getUsers()[1].isStatus());
+      Response response = operations.listGroupsForUser(metalake, "alice");
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      ExtendedGroupListResponse body = (ExtendedGroupListResponse) response.getEntity();
+      Assertions.assertEquals(1, body.getGroups().length);
+      Assertions.assertEquals("visible", body.getGroups()[0].name());
+    }
   }
 
   @Test
-  public void testListIdpUsersAuthorization() throws NoSuchMethodException {
-    Method method = ExtendedMetalakeUserOperations.class.getMethod("listIdpUsers", String.class);
-    AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
-    Assertions.assertNotNull(expression);
-    Assertions.assertEquals("SERVICE_ADMIN && METALAKE::OWNER", expression.expression());
+  public void testListUserRoleAssignmentsFiltersNestedMetadata() throws Exception {
+    String metalake = "metalake";
+    when(accessControlDispatcher.listRoleAssignmentsByUser(metalake, "user1"))
+        .thenReturn(new RoleAssignment[] {buildAssignment("role1"), buildAssignment("role2")});
+    when(relationOperations.batchListEntitiesByRelation(
+            eq(SupportsRelationOperations.Type.ROLE_USER_REL),
+            anyList(),
+            eq(Entity.EntityType.ROLE)))
+        .thenReturn(
+            Lists.newArrayList(
+                roleRelation(
+                    SupportsRelationOperations.Type.ROLE_USER_REL, "role1", buildUser("visible")),
+                roleRelation(
+                    SupportsRelationOperations.Type.ROLE_USER_REL, "role1", buildUser("hidden"))));
+    when(relationOperations.batchListEntitiesByRelation(
+            eq(SupportsRelationOperations.Type.ROLE_GROUP_REL),
+            anyList(),
+            eq(Entity.EntityType.ROLE)))
+        .thenReturn(
+            Lists.newArrayList(
+                roleRelation(
+                    SupportsRelationOperations.Type.ROLE_GROUP_REL,
+                    "role1",
+                    buildGroup("visible-group")),
+                roleRelation(
+                    SupportsRelationOperations.Type.ROLE_GROUP_REL,
+                    "role1",
+                    buildGroup("hidden-group"))));
+    when(relationOperations.batchListEntitiesByRelation(
+            eq(SupportsRelationOperations.Type.OWNER_REL), anyList(), eq(Entity.EntityType.ROLE)))
+        .thenReturn(
+            Lists.newArrayList(
+                roleRelation(
+                    SupportsRelationOperations.Type.OWNER_REL,
+                    "role1",
+                    buildUser("hidden-owner"))));
+    ExtendedMetalakeUserOperations operations = new ExtendedMetalakeUserOperations();
+    FieldUtils.writeField(operations, "httpRequest", mock(HttpServletRequest.class), true);
+
+    try (MockedStatic<MetadataListingHelper> listing =
+        Mockito.mockStatic(MetadataListingHelper.class, Mockito.CALLS_REAL_METHODS)) {
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      eq(metalake),
+                      eq(AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION),
+                      eq(Entity.EntityType.ROLE),
+                      any(RoleAssignment[].class),
+                      any()))
+          .thenAnswer(
+              invocation -> {
+                RoleAssignment[] candidates = invocation.getArgument(3);
+                return new RoleAssignment[] {candidates[0]};
+              });
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      eq(metalake),
+                      eq(AuthorizationExpressionConstants.LOAD_USER_AUTHORIZATION_EXPRESSION),
+                      eq(Entity.EntityType.USER),
+                      any(String[].class),
+                      any()))
+          .thenReturn(new String[] {"visible"});
+      listing
+          .when(
+              () ->
+                  MetadataListingHelper.filterByExpression(
+                      eq(metalake),
+                      eq(AuthorizationExpressionConstants.LOAD_GROUP_AUTHORIZATION_EXPRESSION),
+                      eq(Entity.EntityType.GROUP),
+                      any(String[].class),
+                      any()))
+          .thenReturn(new String[] {"visible-group"});
+      Response response = operations.listUserRoleAssignments(metalake, "user1");
+
+      Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
+      RoleAssignmentDetailsListResponse body =
+          (RoleAssignmentDetailsListResponse) response.getEntity();
+      Assertions.assertEquals(1, body.getRoles().length);
+      Assertions.assertEquals("role1", body.getRoles()[0].getRole().getName());
+      Assertions.assertArrayEquals(
+          new String[] {"visible"}, body.getRoles()[0].getMembers().getUsers());
+      Assertions.assertArrayEquals(
+          new String[] {"visible-group"}, body.getRoles()[0].getMembers().getGroups());
+      Assertions.assertEquals("hidden-owner", body.getRoles()[0].getOwner().name());
+      Assertions.assertEquals(Owner.Type.USER, body.getRoles()[0].getOwner().type());
+    }
   }
 
   @Test

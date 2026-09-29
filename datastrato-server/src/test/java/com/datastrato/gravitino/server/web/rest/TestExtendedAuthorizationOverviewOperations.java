@@ -230,6 +230,52 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
   }
 
   @Test
+  public void testMetalakeWritePrivilegesCountTowardCatalogPrivilegedShare() {
+    SecurableObject metalakeWrite =
+        SecurableObjects.ofMetalake(
+            "metalake1", Lists.newArrayList(Privileges.ModifyTable.allow()));
+    when(accessControlDispatcher.listRolesWithSecurableObjects("metalake1"))
+        .thenReturn(new Role[] {buildRole("writer", Lists.newArrayList(metalakeWrite))});
+    User user1 = mockUser("user1", Lists.newArrayList("writer"));
+    User user2 = mockUser("user2", Lists.newArrayList("writer"));
+    when(accessControlDispatcher.listUsersWithGroups("metalake1"))
+        .thenReturn(
+            List.of(
+                new UserWithGroups(user1, List.of(), null, true, null),
+                new UserWithGroups(user2, List.of(), null, true, null)));
+    ExtendedGroupDTO group = mockExtendedGroup("group1", Lists.newArrayList("writer"), 2);
+    when(accessControlDispatcher.listExtendedGroups("metalake1"))
+        .thenReturn(new ExtendedGroupDTO[] {group});
+    Catalog catalogInfo1 = mockCatalog("catalog1", "lakehouse-iceberg", Catalog.Type.RELATIONAL);
+    Catalog catalogInfo2 = mockCatalog("catalog2", "hadoop", Catalog.Type.FILESET);
+    when(catalogDispatcher.listCatalogsInfo(Namespace.of("metalake1")))
+        .thenReturn(new Catalog[] {catalogInfo1, catalogInfo2});
+
+    AuthorizationOverviewResponse overview =
+        target("/internal/security/metalakes/metalake1/authorization/overview")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get()
+            .readEntity(AuthorizationOverviewResponse.class);
+
+    Assertions.assertEquals(2, overview.getCatalogs().length);
+    for (CatalogAuthorizationDTO catalog : overview.getCatalogs()) {
+      Assertions.assertArrayEquals(new String[] {"writer"}, catalog.getRoles());
+      Assertions.assertEquals(3, catalog.getMemberCount());
+      Assertions.assertEquals(3, catalog.getPrivilegedPrincipalCount());
+      Assertions.assertEquals(1.0, catalog.getPrivileged());
+      Assertions.assertEquals(0, catalog.getObjects().length);
+    }
+
+    Assertions.assertEquals(1, overview.getRoles().length);
+    RoleMembershipDTO writer = overview.getRoles()[0];
+    Assertions.assertEquals("writer", writer.getRole());
+    Assertions.assertArrayEquals(new String[0], writer.getCatalogs());
+    Assertions.assertEquals(1, writer.getObjectCount());
+    Assertions.assertEquals(1, writer.getPrivilegeCount());
+  }
+
+  @Test
   public void testAuthorizationOverviewUsesVisiblePrincipals() throws IllegalAccessException {
     User visibleUser = mockUser("visible", List.of());
     User hiddenUser = mockUser("hidden", List.of());
@@ -335,7 +381,7 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
             "getAuthorizationOverview", String.class);
     AuthorizationExpression expression = method.getAnnotation(AuthorizationExpression.class);
     Assertions.assertNotNull(expression);
-    Assertions.assertEquals("SERVICE_ADMIN", expression.expression());
+    Assertions.assertEquals("", expression.expression());
 
     Parameter metalakeParameter = method.getParameters()[0];
     AuthorizationMetadata authorizationMetadata =

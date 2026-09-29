@@ -184,7 +184,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
   }
 
   @Test
-  public void testRoleMemberListExpressionRequiresAdminAndRolePrivilege() throws Exception {
+  public void testRoleMemberListExpressionRequiresRolePrivilege() throws Exception {
     String expression =
         ExtendedRoleOperations.class
             .getMethod("listUsersByRole", String.class, String.class)
@@ -205,11 +205,6 @@ public class TestExtendedRoleOperations extends JerseyTest {
         evaluator.evaluate(
             metadata, new AuthorizationRequestContext(), principal, Optional.empty()));
 
-    when(authorizer.isServiceAdmin()).thenReturn(true);
-    Assertions.assertFalse(
-        evaluator.evaluate(
-            metadata, new AuthorizationRequestContext(), principal, Optional.empty()));
-
     when(authorizer.isOwner(Mockito.any(), Mockito.anyString(), Mockito.any(), Mockito.any()))
         .thenReturn(true);
     Assertions.assertTrue(
@@ -218,7 +213,7 @@ public class TestExtendedRoleOperations extends JerseyTest {
   }
 
   @Test
-  public void testRoleMemberListsRequireServiceAdminAndFilterPrincipals() throws Exception {
+  public void testRoleMemberListsRequireRolePrivilegeAndFilterPrincipals() throws Exception {
     when(accessControlDispatcher.listUserAssignmentsByRole("metalake", "role"))
         .thenReturn(
             new RoleUserAssignment[] {
@@ -237,11 +232,9 @@ public class TestExtendedRoleOperations extends JerseyTest {
           ExtendedRoleOperations.class
               .getMethod(methodName, String.class, String.class)
               .getAnnotation(AuthorizationExpression.class);
-      Assertions.assertTrue(expression.expression().contains("SERVICE_ADMIN &&"));
-      Assertions.assertTrue(
-          expression
-              .expression()
-              .contains(AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION));
+      Assertions.assertEquals(
+          AuthorizationExpressionConstants.LOAD_ROLE_AUTHORIZATION_EXPRESSION,
+          expression.expression());
     }
 
     ExtendedRoleOperations operations = new ExtendedRoleOperations();

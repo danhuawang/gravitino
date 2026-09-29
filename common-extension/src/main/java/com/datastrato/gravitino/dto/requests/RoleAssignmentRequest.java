@@ -37,8 +37,8 @@ public class RoleAssignmentRequest implements RESTRequest {
    * Creates a role assignment request.
    *
    * @param roles The roles to assign.
-   * @param users The users to assign the roles to.
-   * @param groups The groups to assign the roles to.
+   * @param users The users to assign the roles to, or {@code null} or empty.
+   * @param groups The groups to assign the roles to, or {@code null} or empty.
    */
   public RoleAssignmentRequest(List<String> roles, List<String> users, List<String> groups) {
     this.roles = roles;
@@ -50,9 +50,6 @@ public class RoleAssignmentRequest implements RESTRequest {
   @Override
   public void validate() throws IllegalArgumentException {
     Preconditions.checkArgument(roles != null && !roles.isEmpty(), "roles cannot be null or empty");
-    Preconditions.checkArgument(
-        (users != null && !users.isEmpty()) || (groups != null && !groups.isEmpty()),
-        "users and groups cannot both be null or empty");
     validateNames(roles, "roles");
     validateNames(users, "users");
     validateNames(groups, "groups");

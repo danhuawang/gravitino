@@ -464,27 +464,6 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Lists active IdP usernames with whether each is already in the metalake.
-   *
-   * @param metalakeName The metalake name.
-   * @return JOIN SQL.
-   */
-  public String listUsersWithMetalakeStatus(@Param("metalakeName") String metalakeName) {
-    return "SELECT iu.user_name AS name,"
-        + " CASE WHEN ut.user_name IS NOT NULL THEN 1 ELSE 0 END AS status"
-        + " FROM "
-        + MetalakeMetaMapper.TABLE_NAME
-        + " mt LEFT JOIN "
-        + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
-        + " iu ON iu.deleted_at = 0 LEFT JOIN "
-        + USER_TABLE_NAME
-        + " ut ON ut.user_name = iu.user_name AND ut.deleted_at = 0"
-        + " AND ut.metalake_id = mt.metalake_id"
-        + " WHERE mt.metalake_name = #{metalakeName} AND mt.deleted_at = 0"
-        + " ORDER BY iu.user_name";
-  }
-
-  /**
    * Loads a metalake user with roles and identity-store origin in one JOIN.
    *
    * <p>Same origin rules as {@link #listUserWithGroupsPOsByMetalakeName}.

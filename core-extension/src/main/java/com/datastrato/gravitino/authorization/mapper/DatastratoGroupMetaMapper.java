@@ -32,17 +32,6 @@ public interface DatastratoGroupMetaMapper {
   List<String> listIdpGroupNames();
 
   /**
-   * Lists active IdP group names with whether each is already in the metalake.
-   *
-   * @param metalakeName The metalake name.
-   * @return JOIN rows. Empty when the metalake is missing.
-   */
-  @SelectProvider(
-      type = DatastratoGroupMetaSQLProviderFactory.class,
-      method = "listGroupsWithMetalakeStatus")
-  List<IdpNameStatusPO> listGroupsWithMetalakeStatus(@Param("metalakeName") String metalakeName);
-
-  /**
    * Lists metalake groups with roles and built-in IdP membership in one JOIN.
    *
    * @param metalakeName The metalake name.
