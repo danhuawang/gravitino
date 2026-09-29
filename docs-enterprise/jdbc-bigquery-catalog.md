@@ -137,6 +137,12 @@ responses (`jdbc-password` is masked on read). A future release will let the cre
 through Gravitino's secret providers so the key never needs to touch the container filesystem.
 :::
 
+The catalog uses JDBC for metadata and DDL operations. It disables Simba's Storage Read and
+Storage Write APIs (`EnableHighThroughPutAPI=0`, `ForceHTAPI=0`, and `EnableWriteAPI=0`), including
+options supplied in `jdbc-url` or `gravitino.bypass.connectionProperties`. These APIs are unnecessary
+for catalog operations and can leave gRPC resources behind during catalog lifecycles. This affects
+the server's catalog connections; clients connecting directly to BigQuery manage their own options.
+
 ### Catalog operations
 
 Refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#catalog-operations) for more details.

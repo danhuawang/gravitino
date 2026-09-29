@@ -21,6 +21,7 @@ import java.net.PasswordAuthentication;
 import java.net.Proxy;
 import java.security.GeneralSecurityException;
 import java.util.Map;
+import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.catalog.jdbc.config.JdbcConfig;
 import org.slf4j.Logger;
@@ -46,7 +47,8 @@ public class BigQueryClientPool {
   private final Integer proxyPort;
   private final String proxyUsername;
   private final String proxyPassword;
-  private volatile Bigquery bigQueryClient;
+  @Nullable private Bigquery bigQueryClient;
+  private boolean closed;
 
   /**
    * Creates a new BigQuery client pool.
@@ -85,19 +87,17 @@ public class BigQueryClientPool {
   /**
    * Gets or creates a BigQuery API client.
    *
-   * <p>This method uses double-checked locking to ensure thread-safe lazy initialization of the
-   * BigQuery client.
+   * <p>Client creation and shutdown are synchronized so a closed pool cannot create new resources.
    *
    * @return BigQuery API client
    * @throws RuntimeException if client creation fails
    */
-  public Bigquery getClient() {
+  public synchronized Bigquery getClient() {
+    if (closed) {
+      throw new IllegalStateException("BigQuery client pool is closed");
+    }
     if (bigQueryClient == null) {
-      synchronized (this) {
-        if (bigQueryClient == null) {
-          bigQueryClient = createClient();
-        }
-      }
+      bigQueryClient = createClient();
     }
     return bigQueryClient;
   }
@@ -200,21 +200,21 @@ public class BigQueryClientPool {
   }
 
   /**
-   * Closes the BigQuery client and releases resources.
+   * Closes the pool and clears its cached BigQuery REST client.
+   *
+   * <p>In google-http-client 1.47.0 from the Simba 1.6.5.1001 bundle, NetHttpTransport inherits
+   * HttpTransport's no-op shutdown(). Storage API clients are disabled separately on the catalog's
+   * JDBC connections.
    *
    * <p>This method should be called when the catalog is being shut down.
    */
-  public void close() {
-    if (bigQueryClient != null) {
-      try {
-        // BigQuery client doesn't have an explicit close method
-        // Resources are managed by the underlying HTTP transport
-        bigQueryClient = null;
-        LOG.info("Closed BigQuery API client for project: {}", projectId);
-      } catch (Exception e) {
-        LOG.warn("Error closing BigQuery API client", e);
-      }
+  public synchronized void close() {
+    if (closed) {
+      return;
     }
+    closed = true;
+    bigQueryClient = null;
+    LOG.info("Closed BigQuery API client pool for project: {}", projectId);
   }
 
   /**

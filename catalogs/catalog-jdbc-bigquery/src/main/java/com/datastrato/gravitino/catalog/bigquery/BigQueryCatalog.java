@@ -9,8 +9,10 @@ import com.datastrato.gravitino.catalog.bigquery.converter.BigQueryExceptionConv
 import com.datastrato.gravitino.catalog.bigquery.converter.BigQueryTypeConverter;
 import com.datastrato.gravitino.catalog.bigquery.operation.BigQueryDatabaseOperations;
 import com.datastrato.gravitino.catalog.bigquery.operation.BigQueryTableOperations;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.catalog.jdbc.JdbcCatalog;
 import org.apache.gravitino.catalog.jdbc.config.JdbcConfig;
@@ -32,6 +34,12 @@ public class BigQueryCatalog extends JdbcCatalog {
   public static final BigQueryTablePropertiesMetadata BIGQUERY_TABLE_PROPERTIES_META =
       new BigQueryTablePropertiesMetadata();
 
+  private static final String STORAGE_API_OPTIONS =
+      "EnableHighThroughPutAPI=0;ForceHTAPI=0;EnableWriteAPI=0;";
+
+  private static final Pattern STORAGE_API_OPTION_PATTERN =
+      Pattern.compile("(?i)(?:EnableHighThroughPutAPI|ForceHTAPI|EnableWriteAPI)\\s*=.*");
+
   private BigQueryClientPool clientPool;
 
   @Override
@@ -46,7 +54,19 @@ public class BigQueryCatalog extends JdbcCatalog {
     Map<String, String> withDefaults = applyJdbcDefaults(conf);
 
     // Build JDBC URL from friendly properties before setting config
-    Map<String, String> processedConfig = buildJdbcUrl(withDefaults);
+    Map<String, String> processedConfig = new HashMap<>(buildJdbcUrl(withDefaults));
+    // This catalog performs metadata and DDL operations, which do not use Storage APIs.
+    // Simba eagerly creates gRPC clients when these options are enabled. Prevent their creation
+    // instead of relying on driver cleanup, including connections that fail during initialization.
+    processedConfig.put(
+        JdbcConfig.JDBC_URL.getKey(),
+        disableStorageApis(processedConfig.get(JdbcConfig.JDBC_URL.getKey())));
+    String connectionPropertiesKey = CATALOG_BYPASS_PREFIX + "connectionProperties";
+    if (processedConfig.containsKey(connectionPropertiesKey)) {
+      processedConfig.put(
+          connectionPropertiesKey,
+          disableStorageApis(processedConfig.get(connectionPropertiesKey)));
+    }
 
     // Initialize BigQuery API client pool for cross-region dataset listing
     this.clientPool = new BigQueryClientPool(processedConfig);
@@ -153,7 +173,7 @@ public class BigQueryCatalog extends JdbcCatalog {
   }
 
   @Override
-  public void close() throws java.io.IOException {
+  public void close() throws IOException {
     if (clientPool != null) {
       try {
         clientPool.close();
@@ -324,5 +344,17 @@ public class BigQueryCatalog extends JdbcCatalog {
   @Override
   protected JdbcColumnDefaultValueConverter createJdbcColumnDefaultValueConverter() {
     return new BigQueryColumnDefaultValueConverter();
+  }
+
+  private static String disableStorageApis(String properties) {
+    StringBuilder result = new StringBuilder();
+    for (String property : properties.split(";")) {
+      String trimmed = property.trim();
+      if (!trimmed.isEmpty() && !STORAGE_API_OPTION_PATTERN.matcher(trimmed).matches()) {
+        // Preserve parameter values verbatim; trailing spaces can be part of a password.
+        result.append(property).append(';');
+      }
+    }
+    return result.append(STORAGE_API_OPTIONS).toString();
   }
 }

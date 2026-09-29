@@ -6,14 +6,41 @@ package com.datastrato.gravitino.catalog.bigquery;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.google.api.client.http.HttpTransport;
+import com.google.api.client.http.LowLevelHttpRequest;
+import com.google.api.services.bigquery.model.Job;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.simba.googlebigquery.googlebigquery.client.BQClient;
+import com.simba.googlebigquery.googlebigquery.client.BQHttpTransportFactory;
+import com.simba.googlebigquery.googlebigquery.client.authentication.AbstractAuthentication;
+import com.simba.googlebigquery.googlebigquery.core.BQConnectionOptions;
+import com.simba.googlebigquery.googlebigquery.core.propertyutils.PrivateServiceConnectUris;
+import com.simba.googlebigquery.support.ILogger;
+import java.io.StringReader;
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicReference;
+import org.apache.gravitino.connector.BaseCatalog;
 import org.apache.gravitino.connector.PropertyEntry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.MockedConstruction;
 
 /** Unit tests for BigQueryCatalog. */
 public class TestBigQueryCatalog {
@@ -207,5 +234,113 @@ public class TestBigQueryCatalog {
     IllegalArgumentException e =
         assertThrows(IllegalArgumentException.class, () -> catalog.withCatalogConf(config));
     assertTrue(e.getMessage().contains("proxy-port"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443",
+        "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;ProjectId=test-project;OAuthType=0;",
+        "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443; ;\t;ProjectId=test-project;"
+            + " ;OAuthType=0; ;\t;",
+        "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;ProjectId=test-project;OAuthType=0;"
+            + "EnableHighThroughPutAPI=1;ForceHTAPI=1;EnableWriteAPI=1;",
+        "jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;"
+            + "enablehighthroughputapi=1; FORCEHTAPI =1;EnableWriteAPI=1;ForceHTAPI=1;"
+      })
+  void testStorageApisDisabled(String jdbcUrl) throws Exception {
+    Map<String, String> config =
+        Map.of(
+            "project-id", "test-project",
+            "jdbc-user", "test@example.com",
+            "jdbc-password", "/path/to/key.json",
+            "jdbc-url", jdbcUrl,
+            "gravitino.bypass.connectionProperties",
+                " ;EnableHighThroughPutAPI=1;ForceHTAPI=1;\t;EnableWriteAPI=1;Timeout=42;ProxyPwd=secret ; ;");
+    BigQueryCatalog catalog = new BigQueryCatalog().withCatalogConf(config);
+    Field confField = BaseCatalog.class.getDeclaredField("conf");
+    confField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    Map<String, String> effectiveConfig = (Map<String, String>) confField.get(catalog);
+
+    String effectiveUrl = effectiveConfig.get("jdbc-url");
+    assertTrue(effectiveUrl.contains("ProjectId=test-project;"));
+    assertTrue(effectiveUrl.contains("OAuthType=0;"));
+    assertEquals(1, effectiveUrl.split("EnableHighThroughPutAPI=0;", -1).length - 1);
+    assertTrue(effectiveUrl.endsWith("EnableHighThroughPutAPI=0;ForceHTAPI=0;EnableWriteAPI=0;"));
+    assertFalse(effectiveUrl.toLowerCase().contains("api=1"));
+    for (String property : effectiveUrl.split(";")) {
+      assertFalse(property.trim().isEmpty());
+    }
+    assertEquals(
+        "Timeout=42;ProxyPwd=secret ;EnableHighThroughPutAPI=0;ForceHTAPI=0;EnableWriteAPI=0;",
+        effectiveConfig.get("gravitino.bypass.connectionProperties"));
+    assertEquals(jdbcUrl, config.get("jdbc-url"));
+    assertStorageApiClientsNotCreated(effectiveUrl);
+    catalog.close();
+  }
+
+  @Test
+  void testStorageApisDisabledForGeneratedUrl() throws Exception {
+    BigQueryCatalog catalog =
+        new BigQueryCatalog()
+            .withCatalogConf(
+                Map.of(
+                    "project-id",
+                    "test-project",
+                    "jdbc-user",
+                    "test@example.com",
+                    "jdbc-password",
+                    "/path/to/key.json"));
+    Field confField = BaseCatalog.class.getDeclaredField("conf");
+    confField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    Map<String, String> config = (Map<String, String>) confField.get(catalog);
+    assertTrue(
+        config
+            .get("jdbc-url")
+            .endsWith("EnableHighThroughPutAPI=0;ForceHTAPI=0;EnableWriteAPI=0;"));
+    catalog.close();
+  }
+
+  private void assertStorageApiClientsNotCreated(String jdbcUrl) throws Exception {
+    Properties properties = new Properties();
+    properties.load(
+        new StringReader(jdbcUrl.substring(jdbcUrl.indexOf(';') + 1).replace(';', '\n')));
+    BQConnectionOptions options = new BQConnectionOptions();
+    options.m_enableHighThroughPutAPI =
+        !"0".equals(properties.getProperty("EnableHighThroughPutAPI"));
+    options.m_forceHTAPI = !"0".equals(properties.getProperty("ForceHTAPI"));
+    options.m_enableWriteAPI = !"0".equals(properties.getProperty("EnableWriteAPI"));
+    ILogger logger = mock(ILogger.class);
+    options.m_baseUrls = new PrivateServiceConnectUris(logger);
+    AbstractAuthentication authentication = mock(AbstractAuthentication.class);
+    when(authentication.buildCredentials()).thenReturn(mock(GoogleCredentials.class));
+    AtomicReference<String> unexpectedRequest = new AtomicReference<>();
+    HttpTransport offlineTransport =
+        new HttpTransport() {
+          @Override
+          protected LowLevelHttpRequest buildRequest(String method, String url) {
+            unexpectedRequest.compareAndSet(null, method + " " + url);
+            throw new AssertionError("Unexpected HTTP request: " + method + " " + url);
+          }
+        };
+    // Exercise the driver's initialization, but fail immediately if it attempts an HTTP request.
+    try (MockedConstruction<BQHttpTransportFactory> transports =
+        mockConstruction(
+            BQHttpTransportFactory.class,
+            (factory, context) -> when(factory.create()).thenReturn(offlineTransport))) {
+      for (int lifecycle = 0; lifecycle < 3; lifecycle++) {
+        BQClient client = spy(new BQClient(logger, options));
+        doReturn(new Job()).when(client).prepare(any());
+        client.authenticateAndTest(authentication, null, null);
+        verify(client).prepare(any());
+        assertNull(client.getBigQueryStorageReadClient());
+        assertNull(client.getBigQueryStorageWriteClient());
+      }
+      assertFalse(transports.constructed().isEmpty());
+    }
+    // A driver catching AssertionError must not hide an attempted request from the test.
+    assertNull(unexpectedRequest.get(), "The driver attempted an unexpected HTTP request");
   }
 }
