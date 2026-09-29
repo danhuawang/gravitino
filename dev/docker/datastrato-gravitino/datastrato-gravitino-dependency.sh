@@ -22,7 +22,11 @@ gravitino_dir="$(dirname "${BASH_SOURCE-$0}")"
 gravitino_dir="$(cd "${gravitino_dir}">/dev/null; pwd)"
 gravitino_home="$(cd "${gravitino_dir}/../../..">/dev/null; pwd)"
 
-POSTGRESQL_JDBC_DRIVER_VERSION=${POSTGRESQL_VERSION:-"42.7.0"}
+# 42.7.0 is affected by CVE-2024-1597 (SQL injection with PreferQueryMode=SIMPLE),
+# fixed in 42.7.2. Pin to 42.7.11 to match gradle/libs.versions.toml and the community
+# gravitino-dependency.sh so every image ships the same, unaffected driver
+# (enterprise-deployment #302).
+POSTGRESQL_JDBC_DRIVER_VERSION=${POSTGRESQL_VERSION:-"42.7.11"}
 POSTGRESQL_JDBC_DRIVER_NAME="postgresql-${POSTGRESQL_JDBC_DRIVER_VERSION}.jar"
 POSTGRESQL_JDBC_DRIVER_DOWNLOAD_URL="https://jdbc.postgresql.org/download/${POSTGRESQL_JDBC_DRIVER_NAME}"
 

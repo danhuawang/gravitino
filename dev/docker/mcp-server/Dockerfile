@@ -49,8 +49,9 @@ LABEL name="enterprise-mcp-server" \
 
 USER root
 
-# Install uv package manager from official image
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+# Install uv package manager from official image.
+# Pinned to an exact version so every build ships the same uv (enterprise-deployment #302).
+COPY --from=ghcr.io/astral-sh/uv:0.12.14 /uv /bin/uv
 
 WORKDIR /opt/mcp-server
 
@@ -61,9 +62,12 @@ COPY --chmod=775 start-mcp-server.sh /opt/mcp-server/
 # uv cache directory (writable by non-root)
 ENV UV_CACHE_DIR=/opt/mcp-server/.cache/uv
 
-# Install Python dependencies using uv
+# Install Python dependencies using uv.
+# --no-dev excludes the [dependency-groups] dev tools (pylint/astroid, pytest,
+# parameterized) so GPL/LGPL and unused test tooling stay out of the shipped image
+# (enterprise-deployment #302).
 RUN uv venv /opt/mcp-server/.venv && \
-    uv sync && \
+    uv sync --no-dev && \
     uv pip install -e . && \
     rm -rf /opt/mcp-server/.cache
 

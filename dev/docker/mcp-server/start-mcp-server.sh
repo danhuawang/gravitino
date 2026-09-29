@@ -18,4 +18,7 @@
 # under the License.
 #
 cd /opt/mcp-server
-uv run mcp_server "$@"
+# --no-dev: the container reads the shipped pyproject.toml at startup; without it
+# uv run would reinstall the dev-group tools (pylint/astroid, pytest, parameterized)
+# that the image was built to exclude (enterprise-deployment #302).
+uv run --no-dev mcp_server "$@"
