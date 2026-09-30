@@ -600,6 +600,12 @@ nexusPublishing {
     }
   }
 
+  // NOTE: this gradle-nexus/OSSRH (s01.oss.sonatype.org) path is legacy and is NOT the
+  // channel for the enterprise connector artifacts. OSSRH was retired in 2025 and the
+  // com.datastrato namespace lives on the Central Portal (central.sonatype.com). The
+  // enterprise connectors (groupId com.datastrato, see the overrides in
+  // {spark,flink,trino}-connector/ext) are published with dev/publish-connectors-maven.sh,
+  // which signs the artifacts and uploads a bundle to the Central Portal Publisher API.
   packageGroup.set("org.apache.gravitino")
 }
 
@@ -1073,6 +1079,45 @@ subprojects {
       useInMemoryPgpKeys(gpgId, gpgSecretKey, gpgKeyPassword)
       sign(publishing.publications)
     }
+
+    // Shared publishing config for the enterprise Spark/Flink connector extension
+    // modules (spark-connector/ext/v*, flink-connector/ext/v*). Kept in one place so
+    // the shaded-jar publishing rules cannot drift between the six modules. Each such
+    // module applies the Shadow plugin (providing `shadowJar`) and exposes an
+    // `artifactName` extra property.
+    //
+    // What is published: the shaded runtime jar plus sources and javadoc. That jar is
+    // NOT a standalone connector: it carries only the enterprise additions (Oracle and
+    // SQL Server adapters) and is placed on the engine classpath ALONGSIDE the open
+    // source connector runtime jar, which stays a separate, unmodified artifact. The
+    // compile-time dependencies are stripped from the POM because the jar is a runtime
+    // artifact, not a library to resolve transitively.
+    // Deferred to afterEvaluate: the module's own build script sets the `artifactName`
+    // extra property and applies the Shadow plugin, which run after this subprojects
+    // block configures.
+    if (Regex("^:(spark|flink)-connector:(spark|flink)-ext-v?[0-9].*").matches(project.path)) {
+      afterEvaluate {
+        val extArtifactName = project.extra["artifactName"] as String
+        tasks.withType<GenerateModuleMetadata>().configureEach {
+          enabled = false
+        }
+        publishing {
+          publications {
+            withType<MavenPublication>().configureEach {
+              artifactId = extArtifactName
+              setArtifacts(emptyList<Any>())
+              artifact(tasks.named("shadowJar"))
+              artifact(tasks.named("sourcesJar"))
+              artifact(tasks.named("javadocJar"))
+              pom.withXml {
+                val root = asNode()
+                (root.get("dependencies") as groovy.util.NodeList).forEach { root.remove(it as groovy.util.Node) }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   tasks.configureEach<Test> {
@@ -1291,6 +1336,8 @@ tasks.rat {
     "clients/client-python/tests/integration/htmlcov/*",
     "clients/filesystem-fuse/Cargo.lock",
     "dev/headers/**",
+    // Release/publishing docs are markdown and don't carry source headers.
+    "dev/PUBLISH-CONNECTORS-MAVEN.md",
     "dev/charts/gravitino/README.md",
     "dev/charts/gravitino-iceberg-rest-server/README.md",
     "dev/charts/gravitino-lance-rest-server/README.md",

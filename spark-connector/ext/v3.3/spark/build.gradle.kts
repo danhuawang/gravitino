@@ -20,9 +20,9 @@ repositories {
 val scalaVersion: String = project.properties["scalaVersion"] as? String ?: extra["defaultScalaVersion"].toString()
 val sparkVersion: String = libs.versions.spark33.get()
 val sparkMajorVersion: String = sparkVersion.substringBeforeLast(".")
-val artifactName = "datastrato-spark-connector-ext-${sparkMajorVersion}_$scalaVersion"
+val artifactName by extra("datastrato-spark-connector-ext-${sparkMajorVersion}_$scalaVersion")
 
-group = "com.datastrato.gravitino"
+group = "com.datastrato"
 
 // The unit and integration tests reuse the open source connector's test classpath.
 val connectorTestClasspath = project(":spark-connector:spark-3.3").the<SourceSetContainer>()["test"].runtimeClasspath
@@ -89,14 +89,6 @@ tasks.withType<ShadowJar> {
 tasks.jar {
   dependsOn(tasks.named("shadowJar"))
   archiveClassifier.set("thin")
-}
-
-publishing {
-  publications {
-    withType<MavenPublication>().configureEach {
-      artifactId = artifactName
-    }
-  }
 }
 
 tasks.clean {

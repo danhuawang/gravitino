@@ -190,6 +190,13 @@ jobs:
         run: |
           dev/ci/util_free_space.sh
 
+      # Regression guard for the connector Maven publishing config (artifactId, packaging=zip
+      # for Trino, POM dependency stripping, sources/javadoc, module metadata). Nothing else in
+      # CI exercises a real release run. Placed after the disk cleanup because it runs two more
+      # publishToMavenLocal passes (including a -PscalaVersion=2.13 flip) into a temp repo.
+      - name: Verify enterprise connector coordinates
+        run: ./dev/ci/verify-connector-coordinates.sh
+
       - name: Install dependencies
         run: |
           wget https://nz2.archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2_amd64.deb

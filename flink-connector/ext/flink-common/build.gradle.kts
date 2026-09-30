@@ -17,7 +17,7 @@ repositories {
 val flinkVersion: String = libs.versions.flink18.get()
 val artifactName = "datastrato-flink-connector-ext-common"
 
-group = "com.datastrato.gravitino"
+group = "com.datastrato"
 
 // The unit and integration tests reuse the open source connector's test classpath.
 val connectorTestClasspath = project(":flink-connector:flink-common").the<SourceSetContainer>()["test"].runtimeClasspath

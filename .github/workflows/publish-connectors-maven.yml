@@ -1,0 +1,150 @@
+name: Publish Enterprise Connectors to Maven Central
+
+# Publishes the Datastrato Enterprise engine connectors (Spark, Flink, Trino)
+# to Maven Central via the Sonatype Central Portal, under groupId com.datastrato.
+# See dev/publish-connectors-maven.sh for the full coordinate list.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish: the gradle.properties base version, or a release candidate of it (e.g. if base is 1.3.0, use 1.3.0 or 1.3.0-rc1). Blank uses the gradle.properties version.'
+        required: false
+        type: string
+        default: ''
+      auto-release:
+        description: 'Publish automatically after validation. Leave false for RCs: the deployment stops at VALIDATED and is published manually in the Central Portal UI.'
+        required: false
+        type: boolean
+        default: false
+      engines:
+        description: 'Comma-separated subset of connectors to publish.'
+        required: false
+        type: string
+        default: 'spark,flink,trino'
+      token:
+        # NOTE: workflow_dispatch inputs are visible in the run UI, so this is a
+        # low-assurance guard against accidental runs, not a secret. Real access
+        # control comes from who may dispatch this workflow (repo permissions /
+        # environment protection rules). Rotate PUBLISH_CONNECTORS_TOKEN if a run
+        # is triggered accidentally.
+        description: 'Confirmation token (must match the PUBLISH_CONNECTORS_TOKEN secret). Not a secret; visible in run logs.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Serialize dispatches: this workflow uploads immutable artifacts, so two overlapping runs at
+# the same version would create two same-named Central deployments (the second fails to publish).
+# cancel-in-progress is false so a run is never cancelled mid-upload (which would leave a
+# dangling deployment); concurrent dispatches queue instead.
+concurrency:
+  group: publish-connectors-maven
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: gcp-arc-runners
+    timeout-minutes: 120
+    env:
+      input_token: ${{ github.event.inputs.token }}
+      secrets_token: ${{ secrets.PUBLISH_CONNECTORS_TOKEN }}
+      # Central Portal user token (username:password), obtained at central.sonatype.com.
+      CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+      CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+      # GPG signing material (Maven Central requires a detached .asc for every file).
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      GPG_ID: ${{ secrets.GPG_ID }}
+    steps:
+      - name: Verify required secrets are present
+        run: |
+          # Check the four secrets exposed under their own name, then PUBLISH_CONNECTORS_TOKEN
+          # (exposed as the env alias `secrets_token`) separately, so the error names the actual
+          # secret an operator must create rather than the internal alias.
+          missing=0
+          for name in CENTRAL_TOKEN_USERNAME CENTRAL_TOKEN_PASSWORD GPG_PRIVATE_KEY GPG_PASSPHRASE; do
+            if [[ -z "${!name}" ]]; then
+              echo "ERROR: required secret ${name} is not set." >&2
+              missing=1
+            fi
+          done
+          if [[ -z "${secrets_token}" ]]; then
+            echo "ERROR: required secret PUBLISH_CONNECTORS_TOKEN is not set." >&2
+            missing=1
+          fi
+          [[ "${missing}" -eq 0 ]] || exit 1
+
+      - name: Check publish token
+        run: |
+          # Fail closed: reject an empty confirmation token (which also means the
+          # PUBLISH_CONNECTORS_TOKEN secret was unset) and require an exact match.
+          if [[ -z "${input_token}" || "${secrets_token}" != "${input_token}" ]]; then
+            echo "The provided token does not match PUBLISH_CONNECTORS_TOKEN." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Install publish tools
+        # dev/publish-connectors-maven.sh requires these. They are present on the standard
+        # runner image, so only install when something is actually missing - this keeps a
+        # transient apt mirror error from failing a release run that needed nothing installed.
+        run: |
+          missing_tools=()
+          for t in zip gpg jq curl; do
+            command -v "$t" >/dev/null 2>&1 || missing_tools+=("$t")
+          done
+          if [[ ${#missing_tools[@]} -eq 0 ]]; then
+            echo "All required tools already present; nothing to install."
+          else
+            echo "Installing missing tools: ${missing_tools[*]}"
+            # gpg is provided by the gnupg / gnupg2 package depending on the distro.
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends "${missing_tools[@]/gpg/gnupg}"
+            elif command -v dnf >/dev/null 2>&1; then
+              sudo dnf install -y "${missing_tools[@]/gpg/gnupg2}"
+            elif command -v yum >/dev/null 2>&1; then
+              sudo yum install -y "${missing_tools[@]/gpg/gnupg2}"
+            fi
+            for t in "${missing_tools[@]}"; do
+              command -v "$t" >/dev/null 2>&1 || { echo "ERROR: $t still missing after install" >&2; exit 1; }
+            done
+          fi
+
+      # Registers JDK 17 (primary) and JDK 24 explicitly. The six OSS Trino band modules pin a
+      # JDK 24 toolchain; using this action avoids Gradle's Foojay auto-download, which CI
+      # removed for being flaky. Same action every other workflow that builds these modules uses.
+      - uses: ./.github/actions/setup-java-toolchains
+
+      - name: Publish connectors to Maven Central
+        # Inputs are passed through env, never interpolated into the script body,
+        # so a crafted value cannot inject shell commands into a step that holds
+        # the Central token and GPG key.
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          AUTO_RELEASE: ${{ github.event.inputs.auto-release }}
+          ENGINES: ${{ github.event.inputs.engines }}
+        run: |
+          set -euo pipefail
+
+          # Validate engines against a fixed allowlist before use.
+          engines="${ENGINES:-spark,flink,trino}"
+          if [[ ! "${engines}" =~ ^(spark|flink|trino)(,(spark|flink|trino))*$ ]]; then
+            echo "ERROR: invalid engines value: '${engines}'." >&2
+            echo "Expected a comma-separated subset of: spark,flink,trino (no spaces)." >&2
+            exit 1
+          fi
+
+          args=(--engines "${engines}")
+          if [[ -n "${VERSION}" ]]; then
+            args+=(--version "${VERSION}")
+          fi
+          if [[ "${AUTO_RELEASE}" == "true" ]]; then
+            args+=(--auto-release)
+          fi
+
+          echo "Running: dev/publish-connectors-maven.sh ${args[*]}"
+          ./dev/publish-connectors-maven.sh "${args[@]}"

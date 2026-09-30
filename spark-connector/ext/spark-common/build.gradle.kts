@@ -18,7 +18,7 @@ val scalaVersion: String = project.properties["scalaVersion"] as? String ?: extr
 val sparkVersion: String = libs.versions.spark33.get()
 val artifactName = "datastrato-spark-connector-ext-common_$scalaVersion"
 
-group = "com.datastrato.gravitino"
+group = "com.datastrato"
 
 // The unit and integration tests reuse the open source connector's test classpath.
 val connectorTestClasspath = project(":spark-connector:spark-common").the<SourceSetContainer>()["test"].runtimeClasspath

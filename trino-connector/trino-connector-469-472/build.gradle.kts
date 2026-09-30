@@ -112,6 +112,9 @@ tasks.withType<Test>().configureEach {
 }
 
 tasks {
+  // Stage the connector jar and its runtime dependencies into build/libs. This directory
+  // is also mounted directly as the Trino plugin directory by the integration tests, so it
+  // must contain the connector jar plus all of its runtime dependency jars.
   val copyRuntimeLibs by registering(Copy::class) {
     dependsOn("jar")
     from({ configurations.runtimeClasspath.get().filter(File::isFile) })
@@ -120,7 +123,11 @@ tasks {
 
   val distributionDir = rootProject.layout.projectDirectory.dir("distribution/${rootProject.name}-${project.name}")
 
-  val copyLibs by registering(Copy::class) {
+  // Sync (not Copy) so the distribution directory consumed by the enterprise plugin zip is
+  // rebuilt cleanly and never carries jars left by an earlier build (e.g. an old connector
+  // or dependency version). Central release versions cannot be replaced, so a stale jar in
+  // the zip would be unfixable.
+  val copyLibs by registering(Sync::class) {
     dependsOn(copyRuntimeLibs, "build")
     from(layout.buildDirectory.dir("libs"))
     from(rootProject.layout.projectDirectory.dir("licenses")) {
@@ -167,4 +174,26 @@ tasks {
   named("build") {
     finalizedBy(copyRuntimeLibs)
   }
+}
+
+// This module is the open source Trino connector for one version band. It is built here
+// only to assemble the distribution archives and the enterprise plugin zips; Apache
+// publishes the open source connector itself. Disable its Maven publication so no bare
+// connector jar (nor an empty marker POM) is pushed from this repo.
+publishing {
+  publications {
+    withType<MavenPublication>().configureEach {
+      setArtifacts(emptyList<Any>())
+    }
+  }
+}
+tasks.withType<GenerateModuleMetadata>().configureEach {
+  enabled = false
+}
+tasks.matching {
+  it.name.startsWith("publishMavenJavaPublication") ||
+    it.name == "signMavenJavaPublication" ||
+    it.name == "generateMetadataFileForMavenJavaPublication"
+}.configureEach {
+  enabled = false
 }

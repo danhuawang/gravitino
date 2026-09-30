@@ -20,9 +20,9 @@ repositories {
 val flinkVersion: String = libs.versions.flink120.get()
 val flinkMajorVersion: String = flinkVersion.substringBeforeLast(".")
 val scalaVersion: String = "2.12"
-val artifactName = "datastrato-flink-connector-ext-${flinkMajorVersion}_$scalaVersion"
+val artifactName by extra("datastrato-flink-connector-ext-${flinkMajorVersion}_$scalaVersion")
 
-group = "com.datastrato.gravitino"
+group = "com.datastrato"
 
 configurations.all {
   resolutionStrategy.eachDependency {
@@ -101,12 +101,4 @@ tasks.withType<ShadowJar> {
 tasks.jar {
   dependsOn(tasks.named("shadowJar"))
   archiveClassifier.set("thin")
-}
-
-publishing {
-  publications {
-    withType<MavenPublication>().configureEach {
-      artifactId = artifactName
-    }
-  }
 }
