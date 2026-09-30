@@ -16,7 +16,8 @@
  *   3. check-non-enterprise-files-have-asf-header
  *   4. check-connector-jars
  *   5. test-enterprise-license-headers (live negative regression)
- *   6. test-image-license-catalog
+ *   6. apply-image-license-catalog (regenerate LICENSE.bin/NOTICE.bin from CSV)
+ *   7. test-image-license-catalog
  */
 
 apply(from = "enterprise-licensing/shared-paths.gradle.kts")
@@ -32,11 +33,25 @@ tasks.register<Exec>("testEnterpriseLicenseHeaders") {
   commandLine("bash", "dev/ci/test_enterprise_license_headers.sh")
 }
 
+tasks.register<Exec>("applyImageLicenseCatalog") {
+  group = "verification"
+  description = "Regenerate LICENSE.bin, NOTICE.bin, and image /licenses from the verified CSV."
+  workingDir = rootDir
+  commandLine("bash", "dev/docker/licenses-catalog/apply.sh")
+  inputs.dir(layout.projectDirectory.dir("dev/docker/licenses-catalog/data"))
+  inputs.file(layout.projectDirectory.file("dev/docker/licenses-catalog/apply.py"))
+}
+
 tasks.register<Exec>("testImageLicenseCatalog") {
   group = "verification"
   description = "Checks generated image/binary third-party catalogs against the CSV."
   workingDir = rootDir
+  dependsOn("applyImageLicenseCatalog")
   commandLine("bash", "dev/docker/licenses-catalog/test/run.sh")
+}
+
+project.afterEvaluate {
+  tasks.named("compileDistribution").configure { dependsOn("applyImageLicenseCatalog") }
 }
 
 tasks.named("check").get().dependsOn(

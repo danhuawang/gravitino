@@ -35,6 +35,9 @@ conn_dir="$(dirname "${BASH_SOURCE-$0}")"
 conn_dir="$(cd "${conn_dir}" >/dev/null; pwd)"
 gravitino_home="$(cd "${conn_dir}/../../.." >/dev/null; pwd)"
 
+# Refresh LICENSE.bin, NOTICE.bin, and image /licenses from the verified CSV.
+bash "${gravitino_home}/dev/docker/licenses-catalog/apply.sh"
+
 cd "${gravitino_home}"
 
 # Discover all Flink runtime modules from the Gradle project,

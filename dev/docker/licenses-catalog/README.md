@@ -12,15 +12,26 @@ deployment #305).
 
 Overwrite only
 `dev/docker/licenses-catalog/data/third-party-components-1.3.0.csv`
-(and `inherited-apache-notices.txt` if gravitino NOTICE text changed). Then:
+(and `inherited-apache-notices.txt` if gravitino NOTICE text changed).
+You do not need to run `apply.sh` by hand.
+
+Building regenerates the catalogs:
+
+- `./gradlew compileDistribution` and `./gradlew check` run
+  `applyImageLicenseCatalog` first
+- MCP / server / connector Docker dependency scripts call `apply.sh`
+  before `COPY licenses /licenses`
+
+Commit the regenerated `LICENSE.bin`, `NOTICE.bin`, and
+`dev/docker/*/licenses/NOTICE.txt` files when you commit the CSV so git
+stays in sync. `./gradlew check` writes those files into the work tree.
+
+To regenerate locally without a full build:
 
 ```bash
 dev/docker/licenses-catalog/apply.sh
 bash dev/docker/licenses-catalog/test/run.sh
 ```
-
-Do not hand-edit `LICENSE.bin`, `NOTICE.bin`, or the generated files under
-`dev/docker/*/licenses/`.
 
 ## What is updated
 

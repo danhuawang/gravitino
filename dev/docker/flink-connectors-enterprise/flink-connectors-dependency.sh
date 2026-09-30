@@ -32,6 +32,9 @@ script_dir="$(dirname "${BASH_SOURCE-$0}")"
 script_dir="$(cd "${script_dir}" >/dev/null; pwd)"
 gravitino_home="$(cd "${script_dir}/../../.." >/dev/null; pwd)"
 
+# Refresh LICENSE.bin, NOTICE.bin, and image /licenses from the verified CSV.
+bash "${gravitino_home}/dev/docker/licenses-catalog/apply.sh"
+
 cd "${gravitino_home}"
 
 # Build all 3 Flink connector runtime shadow jars (Scala 2.12 only)
