@@ -192,8 +192,11 @@ class Privilege(ABC):
         MODIFY_FUNCTION = (0, 1 << 32)
         """The privilege to alter a function's metadata."""
 
-        USE_SECRET = (0, 1 << 37)
-        """The privilege to retrieve plaintext secrets and vend credentials."""
+        USE_SECRETS = (0, 1 << 37)
+        """Required to call getSecrets; cloud AK/SK omitted without INCLUDE_CREDENTIAL_SECRETS."""
+
+        INCLUDE_CREDENTIAL_SECRETS = (0, 1 << 38)
+        """With USE_SECRETS, include cloud credential secrets in the getSecrets result."""
 
         def __init__(self, high_bits: int, low_bits: int) -> None:
             """
@@ -1589,27 +1592,53 @@ class ModifyFunction(GenericPrivilege):
         return obj_type in Privileges.FUNCTION_SUPPORTED_TYPES
 
 
-class UseSecret(GenericPrivilege):
-    """The privilege to retrieve plaintext secrets and vend credentials."""
+class UseSecrets(GenericPrivilege):
+    """Required to call getSecrets; cloud AK/SK omitted without INCLUDE_CREDENTIAL_SECRETS."""
 
-    _ALLOW_INSTANCE: Optional["UseSecret"] = None
-    _DENY_INSTANCE: Optional["UseSecret"] = None
+    _ALLOW_INSTANCE: Optional["UseSecrets"] = None
+    _DENY_INSTANCE: Optional["UseSecrets"] = None
 
     @staticmethod
     def allow() -> Privilege:
-        if UseSecret._ALLOW_INSTANCE is None:
-            UseSecret._ALLOW_INSTANCE = UseSecret(
-                Privilege.Condition.ALLOW, Privilege.Name.USE_SECRET
+        if UseSecrets._ALLOW_INSTANCE is None:
+            UseSecrets._ALLOW_INSTANCE = UseSecrets(
+                Privilege.Condition.ALLOW, Privilege.Name.USE_SECRETS
             )
-        return UseSecret._ALLOW_INSTANCE
+        return UseSecrets._ALLOW_INSTANCE
 
     @staticmethod
     def deny() -> Privilege:
-        if UseSecret._DENY_INSTANCE is None:
-            UseSecret._DENY_INSTANCE = UseSecret(
-                Privilege.Condition.DENY, Privilege.Name.USE_SECRET
+        if UseSecrets._DENY_INSTANCE is None:
+            UseSecrets._DENY_INSTANCE = UseSecrets(
+                Privilege.Condition.DENY, Privilege.Name.USE_SECRETS
             )
-        return UseSecret._DENY_INSTANCE
+        return UseSecrets._DENY_INSTANCE
+
+    def can_bind_to(self, obj_type: MetadataObject.Type) -> bool:
+        return obj_type in Privileges.SECRET_SUPPORTED_TYPES
+
+
+class IncludeCredentialSecrets(GenericPrivilege):
+    """With USE_SECRETS, include cloud credential secrets in the getSecrets result."""
+
+    _ALLOW_INSTANCE: Optional["IncludeCredentialSecrets"] = None
+    _DENY_INSTANCE: Optional["IncludeCredentialSecrets"] = None
+
+    @staticmethod
+    def allow() -> Privilege:
+        if IncludeCredentialSecrets._ALLOW_INSTANCE is None:
+            IncludeCredentialSecrets._ALLOW_INSTANCE = IncludeCredentialSecrets(
+                Privilege.Condition.ALLOW, Privilege.Name.INCLUDE_CREDENTIAL_SECRETS
+            )
+        return IncludeCredentialSecrets._ALLOW_INSTANCE
+
+    @staticmethod
+    def deny() -> Privilege:
+        if IncludeCredentialSecrets._DENY_INSTANCE is None:
+            IncludeCredentialSecrets._DENY_INSTANCE = IncludeCredentialSecrets(
+                Privilege.Condition.DENY, Privilege.Name.INCLUDE_CREDENTIAL_SECRETS
+            )
+        return IncludeCredentialSecrets._DENY_INSTANCE
 
     def can_bind_to(self, obj_type: MetadataObject.Type) -> bool:
         return obj_type in Privileges.SECRET_SUPPORTED_TYPES
@@ -1649,7 +1678,8 @@ class Privileges:
         Privilege.Name.REGISTER_FUNCTION: RegisterFunction,
         Privilege.Name.EXECUTE_FUNCTION: ExecuteFunction,
         Privilege.Name.MODIFY_FUNCTION: ModifyFunction,
-        Privilege.Name.USE_SECRET: UseSecret,
+        Privilege.Name.USE_SECRETS: UseSecrets,
+        Privilege.Name.INCLUDE_CREDENTIAL_SECRETS: IncludeCredentialSecrets,
     }
 
     TABLE_SUPPORTED_TYPES = {
@@ -1697,7 +1727,6 @@ class Privileges:
         MetadataObject.Type.TOPIC,
         MetadataObject.Type.FILESET,
         MetadataObject.Type.MODEL,
-        MetadataObject.Type.MODEL_VERSION,
     }
     MANAGE_GRANTS_SUPPORTED_TYPES = {
         MetadataObject.Type.METALAKE,

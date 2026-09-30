@@ -36,17 +36,18 @@ import org.apache.gravitino.secret.SecretPropertyUtils;
  *   <li><b>Omit</b> keys that are both metadata-{@code reserved} and {@code hidden} (for example
  *       {@code gravitino.identifier}). Users cannot set them and UIs cannot edit them, so a masked
  *       placeholder is useless.
- *   <li><b>Mask</b> other hidden keys (credentials such as {@code jdbc-password}) and undeclared
- *       keys whose names look sensitive (contain {@code secret}, {@code password}, {@code token},
- *       {@code credential}, {@code access}, or {@code account}, case-insensitive) with {@link
- *       #MASKED_VALUE}, so clients can see that the property exists without reading the plaintext.
+ *   <li><b>Mask</b> other hidden keys (credentials such as {@code jdbc-password}), secret-manager
+ *       URN values, and undeclared keys whose names look sensitive (contain {@code secret}, {@code
+ *       password}, {@code token}, {@code credential}, {@code access}, or {@code account},
+ *       case-insensitive) with {@link #MASKED_VALUE}, so clients can see that the property exists
+ *       without reading the plaintext.
  *   <li>Return all other properties as-is, including reserved-but-visible ones (for example {@code
  *       in-use}, {@code numFiles}).
  * </ul>
  *
- * <p>Recovery via {@code getSecrets} covers sensitive-named keys only. A property that is merely
- * declared {@code hidden} (and whose name does not look sensitive) remains {@code ******} after
- * merging {@code properties()} with {@code getSecrets()}; that API does not return it. See {@code
+ * <p>Recovery via {@code getSecrets} covers secret-URN values, declared {@code hidden} keys (except
+ * credential-vending keys), and sensitive-named undeclared keys. Credential property keys are
+ * recovered via {@code getCredentials()} instead. See {@code
  * org.apache.gravitino.secret.SupportsSecrets}.
  *
  * <p><b>Write (create / alter)</b>: reject any value equal to {@link #MASKED_VALUE} so the

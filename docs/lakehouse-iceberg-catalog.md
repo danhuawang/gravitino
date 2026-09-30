@@ -38,7 +38,7 @@ Mixing Iceberg JARs from different versions on the client classpath is not compa
 - Supports DDL operations for Iceberg schemas and tables.
 - Doesn't support snapshot or table management operations.
 - Supports multi storage, including S3, GCS, ADLS, OSS and HDFS.
-- Supports Kerberos or simple authentication for Iceberg catalog with Hive backend.
+- Supports Kerberos or simple authentication for warehouse storage access on HDFS for Hive and JDBC catalog backends.
 - Supports table metadata cache.
 
 ### Catalog Properties
@@ -57,82 +57,17 @@ If you are using the Gravitino with Trino, you can pass the Trino Iceberg connec
 
 If you are using the Gravitino with Spark, you can pass the Spark Iceberg connector configuration using prefix `spark.bypass.`. For example, using `spark.bypass.io-impl` to pass the `io-impl` to the Spark Iceberg connector in Spark runtime.
 
-#### Encryption and the Iceberg format version
-
-Encrypted Iceberg tables require format version `3`. Gravitino defines no format-version property of
-its own: the version comes from Iceberg's `format-version` on the request and the catalog's
-`table-override.format-version` and `table-default.format-version`. Gravitino never raises a version.
-It writes one only into a keyed request that names none, and then only the version the catalog
-resolves, because Iceberg does not apply the catalog's properties to a staged create. To run a catalog
-whose tables are encrypted, set two properties together:
-
-1. Bind the key: `table-default.encryption.key-id`, or `table-override.encryption.key-id`.
-2. Declare the version: `table-default.format-version=3`, or a `table-override.format-version` of `3`
-   or more, which is read first.
-
-Both are read under the plain Iceberg spelling and under the `gravitino.bypass.` prefix, the plain
-spelling winning. On a `lakehouse-iceberg` catalog, only the `gravitino.bypass.` spelling of
-`table-default.format-version` and `table-override.format-version` reaches the embedded Iceberg
-catalog: the catalog forwards the `gravitino.bypass.` properties and the properties Gravitino maps
-itself, and no other key. A plain-spelled value is still read when the create is admitted, but
-Iceberg never applies it, so set `gravitino.bypass.table-default.format-version=3` on this catalog.
-On the Iceberg REST service both spellings reach the Iceberg catalog: a static catalog sets
-`gravitino.iceberg-rest.table-default.format-version=3`, a dynamic one the catalog property.
-
-Binding a key or changing the catalog's default affects new tables only. An existing table keeps its
-format version, gains no key, and loads and commits as before. Engines that can read only version-2
-tables cannot read encrypted tables at all; keep the tables they must read on a catalog that binds
-no key.
-
-:::caution
-A catalog that bound an encryption key before this change relied on Gravitino declaring the format
-version for it. Such a catalog refuses every keyed create until you set
-`table-default.format-version=3` on it. No stored data changes, and the catalog itself stays usable
-and alterable.
-:::
-
-When a key applies to a new table, because the catalog binds one or the request supplies
-`encryption.key-id`, the effective format version is the one Iceberg will build the table at, which
-depends on how the table is created:
-
-- A create takes the catalog's `table-override.format-version`, else the request's `format-version`,
-  else the catalog's `table-default.format-version`, else Iceberg's default of `2`.
-- A staged create (`CREATE TABLE AS SELECT`) and the commit that publishes it take the request's
-  `format-version` first, then the override, then the default, then `2`, because Iceberg builds a
-  staged table from the request's own properties.
-- A registered metadata file keeps the version it was written at. A keyed file at version `1` or
-  `2` is refused, and since no catalog setting can re-version a written file, the remedy is to
-  register a file written at version `3` or later.
-
-An effective version below `3`, or a request `format-version` that is not a number, is refused with
-`UNSUPPORTED_FORMAT_VERSION` (HTTP 400, an `IllegalArgumentException` on the Iceberg REST service)
-before the policy is evaluated and before any KMS call, on both APIs, and for a `CREATE TABLE AS
-SELECT` at stage, before the query writes. A catalog value that is not a number is a configuration
-error: the create fails with an error naming the property (HTTP 400, no decision ID). Gravitino
-never raises the version: an explicit `format-version=2` with a key is refused, unless a
-`table-override.format-version` of `3` or later replaces it on a plain create, because Iceberg
-applies the override last; and a `table-override.format-version` below `3` refuses every keyed
-create and staged create even when the request asks for `3`; only an operator can lift it. On a
-catalog that binds a key the refusal applies whichever key ends up on the table, because Iceberg
-rebuilds the table from the catalog's own properties when it publishes it. On a catalog that binds
-no key, a table without a key is created plain at the effective version, and a table whose request
-supplies a key follows the rule above.
-
-#### Hive Backend
-
-For governed encryption, the Hive backend writes the trusted `metadata_hash` and
-`metadata_location` in the same Hive Metastore create or alter operation.
 
 #### JDBC Backend
 
-If you are using JDBC backend, you must provide properties like `jdbc-user`, `jdbc-password` and `jdbc-driver`.
+If you are using JDBC backend, you must provide properties like `jdbc-user`, `jdbc-password` and `jdbc-driver`. Use `jdbc-user` and `jdbc-password` for the JDBC metadata store connection. When the warehouse is on Kerberos-secured HDFS, set `authentication.type` to `kerberos` and configure the Kerberos properties in [Catalog Backend Security](#catalog-backend-security).
 
 | Property name     | Description                                                                                             | Default value | Required |
 |-------------------|---------------------------------------------------------------------------------------------------------|---------------|----------|
 | `jdbc-user`       | JDBC user name                                                                                          | (none)        | Yes      |
 | `jdbc-password`   | JDBC password                                                                                           | (none)        | Yes      |
 | `jdbc-driver`     | `com.mysql.jdbc.Driver` or `com.mysql.cj.jdbc.Driver` for MySQL, `org.postgresql.Driver` for PostgreSQL | (none)        | Yes      |
-| `jdbc-initialize` | Whether to create the JDBC catalog tables, including the catalog-local metadata-integrity table         | `true`        | No       |
+| `jdbc-initialize` | Whether to initialize meta tables when create JDBC catalog                                              | `true`        | No       |
 
 If you have a JDBC Iceberg catalog prior, you must set `catalog-backend-name` to keep consistent with your Jdbc Iceberg catalog name to operate the prior namespace and tables.
 
@@ -140,51 +75,6 @@ If you have a JDBC Iceberg catalog prior, you must set `catalog-backend-name` to
 Download the corresponding JDBC driver and place it to the `catalogs/lakehouse-iceberg/libs` directory If you are using JDBC backend.
 If you are using multiple JDBC catalog backends, setting `jdbc-initialize` to true may not take effect for RDMS like `Mysql`, you should create Iceberg meta tables explicitly.
 :::
-
-##### JDBC metadata-integrity table
-
-Encrypted Iceberg tables need a Gravitino-managed table, `iceberg_metadata_integrity`, in the same
-catalog database as `iceberg_tables`. PostgreSQL and MySQL are supported.
-
-The packaged scripts contain the expected schema, and you can apply them yourself:
-
-- PostgreSQL: `scripts/enterprise/iceberg-jdbc/postgresql/schema-v1.sql`
-- MySQL: `scripts/enterprise/iceberg-jdbc/mysql/schema-v1.sql`
-
-The schema includes a foreign key from `iceberg_metadata_integrity` to `iceberg_tables`, so the
-database moves or removes a table's integrity row when the table is renamed or dropped. On MySQL,
-the foreign key takes effect only while `foreign_key_checks` is enabled, which is the MySQL
-default.
-
-**Create the table.** With `jdbc-initialize=true` (the default), Gravitino runs the matching script
-when the catalog starts, and you don't need to do anything. If you manage schema changes yourself:
-
-1. Run Iceberg's catalog DDL, so that `iceberg_tables` exists.
-2. Run the matching script. It creates the table if it's absent and doesn't change an existing one.
-3. Restart the catalog. If a governed catalog can't use the table, it doesn't start, and the log
-   shows the database error.
-
-**Privileges.** The catalog's database user needs `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on
-`iceberg_metadata_integrity`. Creating the table also needs schema-change privileges and, on MySQL,
-`REFERENCES` on `iceberg_tables`.
-
-**Startup checks.** When the catalog starts, it checks that the database is PostgreSQL or MySQL,
-that it supports transactions, and, on MySQL, that both tables use InnoDB. With
-`jdbc-initialize=false`, it also checks that the table's columns exist. If a check fails, a governed
-catalog doesn't start. A catalog without encryption configured starts without metadata integrity.
-
-**Tables without an integrity row.** An encrypted table that has no row loads with a warning, and
-its next commit writes the row.
-
-Future schema versions ship explicit upgrade scripts, such as `upgrade-v1-to-v2.sql`. The scripts
-aren't part of the Gravitino entity-store schema or its migrations.
-
-#### Metadata-integrity audit records
-
-For governed Hive and JDBC catalogs, Gravitino adds classified metadata-integrity refusal facts to
-the request's audit line without changing the response. See
-[Iceberg metadata-integrity audit fields](gravitino-server-config.md#iceberg-metadata-integrity-audit-fields)
-for the fields, reason semantics, privacy boundary, and Hive retry behavior.
 
 #### REST Catalog Backend
 
@@ -339,17 +229,17 @@ Please set the `warehouse` parameter to `{storage_prefix}://{bucket_name}/${pref
 
 #### Catalog Backend Security
 
-Users can use the following properties to configure the security of the catalog backend if needed. For example, if you are using a Kerberos Hive catalog backend, you must set `authentication.type` to `Kerberos` and provide `authentication.kerberos.principal` and `authentication.kerberos.keytab-uri`.
+Users can use the following properties to configure warehouse storage security when needed. For example, if you are using a Hive or JDBC catalog backend with a Kerberos-secured HDFS warehouse, set `authentication.type` to `kerberos` and provide `authentication.kerberos.principal` and `authentication.kerberos.keytab-uri`. For JDBC backend, JDBC username/password authentication for the metadata store is configured separately via `jdbc-user` and `jdbc-password`.
 
-| Property name                                      | Description                                                                                                                                                                                                                                      | Default value | Required                                                                                                                                                             |
-|----------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `authentication.type`                              | The type of authentication for Iceberg catalog backend. This configuration only applicable for for Hive backend, and only supports `Kerberos`, `simple` currently. As for JDBC backend, only username/password authentication was supported now. | `simple`      | No                                                                                                                                                                   |
-| `authentication.impersonation-enable`              | Whether to enable impersonation for the Iceberg catalog                                                                                                                                                                                          | `false`       | No                                                                                                                                                                   |
-| `hive.metastore.sasl.enabled`                      | Whether to enable SASL authentication protocol when connect to Kerberos Hive metastore. This is a raw Hive configuration                                                                                                                         | `false`       | No, This value should be true in most case(Some will use SSL protocol, but it rather rare) if the value of `gravitino.iceberg-rest.authentication.type` is Kerberos. |
-| `authentication.kerberos.principal`                | The principal of the Kerberos authentication                                                                                                                                                                                                     | (none)        | required if the value of `authentication.type` is Kerberos.                                                                                                          |
-| `authentication.kerberos.keytab-uri`               | The URI of The keytab for the Kerberos authentication.                                                                                                                                                                                           | (none)        | required if the value of `authentication.type` is Kerberos.                                                                                                          |
-| `authentication.kerberos.check-interval-sec`       | The check interval of Kerberos credential for Iceberg catalog.                                                                                                                                                                                   | 60            | No                                                                                                                                                                   |
-| `authentication.kerberos.keytab-fetch-timeout-sec` | The fetch timeout of retrieving Kerberos keytab from `authentication.kerberos.keytab-uri`.                                                                                                                                                       | 60            | No                                                                                                                                                                   |
+| Property name                                      | Description                                                                                                             | Default value | Required                                                                                                                     |
+|----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|---------------|------------------------------------------------------------------------------------------------------------------------------|
+| `authentication.type`                              | The authentication type for HDFS warehouse access. Supports `kerberos` and `simple` for Hive and JDBC catalog backends. | `simple`      | No                                                                                                                           |
+| `authentication.impersonation-enable`              | Whether to enable impersonation for the Iceberg catalog.                                                                | `false`       | No                                                                                                                           |
+| `hive.metastore.sasl.enabled`                      | Whether to enable SASL when connecting to a Kerberos Hive Metastore. This is a raw Hive configuration.                  | `false`       | No. Set to true in most cases when `authentication.type` is `kerberos` (some deployments use SSL instead, but that is rare). |
+| `authentication.kerberos.principal`                | The principal for Kerberos authentication.                                                                              | (none)        | Yes, if `authentication.type` is `kerberos`.                                                                                 |
+| `authentication.kerberos.keytab-uri`               | The URI of the keytab for Kerberos authentication.                                                                      | (none)        | Yes, if `authentication.type` is `kerberos`.                                                                                 |
+| `authentication.kerberos.check-interval-sec`       | The check interval of Kerberos credential for the Iceberg catalog.                                                      | 60            | No                                                                                                                           |
+| `authentication.kerberos.keytab-fetch-timeout-sec` | The fetch timeout for retrieving Kerberos keytab from `authentication.kerberos.keytab-uri`.                             | 60            | No                                                                                                                           |
 
 #### Table Metadata Cache
 
@@ -368,7 +258,7 @@ Gravitino provides the build-in `org.apache.gravitino.iceberg.common.cache.Local
 Refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#catalog-operations) for more details.
 
 :::note
-Sensitive catalog properties such as `jdbc-password`, `s3-access-key-id`, `s3-secret-access-key`, `oss-access-key-id`, and `oss-secret-access-key` are hidden from the load catalog response (`jdbc-user` is returned in plaintext). Use the [credential vending API](security/credential-vending.md) to retrieve them at runtime.
+Sensitive catalog properties such as `jdbc-password` and cloud credential keys are hidden from the default load catalog response (`jdbc-user` is returned in plaintext). Recover JDBC and cloud credential fields via the [credential vending API](security/credential-vending.md) (`getCredentials`). Other non-credential secrets (secret-manager URNs, declared `hidden` properties, undeclared sensitive-named keys) use `getSecrets` / `GET .../objects/{type}/{fullName}/secrets`.
 :::
 
 ## Schema
@@ -526,25 +416,38 @@ If you doesn't specify distribution expressions, the table distribution will be 
 
 ### Table Column Types
 
-| Gravitino Type    | Apache Iceberg Type         |
-|-------------------|-----------------------------|
-| `Struct`          | `Struct`                    |
-| `Map`             | `Map`                       |
-| `List`            | `Array`                     |
-| `Boolean`         | `Boolean`                   |
-| `Integer`         | `Integer`                   |
-| `Long`            | `Long`                      |
-| `Float`           | `Float`                     |
-| `Double`          | `Double`                    |
-| `String`          | `String`                    |
-| `Date`            | `Date`                      |
-| `Time(6)`         | `Time`                      |
-| `Timestamp(6)`    | `TimestampType withZone`    |
-| `Timestamp_tz(6)` | `TimestampType withoutZone` |
-| `Decimal`         | `Decimal`                   |
-| `Fixed`           | `Fixed`                     |
-| `Binary`          | `Binary`                    |
-| `UUID`            | `UUID`                      |
+| Gravitino Type    | Apache Iceberg Type             |
+|-------------------|---------------------------------|
+| `Struct`          | `Struct`                        |
+| `Map`             | `Map`                           |
+| `List`            | `Array`                         |
+| `Boolean`         | `Boolean`                       |
+| `Integer`         | `Integer`                       |
+| `Long`            | `Long`                          |
+| `Float`           | `Float`                         |
+| `Double`          | `Double`                        |
+| `String`          | `String`                        |
+| `Date`            | `Date`                          |
+| `Time(6)`         | `Time`                          |
+| `Timestamp(6)`    | `TimestampType withoutZone`     |
+| `Timestamp_tz(6)` | `TimestampType withZone`        |
+| `Timestamp(9)`    | `TimestampNanoType withoutZone` |
+| `Timestamp_tz(9)` | `TimestampNanoType withZone`    |
+| `Decimal`         | `Decimal`                       |
+| `Fixed`           | `Fixed`                         |
+| `Binary`          | `Binary`                        |
+| `UUID`            | `UUID`                          |
+| `Variant`         | `Variant`                       |
+| `Null`            | `Unknown`                       |
+| `Geometry`        | `Geometry`                      |
+| `Geography`       | `Geography`                     |
+
+:::note
+Gravitino `Null` maps to Apache Iceberg's V3 `unknown` type — a null-only placeholder for a column
+whose type is not yet known. It requires table `format-version` 3, must be an optional (nullable)
+column, and can be promoted to a concrete type via schema evolution. This is the recommended way to
+represent an Iceberg `unknown` column in Gravitino.
+:::
 
 :::info
 Apache Iceberg doesn't support Gravitino `Varchar` `Fixedchar` `Byte` `Short` `Union` type.
@@ -566,7 +469,7 @@ Pass [Iceberg table properties](https://iceberg.apache.org/docs/1.5.2/configurat
 | `location`                | Iceberg location for table storage.                                                                                                                                                                                                                                                 | (none)        | No       | No       | Yes       |
 | `provider`                | The storage provider for table storage.                                                                                                                                                                                                                                             | (none)        | No       | No       | Yes       |
 | `format`                  | The format of table storage.                                                                                                                                                                                                                                                        | (none)        | No       | No       | Yes       |
-| `format-version`          | The Iceberg table format version. Gravitino supports creating tables at versions `1`–`4` (the range the bundled Iceberg version can write). When unset, the version resolves to the catalog's `table-override.format-version`, else its `table-default.format-version`, else Iceberg's default of `2`. Version `3` is required for V3 types such as `variant` and for encryption; version `4` is not yet a finalized Iceberg spec. | (none)        | No       | No       | Yes       |
+| `format-version`          | The Iceberg table format version. Gravitino supports creating tables at versions `1`–`4` (the range the bundled Iceberg version can write) and defaults to `2` when unset. Version `3` is required for V3 types such as `variant`; version `4` is not yet a finalized Iceberg spec. | `2`           | No       | No       | Yes       |
 | `comment`                 | The table comment; use the `comment` field in table meta instead.                                                                                                                                                                                                                   | (none)        | No       | Yes      | No        |
 | `creator`                 | The table creator.                                                                                                                                                                                                                                                                  | (none)        | No       | Yes      | No        |
 | `current-snapshot-id`     | The snapshot represents the current state of the table.                                                                                                                                                                                                                             | (none)        | No       | Yes      | No        |

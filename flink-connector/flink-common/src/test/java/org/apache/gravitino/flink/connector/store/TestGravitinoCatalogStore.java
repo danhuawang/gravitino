@@ -36,6 +36,9 @@ import org.apache.flink.table.catalog.CatalogDescriptor;
 import org.apache.flink.table.catalog.exceptions.CatalogException;
 import org.apache.flink.table.factories.Factory;
 import org.apache.gravitino.Catalog;
+import org.apache.gravitino.credential.Credential;
+import org.apache.gravitino.credential.JdbcCredential;
+import org.apache.gravitino.credential.SupportsCredentials;
 import org.apache.gravitino.flink.connector.CatalogPropertiesConverter;
 import org.apache.gravitino.flink.connector.catalog.BaseCatalogFactory;
 import org.apache.gravitino.flink.connector.catalog.GravitinoCatalogManager;
@@ -144,11 +147,15 @@ public class TestGravitinoCatalogStore {
   public void testMergeSecrets() {
     Catalog catalog = mock(Catalog.class);
     SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    SupportsCredentials supportsCredentials = mock(SupportsCredentials.class);
     when(gravitinoCatalogMockManager.getGravitinoCatalogInfo("sec")).thenReturn(catalog);
     when(catalog.provider()).thenReturn("test-provider");
     when(catalog.properties()).thenReturn(Map.of("visible", "v1"));
     when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
-    when(supportsSecrets.getSecrets()).thenReturn(Map.of("jdbc-password", "secret"));
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of("custom-token", "secret"));
+    when(catalog.supportsCredentials()).thenReturn(supportsCredentials);
+    when(supportsCredentials.getCredentials())
+        .thenReturn(new Credential[] {new JdbcCredential("u", "jdbc-secret")});
 
     BaseCatalogFactory factory = mock(BaseCatalogFactory.class);
     CatalogPropertiesConverter converter = mock(CatalogPropertiesConverter.class);
@@ -172,7 +179,8 @@ public class TestGravitinoCatalogStore {
 
     Optional<CatalogDescriptor> descriptor = store.getCatalog("sec");
     assertTrue(descriptor.isPresent());
-    assertEquals("secret", descriptor.get().getConfiguration().toMap().get("jdbc-password"));
+    assertEquals("secret", descriptor.get().getConfiguration().toMap().get("custom-token"));
+    assertEquals("jdbc-secret", descriptor.get().getConfiguration().toMap().get("jdbc-password"));
     assertEquals("v1", descriptor.get().getConfiguration().toMap().get("visible"));
   }
 
@@ -180,11 +188,15 @@ public class TestGravitinoCatalogStore {
   public void testMergeSecretsNullProps() {
     Catalog catalog = mock(Catalog.class);
     SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    SupportsCredentials supportsCredentials = mock(SupportsCredentials.class);
     when(gravitinoCatalogMockManager.getGravitinoCatalogInfo("sec-null")).thenReturn(catalog);
     when(catalog.provider()).thenReturn("test-provider");
     when(catalog.properties()).thenReturn(null);
     when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
-    when(supportsSecrets.getSecrets()).thenReturn(Map.of("jdbc-password", "secret"));
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of("custom-token", "secret"));
+    when(catalog.supportsCredentials()).thenReturn(supportsCredentials);
+    when(supportsCredentials.getCredentials())
+        .thenReturn(new Credential[] {new JdbcCredential("u", "jdbc-secret")});
 
     BaseCatalogFactory factory = mock(BaseCatalogFactory.class);
     CatalogPropertiesConverter converter = mock(CatalogPropertiesConverter.class);
@@ -208,18 +220,23 @@ public class TestGravitinoCatalogStore {
 
     Optional<CatalogDescriptor> descriptor = store.getCatalog("sec-null");
     assertTrue(descriptor.isPresent());
-    assertEquals("secret", descriptor.get().getConfiguration().toMap().get("jdbc-password"));
+    assertEquals("secret", descriptor.get().getConfiguration().toMap().get("custom-token"));
+    assertEquals("jdbc-secret", descriptor.get().getConfiguration().toMap().get("jdbc-password"));
   }
 
   @Test
   public void testMergeMemorySecrets() {
     Catalog catalog = mock(Catalog.class);
     SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    SupportsCredentials supportsCredentials = mock(SupportsCredentials.class);
     when(gravitinoCatalogMockManager.getGravitinoCatalogInfo("mem")).thenReturn(catalog);
     when(catalog.provider()).thenReturn("test-provider");
     when(catalog.properties()).thenReturn(Map.of("jdbc-url", "jdbc:mysql://localhost/db"));
     when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
-    when(supportsSecrets.getSecrets()).thenReturn(Map.of("jdbc-password", "mem-pwd"));
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of("custom-token", "mem-tok"));
+    when(catalog.supportsCredentials()).thenReturn(supportsCredentials);
+    when(supportsCredentials.getCredentials())
+        .thenReturn(new Credential[] {new JdbcCredential("root", "mem-pwd")});
 
     BaseCatalogFactory factory = mock(BaseCatalogFactory.class);
     CatalogPropertiesConverter converter = mock(CatalogPropertiesConverter.class);
@@ -244,6 +261,7 @@ public class TestGravitinoCatalogStore {
     Optional<CatalogDescriptor> descriptor = store.getCatalog("mem");
     assertTrue(descriptor.isPresent());
     assertEquals("mem-pwd", descriptor.get().getConfiguration().toMap().get("jdbc-password"));
+    assertEquals("mem-tok", descriptor.get().getConfiguration().toMap().get("custom-token"));
     assertEquals(
         "jdbc:mysql://localhost/db", descriptor.get().getConfiguration().toMap().get("jdbc-url"));
   }

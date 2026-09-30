@@ -23,7 +23,6 @@ import static org.apache.gravitino.connector.BaseCatalog.CATALOG_BYPASS_PREFIX;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import java.io.Closeable;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -38,15 +37,20 @@ import org.apache.gravitino.client.DefaultOAuth2TokenProvider;
 import org.apache.gravitino.client.GravitinoClient;
 import org.apache.gravitino.client.GravitinoClient.ClientBuilder;
 import org.apache.gravitino.connector.BaseCatalog;
-import org.apache.gravitino.credential.JdbcCredential;
+import org.apache.gravitino.credential.Credential;
+import org.apache.gravitino.credential.CredentialInfos;
 import org.apache.gravitino.credential.SupportsCredentials;
 import org.apache.gravitino.exceptions.NoSuchCatalogException;
+import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.exceptions.RESTException;
 import org.apache.gravitino.iceberg.common.IcebergConfig;
 import org.apache.gravitino.iceberg.service.authorization.IcebergRESTServerContext;
 import org.apache.gravitino.secret.SupportsSecrets;
 import org.apache.gravitino.server.web.JettyServerConfig;
 import org.apache.gravitino.utils.MapUtils;
 import org.apache.gravitino.utils.NameIdentifierUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This provider proxy Gravitino lakehouse-iceberg catalogs.
@@ -56,6 +60,8 @@ import org.apache.gravitino.utils.NameIdentifierUtil;
  * <p>The catalogName is iceberg_catalog
  */
 public class DynamicIcebergConfigProvider implements IcebergConfigProvider {
+
+  private static final Logger LOG = LoggerFactory.getLogger(DynamicIcebergConfigProvider.class);
 
   private String gravitinoMetalake;
   private Optional<String> defaultDynamicCatalogName;
@@ -108,8 +114,9 @@ public class DynamicIcebergConfigProvider implements IcebergConfigProvider {
         "lakehouse-iceberg".equals(catalog.provider()),
         String.format("Catalog %s is not an Iceberg catalog", catalog.name()));
 
-    // Approach B: properties + getSecrets for both aux and standalone. Keep CATALOG_UUID and
-    // credential-provider keys for BaseCatalog; overlay JdbcCredential so credentials win.
+    // Approach B: properties + getSecrets for non-credential secrets, then static
+    // (expireTimeInMs == 0) getCredentials().credentialInfo() for cloud/JDBC fields. Keep
+    // CATALOG_UUID and credential-provider keys for BaseCatalog; overlay credentials so they win.
     Map<String, String> props;
     if (catalog instanceof BaseCatalog) {
       BaseCatalog<?> baseCatalog = (BaseCatalog<?>) catalog;
@@ -126,20 +133,30 @@ public class DynamicIcebergConfigProvider implements IcebergConfigProvider {
           props.putAll(secrets);
         }
       }
-    } catch (UnsupportedOperationException ignored) {
-      // BaseCatalog in aux mode may not implement SupportsSecrets; raw props already include
-      // plaintext sensitive values on Approach B.
+    } catch (UnsupportedOperationException | NotFoundException e) {
+      // BaseCatalog in aux mode may not implement SupportsSecrets; older servers may lack /secrets.
+      LOG.debug(
+          "Skipping getSecrets while resolving Iceberg catalog {}: {}",
+          catalog.name(),
+          e.toString());
     }
-    if (catalog instanceof SupportsCredentials) {
-      Arrays.stream(((SupportsCredentials) catalog).getCredentials())
-          .filter(c -> c instanceof JdbcCredential)
-          .map(c -> (JdbcCredential) c)
-          .findFirst()
-          .ifPresent(
-              jdbc -> {
-                props.put(IcebergConstants.GRAVITINO_JDBC_USER, jdbc.jdbcUser());
-                props.put(IcebergConstants.GRAVITINO_JDBC_PASSWORD, jdbc.jdbcPassword());
-              });
+    try {
+      SupportsCredentials supportsCredentials = catalog.supportsCredentials();
+      if (supportsCredentials != null) {
+        Credential[] credentials = supportsCredentials.getCredentials();
+        props.putAll(CredentialInfos.nonExpiringCredentialInfo(credentials));
+      }
+    } catch (UnsupportedOperationException | NotFoundException e) {
+      LOG.debug(
+          "Skipping getCredentials while resolving Iceberg catalog {}: {}",
+          catalog.name(),
+          e.toString());
+    } catch (RESTException e) {
+      LOG.warn(
+          "Failed to resolve getCredentials for Iceberg catalog {}; continuing without static"
+              + " credential info: {}",
+          catalog.name(),
+          e.toString());
     }
     return props;
   }

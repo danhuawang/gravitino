@@ -19,13 +19,23 @@
 package org.apache.gravitino.spark.connector.catalog;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.Map;
+import java.util.stream.Stream;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.client.GravitinoClient;
+import org.apache.gravitino.credential.Credential;
+import org.apache.gravitino.credential.JdbcCredential;
+import org.apache.gravitino.credential.S3SecretKeyCredential;
+import org.apache.gravitino.credential.S3TokenCredential;
+import org.apache.gravitino.credential.SupportsCredentials;
+import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.exceptions.RESTException;
 import org.apache.gravitino.secret.SupportsSecrets;
 import org.apache.gravitino.spark.connector.PropertiesConverter;
 import org.apache.gravitino.spark.connector.SparkTransformConverter;
@@ -38,6 +48,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TestBaseCatalogSecrets {
@@ -79,22 +91,103 @@ public class TestBaseCatalogSecrets {
   @Test
   void testMergeMemorySecrets() {
     setUpCatalog(
-        Map.of("jdbc-url", "jdbc:mysql://localhost/db"), Map.of("jdbc-password", "from-memory"));
+        Map.of("jdbc-url", "jdbc:mysql://localhost/db"),
+        Map.of("custom-token", "from-memory"),
+        new Credential[] {new JdbcCredential("root", "jdbc-pwd")});
     catalog.initialize("jdbc", new CaseInsensitiveStringMap(Map.of()));
 
     assertEquals("jdbc:mysql://localhost/db", catalog.lastProperties.get("jdbc-url"));
-    assertEquals("from-memory", catalog.lastProperties.get("jdbc-password"));
+    assertEquals("from-memory", catalog.lastProperties.get("custom-token"));
+    assertEquals("jdbc-pwd", catalog.lastProperties.get("jdbc-password"));
+  }
+
+  static Stream<RuntimeException> getCredentialsFailures() {
+    return Stream.of(
+        new RESTException("transient failure"),
+        new NotFoundException("credentials endpoint missing"));
+  }
+
+  @Test
+  void testGetSecretsRestExceptionAbortsInitialize() {
+    Catalog gravitinoCatalog = mock(Catalog.class);
+    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    TableCatalog sparkCatalog = mock(TableCatalog.class);
+    when(gravitinoCatalog.type()).thenReturn(Catalog.Type.RELATIONAL);
+    when(gravitinoCatalog.provider()).thenReturn("hive");
+    when(gravitinoCatalog.properties())
+        .thenReturn(Map.of("metastore.uris", "thrift://localhost:9083"));
+    when(gravitinoCatalog.supportsSecrets()).thenReturn(supportsSecrets);
+    when(supportsSecrets.getSecrets()).thenThrow(new RESTException("transient /secrets failure"));
+    when(gravitinoClient.loadCatalog(any())).thenReturn(gravitinoCatalog);
+    GravitinoCatalogManager.get().close();
+    GravitinoCatalogManager.create("test_metalake", () -> gravitinoClient);
+    catalog = new CapturingCatalog(sparkCatalog);
+
+    assertThrows(
+        RESTException.class,
+        () -> catalog.initialize("hive", new CaseInsensitiveStringMap(Map.of())));
+  }
+
+  @ParameterizedTest
+  @MethodSource("getCredentialsFailures")
+  void testGetCredentialsFailureDoesNotAbortInitialize(RuntimeException failure) {
+    Catalog gravitinoCatalog = mock(Catalog.class);
+    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    SupportsCredentials supportsCredentials = mock(SupportsCredentials.class);
+    TableCatalog sparkCatalog = mock(TableCatalog.class);
+    when(gravitinoCatalog.type()).thenReturn(Catalog.Type.RELATIONAL);
+    when(gravitinoCatalog.provider()).thenReturn("hive");
+    when(gravitinoCatalog.properties())
+        .thenReturn(Map.of("metastore.uris", "thrift://localhost:9083"));
+    when(gravitinoCatalog.supportsSecrets()).thenReturn(supportsSecrets);
+    when(supportsSecrets.getSecrets()).thenReturn(Map.of());
+    when(gravitinoCatalog.supportsCredentials()).thenReturn(supportsCredentials);
+    when(supportsCredentials.getCredentials()).thenThrow(failure);
+    when(gravitinoClient.loadCatalog(any())).thenReturn(gravitinoCatalog);
+    GravitinoCatalogManager.get().close();
+    GravitinoCatalogManager.create("test_metalake", () -> gravitinoClient);
+    catalog = new CapturingCatalog(sparkCatalog);
+
+    catalog.initialize("hive", new CaseInsensitiveStringMap(Map.of()));
+
+    assertEquals("thrift://localhost:9083", catalog.lastProperties.get("metastore.uris"));
+  }
+
+  @Test
+  void testSkipsExpiringCredentialsFromGetCredentials() {
+    setUpCatalog(
+        Map.of("s3-endpoint", "http://s3.example.com"),
+        Map.of(),
+        new Credential[] {
+          new S3TokenCredential("SESSION", "session-secret", "tok", 1_700_000_000_000L),
+          new S3SecretKeyCredential("AKIATEST", "static-secret")
+        });
+
+    catalog.initialize("hive", new CaseInsensitiveStringMap(Map.of()));
+
+    assertEquals("AKIATEST", catalog.lastProperties.get("s3-access-key-id"));
+    assertEquals("static-secret", catalog.lastProperties.get("s3-secret-access-key"));
+    assertFalse(catalog.lastProperties.containsKey("s3-session-token"));
+    assertEquals("http://s3.example.com", catalog.lastProperties.get("s3-endpoint"));
   }
 
   private void setUpCatalog(Map<String, String> properties, Map<String, String> secrets) {
+    setUpCatalog(properties, secrets, new Credential[0]);
+  }
+
+  private void setUpCatalog(
+      Map<String, String> properties, Map<String, String> secrets, Credential[] credentials) {
     Catalog gravitinoCatalog = mock(Catalog.class);
     SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
+    SupportsCredentials supportsCredentials = mock(SupportsCredentials.class);
     TableCatalog sparkCatalog = mock(TableCatalog.class);
     when(gravitinoCatalog.type()).thenReturn(Catalog.Type.RELATIONAL);
     when(gravitinoCatalog.provider()).thenReturn("hive");
     when(gravitinoCatalog.properties()).thenReturn(properties);
     when(gravitinoCatalog.supportsSecrets()).thenReturn(supportsSecrets);
     when(supportsSecrets.getSecrets()).thenReturn(secrets);
+    when(gravitinoCatalog.supportsCredentials()).thenReturn(supportsCredentials);
+    when(supportsCredentials.getCredentials()).thenReturn(credentials);
     when(gravitinoClient.loadCatalog(any())).thenReturn(gravitinoCatalog);
     // Catalog info is cached; recreate the manager so each test loads the new mock.
     GravitinoCatalogManager.get().close();

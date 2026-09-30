@@ -47,12 +47,16 @@ import org.apache.gravitino.Audit;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.client.GravitinoAdminClient;
 import org.apache.gravitino.client.GravitinoMetalake;
+import org.apache.gravitino.credential.Credential;
+import org.apache.gravitino.credential.JdbcCredential;
+import org.apache.gravitino.credential.SupportsCredentials;
 import org.apache.gravitino.exceptions.RESTException;
 import org.apache.gravitino.secret.SupportsSecrets;
 import org.apache.gravitino.trino.connector.GravitinoConfig;
 import org.apache.gravitino.trino.connector.GravitinoErrorCode;
 import org.apache.gravitino.trino.connector.metadata.GravitinoCatalog;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 
 public class TestCatalogConnectorManager {
@@ -732,7 +736,7 @@ public class TestCatalogConnectorManager {
     // Built from the same definition the server reports, so that the next cycle sees it as up to
     // date. Built outside the answer below: touching the catalog mock while a stubbing is in
     // progress would break that stubbing.
-    GravitinoCatalog registered = new GravitinoCatalog("test", catalog);
+    GravitinoCatalog registered = new GravitinoCatalog("test", catalog, ImmutableMap.of());
     // What Trino does while CREATE CATALOG runs: the first registration creates the connector, so
     // the manager knows which metalake owns the Trino catalog name from then on.
     Mockito.doAnswer(
@@ -849,7 +853,8 @@ public class TestCatalogConnectorManager {
               String metalake = owner[0];
               // Built before the stubbing: touching the catalog mock while a stubbing is in
               // progress would break that stubbing.
-              GravitinoCatalog registered = new GravitinoCatalog(metalake, catalog);
+              GravitinoCatalog registered =
+                  new GravitinoCatalog(metalake, catalog, ImmutableMap.of());
               CatalogConnectorContext context =
                   manager.createCatalogConnectorContext(
                       "memory",
@@ -1448,6 +1453,125 @@ public class TestCatalogConnectorManager {
     assertEquals("http://irc-host:9001/iceberg", config.getDiscoveredIcebergRestUri("test"));
   }
 
+  @Test
+  public void testRegistrationCarriesNoSecrets() throws Exception {
+    LoadFixture fixture = new LoadFixture();
+    Catalog catalog = mockCatalog("memory", "memory", Catalog.Type.RELATIONAL);
+    when(catalog.properties()).thenReturn(Map.of("visible", "v1", "shared", "from-props"));
+    when(catalog.supportsSecrets().getSecrets())
+        .thenReturn(Map.of("custom-token", "hunter2", "shared", "from-secret"));
+    fixture.withCatalogs(catalog);
+
+    CatalogConnectorManager manager = fixture.createManager(ImmutableMap.of());
+    manager.loadMetalakeSync();
+
+    // The registered definition is what the CREATE CATALOG statement carries and what Trino
+    // persists as a catalog properties file, so no secret may be in it.
+    ArgumentCaptor<GravitinoCatalog> registered = ArgumentCaptor.forClass(GravitinoCatalog.class);
+    verify(fixture.catalogRegister).registerCatalog(eq("memory"), registered.capture());
+    Map<String, String> properties = registered.getValue().getProperties();
+    assertEquals("v1", properties.get("visible"));
+    assertEquals("from-props", properties.get("shared"));
+    assertFalse(properties.containsKey("custom-token"));
+    assertFalse(properties.toString().contains("hunter2"));
+  }
+
+  @Test
+  public void testConnectorContextResolvesSecrets() throws Exception {
+    LoadFixture fixture = new LoadFixture();
+    Catalog catalog = mockCatalog("memory", "memory", Catalog.Type.RELATIONAL);
+    when(catalog.properties()).thenReturn(Map.of("visible", "v1", "shared", "from-props"));
+    when(catalog.supportsSecrets().getSecrets())
+        .thenReturn(Map.of("custom-token", "hunter2", "shared", "from-secret"));
+    when(catalog.supportsCredentials().getCredentials())
+        .thenReturn(new Credential[] {new JdbcCredential("u", "jdbc-secret")});
+    fixture.withCatalogs(catalog);
+    CatalogConnectorManager manager = fixture.createManager(ImmutableMap.of());
+
+    // What Trino hands back to the node when it loads the catalog that was registered without
+    // secrets.
+    manager.createCatalogConnectorContext(
+        "memory",
+        createConnectorConfig(
+            GravitinoCatalog.toJson(
+                new GravitinoCatalog(
+                    "test",
+                    "memory",
+                    "memory",
+                    Map.of("visible", "v1", "shared", "from-props"),
+                    0L))),
+        mockContext());
+
+    // The node resolves them against the server, and a secret wins over a visible property of
+    // the same name the way the merge at registration time used to.
+    ArgumentCaptor<GravitinoCatalog> built = ArgumentCaptor.forClass(GravitinoCatalog.class);
+    verify(fixture.catalogFactory).createCatalogConnectorContextBuilder(built.capture());
+    Map<String, String> properties = built.getValue().getProperties();
+    assertEquals("v1", properties.get("visible"));
+    assertEquals("hunter2", properties.get("custom-token"));
+    assertEquals("from-secret", properties.get("shared"));
+    assertEquals("jdbc-secret", properties.get("jdbc-password"));
+    assertEquals("u", properties.get("jdbc-user"));
+  }
+
+  @Test
+  public void testConnectorContextFailsFastOnSecretsRestException() throws Exception {
+    LoadFixture fixture = new LoadFixture();
+    Catalog catalog = mockCatalog("memory", "memory", Catalog.Type.RELATIONAL);
+    when(catalog.properties()).thenReturn(Map.of("visible", "v1"));
+    when(catalog.supportsSecrets().getSecrets())
+        .thenThrow(new RESTException("simulated: /secrets unavailable"));
+    fixture.withCatalogs(catalog);
+    CatalogConnectorManager manager = fixture.createManager(ImmutableMap.of());
+
+    TrinoException error =
+        assertThrows(
+            TrinoException.class,
+            () ->
+                manager.createCatalogConnectorContext(
+                    "memory",
+                    createConnectorConfig(
+                        GravitinoCatalog.toJson(
+                            new GravitinoCatalog(
+                                "test", "memory", "memory", Map.of("visible", "v1"), 0L))),
+                    mockContext()));
+    assertTrue(error.getMessage().contains("Failed to resolve the secrets"));
+  }
+
+  @Test
+  public void testConnectorContextToleratesMissingCredentialsEndpoint() throws Exception {
+    LoadFixture fixture = new LoadFixture();
+    Catalog catalog = mockCatalog("memory", "memory", Catalog.Type.RELATIONAL);
+    when(catalog.properties()).thenReturn(Map.of("visible", "v1"));
+    when(catalog.supportsSecrets().getSecrets()).thenReturn(Map.of());
+    when(catalog.supportsCredentials().getCredentials())
+        .thenThrow(new RESTException("simulated: older server lacks /credentials"));
+    fixture.withCatalogs(catalog);
+    CatalogConnectorManager manager = fixture.createManager(ImmutableMap.of());
+
+    assertDoesNotThrow(
+        () ->
+            manager.createCatalogConnectorContext(
+                "memory",
+                createConnectorConfig(
+                    GravitinoCatalog.toJson(
+                        new GravitinoCatalog(
+                            "test", "memory", "memory", Map.of("visible", "v1"), 0L))),
+                mockContext()));
+
+    ArgumentCaptor<GravitinoCatalog> built = ArgumentCaptor.forClass(GravitinoCatalog.class);
+    verify(fixture.catalogFactory).createCatalogConnectorContextBuilder(built.capture());
+    assertEquals("v1", built.getValue().getProperties().get("visible"));
+  }
+
+  @Test
+  public void testVisiblePropsHandlesNullProperties() {
+    Catalog catalog = mock(Catalog.class);
+    when(catalog.properties()).thenReturn(null);
+
+    assertTrue(CatalogConnectorManager.visibleProps(catalog).isEmpty());
+  }
+
   private CatalogConnectorManager createManager(ImmutableMap<String, String> configMap)
       throws Exception {
     return createManager(createCatalogConnectorFactory(), configMap);
@@ -1516,36 +1640,6 @@ public class TestCatalogConnectorManager {
     return states.get(0);
   }
 
-  @Test
-  public void testPropsWithSecrets() {
-    Catalog catalog = mock(Catalog.class);
-    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
-    when(catalog.properties()).thenReturn(Map.of("visible", "v1", "shared", "from-props"));
-    when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
-    when(supportsSecrets.getSecrets())
-        .thenReturn(Map.of("jdbc-password", "secret", "shared", "from-secret"));
-
-    Map<String, String> merged = CatalogConnectorManager.propsWithSecrets(catalog);
-
-    assertEquals("v1", merged.get("visible"));
-    assertEquals("secret", merged.get("jdbc-password"));
-    assertEquals("from-secret", merged.get("shared"));
-  }
-
-  @Test
-  public void testPropsWithSecretsNullProps() {
-    Catalog catalog = mock(Catalog.class);
-    SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
-    when(catalog.properties()).thenReturn(null);
-    when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
-    when(supportsSecrets.getSecrets()).thenReturn(Map.of("jdbc-password", "secret"));
-
-    Map<String, String> merged = CatalogConnectorManager.propsWithSecrets(catalog);
-
-    assertEquals("secret", merged.get("jdbc-password"));
-    assertEquals(1, merged.size());
-  }
-
   private static Catalog mockCatalog(String name, String provider, Catalog.Type type) {
     Catalog catalog = mock(Catalog.class);
     when(catalog.name()).thenReturn(name);
@@ -1555,6 +1649,9 @@ public class TestCatalogConnectorManager {
     SupportsSecrets supportsSecrets = mock(SupportsSecrets.class);
     when(supportsSecrets.getSecrets()).thenReturn(Map.of());
     when(catalog.supportsSecrets()).thenReturn(supportsSecrets);
+    SupportsCredentials supportsCredentials = mock(SupportsCredentials.class);
+    when(supportsCredentials.getCredentials()).thenReturn(new Credential[0]);
+    when(catalog.supportsCredentials()).thenReturn(supportsCredentials);
     Audit audit = mock(Audit.class);
     when(audit.createTime()).thenReturn(Instant.now());
     when(audit.lastModifiedTime()).thenReturn(null);

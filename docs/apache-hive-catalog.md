@@ -83,7 +83,7 @@ When using Gravitino authorization for Hive with Apache Ranger, see the [Authori
 Refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#catalog-operations) for more details.
 
 :::note
-Sensitive catalog properties such as `s3-access-key-id`, `s3-secret-access-key`, `oss-access-key-id`, and `oss-secret-access-key` are hidden from the load catalog response. Use the [credential vending API](security/credential-vending.md) to retrieve them at runtime.
+Sensitive catalog properties such as credential-vending keys are hidden from the default load catalog response. Recover credential fields via the [credential vending API](security/credential-vending.md) (`getCredentials`). Other non-credential secrets (secret-manager URNs, declared `hidden` properties, undeclared sensitive-named keys) use `getSecrets` / `GET .../objects/{type}/{fullName}/secrets`.
 :::
 
 ## Schema
@@ -243,9 +243,11 @@ Support for altering partitions is under development.
 
 - Supports list, create, load, alter, and drop for views stored in the Hive Metastore Service as `VIRTUAL_VIEW`.
 - Each view must contain exactly one SQL representation.
-- Supports creating views with the `hive`, `flink`, or `spark` dialect.
-- When loading an existing HMS view, Gravitino automatically detects whether the view uses the `hive`, `flink`, `spark`, or `trino` dialect.
+- Supports creating views with the `hive`, `trino`, `flink`, or `spark` dialect.
+- When loading an existing HMS view, Gravitino automatically detects whether the view uses the `hive`, `trino`, `flink`, or `spark` dialect.
 - For the `hive` and `flink` dialects, `defaultCatalog` and `defaultSchema` must be `null`.
+- For the `trino` dialect, `defaultSchema` requires `defaultCatalog` to also be set (a schema without a catalog cannot be represented).
+- The `trino` dialect requires at least one output column, and is stored using Trino's own native "Presto View" Hive Metastore encoding, so a view created through Gravitino is interoperable with a native Trino/Presto Hive connector pointed at the same Hive Metastore, and vice versa. The HMS `presto_view` property this relies on is reserved and managed internally based on the view's dialect; it cannot be set or removed directly. Gravitino's view model cannot represent a native Trino view's owner, `runAsInvoker`, or SQL path, so replacing an existing native view that has a non-default value for any of them is rejected rather than silently discarding it.
 - The `flink` dialect requires at least one view property with the prefix `flink.` to be set. The Flink connector automatically sets `flink.schema.num-columns`; when using the REST API directly, set at least one `flink.*` property explicitly.
 - The `spark` dialect requires the view property `spark.sql.create.version` to be set; without it the view round-trips as the `hive` dialect on reload.
 

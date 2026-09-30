@@ -44,7 +44,10 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.client.GravitinoAdminClient;
 import org.apache.gravitino.client.GravitinoMetalake;
+import org.apache.gravitino.credential.CredentialInfos;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
+import org.apache.gravitino.exceptions.NotFoundException;
+import org.apache.gravitino.exceptions.RESTException;
 import org.apache.gravitino.trino.connector.GravitinoConfig;
 import org.apache.gravitino.trino.connector.GravitinoErrorCode;
 import org.apache.gravitino.trino.connector.catalog.iceberg.IcebergConnectorAdapter;
@@ -560,8 +563,12 @@ public class CatalogConnectorManager {
       String provider = null;
       try {
         Catalog catalog = metalake.loadCatalog(catalogName);
+        // Registration deliberately carries only the visible properties. The resolved secrets are
+        // added by each node in createCatalogConnectorContext(), so that they never reach the
+        // CREATE CATALOG statement, the catalog properties file Trino persists from it, or
+        // anything that quotes either of them back.
         GravitinoCatalog gravitinoCatalog =
-            new GravitinoCatalog(metalakeName, catalog, propsWithSecrets(catalog));
+            new GravitinoCatalog(metalakeName, catalog, visibleProps(catalog));
         provider = gravitinoCatalog.getProvider();
         // Checked before the already-registered path: a catalog can be dropped and recreated
         // under the same name with a type or provider this connector cannot serve, and treating
@@ -985,6 +992,7 @@ public class CatalogConnectorManager {
       }
       GravitinoMetalake metalake =
           metalakes.computeIfAbsent(catalog.getMetalake(), this::retrieveMetalake);
+      catalog = withResolvedSecrets(catalog, metalake);
       CatalogConnectorContext.Builder builder =
           catalogConnectorFactory.createCatalogConnectorContextBuilder(catalog);
       builder.withMetalake(metalake).withContext(context).withConfig(config);
@@ -1047,12 +1055,86 @@ public class CatalogConnectorManager {
     return false;
   }
 
-  /** Visible catalog properties overlaid with {@code getSecrets()}. */
-  static Map<String, String> propsWithSecrets(Catalog catalog) {
-    Map<String, String> props =
-        new HashMap<>(catalog.properties() == null ? Map.of() : catalog.properties());
-    props.putAll(catalog.supportsSecrets().getSecrets());
-    return props;
+  /** The catalog properties as the Gravitino server reports them, secret URNs unresolved. */
+  static Map<String, String> visibleProps(Catalog catalog) {
+    return new HashMap<>(catalog.properties() == null ? Map.of() : catalog.properties());
+  }
+
+  /**
+   * Overlays secrets and non-expiring credential info onto catalog properties.
+   *
+   * <p>Resolved here, on the node that is about to build the connector, rather than once at
+   * registration time: the registered definition travels through a CREATE CATALOG statement that
+   * Trino persists as a catalog properties file, and a secret placed in it would be readable there
+   * for as long as the catalog exists. {@code getSecrets()} failures other than missing-endpoint /
+   * unsupported are fatal (this connector is cached). Missing {@code /credentials} is tolerated for
+   * older servers.
+   */
+  private GravitinoCatalog withResolvedSecrets(
+      GravitinoCatalog catalog, GravitinoMetalake metalake) {
+    Catalog loaded;
+    try {
+      loaded = metalake.loadCatalog(catalog.getName());
+    } catch (Exception e) {
+      throw new TrinoException(
+          GravitinoErrorCode.GRAVITINO_OPERATION_FAILED,
+          String.format(
+              "Failed to resolve the secrets of catalog %s in metalake %s: %s",
+              catalog.getName(), catalog.getMetalake(), toErrorMessage(e)),
+          e);
+    }
+    Map<String, String> properties = new HashMap<>(catalog.getProperties());
+    try {
+      Map<String, String> secrets = loaded.supportsSecrets().getSecrets();
+      if (secrets != null && !secrets.isEmpty()) {
+        properties.putAll(secrets);
+      }
+    } catch (UnsupportedOperationException | NotFoundException e) {
+      // Catalog may not support secrets, or older servers lack /secrets.
+      LOG.debug(
+          "Skipping getSecrets for catalog %s in metalake %s: %s",
+          catalog.getName(), catalog.getMetalake(), e.toString());
+    } catch (Exception e) {
+      // Fail-fast on RESTException and unexpected errors: this connector is cached, so continuing
+      // with masked ****** properties would leave a permanently broken catalog after a transient
+      // /secrets failure.
+      throw new TrinoException(
+          GravitinoErrorCode.GRAVITINO_OPERATION_FAILED,
+          String.format(
+              "Failed to resolve the secrets of catalog %s in metalake %s: %s",
+              catalog.getName(), catalog.getMetalake(), toErrorMessage(e)),
+          e);
+    }
+    try {
+      properties.putAll(
+          CredentialInfos.nonExpiringCredentialInfo(loaded.supportsCredentials().getCredentials()));
+    } catch (UnsupportedOperationException | NotFoundException e) {
+      // Catalog may not support credential vending, or older servers lack /credentials.
+      LOG.debug(
+          "Skipping getCredentials for catalog %s in metalake %s: %s",
+          catalog.getName(), catalog.getMetalake(), e.toString());
+    } catch (RESTException e) {
+      LOG.warn(
+          "Failed to resolve getCredentials for catalog %s in metalake %s; continuing without"
+              + " static credential info: %s",
+          catalog.getName(), catalog.getMetalake(), e.toString());
+    } catch (Exception e) {
+      throw new TrinoException(
+          GravitinoErrorCode.GRAVITINO_OPERATION_FAILED,
+          String.format(
+              "Failed to resolve the credentials of catalog %s in metalake %s: %s",
+              catalog.getName(), catalog.getMetalake(), toErrorMessage(e)),
+          e);
+    }
+    if (properties.equals(catalog.getProperties())) {
+      return catalog;
+    }
+    return new GravitinoCatalog(
+        catalog.getMetalake(),
+        catalog.getProvider(),
+        catalog.getName(),
+        properties,
+        catalog.getLastModifiedTime());
   }
 
   public interface TrinoCatalogNameHandler {
