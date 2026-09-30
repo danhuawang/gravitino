@@ -1,0 +1,40 @@
+Datastrato Enterprise
+Copyright 2024-2026 Datastrato Inc.
+
+This product includes software developed at Datastrato Inc.
+(https://datastrato.ai/).
+
+This file reproduces NOTICE text required by the Apache License,
+Version 2.0, section 4(d), for Apache-licensed components in this image
+or binary package. The component list is the verified Datastrato
+Enterprise 1.3.0 scan (dev/docker/licenses-catalog/data).
+
+Apache Gravitino
+Copyright 2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+The initial code for the Gravitino project was donated
+to the ASF by Datastrato (https://datastrato.ai/) copyright 2023-2024.
+
+========================================================================
+Apache-licensed components in this package
+========================================================================
+
+aiofile 3.9.0 [MCP server]
+async-timeout 5.0.1 [MCP server]
+caio 0.9.25 [MCP server]
+cryptography 46.0.7 [MCP server]
+cyclopts 4.16.1 [MCP server]
+fastmcp 3.2.0 [MCP server]
+importlib-metadata 8.7.1, 9.0.0 [MCP server]
+jsonschema-path 0.5.0 [MCP server]
+opentelemetry-api 1.42.1 [MCP server]
+packaging 25.0, 26.0 [MCP server]
+pathable 0.6.0 [MCP server]
+py-key-value-aio 0.4.5 [MCP server]
+python-multipart 0.0.27 [MCP server]
+sniffio 1.3.1 [MCP server]
+sortedcontainers 2.4.0 [MCP server]
+uv 0.12.19 [MCP server]

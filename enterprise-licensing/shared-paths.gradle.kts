@@ -40,6 +40,10 @@ val enterpriseFilePatterns: List<String> by extra(
     "core/src/test/java/org/apache/gravitino/listener/api/event/scim/**",
     "datastrato-server/**",
     "dev/ci/test_*license_headers.sh",
+    "dev/docker/licenses-catalog/*.py",
+    "dev/docker/licenses-catalog/*.sh",
+    "dev/docker/licenses-catalog/README.md",
+    "dev/docker/licenses-catalog/test/run.sh",
     "dev/headers/*.py",
     "dev/headers/*.sh",
     "dev/headers/test/run.sh",
@@ -80,7 +84,9 @@ val generatedFilePatterns: List<String> by extra(
     "**/build/**",
     "**/dist/**",
     "**/node_modules/**",
-    "**/venv/**"
+    "**/venv/**",
+    "dev/docker/licenses-catalog/data/**",
+    "dev/docker/licenses-catalog/test/fixtures/**"
     // keep-sorted end
   )
 )

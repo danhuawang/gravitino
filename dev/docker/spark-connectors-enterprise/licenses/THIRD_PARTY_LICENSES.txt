@@ -1,0 +1,40 @@
+Third-party components in this image (30 entries).
+========================================================================
+Datastrato Enterprise third-party catalog (generated)
+========================================================================
+
+License: Apache-2.0
+com.fasterxml.jackson.core:jackson-annotations 2.15.2
+com.fasterxml.jackson.core:jackson-core 2.15.2
+com.fasterxml.jackson.core:jackson-databind 2.15.2
+com.fasterxml.jackson.datatype:jackson-datatype-jdk8 2.15.2
+com.fasterxml.jackson.datatype:jackson-datatype-jsr310 2.15.2
+com.github.ben-manes.caffeine:caffeine (shaded) 2.9.3
+com.google.code.findbugs:jsr305 3.0.2
+com.google.errorprone:error_prone_annotations 2.21.1
+com.google.guava:failureaccess 1.0.1
+com.google.guava:guava 32.1.3-jre
+com.google.guava:guava (shaded by Apache Kyuubi) 33.4.8-jre
+com.google.guava:listenablefuture 9999.0-empty-to-avoid-conflict-with-guava
+commons-io 2.18.0
+jakarta.validation:jakarta.validation-api 2.0.2
+org.apache.commons:commons-collections4 4.4
+org.apache.commons:commons-lang3 3.14.0
+org.apache.httpcomponents.client5:httpclient5 5.4.4
+org.apache.httpcomponents.core5:httpcore5 5.3.4
+org.apache.httpcomponents.core5:httpcore5-h2 5.3.4
+org.apache.kyuubi:kyuubi-spark-connector-common_2.12 1.11.0
+org.apache.kyuubi:kyuubi-spark-connector-common_2.13 1.11.0
+org.apache.kyuubi:kyuubi-spark-connector-hive_2.12 1.11.0
+org.apache.kyuubi:kyuubi-spark-connector-hive_2.13 1.11.0
+org.apache.kyuubi:kyuubi-util 1.11.0
+org.apache.kyuubi:kyuubi-util-scala_2.12 1.11.0
+org.apache.kyuubi:kyuubi-util-scala_2.13 1.11.0
+
+License: BSD-2-Clause
+bigint (embedded in jackson-core) 2.15.2
+
+License: MIT
+FastDoubleParser (embedded in jackson-core) 2.15.2
+org.checkerframework:checker-qual (shaded) 3.37.0
+org.slf4j:slf4j-api 2.0.17

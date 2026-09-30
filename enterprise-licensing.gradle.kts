@@ -16,6 +16,7 @@
  *   3. check-non-enterprise-files-have-asf-header
  *   4. check-connector-jars
  *   5. test-enterprise-license-headers (live negative regression)
+ *   6. test-image-license-catalog
  */
 
 apply(from = "enterprise-licensing/shared-paths.gradle.kts")
@@ -31,10 +32,18 @@ tasks.register<Exec>("testEnterpriseLicenseHeaders") {
   commandLine("bash", "dev/ci/test_enterprise_license_headers.sh")
 }
 
+tasks.register<Exec>("testImageLicenseCatalog") {
+  group = "verification"
+  description = "Checks generated image/binary third-party catalogs against the CSV."
+  workingDir = rootDir
+  commandLine("bash", "dev/docker/licenses-catalog/test/run.sh")
+}
+
 tasks.named("check").get().dependsOn(
   tasks.named("checkEnterpriseFilesHaveEnterpriseOnlyHeader"),
   tasks.named("checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader"),
   tasks.named("checkNonEnterpriseFilesHaveAsfHeader"),
   tasks.named("testEnterpriseLicenseHeaders"),
+  tasks.named("testImageLicenseCatalog"),
   tasks.named("checkConnectorJars")
 )

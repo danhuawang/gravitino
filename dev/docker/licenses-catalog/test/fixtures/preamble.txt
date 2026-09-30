@@ -1,0 +1,3 @@
+Datastrato Enterprise is a mixed distribution.
+
+Do not treat this binary package as Apache-licensed as a whole.

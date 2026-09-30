@@ -1,0 +1,1169 @@
+section,component,versions,license,license_source,images
+Platform,@mui/material,5.15.19,MIT,bundle-banner,Marquez web bundle
+Platform,@mui/x-charts,7.15.0,MIT,bundle-banner,Marquez web bundle
+Platform,@mui/x-date-pickers,6.10.2,MIT,bundle-banner,Marquez web bundle
+Platform,@next/env,14.2.35,MIT,scan,Web UI
+Platform,@remix-run/router,1.7.2,MIT,bundle-banner,Marquez web bundle
+Platform,@swc/helpers,0.5.5,Apache-2.0,scan,Web UI
+Platform,@types/http-proxy,1.17.11,MIT,scan,Marquez web
+Platform,@types/node,20.4.7,MIT,scan,Marquez web
+Platform,accepts,1.3.8,MIT,scan,Marquez web
+Platform,aiofile,3.9.0,Apache-2.0,scan,MCP server
+Platform,annotated-types,0.7.0,MIT,override,MCP server
+Platform,anyio,4.9.0,MIT,scan,MCP server
+Platform,aopalliance,1.0,Public domain,scan,Server
+Platform,array-flatten,1.1.1,MIT,scan,Marquez web
+Platform,async-timeout,5.0.1,Apache-2.0,scan,MCP server
+Platform,attrs,25.3.0,MIT,scan,MCP server
+Platform,authlib,1.7.2,BSD-3-Clause,scan,MCP server
+Platform,autocommand,2.2.2,LGPL-3.0,scan,MCP server
+Platform,backports-tarfile,1.2.0,MIT,scan,MCP server
+Platform,beartype,0.22.9,MIT,scan,MCP server
+Platform,bigint (embedded in AWS SDK third-party-jackson-core),2.31.73,BSD-2-Clause,class-check,Server
+Platform,bigint (embedded in jackson-core),2.15.2,BSD-2-Clause,class-check,Server
+Platform,body-parser,1.20.2,MIT,scan,Marquez web
+Platform,braces,3.0.3,MIT,scan,Marquez web
+Platform,busboy,1.6.0,MIT,scan,Web UI
+Platform,bytes,3.1.2,MIT,scan,Marquez web
+Platform,cachetools,7.1.4,MIT,scan,MCP server
+Platform,caio,0.9.25,Apache-2.0,scan,MCP server
+Platform,call-bind,1.0.2,MIT,scan,Marquez web
+Platform,caniuse-lite,1.0.30001702,CC-BY-4.0,scan,Web UI
+Platform,certifi,2025.7.14,MPL-2.0,scan,MCP server
+Platform,cffi,2.0.0,MIT,scan,MCP server
+Platform,cglib,3.3.0,Apache-2.0,scan,Server
+Platform,ch.qos.logback:logback-access,1.2.13,EPL-1.0 OR LGPL-2.1,scan,Marquez
+Platform,ch.qos.logback:logback-classic,1.2.13,EPL-1.0 OR LGPL-2.1,scan,Marquez
+Platform,ch.qos.logback:logback-core,1.2.13,EPL-1.0 OR LGPL-2.1,scan,Marquez
+Platform,checker-qual,3.43.0,MIT,scan,Server
+Platform,classnames,,MIT,bundle-banner,Marquez web bundle
+Platform,click,8.2.1,BSD-3-Clause,scan,MCP server
+Platform,client-only,0.0.1,MIT,scan,Web UI
+Platform,com.alibaba:qlexpress4,4.0.3,Apache-2.0,scan,Server
+Platform,com.aliyun.odps:odps-jdbc (jar with dependencies),3.8.8,Apache-2.0,override,Server
+Platform,com.aliyun.odps:odps-sdk-commons,0.52.1-public,Apache-2.0,scan,Server
+Platform,com.aliyun.odps:odps-sdk-core,0.52.1-public,Apache-2.0,scan,Server
+Platform,com.aliyun.oss:aliyun-sdk-oss,"3.10.2, 3.13.0",Apache-2.0,project,Server
+Platform,com.aliyun:aliyun-http-apache,0.2.16-beta,Apache-2.0,project,Server
+Platform,com.aliyun:aliyun-java-auth,0.2.16-beta,Apache-2.0,project,Server
+Platform,com.aliyun:aliyun-java-core,0.2.16-beta,Apache-2.0,project,Server
+Platform,com.aliyun:aliyun-java-sdk-core,"3.4.0, 4.5.10",Apache-2.0,project,Server
+Platform,com.aliyun:aliyun-java-sdk-ecs,4.2.0,Apache-2.0,project,Server
+Platform,com.aliyun:aliyun-java-sdk-kms,"2.7.0, 2.11.0",Apache-2.0,scan,Server
+Platform,com.aliyun:aliyun-java-sdk-ram,"3.0.0, 3.1.0",Apache-2.0,project;scan,Server
+Platform,com.aliyun:aliyun-java-sdk-sts,3.0.0,Apache-2.0,project,Server
+Platform,com.aliyun:credentials-java,0.3.12,Apache-2.0,scan,Server
+Platform,com.aliyun:tea,"1.3.1, 1.4.2",Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-accessanalyzer,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-account,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-acm,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-acmpca,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-alexaforbusiness,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-amplify,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-amplifybackend,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-amplifyuibuilder,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-api-gateway,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-apigatewaymanagementapi,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-apigatewayv2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-appconfig,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-appconfigdata,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-appflow,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-appintegrations,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-applicationautoscaling,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-applicationcostprofiler,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-applicationinsights,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-appmesh,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-appregistry,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-apprunner,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-appstream,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-appsync,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-arczonalshift,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-athena,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-auditmanager,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-augmentedairuntime,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-autoscaling,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-autoscalingplans,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-backup,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-backupgateway,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-backupstorage,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-batch,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-billingconductor,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-braket,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-budgets,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-bundle,1.12.367,Apache-2.0,project,Server
+Platform,com.amazonaws:aws-java-sdk-chime,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-chimesdkidentity,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-chimesdkmediapipelines,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-chimesdkmeetings,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-chimesdkmessaging,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-chimesdkvoice,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloud9,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudcontrolapi,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-clouddirectory,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudformation,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudfront,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudhsm,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudhsmv2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudsearch,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudtrail,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudwatch,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudwatchevidently,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudwatchmetrics,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cloudwatchrum,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codeartifact,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codebuild,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codecommit,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codedeploy,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codeguruprofiler,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codegurureviewer,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codepipeline,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codestar,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codestarconnections,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-codestarnotifications,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cognitoidentity,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cognitoidp,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-cognitosync,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-comprehend,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-comprehendmedical,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-computeoptimizer,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-config,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-connect,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-connectcampaign,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-connectcases,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-connectcontactlens,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-connectparticipant,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-connectwisdom,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-controltower,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-core,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-costandusagereport,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-costexplorer,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-customerprofiles,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-dataexchange,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-datapipeline,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-datasync,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-dax,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-detective,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-devicefarm,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-devopsguru,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-directconnect,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-directory,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-discovery,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-dlm,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-dms,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-docdb,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-docdbelastic,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-drs,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-dynamodb,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ebs,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ec2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ec2instanceconnect,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ecr,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ecrpublic,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ecs,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-efs,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-eks,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-elasticache,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-elasticbeanstalk,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-elasticinference,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-elasticloadbalancing,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-elasticloadbalancingv2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-elasticsearch,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-elastictranscoder,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-emr,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-emrcontainers,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-emrserverless,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-eventbridge,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-events,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-finspace,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-finspacedata,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-fis,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-fms,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-forecast,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-forecastquery,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-frauddetector,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-fsx,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-gamelift,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-gamesparks,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-glacier,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-globalaccelerator,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-glue,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-gluedatabrew,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-greengrass,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-greengrassv2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-groundstation,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-guardduty,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-health,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-healthlake,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-honeycode,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iam,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iamrolesanywhere,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-identitystore,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-imagebuilder,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-importexport,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-inspector,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-inspector2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iot,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iot1clickdevices,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iot1clickprojects,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotanalytics,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotdeviceadvisor,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotevents,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ioteventsdata,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotfleethub,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotfleetwise,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotjobsdataplane,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotroborunner,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotsecuretunneling,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotsitewise,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotthingsgraph,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iottwinmaker,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-iotwireless,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ivs,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ivschat,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-kafka,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-kafkaconnect,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-kendra,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-keyspaces,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-kinesis,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-kinesisanalyticsv2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-kinesisvideo,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-kinesisvideosignalingchannels,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-kms,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lakeformation,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lambda,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lex,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lexmodelbuilding,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lexmodelsv2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lexruntimev2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-licensemanager,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-licensemanagerusersubscriptions,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lightsail,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-location,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-logs,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lookoutequipment,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lookoutforvision,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-lookoutmetrics,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-machinelearning,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-macie,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-macie2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mainframemodernization,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-managedblockchain,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-managedgrafana,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-marketplacecatalog,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-marketplacecommerceanalytics,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-marketplaceentitlement,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-marketplacemeteringservice,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mechanicalturkrequester,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mediaconnect,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mediaconvert,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-medialive,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mediapackage,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mediapackagevod,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mediastore,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mediastoredata,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mediatailor,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-memorydb,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mgn,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-migrationhub,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-migrationhubconfig,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-migrationhuborchestrator,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-migrationhubrefactorspaces,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-migrationhubstrategyrecommendations,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mobile,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-models,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mq,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-mwaa,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-neptune,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-networkfirewall,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-networkmanager,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-nimblestudio,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-oam,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-omics,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-opensearch,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-opensearchserverless,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-opsworks,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-opsworkscm,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-organizations,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-outposts,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-panorama,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-personalize,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-personalizeevents,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-personalizeruntime,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-pi,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-pinpoint,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-pinpointemail,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-pinpointsmsvoice,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-pinpointsmsvoicev2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-pipes,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-polly,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-pricing,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-private5g,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-prometheus,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-proton,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-qldb,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-qldbsession,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-quicksight,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ram,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-rds,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-rdsdata,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-recyclebin,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-redshift,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-redshiftdataapi,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-redshiftserverless,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-rekognition,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-resiliencehub,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-resourceexplorer2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-resourcegroups,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-resourcegroupstaggingapi,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-robomaker,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-route53,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-route53recoverycluster,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-route53recoverycontrolconfig,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-route53recoveryreadiness,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-route53resolver,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-s3,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-s3control,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-s3outposts,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sagemaker,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sagemakeredgemanager,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sagemakerfeaturestoreruntime,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sagemakergeospatial,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sagemakermetrics,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sagemakerruntime,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-savingsplans,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-scheduler,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-schemas,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-secretsmanager,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-securityhub,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-securitylake,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-serverlessapplicationrepository,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-servermigration,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-servicecatalog,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-servicediscovery,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-servicequotas,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ses,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sesv2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-shield,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-signer,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-simpledb,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-simpleworkflow,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-simspaceweaver,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-snowball,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-snowdevicemanagement,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sns,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sqs,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ssm,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ssmcontacts,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ssmincidents,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ssmsap,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sso,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ssoadmin,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-ssooidc,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-stepfunctions,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-storagegateway,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-sts,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-support,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-supportapp,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-swf-libraries,1.11.22,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-synthetics,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-textract,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-timestreamquery,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-timestreamwrite,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-transcribe,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-transfer,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-translate,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-voiceid,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-waf,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-wafv2,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-wellarchitected,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-workdocs,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-worklink,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-workmail,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-workmailmessageflow,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-workspaces,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-workspacesweb,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:aws-java-sdk-xray,1.12.367,Apache-2.0,scan,Server
+Platform,com.amazonaws:jmespath-java,1.12.367,Apache-2.0,scan,Server
+Platform,com.azure:azure-core,"1.50.0, 1.57.1",MIT,scan,Server
+Platform,com.azure:azure-core-http-netty,"1.15.2, 1.16.3",MIT,scan,Server
+Platform,com.azure:azure-identity,"1.13.1, 1.18.2",MIT,scan,Server
+Platform,com.azure:azure-json,"1.1.0, 1.5.1",MIT,scan,Server
+Platform,com.azure:azure-security-keyvault-keys,4.10.6,MIT,scan,Server
+Platform,com.azure:azure-storage-blob,"12.27.0, 12.33.3",MIT,scan,Server
+Platform,com.azure:azure-storage-common,"12.26.0, 12.32.2",MIT,scan,Server
+Platform,com.azure:azure-storage-file-datalake,"12.20.0, 12.26.3",MIT,scan,Server
+Platform,com.azure:azure-storage-internal-avro,"12.12.0, 12.18.2",MIT,scan,Server
+Platform,com.azure:azure-xml,"1.0.0, 1.2.1",MIT,scan,Server
+Platform,com.carrotsearch:hppc,0.7.2,Apache-2.0,scan,Server
+Platform,com.clickhouse:clickhouse-jdbc (all-in-one jar),0.7.1,Apache-2.0,override,Server
+Platform,com.fasterxml.jackson.core:jackson-annotations,"2.12.7, 2.14.2, 2.15.2, 2.17.0, 2.18.3, 2.18.4, 2.21",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.core:jackson-core,"2.12.7, 2.13.4, 2.14.2, 2.14.3, 2.15.2, 2.17.0, 2.18.3, 2.18.4.1, 2.21.3",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.core:jackson-databind,"2.12.7.1, 2.14.2, 2.14.3, 2.15.2, 2.17.0, 2.18.3, 2.18.4, 2.21.3",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.dataformat:jackson-dataformat-cbor,2.12.6,Apache-2.0,scan,Server
+Platform,com.fasterxml.jackson.dataformat:jackson-dataformat-csv,2.14.2,Apache-2.0,scan,Server
+Platform,com.fasterxml.jackson.dataformat:jackson-dataformat-xml,"2.13.5, 2.18.3",Apache-2.0,scan,Server
+Platform,com.fasterxml.jackson.dataformat:jackson-dataformat-yaml,"2.14.2, 2.15.2, 2.17.0",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.datatype:jackson-datatype-guava,2.17.0,Apache-2.0,scan,Marquez
+Platform,com.fasterxml.jackson.datatype:jackson-datatype-jdk8,"2.14.2, 2.15.2, 2.17.0, 2.18.3, 2.21.3",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.datatype:jackson-datatype-joda,2.17.0,Apache-2.0,scan,Marquez
+Platform,com.fasterxml.jackson.datatype:jackson-datatype-jsr310,"2.13.5, 2.14.2, 2.15.2, 2.17.0, 2.18.3, 2.18.4, 2.21.3",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.jakarta.rs:jackson-jakarta-rs-base,2.16.1,Apache-2.0,scan,Server
+Platform,com.fasterxml.jackson.jakarta.rs:jackson-jakarta-rs-json-provider,2.16.1,Apache-2.0,scan,Server
+Platform,com.fasterxml.jackson.jaxrs:jackson-jaxrs-base,"2.12.7, 2.15.2, 2.17.0, 2.18.3",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.jaxrs:jackson-jaxrs-json-provider,"2.12.7, 2.15.2, 2.17.0, 2.18.3",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.module:jackson-module-blackbird,2.17.0,Apache-2.0,scan,Marquez
+Platform,com.fasterxml.jackson.module:jackson-module-jakarta-xmlbind-annotations,2.16.1,Apache-2.0,scan,Server
+Platform,com.fasterxml.jackson.module:jackson-module-jaxb-annotations,"2.12.7, 2.15.2, 2.17.0, 2.18.3, 2.21.3",Apache-2.0,scan,Marquez; Server
+Platform,com.fasterxml.jackson.module:jackson-module-parameter-names,2.17.0,Apache-2.0,scan,Marquez
+Platform,com.fasterxml.woodstox:woodstox-core,"5.4.0, 6.5.1, 7.0.0",Apache-2.0,scan,Server
+Platform,com.fasterxml:classmate,1.7.0,Apache-2.0,scan,Marquez
+Platform,com.github.ben-manes.caffeine:caffeine,2.9.3,Apache-2.0,scan,Server
+Platform,com.github.davidmoten:guava-mini,0.1.3,Apache-2.0,scan,Server
+Platform,com.github.davidmoten:hilbert-curve,0.2.2,Apache-2.0,scan,Server
+Platform,com.github.luben:zstd-jni,1.5.2-1,BSD-2-Clause,scan,Server
+Platform,com.github.seancfoley.ipaddress:ipaddress,5.5.1,Apache-2.0,project,Server
+Platform,com.github.stephenc.jcip:jcip-annotations,1.0-1,Apache-2.0,scan,Server
+Platform,com.google.android:annotations,4.1.1.4,Apache-2.0,scan,Server
+Platform,com.google.api-client:google-api-client,"2.0.1, 2.7.2",Apache-2.0,scan,Server
+Platform,com.google.api-client:google-api-client-jackson2,2.0.1,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:gapic-google-cloud-storage-v2,"2.28.0-alpha, 2.67.0",Apache-2.0,scan,Server
+Platform,com.google.api.grpc:grpc-google-cloud-bigquerystorage-v1,3.27.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:grpc-google-cloud-bigquerystorage-v1beta1,0.199.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:grpc-google-cloud-bigquerystorage-v1beta2,0.199.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:grpc-google-cloud-storage-v2,"2.28.0-alpha, 2.67.0",Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-cloud-bigquerystorage-v1,3.27.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-cloud-bigquerystorage-v1alpha,3.27.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-cloud-bigquerystorage-v1beta,3.27.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-cloud-bigquerystorage-v1beta1,0.199.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-cloud-bigquerystorage-v1beta2,0.199.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-cloud-kms-v1,0.185.0,Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-cloud-monitoring-v3,"1.64.0, 3.92.0",Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-cloud-storage-v2,"2.28.0-alpha, 2.67.0",Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-common-protos,"2.22.0, 2.70.0",Apache-2.0,scan,Server
+Platform,com.google.api.grpc:proto-google-iam-v1,"1.1.7, 1.65.0",Apache-2.0,scan,Server
+Platform,com.google.api:gax,"2.35.0, 2.79.0",BSD-3-Clause,scan,Server
+Platform,com.google.api:gax-grpc,"2.35.0, 2.79.0",BSD-3-Clause,scan,Server
+Platform,com.google.api:gax-httpjson,"2.35.0, 2.79.0",BSD-3-Clause,scan,Server
+Platform,com.google.apis:google-api-services-bigquery,v2-rev20251012-2.0.0,Apache-2.0,scan,Server
+Platform,com.google.apis:google-api-services-iamcredentials,v1-rev20211203-2.0.0,Apache-2.0,scan,Server
+Platform,com.google.apis:google-api-services-storage,"v1-rev135-1.24.1, v1-rev20220705-2.0.0, v1-rev20260204-2.0.0",Apache-2.0,scan,Server
+Platform,com.google.auth:google-auth-library-credentials,"1.14.0, 1.28.0",BSD-3-Clause,scan,Server
+Platform,com.google.auth:google-auth-library-oauth2-http,"1.14.0, 1.28.0",BSD-3-Clause,scan,Server
+Platform,com.google.auto.value:auto-value-annotations,"1.11.0, 1.11.1",Apache-2.0,scan,Server
+Platform,com.google.cloud.bigdataoss:gcs-connector,"1.9.4-hadoop3, hadoop2-2.2.18",Apache-2.0,scan,Server
+Platform,com.google.cloud.bigdataoss:gcs-connector (shaded),hadoop2-2.2.18,Apache-2.0,override,Server
+Platform,com.google.cloud.bigdataoss:gcsio,"1.9.4, 2.2.18",Apache-2.0,scan,Server
+Platform,com.google.cloud.bigdataoss:util,"1.9.4, 2.2.18",Apache-2.0,scan,Server
+Platform,com.google.cloud.bigdataoss:util-hadoop,"1.9.4-hadoop3, hadoop2-2.2.18",Apache-2.0,scan,Server
+Platform,com.google.cloud.gcs.analytics:client,1.2.3,Apache-2.0,scan,Server
+Platform,com.google.cloud.gcs.analytics:gcs-analytics-core,1.2.3,Apache-2.0,scan,Server
+Platform,com.google.cloud:google-cloud-bigquery,2.65.0,Apache-2.0,scan,Server
+Platform,com.google.cloud:google-cloud-bigquerystorage,3.27.0,Apache-2.0,scan,Server
+Platform,com.google.cloud:google-cloud-core,"2.5.4, 2.69.0",Apache-2.0,scan,Server
+Platform,com.google.cloud:google-cloud-core-grpc,"2.25.0, 2.69.0",Apache-2.0,scan,Server
+Platform,com.google.cloud:google-cloud-core-http,"2.25.0, 2.69.0",Apache-2.0,scan,Server
+Platform,com.google.cloud:google-cloud-kms,2.94.0,Apache-2.0,scan,Server
+Platform,com.google.cloud:google-cloud-monitoring,"1.82.0, 3.92.0",Apache-2.0,scan,Server
+Platform,com.google.cloud:google-cloud-storage,"2.28.0, 2.67.0",Apache-2.0,scan,Server
+Platform,com.google.code.findbugs:jsr305,3.0.2,Apache-2.0,scan,Marquez; Server
+Platform,com.google.code.gson:gson,"2.8.9, 2.9.0, 2.10, 2.10.1, 2.11.0, 2.12.1, 2.13.1",Apache-2.0,scan,Server
+Platform,com.google.errorprone:error_prone_annotations,"2.5.1, 2.10.0, 2.18.0, 2.21.1, 2.23.0, 2.27.0, 2.33.0, 2.45.0",Apache-2.0,scan,Marquez; Server
+Platform,com.google.flatbuffers:flatbuffers-java,"1.12.0, 24.3.25, 25.2.10",Apache-2.0,scan,Server
+Platform,com.google.guava:failureaccess,"1.0.1, 1.0.2, 1.0.3",Apache-2.0,scan,Marquez; Server
+Platform,com.google.guava:guava,"29.0-android, 30.1.1-jre, 31.1-jre, 32.1.1-jre, 32.1.3-jre, 33.0.0-jre, 33.3.1-jre, 33.5.0-jre, 33.6.0-jre",Apache-2.0,scan,Marquez; Server
+Platform,com.google.guava:listenablefuture,"1.0, 9999.0-empty-to-avoid-conflict-with-guava",Apache-2.0,scan,Marquez; Server
+Platform,com.google.http-client:google-http-client,"1.42.3, 1.45.0, 2.1.0",Apache-2.0,scan,Server
+Platform,com.google.http-client:google-http-client-apache-v2,"1.42.3, 2.1.0",Apache-2.0,scan,Server
+Platform,com.google.http-client:google-http-client-appengine,"1.43.3, 2.1.0",Apache-2.0,scan,Server
+Platform,com.google.http-client:google-http-client-gson,"1.42.3, 1.45.0, 2.1.0",Apache-2.0,scan,Server
+Platform,com.google.http-client:google-http-client-jackson2,"1.42.3, 2.1.0",Apache-2.0,scan,Server
+Platform,com.google.inject.servlet:guice-servlet,4.0,Apache-2.0,scan,Server
+Platform,com.google.inject:guice,4.0,Apache-2.0,scan,Server
+Platform,com.google.j2objc:j2objc-annotations,"1.3, 2.8, 3.0.0, 3.1",Apache-2.0,scan,Server
+Platform,com.google.oauth-client:google-oauth-client,"1.34.1, 1.39.0",Apache-2.0,scan,Server
+Platform,com.google.protobuf:protobuf-java,"2.4.1, 2.5.0, 3.7.1, 3.19.6",BSD-3-Clause,scan,Server
+Platform,com.google.re2j:re2j,1.1,BSD-3-Clause,scan,Server
+Platform,com.googlecode.concurrent-trees:concurrent-trees,2.6.0,Apache-2.0,scan,Server
+Platform,com.h2database:h2,2.2.224,MPL-2.0,scan,Server
+Platform,com.helger:profiler,1.1.1,Apache-2.0,scan,Marquez; Server
+Platform,com.jcraft:jsch,0.1.55,BSD-3-Clause,scan,Server
+Platform,com.jolbox:bonecp,0.8.0.RELEASE,Apache-2.0,scan,Server
+Platform,com.kstruct:gethostname4j,1.0.0,MIT,scan,Server
+Platform,com.microsoft.azure:azure-keyvault-core,1.0.0,MIT,scan,Server
+Platform,com.microsoft.azure:azure-storage,7.0.1,Apache-2.0,scan,Server
+Platform,com.microsoft.azure:msal4j,"1.16.1, 1.23.1",MIT,scan,Server
+Platform,com.microsoft.azure:msal4j-persistence-extension,1.3.0,MIT,scan,Server
+Platform,com.microsoft.sqlserver:mssql-jdbc,12.8.1,MIT,scan,Server
+Platform,com.nimbusds:content-type,2.3,Apache-2.0,scan,Server
+Platform,com.nimbusds:lang-tag,1.7,Apache-2.0,scan,Server
+Platform,com.nimbusds:nimbus-jose-jwt,"9.8.1, 9.30.1, 10.9",Apache-2.0,scan,Server
+Platform,com.nimbusds:oauth2-oidc-sdk,11.9.1,Apache-2.0,scan,Server
+Platform,com.oracle.database.jdbc:ojdbc11,23.26.2.0.0,LicenseRef-Oracle-FDHUT-1.0,override,Server
+Platform,com.squareup.okhttp3:okhttp,"3.12.13, 4.9.3",Apache-2.0,scan,Server
+Platform,com.squareup.okio:okio,1.15.0,Apache-2.0,scan,Server
+Platform,com.sun.activation:jakarta.activation,2.0.1,BSD-3-Clause,scan,Server
+Platform,com.sun.activation:javax.activation,1.2.0,CDDL-1.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,com.sun.istack:istack-commons-runtime,3.0.5,CDDL-1.1 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,com.sun.jersey.contribs:jersey-guice,1.19.4,CDDL-1.1,scan,Server
+Platform,com.sun.jersey:jersey-bundle,1.19.3,CDDL-1.1,scan,Server
+Platform,com.sun.jersey:jersey-client,1.19.4,CDDL-1.1 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,com.sun.jersey:jersey-core,1.19.4,CDDL-1.1 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,com.sun.jersey:jersey-servlet,1.19.4,CDDL-1.1 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,com.sun.xml.bind.jaxb:isorelax,20090621,MIT,project,Server
+Platform,com.sun.xml.bind:jaxb-core,2.3.0,CDDL-1.1,scan,Server
+Platform,com.sun.xml.bind:jaxb-impl,2.3.0,CDDL-1.1,scan,Server
+Platform,com.sun:activation,1.1,CDDL-1.0,scan,Server
+Platform,com.sun:mail,1.4.1,CDDL-1.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,com.thoughtworks.paranamer:paranamer,2.3,BSD-3-Clause,scan,Server
+Platform,com.vlkan:flatbuffers,1.2.0-3f79e055,Apache-2.0,scan,Server
+Platform,commons-beanutils,"1.9.4, 1.11.0",Apache-2.0,scan,Server
+Platform,commons-cli,"1.2, 1.9.0",Apache-2.0,scan,Server
+Platform,commons-codec,"1.4, 1.9, 1.13, 1.15, 1.16.1, 1.17.1, 1.18.0, 1.19.0",Apache-2.0,scan,Marquez; Server
+Platform,commons-collections,3.2.2,Apache-2.0,scan,Server
+Platform,commons-configuration,1.6,Apache-2.0,scan,Server
+Platform,commons-dbcp,1.4,Apache-2.0,scan,Server
+Platform,commons-digester,1.8,Apache-2.0,scan,Server
+Platform,commons-io,"2.8.0, 2.11.0, 2.16.1, 2.18.0, 2.20.0",Apache-2.0,scan,Server
+Platform,commons-lang,"2.4, 2.6",Apache-2.0,scan,Server
+Platform,commons-logging,"1.1.1, 1.1.3, 1.2, 1.3.0, 1.3.4, 1.3.5",Apache-2.0,scan,Marquez; Server
+Platform,commons-net,3.9.0,Apache-2.0,scan,Server
+Platform,commons-pool,"1.5.4, 1.6",Apache-2.0,scan,Server
+Platform,content-disposition,0.5.4,MIT,scan,Marquez web
+Platform,content-type,1.0.5,MIT,scan,Marquez web
+Platform,cookie,0.6.0,MIT,scan,Marquez web
+Platform,cookie-signature,1.0.6,MIT,scan,Marquez web
+Platform,CPython (python-build-standalone),3.10.21,PSF-2.0,program,MCP server
+Platform,cryptography,46.0.7,Apache-2.0,scan,MCP server
+Platform,cyclopts,4.16.1,Apache-2.0,scan,MCP server
+Platform,debug,2.6.9,MIT,scan,Marquez web
+Platform,depd,2.0.0,MIT,scan,Marquez web
+Platform,destroy,1.2.0,MIT,scan,Marquez web
+Platform,dev.failsafe:failsafe,3.3.2,Apache-2.0,scan,Server
+Platform,dnsjava,2.1.7,BSD-2-Clause,scan,Server
+Platform,dnspython,2.7.0,ISC,scan,MCP server
+Platform,docstring-parser,0.17.0,MIT,scan,MCP server
+Platform,docutils,0.22,LicenseRef-Public-Domain AND BSD-2-Clause,override,MCP server
+Platform,ee-first,1.1.1,MIT,scan,Marquez web
+Platform,email-validator,2.2.0,Public domain,scan,MCP server
+Platform,encodeurl,1.0.2,MIT,scan,Marquez web
+Platform,escape-html,1.0.3,MIT,scan,Marquez web
+Platform,etag,1.8.1,MIT,scan,Marquez web
+Platform,eventemitter3,4.0.7,MIT,scan,Marquez web
+Platform,exceptiongroup,1.3.0,MIT,override,MCP server
+Platform,express,4.19.2,MIT,scan,Marquez web
+Platform,fakeredis,2.34.1,BSD-3-Clause,scan,MCP server
+Platform,FastDoubleParser (embedded in AWS SDK third-party-jackson-core),2.31.73,MIT,class-check,Server
+Platform,FastDoubleParser (embedded in jackson-core),"2.14.2, 2.15.2, 2.17.0, 2.18.3, 2.21.3",MIT,class-check,Marquez; Server
+Platform,fastmcp,3.2.0,Apache-2.0,scan,MCP server
+Platform,fill-range,7.1.1,MIT,scan,Marquez web
+Platform,finalhandler,1.2.0,MIT,scan,Marquez web
+Platform,follow-redirects,1.15.6,MIT,scan,Marquez web
+Platform,Font Awesome Free,6.4.2,MIT AND CC-BY-4.0 AND OFL-1.1,bundle-banner,Marquez web bundle
+Platform,forwarded,0.2.0,MIT,scan,Marquez web
+Platform,fresh,0.5.2,MIT,scan,Marquez web
+Platform,function-bind,1.1.1,MIT,scan,Marquez web
+Platform,get-intrinsic,1.2.1,MIT,scan,Marquez web
+Platform,graceful-fs,4.2.11,ISC,scan,Web UI
+Platform,grpc-context,1.66.0,Apache-2.0,project,Server
+Platform,h11,0.16.0,MIT,scan,MCP server
+Platform,has,1.0.3,MIT,scan,Marquez web
+Platform,has-proto,1.0.1,MIT,scan,Marquez web
+Platform,has-symbols,1.0.3,MIT,scan,Marquez web
+Platform,http-errors,2.0.0,MIT,scan,Marquez web
+Platform,http-proxy,1.18.1,MIT,scan,Marquez web
+Platform,http-proxy-middleware,2.0.6,MIT,scan,Marquez web
+Platform,httpcore,1.0.9,BSD-3-Clause,scan,MCP server
+Platform,httpx,0.28.1,BSD-3-Clause,scan,MCP server
+Platform,httpx-auth,0.23.1,MIT,scan,MCP server
+Platform,httpx-sse,0.4.1,MIT,scan,MCP server
+Platform,iceberg-aliyun,1.11.0,Apache-2.0,scan,Server
+Platform,iceberg-api,1.11.0,Apache-2.0,scan,Server
+Platform,iceberg-aws,1.11.0,Apache-2.0,scan,Server
+Platform,iceberg-azure,1.11.0,Apache-2.0,scan,Server
+Platform,iceberg-common,1.11.0,Apache-2.0,scan,Server
+Platform,iceberg-core,1.11.0,Apache-2.0,scan,Server
+Platform,iceberg-gcp,1.11.0,Apache-2.0,scan,Server
+Platform,iceberg-hive-metastore,1.11.0,Apache-2.0,scan,Server
+Platform,iconv-lite,0.4.24,MIT,scan,Marquez web
+Platform,idna,3.10,BSD-3-Clause,scan,MCP server
+Platform,importlib-metadata,"8.7.1, 9.0.0",Apache-2.0,scan,MCP server
+Platform,inherits,2.0.4,ISC,scan,Marquez web
+Platform,io.airlift:aircompressor,"0.8, 0.10, 0.27, 2.0.3",Apache-2.0,scan,Server
+Platform,io.airlift:slice,0.29,Apache-2.0,scan,Server
+Platform,io.dropwizard.logback:logback-throttling-appender,1.1.11,Apache-2.0,scan,Marquez
+Platform,io.dropwizard.metrics:metrics-annotation,4.2.25,Apache-2.0,scan,Marquez; Server
+Platform,io.dropwizard.metrics:metrics-caffeine,4.2.25,Apache-2.0,scan,Server
+Platform,io.dropwizard.metrics:metrics-core,"3.2.4, 4.2.25",Apache-2.0,scan,Marquez; Server
+Platform,io.dropwizard.metrics:metrics-healthchecks,4.2.25,Apache-2.0,scan,Marquez; Server
+Platform,io.dropwizard.metrics:metrics-jdbi3,4.2.25,Apache-2.0,scan,Marquez
+Platform,io.dropwizard.metrics:metrics-jersey2,4.2.25,Apache-2.0,scan,Marquez; Server
+Platform,io.dropwizard.metrics:metrics-jetty9,4.2.25,Apache-2.0,scan,Marquez
+Platform,io.dropwizard.metrics:metrics-jmx,4.2.25,Apache-2.0,project;scan,Marquez; Server
+Platform,io.dropwizard.metrics:metrics-json,4.2.25,Apache-2.0,scan,Marquez; Server
+Platform,io.dropwizard.metrics:metrics-jvm,4.2.25,Apache-2.0,scan,Marquez; Server
+Platform,io.dropwizard.metrics:metrics-logback,4.2.25,Apache-2.0,scan,Marquez
+Platform,io.dropwizard.metrics:metrics-servlets,4.2.25,Apache-2.0,scan,Marquez; Server
+Platform,io.dropwizard:dropwizard-assets,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-configuration,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-core,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-db,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-health,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-http2,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-jackson,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-jdbi3,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-jersey,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-jetty,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-json-logging,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-lifecycle,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-logging,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-metrics,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-request-logging,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-servlets,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-util,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.dropwizard:dropwizard-validation,2.1.12,Apache-2.0,scan,Marquez
+Platform,io.github.aviatorscript:aviator,5.9.0,Apache-2.0,scan,Server
+Platform,io.grpc:grpc-api,1.66.0,Apache-2.0,scan,Server
+Platform,io.jsonwebtoken:jjwt-api,0.11.1,Apache-2.0,scan,Server
+Platform,io.jsonwebtoken:jjwt-gson,0.11.1,Apache-2.0,scan,Server
+Platform,io.jsonwebtoken:jjwt-impl,0.11.1,Apache-2.0,scan,Server
+Platform,io.leangen.geantyref:geantyref,1.3.14,Apache-2.0,scan,Marquez
+Platform,io.micrometer:micrometer-commons,1.12.2,Apache-2.0,scan,Server
+Platform,io.micrometer:micrometer-core,1.12.2,Apache-2.0,scan,Server
+Platform,io.micrometer:micrometer-observation,1.12.2,Apache-2.0,scan,Server
+Platform,io.netty:netty-all,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-buffer,"4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.1.119.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-codec,"4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-base,4.2.13.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-compression,4.2.13.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-dns,"4.1.86.Final, 4.1.109.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-haproxy,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-http,"4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-http2,"4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-marshalling,4.2.13.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-memcache,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-mqtt,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-protobuf,4.2.13.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-redis,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-smtp,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-socks,"4.1.86.Final, 4.1.110.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-stomp,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-codec-xml,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-common,"4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.1.119.Final, 4.2.13.Final",Apache-2.0,project;scan,Server
+Platform,io.netty:netty-handler,"4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-handler-proxy,"4.1.86.Final, 4.1.110.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-handler-ssl-ocsp,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-resolver,"4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-resolver-dns,"4.1.86.Final, 4.1.109.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-resolver-dns-classes-macos,"4.1.86.Final, 4.1.109.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-resolver-dns-native-macos,"4.1.86.Final, 4.1.109.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-tcnative-boringssl-static,"2.0.65.Final, 2.0.74.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-tcnative-classes,"2.0.65.Final, 2.0.74.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-transport,"4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-transport-classes-epoll,"4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-transport-classes-kqueue,"4.1.86.Final, 4.1.110.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-transport-native-epoll,"4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-transport-native-kqueue,"4.1.86.Final, 4.1.110.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-transport-native-unix-common,"4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final",Apache-2.0,scan,Server
+Platform,io.netty:netty-transport-rxtx,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-transport-sctp,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.netty:netty-transport-udt,4.1.86.Final,Apache-2.0,scan,Server
+Platform,io.opentracing:opentracing-api,0.33.0,Apache-2.0,scan,Server
+Platform,io.opentracing:opentracing-noop,0.33.0,Apache-2.0,scan,Server
+Platform,io.opentracing:opentracing-util,0.33.0,Apache-2.0,scan,Server
+Platform,io.projectreactor.reactor-core:reactor-core,3.5.20,Apache-2.0,project,Server
+Platform,io.prometheus:simpleclient,0.16.0,Apache-2.0,scan,Marquez; Server
+Platform,io.prometheus:simpleclient_common,0.16.0,Apache-2.0,scan,Marquez; Server
+Platform,io.prometheus:simpleclient_dropwizard,0.16.0,Apache-2.0,scan,Marquez; Server
+Platform,io.prometheus:simpleclient_hotspot,0.16.0,Apache-2.0,scan,Marquez
+Platform,io.prometheus:simpleclient_servlet,0.16.0,Apache-2.0,scan,Marquez; Server
+Platform,io.prometheus:simpleclient_servlet_common,0.16.0,Apache-2.0,scan,Marquez; Server
+Platform,io.prometheus:simpleclient_tracer_common,0.16.0,Apache-2.0,scan,Marquez; Server
+Platform,io.prometheus:simpleclient_tracer_otel,0.16.0,Apache-2.0,scan,Marquez; Server
+Platform,io.prometheus:simpleclient_tracer_otel_agent,0.16.0,Apache-2.0,scan,Marquez; Server
+Platform,io.swagger.core.v3:swagger-annotations,2.2.20,Apache-2.0,scan,Server
+Platform,ipaddr.js,1.9.1,MIT,scan,Marquez web
+Platform,is-extglob,2.1.1,MIT,scan,Marquez web
+Platform,is-glob,4.0.3,MIT,scan,Marquez web
+Platform,is-number,7.0.0,MIT,scan,Marquez web
+Platform,is-plain-obj,3.0.0,MIT,scan,Marquez web
+Platform,jakarta.activation:jakarta.activation-api,"1.2.1, 1.2.2, 2.1.0",BSD-3-Clause,scan,Marquez; Server
+Platform,jakarta.annotation:jakarta.annotation-api,"1.3.5, 2.1.1",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,jakarta.inject:jakarta.inject-api,"1.0.5, 2.0.1",Apache-2.0,scan,Marquez; Server
+Platform,jakarta.json.bind:jakarta.json.bind-api,2.0.0,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,jakarta.json:jakarta.json-api,2.1.3,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,jakarta.servlet:jakarta.servlet-api,"4.0.4, 6.0.0",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,jakarta.transaction:jakarta.transaction-api,1.3.3,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,jakarta.validation:jakarta.validation-api,"2.0.2, 3.0.2",Apache-2.0,scan,Marquez; Server
+Platform,jakarta.ws.rs:jakarta.ws.rs-api,"2.1.6, 3.1.0",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,jakarta.xml.bind:jakarta.xml.bind-api,"2.3.2, 2.3.3, 3.0.1",BSD-3-Clause,project;scan,Marquez; Server
+Platform,jaraco-classes,3.4.0,MIT,scan,MCP server
+Platform,jaraco-context,"6.1.0, 6.1.2",MIT,scan,MCP server
+Platform,jaraco-functools,"4.4.0, 4.5.0",MIT,scan,MCP server
+Platform,jaraco-text,4.0.0,MIT,scan,MCP server
+Platform,javax.annotation:javax.annotation-api,1.3.2,CDDL-1.1,scan,Server
+Platform,javax.mail:mail,1.4.7,CDDL-1.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,javax.servlet:javax.servlet-api,"3.1.0, 4.0.1",CDDL-1.1,scan,Marquez; Server
+Platform,javax.websocket:javax.websocket-api,1.1,CDDL-1.1,scan,Marquez
+Platform,javax.ws.rs:javax.ws.rs-api,2.1.1,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,javax.ws.rs:jsr311-api,1.1.1,CDDL-1.0,override,Server
+Platform,javax.xml.bind:jaxb-api,2.3.0,BSD-3-Clause,project,Server
+Platform,javax.xml.bind:jaxb-api,"2.2.11, 2.2.12, 2.3.1",CDDL-1.1,scan,Server
+Platform,javolution,5.5.1,BSD-2-Clause,scan,Server
+Platform,jdo-api,3.0.1,Apache-2.0,scan,Server
+Platform,jeepney,0.9.0,MIT,scan,MCP server
+Platform,jline,"2.12, 2.14.3, 2.14.6",BSD-3-Clause,scan,Server
+Platform,joda-time,"2.8.1, 2.9.9, 2.12.6",Apache-2.0,scan,Marquez; Server
+Platform,joserfc,1.7.1,BSD-3-Clause,scan,MCP server
+Platform,jsonref,1.1.0,MIT,scan,MCP server
+Platform,jsonschema,4.25.0,MIT,scan,MCP server
+Platform,jsonschema-path,0.5.0,Apache-2.0,scan,MCP server
+Platform,jsonschema-specifications,2025.4.1,MIT,scan,MCP server
+Platform,jta,1.1,CDDL-1.0,scan,Server
+Platform,keyring,25.7.0,MIT,scan,MCP server
+Platform,kotlin-stdlib,1.4.10,Apache-2.0,project,Server
+Platform,kotlin-stdlib-common,1.4.10,Apache-2.0,project,Server
+Platform,kubectl,1.31.6,Apache-2.0,program,Web UI
+Platform,libfb303,0.9.3,Apache-2.0,project,Server
+Platform,lodash,,MIT,bundle-banner,Marquez web bundle
+Platform,lombok,1.18.20,MIT,scan,Server
+Platform,markdown-it-py,3.0.0,MIT,scan,MCP server
+Platform,marquez-api,0.51.0-SNAPSHOT,Apache-2.0,scan,Marquez
+Platform,mavenEcjBootstrapAgent,,EPL-2.0,project,Marquez
+Platform,mcp,1.27.2,MIT,scan,MCP server
+Platform,mdurl,0.1.2,MIT,scan,MCP server
+Platform,media-typer,0.3.0,MIT,scan,Marquez web
+Platform,merge-descriptors,1.0.1,MIT,scan,Marquez web
+Platform,methods,1.1.2,MIT,scan,Marquez web
+Platform,micromatch,4.0.5,MIT,scan,Marquez web
+Platform,mime,1.6.0,MIT,scan,Marquez web
+Platform,mime-db,1.52.0,MIT,scan,Marquez web
+Platform,mime-types,2.1.35,MIT,scan,Marquez web
+Platform,moment,,MIT,bundle-banner,Marquez web bundle
+Platform,more-itertools,"10.8.0, 11.1.0",MIT,scan,MCP server
+Platform,ms,"2.0.0, 2.1.3",MIT,scan,Marquez web
+Platform,nanoid,3.3.19,MIT,scan,Web UI
+Platform,negotiator,0.6.3,MIT,scan,Marquez web
+Platform,net.bytebuddy:byte-buddy,1.14.9,Apache-2.0,project,Marquez
+Platform,net.java.dev.msv:xsdlib,"2013.6.1, 2022.7",BSD-3-Clause,scan,Server
+Platform,net.minidev:accessors-smart,2.5.0,Apache-2.0,scan,Server
+Platform,net.minidev:json-smart,1.3.2,Apache-2.0,scan,Server
+Platform,net.openhft:zero-allocation-hashing,"0.16, 0.26ea0",Apache-2.0,scan,Server
+Platform,net.sf.jpam:jpam,1.1,Apache-2.0,scan,Server
+Platform,net.sf.opencsv:opencsv,2.3,Apache-2.0,scan,Server
+Platform,net.sourceforge.argparse4j:argparse4j,0.9.0,MIT,project,Marquez
+Platform,"next (Next.js, including its precompiled dependencies)",14.2.35,MIT,scan,Web UI
+Platform,object-inspect,1.12.3,MIT,scan,Marquez web
+Platform,ognl,"3.2.15, 3.4.7",Apache-2.0,scan,Server
+Platform,okio-jvm,2.8.0,Apache-2.0,project,Server
+Platform,on-finished,2.4.1,MIT,scan,Marquez web
+Platform,openapi-pydantic,0.5.1,MIT,scan,MCP server
+Platform,opencensus-api,0.31.1,Apache-2.0,project,Server
+Platform,opencensus-contrib-http-util,0.31.1,Apache-2.0,project,Server
+Platform,openlineage-java,1.29.0,Apache-2.0,project,Server
+Platform,opensearch-java,2.19.0,Apache-2.0,scan,Server
+Platform,opentelemetry-api,1.42.1,Apache-2.0,scan,MCP server
+Platform,org.abego.treelayout:org.abego.treelayout.core,1.0.3,BSD-3-Clause,scan,Server
+Platform,org.antlr:antlr-runtime,"3.5.2, 3.5.3",BSD-3-Clause,scan,Server
+Platform,org.antlr:antlr4,4.11.1,BSD-3-Clause,scan,Server
+Platform,org.antlr:antlr4-runtime,"4.9.3, 4.11.1, 4.13.1",BSD-3-Clause,scan,Marquez; Server
+Platform,org.antlr:ST4,"4.0.4, 4.3.4",BSD-3-Clause,scan,Server
+Platform,org.apache.arrow:arrow-c-data,18.3.0,Apache-2.0,scan,Server
+Platform,org.apache.arrow:arrow-compression,4.0.0,Apache-2.0,scan,Server
+Platform,org.apache.arrow:arrow-dataset,18.3.0,Apache-2.0,scan,Server
+Platform,org.apache.arrow:arrow-format,"4.0.0, 17.0.0, 18.3.0",Apache-2.0,project;scan,Server
+Platform,org.apache.arrow:arrow-memory-core,"4.0.0, 17.0.0, 18.3.0",Apache-2.0,project;scan,Server
+Platform,org.apache.arrow:arrow-memory-netty,"4.0.0, 17.0.0, 18.3.0",Apache-2.0,project;scan,Server
+Platform,org.apache.arrow:arrow-memory-netty-buffer-patch,"17.0.0, 18.3.0",Apache-2.0,scan,Server
+Platform,org.apache.arrow:arrow-vector,"4.0.0, 17.0.0, 18.3.0",Apache-2.0,scan,Server
+Platform,org.apache.avro:avro,"1.7.7, 1.11.4, 1.12.1",Apache-2.0,project;scan,Server
+Platform,org.apache.commons:commons-collections4,4.4,Apache-2.0,scan,Server
+Platform,org.apache.commons:commons-compress,"1.20, 1.21, 1.26.2, 1.27.1, 1.28.0",Apache-2.0,scan,Server
+Platform,org.apache.commons:commons-configuration2,"2.8.0, 2.10.1",Apache-2.0,scan,Server
+Platform,org.apache.commons:commons-csv,1.12.0,Apache-2.0,scan,Server
+Platform,org.apache.commons:commons-dbcp2,2.11.0,Apache-2.0,scan,Server
+Platform,org.apache.commons:commons-lang3,"3.12.0, 3.14.0, 3.16.0, 3.17.0, 3.18.0, 3.20.0",Apache-2.0,scan,Marquez; Server
+Platform,org.apache.commons:commons-math3,3.1.1,Apache-2.0,scan,Server
+Platform,org.apache.commons:commons-pool2,2.12.0,Apache-2.0,scan,Server
+Platform,org.apache.commons:commons-text,"1.10.0, 1.11.0",Apache-2.0,scan,Marquez; Server
+Platform,org.apache.curator:curator-client,5.2.0,Apache-2.0,scan,Server
+Platform,org.apache.curator:curator-framework,5.2.0,Apache-2.0,scan,Server
+Platform,org.apache.curator:curator-recipes,5.2.0,Apache-2.0,scan,Server
+Platform,org.apache.datasketches:datasketches-java,4.2.0,Apache-2.0,scan,Server
+Platform,org.apache.datasketches:datasketches-memory,2.2.0,Apache-2.0,scan,Server
+Platform,org.apache.directory.scimple:scim-core,1.0.0-M1,Apache-2.0,scan,Server
+Platform,org.apache.directory.scimple:scim-server,1.0.0-M1,Apache-2.0,scan,Server
+Platform,org.apache.directory.scimple:scim-spec-protocol,1.0.0-M1,Apache-2.0,scan,Server
+Platform,org.apache.directory.scimple:scim-spec-schema,1.0.0-M1,Apache-2.0,scan,Server
+Platform,org.apache.hadoop.thirdparty:hadoop-client-runtime,3.3.6,BSD-3-Clause,scan,Server
+Platform,org.apache.hadoop.thirdparty:hadoop-shaded-guava,1.1.1,Apache-2.0,project,Server
+Platform,org.apache.hadoop.thirdparty:hadoop-shaded-protobuf_3_7,1.1.1,Apache-2.0,project,Server
+Platform,org.apache.hadoop:hadoop-aliyun,3.3.6,Apache-2.0,scan,Server
+Platform,org.apache.hadoop:hadoop-annotations,3.3.6,Apache-2.0,scan,Server
+Platform,org.apache.hadoop:hadoop-auth,"2.7.1, 3.3.6",Apache-2.0,scan,Server
+Platform,org.apache.hadoop:hadoop-aws,3.3.6,Apache-2.0,scan,Server
+Platform,org.apache.hadoop:hadoop-azure,3.3.6,Apache-2.0,scan,Server
+Platform,org.apache.hadoop:hadoop-client,3.3.6,Apache-2.0,scan,Server
+Platform,org.apache.hadoop:hadoop-client-api,3.3.6,Apache-2.0,project,Server
+Platform,org.apache.hadoop:hadoop-common,"2.7.1, 3.3.6",Apache-2.0,scan,Server
+Platform,org.apache.hadoop:hadoop-hdfs,3.3.6,Apache-2.0,project,Server
+Platform,org.apache.hadoop:hadoop-hdfs-client,3.3.6,Apache-2.0,scan,Server
+Platform,org.apache.hadoop:hadoop-mapreduce-client-common,3.3.6,Apache-2.0,project,Server
+Platform,org.apache.hadoop:hadoop-mapreduce-client-core,3.3.6,Apache-2.0,project,Server
+Platform,org.apache.hadoop:hadoop-mapreduce-client-jobclient,3.3.6,Apache-2.0,project,Server
+Platform,org.apache.hadoop:hadoop-yarn-api,3.3.6,Apache-2.0,project,Server
+Platform,org.apache.hadoop:hadoop-yarn-client,3.3.6,Apache-2.0,project,Server
+Platform,org.apache.hadoop:hadoop-yarn-common,3.3.6,Apache-2.0,project,Server
+Platform,org.apache.hive.shims:hive-shims-0.23,"2.3.9, 2.3.10, 3.1.3",Apache-2.0,scan,Server
+Platform,org.apache.hive.shims:hive-shims-common,"2.3.9, 2.3.10, 3.1.3",Apache-2.0,scan,Server
+Platform,org.apache.hive.shims:hive-shims-scheduler,"2.3.9, 2.3.10, 3.1.3",Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-classification,3.1.3,Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-common,"2.3.9, 2.3.10, 3.1.3",Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-exec,2.3.9,Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-jdbc,2.3.9,Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-metastore,"2.3.9, 2.3.10, 3.1.3",Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-serde,"2.3.9, 2.3.10, 3.1.3",Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-service-rpc,"2.3.9, 2.3.10, 3.1.3",Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-shims,"2.3.9, 2.3.10, 3.1.3",Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-standalone-metastore,3.1.3,Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-storage-api,"2.4.0, 2.7.0, 2.8.1",Apache-2.0,scan,Server
+Platform,org.apache.hive:hive-upgrade-acid,3.1.3,Apache-2.0,scan,Server
+Platform,org.apache.httpcomponents.client5:httpclient5,"5.2.1, 5.4, 5.4.4, 5.6.1",Apache-2.0,scan,Marquez; Server
+Platform,org.apache.httpcomponents.core5:httpcore5,"5.2.1, 5.3, 5.3.4, 5.4",Apache-2.0,scan,Marquez; Server
+Platform,org.apache.httpcomponents.core5:httpcore5-h2,"5.2, 5.3, 5.3.4, 5.4",Apache-2.0,scan,Marquez; Server
+Platform,org.apache.httpcomponents:httpasyncclient,4.1.5,Apache-2.0,scan,Marquez; Server
+Platform,org.apache.httpcomponents:httpclient,"4.4.1, 4.5.13, 4.5.14",Apache-2.0,scan,Marquez; Server
+Platform,org.apache.httpcomponents:httpcore,"4.4.1, 4.4.13, 4.4.15, 4.4.16",Apache-2.0,project;scan,Marquez; Server
+Platform,org.apache.httpcomponents:httpcore-nio,4.4.16,Apache-2.0,scan,Marquez; Server
+Platform,org.apache.kafka:kafka-clients,3.4.0,Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-admin,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-client,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-common,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-core,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-crypto,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-identity,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-server,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-simplekdc,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerb-util,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerby-asn1,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerby-config,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerby-pkix,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerby-util,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:kerby-xdr,"1.0.1, 2.0.3",Apache-2.0,scan,Server
+Platform,org.apache.kerby:token-provider,"1.0.1, 2.0.3",Apache-2.0,project;scan,Server
+Platform,org.apache.logging.log4j:log4j-1.2-api,2.25.4,Apache-2.0,scan,Server
+Platform,org.apache.logging.log4j:log4j-api,2.25.4,Apache-2.0,scan,Server
+Platform,org.apache.logging.log4j:log4j-core,2.25.4,Apache-2.0,scan,Server
+Platform,org.apache.logging.log4j:log4j-layout-template-json,2.25.4,Apache-2.0,scan,Server
+Platform,org.apache.logging.log4j:log4j-slf4j2-impl,2.25.4,Apache-2.0,scan,Server
+Platform,org.apache.orc:orc-core,"1.3.4, 1.5.8, 1.9.2",Apache-2.0,project;scan,Server
+Platform,org.apache.orc:orc-shims,"1.5.8, 1.9.2",Apache-2.0,scan,Server
+Platform,org.apache.paimon:paimon-api,1.2.0,Apache-2.0,scan,Server
+Platform,org.apache.paimon:paimon-codegen,1.2.0,Apache-2.0,project,Server
+Platform,org.apache.paimon:paimon-codegen-loader,1.2.0,Apache-2.0,scan,Server
+Platform,org.apache.paimon:paimon-common,1.2.0,Apache-2.0,scan,Server
+Platform,org.apache.paimon:paimon-core,1.2.0,Apache-2.0,scan,Server
+Platform,org.apache.paimon:paimon-format,1.2.0,Apache-2.0,scan,Server
+Platform,org.apache.paimon:paimon-hive-catalog,1.2.0,Apache-2.0,scan,Server
+Platform,org.apache.paimon:paimon-hive-common,1.2.0,Apache-2.0,project,Server
+Platform,org.apache.paimon:paimon-oss,1.2.0,Apache-2.0,scan,Server
+Platform,org.apache.paimon:paimon-s3,1.2.0,Apache-2.0,scan,Server
+Platform,org.apache.parquet:parquet-column,1.15.1,Apache-2.0,project,Server
+Platform,org.apache.parquet:parquet-common,1.15.1,Apache-2.0,scan,Server
+Platform,org.apache.parquet:parquet-encoding,1.15.1,Apache-2.0,scan,Server
+Platform,org.apache.parquet:parquet-format,2.10.0,Apache-2.0,scan,Server
+Platform,org.apache.parquet:parquet-format-structures,1.15.1,Apache-2.0,project,Server
+Platform,org.apache.parquet:parquet-hadoop,1.15.1,Apache-2.0,project,Server
+Platform,org.apache.parquet:parquet-jackson,1.15.1,Apache-2.0,project,Server
+Platform,org.apache.ranger:ranger-intg,2.4.0,Apache-2.0,scan,Server
+Platform,org.apache.ranger:ranger-plugins-common,2.4.0,Apache-2.0,scan,Server
+Platform,org.apache.thrift:libthrift,"0.9.3, 0.12.0, 0.14.1",Apache-2.0,scan,Server
+Platform,org.apache.yetus:audience-annotations,0.5.0,Apache-2.0,scan,Server
+Platform,org.apache.zookeeper:zookeeper,3.6.3,Apache-2.0,scan,Server
+Platform,org.apache.zookeeper:zookeeper-jute,3.6.3,Apache-2.0,scan,Server
+Platform,org.apache:jsp-api,2.1,Apache-2.0,project,Server
+Platform,org.aspectj.runtime:aspectjrt,1.9.24,EPL-2.0,override,Server
+Platform,org.casbin:jcasbin,1.99.0,Apache-2.0,scan,Server
+Platform,org.checkerframework.checker.qual:checker-qual,"3.37.0, 3.42.0",MIT,scan,Server
+Platform,org.codehaus.jackson:jackson-core-asl,1.9.13,Apache-2.0,scan,Server
+Platform,org.codehaus.jackson:jackson-jaxrs,1.9.13,Apache-2.0,scan,Server
+Platform,org.codehaus.jackson:jackson-mapper-asl,1.9.13,Apache-2.0,scan,Server
+Platform,org.codehaus.jettison:jettison,"1.1, 1.5.4",Apache-2.0,project;scan,Server
+Platform,org.codehaus.mojo:animal-sniffer-annotations,"1.17, 1.26",MIT,scan,Server
+Platform,org.codehaus.woodstox:stax2-api,4.2.2,BSD-2-Clause,scan,Server
+Platform,org.codehaus.woodstox:stax2-api,4.2.1,BSD-3-Clause,scan,Server
+Platform,org.dhatim:dropwizard-sentry,2.1.6,MIT,scan,Marquez
+Platform,org.eclipse.jetty.http2:http2-common,9.4.53.v20231009,EPL-2.0,project,Marquez
+Platform,org.eclipse.jetty.http2:http2-hpack,9.4.53.v20231009,EPL-2.0,project,Marquez
+Platform,org.eclipse.jetty.http2:http2-server,9.4.53.v20231009,EPL-2.0,project,Marquez
+Platform,org.eclipse.jetty.servlet-api:servlet-api,5.0.2,Apache-2.0,scan,Server
+Platform,org.eclipse.jetty.toolchain.setuid:jetty-setuid-java,1.0.4,Apache-2.0,scan,Marquez
+Platform,org.eclipse.jetty.websocket:websocket-api,9.4.51.v20230217,EPL-2.0,project,Server
+Platform,org.eclipse.jetty.websocket:websocket-client,9.4.51.v20230217,EPL-2.0,project,Server
+Platform,org.eclipse.jetty.websocket:websocket-common,9.4.51.v20230217,EPL-2.0,project,Server
+Platform,org.eclipse.jetty:jetty-alpn-server,9.4.53.v20231009,Apache-2.0,scan,Marquez
+Platform,org.eclipse.jetty:jetty-client,9.4.51.v20230217,Apache-2.0,scan,Server
+Platform,org.eclipse.jetty:jetty-continuation,"9.4.53.v20231009, 9.4.58.v20250814",Apache-2.0,scan,Marquez; Server
+Platform,org.eclipse.jetty:jetty-http,"9.4.58.v20250814, 11.0.24",Apache-2.0,scan,Server
+Platform,org.eclipse.jetty:jetty-http,"9.4.51.v20230217, 9.4.53.v20231009",EPL-2.0,project,Marquez; Server
+Platform,org.eclipse.jetty:jetty-io,"9.4.58.v20250814, 11.0.24",Apache-2.0,scan,Server
+Platform,org.eclipse.jetty:jetty-io,"9.4.51.v20230217, 9.4.53.v20231009",EPL-2.0,project,Marquez; Server
+Platform,org.eclipse.jetty:jetty-security,"9.4.53.v20231009, 9.4.58.v20250814, 11.0.24",Apache-2.0,scan,Marquez; Server
+Platform,org.eclipse.jetty:jetty-server,"9.4.53.v20231009, 9.4.58.v20250814, 11.0.24",Apache-2.0,scan,Marquez; Server
+Platform,org.eclipse.jetty:jetty-servlet,"9.4.58.v20250814, 11.0.24",Apache-2.0,scan,Server
+Platform,org.eclipse.jetty:jetty-servlet,9.4.53.v20231009,EPL-2.0,project,Marquez
+Platform,org.eclipse.jetty:jetty-servlets,9.4.58.v20250814,Apache-2.0,scan,Server
+Platform,org.eclipse.jetty:jetty-servlets,9.4.53.v20231009,EPL-2.0,project,Marquez
+Platform,org.eclipse.jetty:jetty-util,"9.4.51.v20230217, 9.4.53.v20231009, 9.4.58.v20250814, 11.0.24",Apache-2.0,scan,Marquez; Server
+Platform,org.eclipse.jetty:jetty-util-ajax,"9.4.51.v20230217, 9.4.53.v20231009, 9.4.58.v20250814",Apache-2.0,scan,Marquez; Server
+Platform,org.eclipse.jetty:jetty-webapp,"9.4.51.v20230217, 9.4.58.v20250814",Apache-2.0,scan,Server
+Platform,org.eclipse.jetty:jetty-xml,"9.4.51.v20230217, 9.4.58.v20250814",Apache-2.0,scan,Server
+Platform,org.eclipse.parsson:parsson,1.1.6,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.eclipse:yasson,2.0.2,BSD-3-Clause,scan,Marquez; Server
+Platform,org.flywaydb:flyway-core,8.5.13,Apache-2.0,scan,Marquez
+Platform,org.fusesource.jansi:jansi,2.4.1,Apache-2.0,scan,Server
+Platform,org.glassfish.hk2.external:aopalliance-repackaged,"2.6.1, 3.0.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.hk2.external:jakarta.inject,2.6.1,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.hk2:hk2-api,"2.6.1, 3.0.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.hk2:hk2-locator,"2.6.1, 3.0.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.hk2:hk2-utils,"2.6.1, 3.0.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.hk2:osgi-resource-locator,1.0.3,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.jaxb:jaxb-core,2.3.0,CDDL-1.1,scan,Server
+Platform,org.glassfish.jaxb:jaxb-runtime,2.3.0,CDDL-1.1,scan,Server
+Platform,org.glassfish.jaxb:txw2,2.3.0,CDDL-1.1,scan,Server
+Platform,org.glassfish.jersey.containers:jersey-container-jetty-http,2.41,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,org.glassfish.jersey.containers:jersey-container-servlet,"2.41, 3.1.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.jersey.containers:jersey-container-servlet-core,"2.41, 3.1.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.jersey.core:jersey-client,"2.41, 3.1.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.jersey.core:jersey-common,"2.41, 3.1.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.jersey.core:jersey-server,"2.41, 3.1.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.jersey.ext:jersey-bean-validation,2.41,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez
+Platform,org.glassfish.jersey.ext:jersey-entity-filtering,2.41,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,org.glassfish.jersey.ext:jersey-metainf-services,2.41,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez
+Platform,org.glassfish.jersey.inject:jersey-hk2,"2.41, 3.1.5",EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish.jersey.media:jersey-media-json-jackson,2.41,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Server
+Platform,org.glassfish:jakarta.el,3.0.4,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez
+Platform,org.glassfish:jakarta.json,2.0.0,EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0,scan,Marquez; Server
+Platform,org.glassfish:javax.json,1.1.4,CDDL-1.1,scan,Server
+Platform,org.hdrhistogram:HdrHistogram,"2.1.12, 2.2.2",BSD-2-Clause,scan,Marquez; Server
+Platform,org.hibernate.validator:hibernate-validator,6.2.5.Final,Apache-2.0,scan,Marquez
+Platform,org.ini4j:ini4j,0.5.4,Apache-2.0,scan,Server
+Platform,org.jacoco:org.jacoco.agent.rt,0.8.8,EPL-2.0,project,Server
+Platform,org.jacoco:org.jacoco.core,0.8.8,EPL-2.0,scan,Server
+Platform,org.javassist:javassist,"3.27.0-GA, 3.29.2-GA, 3.30.2-GA",Apache-2.0 OR LGPL-2.1,scan,Marquez; Server
+Platform,org.jboss.logging:jboss-logging,"3.3.1.Final, 3.4.1.Final",Apache-2.0,scan,Marquez; Server
+Platform,org.jboss.threads:jboss-threads,2.3.6.Final,Apache-2.0,scan,Server
+Platform,org.jboss.xnio:xnio-api,3.8.8.Final,Apache-2.0,scan,Server
+Platform,org.jctools:jctools-core,"3.1.0, 4.0.5, 4.0.6",Apache-2.0,scan,Server
+Platform,org.jdbi:jdbi3-core,3.43.0,Apache-2.0,scan,Marquez
+Platform,org.jdbi:jdbi3-guava,3.39.1,Apache-2.0,scan,Marquez
+Platform,org.jdbi:jdbi3-jackson2,3.40.0,Apache-2.0,scan,Marquez
+Platform,org.jdbi:jdbi3-jodatime2,3.39.1,Apache-2.0,scan,Marquez
+Platform,org.jdbi:jdbi3-json,3.40.0,Apache-2.0,scan,Marquez
+Platform,org.jdbi:jdbi3-postgres,3.40.0,Apache-2.0,scan,Marquez
+Platform,org.jdbi:jdbi3-sqlobject,3.40.0,Apache-2.0,scan,Marquez
+Platform,org.jdom:jdom,1.0,LicenseRef-JDOM,override,Server
+Platform,org.jetbrains:annotations,13.0,Apache-2.0,scan,Server
+Platform,org.jline:jline,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.jline:jline-builtins,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.jline:jline-reader,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.jline:jline-remote-ssh,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.jline:jline-remote-telnet,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.jline:jline-style,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.jline:jline-terminal,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.jline:jline-terminal-jansi,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.jline:jline-terminal-jna,"3.9.0, 3.22.0",BSD-3-Clause,scan,Server
+Platform,org.json:json,20250517,Public domain,scan,Server
+Platform,org.lance:lance-namespace-apache-client,0.7.5,Apache-2.0,scan,Server
+Platform,org.lance:lance-namespace-core,0.7.5,Apache-2.0,scan,Server
+Platform,org.latencyutils:LatencyUtils,2.0.3,Public domain,scan,Marquez; Server
+Platform,org.lz4:lz4-java,1.8.0,Apache-2.0,scan,Server
+Platform,org.mybatis:mybatis,3.5.6,Apache-2.0,scan,Server
+Platform,org.objectweb.asm:asm,"7.1, 9.8",BSD-3-Clause,project;scan,Server
+Platform,org.openapitools:jackson-databind-nullable,0.2.6,Apache-2.0,scan,Server
+Platform,org.opensearch.client:opensearch-rest-client,2.19.0,Apache-2.0,scan,Server
+Platform,org.postgresql:postgresql,42.7.3,BSD-2-Clause,scan,Server
+Platform,org.questdb:jar-jni,1.1.1,Apache-2.0,scan,Server
+Platform,org.reactivestreams:reactive-streams,1.0.4,MIT,scan,Server
+Platform,org.slf4j:jcl-over-slf4j,1.7.36,Apache-2.0,scan,Marquez
+Platform,org.slf4j:jul-to-slf4j,1.7.36,MIT,scan,Marquez
+Platform,org.slf4j:log4j-over-slf4j,1.7.36,Apache-2.0,scan,Marquez
+Platform,org.slf4j:slf4j-api,"1.7.32, 1.7.36, 2.0.17",MIT,scan,Marquez; Server
+Platform,org.slf4j:slf4j-simple,2.0.17,MIT,scan,Server
+Platform,org.threeten:threeten-extra,"1.7.1, 1.8.0",BSD-3-Clause,scan,Server
+Platform,org.threeten:threetenbp,"1.6.8, 1.7.0",BSD-3-Clause,scan,Server
+Platform,org.wildfly.client:wildfly-client-config,1.0.1.Final,Apache-2.0,scan,Server
+Platform,org.wildfly.common:wildfly-common,1.5.4.Final,Apache-2.0,scan,Server
+Platform,org.xerial.snappy:snappy-java,1.1.10.8,Apache-2.0,scan,Server
+Platform,org.yaml:snakeyaml,"2.0, 2.2",Apache-2.0,scan,Marquez; Server
+Platform,packaging,"25.0, 26.0",Apache-2.0 OR BSD-2-Clause,override;scan,MCP server
+Platform,paimon-shade-caffeine,2-2.9.3-0.8.0,Apache-2.0,scan,Server
+Platform,paimon-shade-guava,30-30.1.1-jre-0.8.0,Apache-2.0,scan,Server
+Platform,paimon-shade-jackson,2-2.14.2-0.8.0,Apache-2.0,scan,Server
+Platform,parseurl,1.3.3,MIT,scan,Marquez web
+Platform,path-to-regexp,0.1.7,MIT,scan,Marquez web
+Platform,pathable,0.6.0,Apache-2.0,scan,MCP server
+Platform,picocolors,1.1.1,ISC,scan,Web UI
+Platform,picomatch,2.3.1,MIT,scan,Marquez web
+Platform,pip,"24.2, 26.2.1",MIT,scan,MCP server
+Platform,platformdirs,"4.3.8, 4.4.0",MIT,scan,MCP server
+Platform,postcss,8.4.31,MIT,scan,Web UI
+Platform,prismjs,,MIT,bundle-banner,Marquez web bundle
+Platform,proxy-addr,2.0.7,MIT,scan,Marquez web
+Platform,py-key-value-aio,0.4.5,Apache-2.0,scan,MCP server
+Platform,pycparser,2.22,BSD-3-Clause,scan,MCP server
+Platform,pydantic,2.13.5,MIT,scan,MCP server
+Platform,pydantic-core,2.46.5,MIT,scan,MCP server
+Platform,pydantic-settings,2.10.1,MIT,scan,MCP server
+Platform,pygments,2.19.2,BSD-2-Clause,scan,MCP server
+Platform,pyjwt,2.13.0,MIT,scan,MCP server
+Platform,pyperclip,1.9.0,BSD-3-Clause,scan,MCP server
+Platform,python-dotenv,1.1.1,BSD-3-Clause,scan,MCP server
+Platform,python-multipart,0.0.27,Apache-2.0,scan,MCP server
+Platform,pyyaml,6.0.3,MIT,scan,MCP server
+Platform,qs,6.11.0,BSD-3-Clause,scan,Marquez web
+Platform,range-parser,1.2.1,MIT,scan,Marquez web
+Platform,raw-body,2.5.2,MIT,scan,Marquez web
+Platform,re2j,1.7,Apache-2.0,project,Server
+Platform,react,18.2.0,MIT,bundle-banner;scan,Marquez web bundle; Web UI
+Platform,react-dom,18.2.0,MIT,bundle-banner;scan,Marquez web bundle; Web UI
+Platform,react-is,16.13.1,MIT,bundle-banner,Marquez web bundle
+Platform,react-router,6.14.2,MIT,bundle-banner,Marquez web bundle
+Platform,react-router-dom,6.14.2,MIT,bundle-banner,Marquez web bundle
+Platform,redis,8.0.0,MIT,scan,MCP server
+Platform,referencing,0.36.2,MIT,scan,MCP server
+Platform,regenerator-runtime,,MIT,bundle-banner,Marquez web bundle
+Platform,requires-port,1.0.0,MIT,scan,Marquez web
+Platform,rich,14.1.0,MIT,scan,MCP server
+Platform,rich-rst,1.3.1,MIT,scan,MCP server
+Platform,RoaringBitmap,1.6.14,Apache-2.0,project,Server
+Platform,rome,1.0,Apache-2.0,project,Server
+Platform,rpds-py,0.26.0,MIT,scan,MCP server
+Platform,safe-buffer,5.2.1,MIT,scan,Marquez web
+Platform,safer-buffer,2.1.2,MIT,scan,Marquez web
+Platform,scheduler,0.23.2,MIT,bundle-banner;scan,Marquez web bundle; Web UI
+Platform,secretstorage,3.5.0,BSD-3-Clause,scan,MCP server
+Platform,send,0.18.0,MIT,scan,Marquez web
+Platform,serve-static,1.15.0,MIT,scan,Marquez web
+Platform,setprototypeof,1.2.0,ISC,scan,Marquez web
+Platform,setuptools,84.0.0,MIT,scan,MCP server
+Platform,side-channel,1.0.4,MIT,scan,Marquez web
+Platform,sniffio,1.3.1,Apache-2.0,scan,MCP server
+Platform,software.amazon.awssdk.crt:aws-crt,0.45.1,Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:annotations,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:apache-client,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:arns,"2.31.73, 2.44.4",Apache-2.0,project;scan,Server
+Platform,software.amazon.awssdk:auth,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:aws-core,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:aws-json-protocol,"2.31.73, 2.44.4",Apache-2.0,project;scan,Server
+Platform,software.amazon.awssdk:aws-query-protocol,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:aws-xml-protocol,"2.31.73, 2.44.4",Apache-2.0,project;scan,Server
+Platform,software.amazon.awssdk:checksums,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:checksums-spi,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:cloudwatch,2.44.4,Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:cloudwatch-metric-publisher,2.44.4,Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:crt-core,"2.31.73, 2.44.4",Apache-2.0,project;scan,Server
+Platform,software.amazon.awssdk:dynamodb,2.44.4,Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:endpoints-spi,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:glue,"2.31.73, 2.44.4",Apache-2.0,project;scan,Server
+Platform,software.amazon.awssdk:http-auth,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:http-auth-aws,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:http-auth-aws-crt,2.44.4,Apache-2.0,project,Server
+Platform,software.amazon.awssdk:http-auth-aws-eventstream,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:http-auth-spi,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:http-client-spi,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:iam,"2.31.73, 2.44.4",Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:iam-policy-builder,2.31.73,Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:identity-spi,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:json-utils,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:kms,"2.31.73, 2.44.4",Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:lakeformation,2.44.4,Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:metrics-spi,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:netty-nio-client,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:profiles,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:protocol-core,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:regions,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:retries,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:retries-spi,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:s3,"2.31.73, 2.44.4",Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:s3control,2.44.4,Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:sdk-core,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:smithy-rpcv2-protocol,2.44.4,Apache-2.0,project,Server
+Platform,software.amazon.awssdk:sso,2.44.4,Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:sts,"2.31.73, 2.44.4",Apache-2.0,scan,Server
+Platform,software.amazon.awssdk:utils,"2.31.73, 2.44.4",Apache-2.0,project,Server
+Platform,software.amazon.awssdk:utils-lite,2.44.4,Apache-2.0,scan,Server
+Platform,software.amazon.eventstream:eventstream,1.0.1,Apache-2.0,scan,Server
+Platform,software.amazon.ion:ion-java,1.0.2,Apache-2.0,scan,Server
+Platform,software.amazon.s3.accessgrants:aws-s3-accessgrants-java-plugin,2.4.1,Apache-2.0,scan,Server
+Platform,sortedcontainers,2.4.0,Apache-2.0,scan,MCP server
+Platform,source-map-js,1.2.1,BSD-3-Clause,scan,Web UI
+Platform,sqlline,1.3.0,BSD-3-Clause,scan,Server
+Platform,sse-starlette,3.0.2,BSD-3-Clause,scan,MCP server
+Platform,starlette,1.0.1,BSD-3-Clause,scan,MCP server
+Platform,statuses,2.0.1,MIT,scan,Marquez web
+Platform,streamsearch,1.1.0,MIT,scan,Web UI
+Platform,styled-jsx,5.1.1,MIT,scan,Web UI
+Platform,third-party-jackson-core,2.31.73,Apache-2.0,scan,Server
+Platform,to-regex-range,5.0.1,MIT,scan,Marquez web
+Platform,toidentifier,1.0.1,MIT,scan,Marquez web
+Platform,tomli,"2.2.1, 2.4.0",MIT,scan,MCP server
+Platform,trino-jdbc,435,Apache-2.0,project,Server
+Platform,type-is,1.6.18,MIT,scan,Marquez web
+Platform,typing-extensions,4.15.0,PSF-2.0,scan,MCP server
+Platform,typing-inspection,0.4.4,MIT,scan,MCP server
+Platform,uncalled-for,0.3.2,MIT,scan,MCP server
+Platform,unpipe,1.0.0,MIT,scan,Marquez web
+Platform,use-sync-external-store,,MIT,bundle-banner,Marquez web bundle
+Platform,utils-merge,1.0.1,MIT,scan,Marquez web
+Platform,uv,0.12.19,MIT OR Apache-2.0,program,MCP server
+Platform,uvicorn,0.35.0,BSD-3-Clause,scan,MCP server
+Platform,vary,1.1.2,MIT,scan,Marquez web
+Platform,watchfiles,1.2.0,MIT,scan,MCP server
+Platform,websockets,16.0,BSD-3-Clause,scan,MCP server
+Platform,wheel,0.46.3,MIT,scan,MCP server
+Platform,zipp,"3.23.0, 4.1.0",MIT,scan,MCP server
+Engine connectors,aopalliance,1.0,Public domain,scan,Trino connector
+Engine connectors,bigint (embedded in jackson-core),2.15.2,BSD-2-Clause,class-check,Flink connector; Spark connector; Trino connector
+Engine connectors,com.fasterxml.jackson.core:jackson-annotations,2.15.2,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.fasterxml.jackson.core:jackson-core,2.15.2,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.fasterxml.jackson.core:jackson-databind,2.15.2,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.fasterxml.jackson.datatype:jackson-datatype-guava,2.15.2,Apache-2.0,scan,Trino connector
+Engine connectors,com.fasterxml.jackson.datatype:jackson-datatype-jdk8,2.15.2,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.fasterxml.jackson.datatype:jackson-datatype-joda,2.15.2,Apache-2.0,scan,Trino connector
+Engine connectors,com.fasterxml.jackson.datatype:jackson-datatype-jsr310,2.15.2,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.fasterxml.jackson.module:jackson-module-parameter-names,2.15.2,Apache-2.0,scan,Trino connector
+Engine connectors,com.github.ben-manes.caffeine:caffeine (shaded),2.9.3,Apache-2.0,class-check,Spark connector
+Engine connectors,com.google.code.findbugs:jsr305,3.0.2,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.google.errorprone:error_prone_annotations,2.21.1,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.google.guava:failureaccess,1.0.1,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.google.guava:guava,32.1.3-jre,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.google.guava:guava (shaded by Apache Kyuubi),33.4.8-jre,Apache-2.0,class-check,Spark connector
+Engine connectors,com.google.guava:listenablefuture,9999.0-empty-to-avoid-conflict-with-guava,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,com.google.inject:guice,7.0.0,Apache-2.0,scan,Trino connector
+Engine connectors,commons-io,2.18.0,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,FastDoubleParser (embedded in jackson-core),2.15.2,MIT,class-check,Flink connector; Spark connector; Trino connector
+Engine connectors,io.airlift:json,237,Apache-2.0,scan,Trino connector
+Engine connectors,io.airlift:log,237,Apache-2.0,scan,Trino connector
+Engine connectors,io.opentelemetry.semconv.incubating:opentelemetry-semconv-incubating,1.25.0-alpha,Apache-2.0,project,Trino connector
+Engine connectors,io.opentelemetry.semconv:opentelemetry-semconv,"1.23.1-alpha, 1.25.0-alpha, 1.32.0",Apache-2.0,scan,Trino connector
+Engine connectors,jakarta.inject:jakarta.inject-api,2.0.1,Apache-2.0,scan,Trino connector
+Engine connectors,jakarta.validation:jakarta.validation-api,2.0.2,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,org.apache.commons:commons-collections4,4.4,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,org.apache.commons:commons-lang3,3.14.0,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,org.apache.httpcomponents.client5:httpclient5,5.4.4,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,org.apache.httpcomponents.core5:httpcore5,5.3.4,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,org.apache.httpcomponents.core5:httpcore5-h2,5.3.4,Apache-2.0,scan,Flink connector; Spark connector; Trino connector
+Engine connectors,org.apache.kyuubi:kyuubi-spark-connector-common_2.12,1.11.0,Apache-2.0,scan,Spark connector
+Engine connectors,org.apache.kyuubi:kyuubi-spark-connector-common_2.13,1.11.0,Apache-2.0,scan,Spark connector
+Engine connectors,org.apache.kyuubi:kyuubi-spark-connector-hive_2.12,1.11.0,Apache-2.0,scan,Spark connector
+Engine connectors,org.apache.kyuubi:kyuubi-spark-connector-hive_2.13,1.11.0,Apache-2.0,scan,Spark connector
+Engine connectors,org.apache.kyuubi:kyuubi-util,1.11.0,Apache-2.0,scan,Spark connector
+Engine connectors,org.apache.kyuubi:kyuubi-util-scala_2.12,1.11.0,Apache-2.0,scan,Spark connector
+Engine connectors,org.apache.kyuubi:kyuubi-util-scala_2.13,1.11.0,Apache-2.0,scan,Spark connector
+Engine connectors,org.checkerframework.checker.qual:checker-qual,3.37.0,MIT,scan,Trino connector
+Engine connectors,org.checkerframework:checker-qual (shaded),3.37.0,MIT,class-check,Flink connector; Spark connector
+Engine connectors,org.slf4j:slf4j-api,2.0.17,MIT,scan,Spark connector; Trino connector
+Engine connectors,org.slf4j:slf4j-jdk14,2.0.17,MIT,scan,Trino connector
+Engine connectors,trino-jdbc,"435, 440, 446, 452, 469, 478",Apache-2.0,project,Trino connector
+

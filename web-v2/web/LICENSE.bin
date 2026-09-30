@@ -942,3 +942,34 @@
    WTFPL and MIT license
    
    opener
+
+========================================================================
+Datastrato Enterprise third-party catalog (generated)
+========================================================================
+
+License: Apache-2.0
+@swc/helpers 0.5.5
+kubectl 1.31.6
+
+License: BSD-3-Clause
+source-map-js 1.2.1
+
+License: CC-BY-4.0
+caniuse-lite 1.0.30001702
+
+License: ISC
+graceful-fs 4.2.11
+picocolors 1.1.1
+
+License: MIT
+@next/env 14.2.35
+busboy 1.6.0
+client-only 0.0.1
+nanoid 3.3.19
+next (Next.js, including its precompiled dependencies) 14.2.35
+postcss 8.4.31
+react 18.2.0
+react-dom 18.2.0
+scheduler 0.23.2
+streamsearch 1.1.0
+styled-jsx 5.1.1

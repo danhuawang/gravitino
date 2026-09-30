@@ -1,0 +1,1959 @@
+Datastrato Enterprise
+Copyright 2024-2026 Datastrato Inc.
+
+This product includes software developed at Datastrato Inc.
+(https://datastrato.ai/).
+
+This file reproduces NOTICE text required by the Apache License,
+Version 2.0, section 4(d), for Apache-licensed components in this image
+or binary package. The component list is the verified Datastrato
+Enterprise 1.3.0 scan (dev/docker/licenses-catalog/data).
+
+Apache Gravitino
+Copyright 2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+The initial code for the Gravitino project was donated
+to the ASF by Datastrato (https://datastrato.ai/) copyright 2023-2024.
+
+========================================================================
+Inherited NOTICE text of bundled Apache works
+========================================================================
+Apache Gravitino
+Copyright 2026 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+The initial code for the Gravitino project was donated
+to the ASF by Datastrato (https://datastrato.ai/) copyright 2023-2024.
+
+This distribution also includes proprietary software owned by
+Datastrato Inc., copyright 2024-2026 Datastrato Inc. That proprietary
+software is not licensed under the Apache License, Version 2.0. Its
+use is governed by your written agreement with Datastrato Inc.
+See LICENSE-ENTERPRISE.
+
+The Web UI also has NOTICE files, please see web/NOTICE and
+web-v2/NOTICE for their contents.
+
+Note on inherited notices: as required by the Apache License, Version 2.0,
+section 4(d), this file reproduces the NOTICE text of the third-party works
+redistributed here. Some of those inherited sections describe the upstream
+project's own optional dependencies - marked "This product optionally depends
+on ..." - and point at license files inside that project's distribution rather
+than this one. A license named in such a section does not by itself mean the
+named artifact ships in this package. The "JBoss Logging" entry below is
+inherited from the Netty NOTICE and describes an optional dependency of Netty;
+jboss-logging is not declared in this project's dependencies.
+
+Note on relocated classes: some jars in this distribution are shaded jars
+that bundle third-party classes under a renamed package prefix, for example
+org.apache.gravitino.shaded.com.google for Google Guava. Renaming a class's
+package changes the file, so a relocated copy is a modified version of the
+original, redistributed under the original component's own license; the
+attributions that license requires are the entries in this file and the
+license texts in licenses/. Shaded jars here include the Java client
+runtime, the Hadoop filesystem runtime, the Spark and Flink connector
+runtimes, the maintenance jobs jar and the cloud and secret-backend bundles.
+
+AWS SDK for Java 2.0
+Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+This product includes software developed by
+Amazon Technologies, Inc. (http://www.amazon.com/).
+
+**********************
+THIRD PARTY COMPONENTS
+**********************
+This software includes third party software subject to the following copyrights:
+- XML parsing and utility functions from JetS3t - Copyright 2006-2009 James Murty.
+- PKCS#1 PEM encoded private key parsing and utility functions from oauth.googlecode.com - Copyright 1998-2010 AOL Inc.
+- Apache Commons Lang - https://github.com/apache/commons-lang
+- Netty Reactive Streams - https://github.com/playframework/netty-reactive-streams
+- Jackson-core - https://github.com/FasterXML/jackson-core
+- Jackson-dataformat-cbor - https://github.com/FasterXML/jackson-dataformats-binary
+
+AWS EventStream for Java
+Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+Apache Iceberg
+Copyright 2017-2022 The Apache Software Foundation
+
+Apache Kafka
+Copyright 2011-2023 The Apache Software Foundation
+
+Apache Arrow
+Copyright 2016-2024 The Apache Software Foundation
+
+Apache Spark
+Copyright 2014 and onwards The Apache Software Foundation.
+
+Apache Hive
+Copyright 2008-2023 The Apache Software Foundation
+
+Apache Zeppelin
+Copyright 2016-2023 The Apache Software Foundation
+
+Apache Ranger
+Copyright 2014-2024 The Apache Software Foundation
+
+Kyuubi Spark Hive Connector
+Copyright 2024 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+The Kyuubi Spark Hive Connector jar bundles its own copy of Google Guava
+33.4.8-jre, relocated by Kyuubi to org.apache.kyuubi.shade.com.google.
+
+Micrometer
+Copyright (c) 2017-Present VMware, Inc. All Rights Reserved.
+
+Apache Hadoop
+Copyright 2006 and onwards The Apache Software Foundation.
+
+   This product includes also software developed by :
+     - the W3C consortium (http://www.w3c.org) ,
+     - the SAX project (http://www.saxproject.org)
+
+Java ClassMate library was originally written by Tatu Saloranta (tatu.saloranta@iki.fi)
+
+Other developers who have contributed code are:
+* Brian Langel
+
+# Jackson JSON processor
+
+Jackson is a high-performance, Free/Open Source JSON processing library.
+It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
+been in development since 2007.
+It is currently developed by a community of developers.
+
+## Copyright
+
+Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
+
+## FastDoubleParser
+
+jackson-core bundles a shaded copy of FastDoubleParser <https://github.com/wrandelshofer/FastDoubleParser>.
+That code is available under an MIT license <https://github.com/wrandelshofer/FastDoubleParser/blob/main/LICENSE>
+under the following copyright.
+
+Copyright © 2023 Werner Randelshofer, Switzerland. MIT License.
+Copyright © 2024 Werner Randelshofer, Switzerland. MIT License.
+
+FastDoubleParser includes code derived from the following projects. Jackson 2.15.2
+includes fast_double_parser and fast_float under the Apache 2.0 License; newer
+bundled Jackson versions include them under the licenses listed below:
+
+  fast_double_parser, Copyright (c) 2022 Daniel Lemire. Boost Software License 1.0.
+  <https://github.com/lemire/fast_double_parser>
+
+  fast_float, Copyright (c) 2021 The fast_float authors. MIT License.
+  <https://github.com/fastfloat/fast_float>
+
+  bigint, Copyright 2020 Tim Buktu. 2-clause BSD License.
+  <https://github.com/tbuktu/bigint>
+
+## Schubfach
+
+jackson-core bundles a copy of the Schubfach number writing code
+<https://github.com/c4f7fcce9cb06515/Schubfach>. That code is available under an MIT
+license <https://github.com/c4f7fcce9cb06515/Schubfach/blob/master/todec/LICENSE>
+under the following copyright.
+
+Copyright 2018-2020 Raffaello Giulietti
+
+Dropwizard Hadoop Metrics
+Copyright 2016 Josh Elser
+
+Google Guice - Core Library
+Copyright 2006-2023 Google, Inc.
+
+Google Guice - Extensions - Servlet
+Copyright 2006-2011 Google, Inc.
+
+BoneCP
+Copyright 2010 Wallace Wadge
+
+This product includes software developed by
+Wallace Wadge (http://jolbox.com/).
+
+Android JSON library
+Copyright (C) 2010 The Android Open Source Project
+
+This product includes software developed by
+The Android Open Source Project
+
+Apache Commons BeanUtils
+Copyright 2000-2019 The Apache Software Foundation
+
+Apache Commons CLI
+Copyright 2001-2009 The Apache Software Foundation
+
+Apache Commons Codec
+Copyright 2002-2017 The Apache Software Foundation
+
+src/test/org/apache/commons/codec/language/DoubleMetaphoneTest.java
+contains test data from http://aspell.net/test/orig/batch0.tab.
+Copyright (C) 2002 Kevin Atkinson (kevina@gnu.org)
+
+The content of package org.apache.commons.codec.language.bm has been translated
+from the original php source code available at http://stevemorse.org/phoneticinfo.htm
+with permission from the original authors.
+Original source copyright:
+Copyright (c) 2008 Alexander Beider & Stephen P. Morse.
+
+Apache Commons Collections
+Copyright 2001-2015 The Apache Software Foundation
+
+Apache Commons Configuration
+Copyright 2001-2008 The Apache Software Foundation
+
+Apache Commons CSV
+Copyright 2005-2024 The Apache Software Foundation
+
+Apache Commons Daemon
+Copyright 1999-2013 The Apache Software Foundation
+
+Apache Commons DBCP
+Copyright 2001-2010 The Apache Software Foundation
+
+Apache Jakarta Commons Digester
+Copyright 2001-2006 The Apache Software Foundation
+
+Apache Jakarta HttpClient
+Copyright 1999-2007 The Apache Software Foundation
+
+Apache Commons IO
+Copyright 2002-2023 The Apache Software Foundation
+
+Apache Commons Lang
+Copyright 2001-2023 The Apache Software Foundation
+
+Apache Commons Logging
+Copyright 2003-2014 The Apache Software Foundation
+
+Apache Commons Net
+Copyright 2001-2012 The Apache Software Foundation
+
+Apache Commons Pool
+Copyright 1999-2009 The Apache Software Foundation
+
+
+                            The Netty Project
+                            =================
+
+Please visit the Netty web site for more information:
+
+  * http://netty.io/
+
+Copyright 2011 The Netty Project
+
+The Netty Project licenses this file to you under the Apache License,
+version 2.0 (the "License"); you may not use this file except in compliance
+with the License. You may obtain a copy of the License at:
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+
+Also, please refer to each LICENSE.<component>.txt file, which is located in
+the 'license' directory of the distribution file, for the license terms of the
+components that this product depends on.
+
+-------------------------------------------------------------------------------
+This product contains the extensions to Java Collections Framework which has
+been derived from the works by JSR-166 EG, Doug Lea, and Jason T. Greene:
+
+  * LICENSE:
+    * license/LICENSE.jsr166y.txt (Public Domain)
+  * HOMEPAGE:
+    * http://gee.cs.oswego.edu/cgi-bin/viewcvs.cgi/jsr166/
+    * http://viewvc.jboss.org/cgi-bin/viewvc.cgi/jbosscache/experimental/jsr166/
+
+This product contains a modified version of Robert Harder's Public Domain
+Base64 Encoder and Decoder, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.base64.txt (Public Domain)
+  * HOMEPAGE:
+    * http://iharder.sourceforge.net/current/java/base64/
+
+This product contains a modified version of 'JZlib', a re-implementation of
+zlib in pure Java, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.jzlib.txt (BSD Style License)
+  * HOMEPAGE:
+    * http://www.jcraft.com/jzlib/
+
+This product optionally depends on 'SLF4J', a simple logging facade for Java,
+which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.slf4j.txt (MIT License)
+  * HOMEPAGE:
+    * http://www.slf4j.org/
+
+This product optionally depends on 'Apache Commons Logging', a logging
+framework, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.commons-logging.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * http://commons.apache.org/logging/
+
+This product optionally depends on 'Apache Log4J', a logging framework,
+which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.log4j.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * http://logging.apache.org/log4j/
+
+This product optionally depends on 'JBoss Logging', a logging framework,
+which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.jboss-logging.txt (GNU LGPL 2.1)
+  * HOMEPAGE:
+    * http://anonsvn.jboss.org/repos/common/common-logging-spi/
+
+This product optionally depends on 'Apache Felix', an open source OSGi
+framework implementation, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.felix.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * http://felix.apache.org/
+
+This product optionally depends on 'Webbit', a Java event based
+WebSocket and HTTP server:
+
+  * LICENSE:
+    * license/LICENSE.webbit.txt (BSD License)
+  * HOMEPAGE:
+    * https://github.com/joewalnes/webbit
+
+Apache Java Data Objects (JDO)
+Copyright 2005-2006 The Apache Software Foundation
+
+This product includes software developed by
+Joda.org (https://www.joda.org/).
+
+Apache log4j
+Copyright 2010 The Apache Software Foundation
+
+Byte Buddy
+Copyright 2014 - Present Rafael Winterhalter
+
+eigenbase-properties
+Copyright (C) 2012-2020, Julian Hyde
+
+This product includes software from the Eigenbase project, licensed from
+DynamoBI Corporation.
+
+Copyright (C) 2005 Dynamo BI Corporation
+
+  The ExoLab Project (http://www.exolab.org/)
+
+  Sun Microsystems (http://www.sun.com/)
+
+  Codehaus (http://castor.codehaus.org)
+
+  Tatu Saloranta (http://wiki.fasterxml.com/TatuSaloranta)
+
+Apache Ant
+Copyright 1999-2013 The Apache Software Foundation
+
+The <sync> task is based on code Copyright (c) 2002, Landmark
+Graphics Corp that has been kindly donated to the Apache Software
+Foundation.
+
+Apache Avro
+Copyright 2009-2022 The Apache Software Foundation
+
+Apache Commons Compress
+Copyright 2002-2021 The Apache Software Foundation
+
+Apache Commons Math
+Copyright 2001-2012 The Apache Software Foundation
+
+This product includes software developed by
+The Apache Software Foundation (http://www.apache.org/).
+
+===============================================================================
+
+The BracketFinder (package org.apache.commons.math3.optimization.univariate)
+and PowellOptimizer (package org.apache.commons.math3.optimization.general)
+classes are based on the Python code in module "optimize.py" (version 0.5)
+developed by Travis E. Oliphant for the SciPy library (http://www.scipy.org/)
+Copyright © 2003-2009 SciPy Developers.
+===============================================================================
+
+The LinearConstraint, LinearObjectiveFunction, LinearOptimizer,
+RelationShip, SimplexSolver and SimplexTableau classes in package
+org.apache.commons.math3.optimization.linear include software developed by
+Benjamin McCann (http://www.benmccann.com) and distributed with
+the following copyright: Copyright 2009 Google Inc.
+===============================================================================
+
+This product includes software developed by the
+University of Chicago, as Operator of Argonne National
+Laboratory.
+The LevenbergMarquardtOptimizer class in package
+org.apache.commons.math3.optimization.general includes software
+translated from the lmder, lmpar and qrsolv Fortran routines
+from the Minpack package
+Minpack Copyright Notice (1999) University of Chicago.  All rights reserved
+===============================================================================
+
+The GraggBulirschStoerIntegrator class in package
+org.apache.commons.math3.ode.nonstiff includes software translated
+from the odex Fortran routine developed by E. Hairer and G. Wanner.
+Original source copyright:
+Copyright (c) 2004, Ernst Hairer
+===============================================================================
+
+The EigenDecompositionImpl class in package
+org.apache.commons.math3.linear includes software translated
+from some LAPACK Fortran routines.  Original source copyright:
+Copyright (c) 1992-2008 The University of Tennessee.  All rights reserved.
+===============================================================================
+
+The MersenneTwister class in package org.apache.commons.math3.random
+includes software translated from the 2002-01-26 version of
+the Mersenne-Twister generator written in C by Makoto Matsumoto and Takuji
+Nishimura. Original source copyright:
+Copyright (C) 1997 - 2002, Makoto Matsumoto and Takuji Nishimura,
+All rights reserved
+===============================================================================
+
+The HermiteInterpolator class and its corresponding test have been imported from
+the orekit library distributed under the terms of the Apache 2 licence. Original
+source copyright:
+Copyright 2010-2012 CS Systèmes d'Information
+===============================================================================
+
+The creation of the package "o.a.c.m.analysis.integration.gauss" was inspired
+by an original code donated by Sébastien Brisard.
+===============================================================================
+
+
+The associated license texts are in licenses/commons-math3.txt.
+
+Curator Client
+Copyright 2011-2018 The Apache Software Foundation
+
+Curator Framework
+Copyright 2011-2018 The Apache Software Foundation
+
+Curator Recipes
+Copyright 2011-2018 The Apache Software Foundation
+
+Apache Derby
+Copyright 2004-2014 The Apache Software Foundation
+
+=========================================================================
+
+Portions of Derby were originally developed by
+International Business Machines Corporation and are
+licensed to the Apache Software Foundation under the
+"Software Grant and Corporate Contribution License Agreement",
+informally known as the "Derby CLA".
+The following copyright notice(s) were affixed to portions of the code
+with which this file is now or was at one time distributed
+and are placed here unaltered.
+
+(C) Copyright 1997,2004 International Business Machines Corporation.  All rights reserved.
+
+(C) Copyright IBM Corp. 2003.
+
+
+=========================================================================
+
+
+The portion of the functionTests under 'nist' was originally
+developed by the National Institute of Standards and Technology (NIST),
+an agency of the United States Department of Commerce, and adapted by
+International Business Machines Corporation in accordance with the NIST
+Software Acknowledgment and Redistribution document at
+http://www.itl.nist.gov/div897/ctg/sql_form.htm
+
+
+
+=========================================================================
+
+
+The JDBC apis for small devices and JDBC3 (under java/stubs/jsr169 and
+java/stubs/jdbc3) were produced by trimming sources supplied by the
+Apache Harmony project. In addition, the Harmony SerialBlob and
+SerialClob implementations are used. The following notice covers the Harmony sources:
+
+Portions of Harmony were originally developed by
+Intel Corporation and are licensed to the Apache Software
+Foundation under the "Software Grant and Corporate Contribution
+License Agreement", informally known as the "Intel Harmony CLA".
+
+
+=========================================================================
+
+
+The Derby build relies on source files supplied by the Apache Felix
+project. The following notice covers the Felix files:
+
+  Apache Felix Main
+  Copyright 2008 The Apache Software Foundation
+
+
+  I. Included Software
+
+  This product includes software developed at
+  The OSGi Alliance (http://www.osgi.org/).
+  Copyright (c) OSGi Alliance (2000, 2007).
+  Licensed under the Apache License 2.0.
+
+  This product includes software from http://kxml.sourceforge.net.
+  Copyright (c) 2002,2003, Stefan Haustein, Oberhausen, Rhld., Germany.
+  Licensed under BSD License.
+
+=========================================================================
+
+
+The Derby build relies on jar files supplied by the Apache Xalan
+project. The following notice covers the Xalan jar files:
+
+   Apache Xalan (Xalan XSLT processor)
+   Copyright 1999-2006 The Apache Software Foundation
+
+   Apache Xalan (Xalan serializer)
+   Copyright 1999-2006 The Apache Software Foundation
+
+   =========================================================================
+   Portions of this software was originally based on the following:
+     - software copyright (c) 1999-2002, Lotus Development Corporation.,
+       http://www.lotus.com.
+     - software copyright (c) 2001-2002, Sun Microsystems.,
+       http://www.sun.com.
+     - software copyright (c) 2003, IBM Corporation.,
+       http://www.ibm.com.
+
+   =========================================================================
+   Apache xml-commons xml-apis (redistribution of xml-apis.jar)
+
+   Apache XML Commons
+   Copyright 2001-2003,2006 The Apache Software Foundation.
+
+   Portions of this software were originally based on the following:
+     - software copyright (c) 1999, IBM Corporation., http://www.ibm.com.
+     - software copyright (c) 1999, Sun Microsystems., http://www.sun.com.
+     - software copyright (c) 2000 World Wide Web Consortium, http://www.w3.org
+
+Apache Directory API ASN.1 API
+Copyright 2003-2013 The Apache Software Foundation
+
+Apache Directory LDAP API Utilities
+Copyright 2003-2013 The Apache Software Foundation
+
+ApacheDS I18n
+Copyright 2003-2013 The Apache Software Foundation
+
+ApacheDS Protocol Kerberos Codec
+Copyright 2003-2013 The Apache Software Foundation
+
+Apache Hadoop
+Copyright 2006 and onwards The Apache Software Foundation.
+
+The binary distribution of this product bundles binaries of
+org.iq80.leveldb:leveldb-api (https://github.com/dain/leveldb), which has the
+following notices:
+* Copyright 2011 Dain Sundstrom <dain@iq80.com>
+* Copyright 2011 FuseSource Corp. http://fusesource.com
+
+The binary distribution of this product bundles binaries of
+org.fusesource.hawtjni:hawtjni-runtime (https://github.com/fusesource/hawtjni),
+which has the following notices:
+* This product includes software developed by FuseSource Corp.
+  http://fusesource.com
+* This product includes software developed at
+  Progress Software Corporation and/or its  subsidiaries or affiliates.
+* This product includes software developed by IBM Corporation and others.
+
+Apache Hadoop HDFS Client and other components
+
+The binary distribution of this product bundles binaries of
+AWS Java SDK 1.11.271,
+which has the following notices:
+ * This software includes third party software subject to the following copyrights:
+   - XML parsing and utility functions from JetS3t - Copyright 2006-2009 James Murty.
+   - PKCS#1 PEM encoded private key parsing and utility functions from oauth.googlecode.com - Copyright 1998-2010 AOL Inc.
+
+The binary distribution of this product bundles binaries of Gson 2.2.4.
+
+Hive Common
+Copyright 2021 The Apache Software Foundation
+
+Hive Query Language
+Copyright 2021 The Apache Software Foundation
+
+Hive Llap Client
+Copyright 2021 The Apache Software Foundation
+
+Hive Llap Common
+Copyright 2021 The Apache Software Foundation
+
+Hive Llap Tez
+Copyright 2021 The Apache Software Foundation
+
+Hive Metastore
+Copyright 2021 The Apache Software Foundation
+
+Hive Serde
+Copyright 2021 The Apache Software Foundation
+
+Hive Service RPC
+Copyright 2021 The Apache Software Foundation
+
+Hive Shims
+Copyright 2021 The Apache Software Foundation
+
+Hive Storage API
+Copyright 2017 The Apache Software Foundation
+
+Hive Vector-Code-Gen Utilities
+Copyright 2021 The Apache Software Foundation
+
+Hive Shims Common
+Copyright 2021 The Apache Software Foundation
+
+Hive Shims Scheduler
+Copyright 2021 The Apache Software Foundation
+
+htrace-core4
+Copyright 2016 The Apache Software Foundation
+
+Apache HttpClient
+Copyright 1999-2021 The Apache Software Foundation
+
+Apache HttpCore
+Copyright 2005-2015 The Apache Software Foundation
+
+This project contains annotations derived from JCIP-ANNOTATIONS
+Copyright (c) 2005 Brian Goetz and Tim Peierls. See http://www.jcip.net
+
+Apache HttpComponents Core HTTP/1.1
+Copyright 2005-2021 The Apache Software Foundation
+
+Apache HttpComponents Core HTTP/2
+Copyright 2005-2021 The Apache Software Foundation
+
+Apache Iceberg
+Copyright 2017-2022 The Apache Software Foundation
+
+This project includes code from Kite, developed at Cloudera, Inc. with
+the following copyright notice:
+  Copyright 2013 Cloudera Inc.
+
+Apache Ivy (TM)
+Copyright 2007-2014 The Apache Software Foundation
+
+Portions of Ivy were originally developed at
+Jayasoft SARL (http://www.jayasoft.fr/)
+and are licensed to the Apache Software Foundation under the
+"Software Grant License Agreement"
+
+Apache Log4j 1.x Compatibility API
+Copyright 1999-2023 The Apache Software Foundation
+
+Apache Log4j API
+Copyright 1999-2023 The Apache Software Foundation
+
+Apache Log4j Core
+Copyright 1999-2012 Apache Software Foundation
+
+ResolverUtil.java
+Copyright 2005-2006 Tim Fennell
+
+Apache Log4j SLF4J 2.0 Binding
+Copyright 1999-2023 The Apache Software Foundation
+
+ORC Core
+Copyright 2013-2017 The Apache Software Foundation
+
+Apache Parquet Hadoop Bundle
+Copyright 2015 The Apache Software Foundation
+
+Apache Thrift
+Copyright 2006-2010 The Apache Software Foundation.
+
+Apache Velocity
+Copyright (C) 2000-2007 The Apache Software Foundation
+
+Apache ZooKeeper
+Copyright 2009-2012 The Apache Software Foundation
+
+Apache Groovy
+Copyright 2003-2015 The Apache Software Foundation
+
+Jackson JSON processor
+This product currently only contains code developed by authors
+of specific components, as identified by the source code files;
+if such notes are missing files have been created by
+Tatu Saloranta.
+
+===================================================================
+This product includes software developed by many individuals,
+including the following:
+===================================================================
+Erik Bengtson
+Andy Jefferson
+
+===================================================================
+This product also includes software developed by the TJDO project
+(http://tjdo.sourceforge.net/).
+===================================================================
+
+===================================================================
+This product also includes software developed by the Apache Commons project
+(http://commons.apache.org/).
+===================================================================
+
+Apache Tomcat
+Copyright 1999-2023 The Apache Software Foundation
+
+Apache Xerces Java
+Copyright 1999-2007 The Apache Software Foundation
+
+Portions of this software were originally based on the following:
+  - software copyright (c) 1999, IBM Corporation., http://www.ibm.com.
+  - software copyright (c) 1999, Sun Microsystems., http://www.sun.com.
+  - voluntary contributions made by Paul Eng on behalf of the
+    Apache Software Foundation that were originally developed at iClick, Inc.,
+    software copyright (c) 1999.
+
+Apache XML Commons XML APIs
+Copyright 1999-2009 The Apache Software Foundation.
+
+Portions of this software were originally based on the following:
+  - software copyright (c) 1999, IBM Corporation., http://www.ibm.com.
+  - software copyright (c) 1999, Sun Microsystems., http://www.sun.com.
+  - software copyright (c) 2000 World Wide Web Consortium, http://www.w3.org
+
+Apache Yetus
+Copyright 2008-2022 The Apache Software Foundation
+
+Apache Yetus - Audience Annotations
+Copyright 2015-2017 The Apache Software Foundation
+
+The binary distribution of this product bundles binaries of Gson 2.2.4.
+
+The binary distribution of this product bundles binaries of
+Commons Codec 1.4,
+which has the following notices:
+ * src/test/org/apache/commons/codec/language/DoubleMetaphoneTest.javacontains test data from http://aspell.net/test/orig/batch0.tab.Copyright (C) 2002 Kevin Atkinson (kevina@gnu.org)
+  ===============================================================================
+  The content of package org.apache.commons.codec.language.bm has been translated
+  from the original php source code available at http://stevemorse.org/phoneticinfo.htm
+  with permission from the original authors.
+  Original source copyright:Copyright (c) 2008 Alexander Beider & Stephen P. Morse.
+
+The binary distribution of this product bundles binaries of
+Commons Lang 2.6,
+which has the following notices:
+ * This product includes software from the Spring Framework,under the Apache License 2.0 (see: StringUtils.containsWhitespace())
+
+The binary distribution of this product bundles binaries of
+reload4j 1.2.18.3,
+which has the following notices:
+ * ResolverUtil.java
+    Copyright 2005-2006 Tim Fennell
+  Dumbster SMTP test server
+    Copyright 2004 Jason Paul Kitchen
+  TypeUtil.java
+    Copyright 2002-2012 Ramnivas Laddad, Juergen Hoeller, Chris Beams
+
+The binary distribution of this product bundles binaries of
+Java Concurrency in Practice book annotations 1.0,
+which has the following notices:
+ * Copyright (c) 2005 Brian Goetz and Tim Peierls Released under the Creative
+  Commons Attribution License (http://creativecommons.org/licenses/by/2.5)
+  Official home: http://www.jcip.net Any republication or derived work
+  distributed in source code form must include this copyright and license
+  notice.
+
+The binary distribution of this product bundles binaries of
+Jetty 9.4.58.v20250814,
+which has the following notices:
+ * ==============================================================
+    Jetty Web Container
+    Copyright 1995-2018 Mort Bay Consulting Pty Ltd.
+   ==============================================================
+
+   The Jetty Web Container is Copyright Mort Bay Consulting Pty Ltd
+   unless otherwise noted.
+
+   Jetty is dual licensed under both
+
+     * The Apache 2.0 License
+       http://www.apache.org/licenses/LICENSE-2.0.html
+
+         and
+
+     * The Eclipse Public 1.0 License
+       http://www.eclipse.org/legal/epl-v10.html
+
+   Jetty may be distributed under either license.
+
+   ------
+   Eclipse
+
+   The following artifacts are EPL.
+    * org.eclipse.jetty.orbit:org.eclipse.jdt.core
+
+   The following artifacts are EPL and ASL2.
+    * org.eclipse.jetty.orbit:javax.security.auth.message
+
+
+   The following artifacts are EPL and CDDL 1.0.
+    * org.eclipse.jetty.orbit:javax.mail.glassfish
+
+
+   ------
+   Oracle
+
+   The following artifacts are CDDL + GPLv2 with classpath exception.
+   https://glassfish.dev.java.net/nonav/public/CDDL+GPL.html
+
+    * javax.servlet:javax.servlet-api
+    * javax.annotation:javax.annotation-api
+    * javax.transaction:javax.transaction-api
+    * javax.websocket:javax.websocket-api
+
+   ------
+   Oracle OpenJDK
+
+   If ALPN is used to negotiate HTTP/2 connections, then the following
+   artifacts may be included in the distribution or downloaded when ALPN
+   module is selected.
+
+    * java.sun.security.ssl
+
+   These artifacts replace/modify OpenJDK classes.  The modififications
+   are hosted at github and both modified and original are under GPL v2 with
+   classpath exceptions.
+   http://openjdk.java.net/legal/gplv2+ce.html
+
+
+   ------
+   OW2
+
+   The following artifacts are licensed by the OW2 Foundation according to the
+   terms of http://asm.ow2.org/license.html
+
+   org.ow2.asm:asm-commons
+   org.ow2.asm:asm
+
+
+   ------
+   Apache
+
+   The following artifacts are ASL2 licensed.
+
+   org.apache.taglibs:taglibs-standard-spec
+   org.apache.taglibs:taglibs-standard-impl
+
+
+   ------
+   MortBay
+
+   The following artifacts are ASL2 licensed.  Based on selected classes from
+   following Apache Tomcat jars, all ASL2 licensed.
+
+   org.mortbay.jasper:apache-jsp
+     org.apache.tomcat:tomcat-jasper
+     org.apache.tomcat:tomcat-juli
+     org.apache.tomcat:tomcat-jsp-api
+     org.apache.tomcat:tomcat-el-api
+     org.apache.tomcat:tomcat-jasper-el
+     org.apache.tomcat:tomcat-api
+     org.apache.tomcat:tomcat-util-scan
+     org.apache.tomcat:tomcat-util
+
+   org.mortbay.jasper:apache-el
+     org.apache.tomcat:tomcat-jasper-el
+     org.apache.tomcat:tomcat-el-api
+
+
+   ------
+   Mortbay
+
+   The following artifacts are CDDL + GPLv2 with classpath exception.
+
+   https://glassfish.dev.java.net/nonav/public/CDDL+GPL.html
+
+   org.eclipse.jetty.toolchain:jetty-schemas
+
+   ------
+   Assorted
+
+   The UnixCrypt.java code implements the one way cryptography used by
+   Unix systems for simple password protection.  Copyright 1996 Aki Yoshida,
+   modified April 2001  by Iris Van den Broeke, Daniel Deville.
+   Permission to use, copy, modify and distribute UnixCrypt
+   for non-commercial or commercial purposes and without fee is
+   granted provided that the copyright notice appears in all copies./
+
+The binary distribution of this product bundles binaries of
+Snappy for Java 1.0.4.1,
+which has the following notices:
+ * This product includes software developed by Google
+    Snappy: http://code.google.com/p/snappy/ (New BSD License)
+
+   This product includes software developed by Apache
+    PureJavaCrc32C from apache-hadoop-common http://hadoop.apache.org/
+    (Apache 2.0 license)
+
+   This library containd statically linked libstdc++. This inclusion is allowed by
+   "GCC RUntime Library Exception"
+   http://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
+
+   == Contributors ==
+     * Tatu Saloranta
+       * Providing benchmark suite
+     * Alec Wysoker
+       * Performance and memory usage improvement
+
+The binary distribution of this product bundles binaries of
+Xerces2 Java Parser 2.9.1,
+which has the following notices:
+
+   Apache Xerces Java
+   Copyright 1999-2018 The Apache Software Foundation
+
+   Portions of this software were originally based on the following:
+     - software copyright (c) 1999, IBM Corporation., http://www.ibm.com.
+     - software copyright (c) 1999, Sun Microsystems., http://www.sun.com.
+     - voluntary contributions made by Paul Eng on behalf of the
+       Apache Software Foundation that were originally developed at iClick, Inc.,
+       software copyright (c) 1999.
+
+Prometheus instrumentation library for JVM applications
+Copyright 2012-2015 The Prometheus Authors
+
+This product includes software developed at
+Boxever Ltd. (http://www.boxever.com/).
+
+This product includes software developed at
+SoundCloud Ltd. (http://soundcloud.com/).
+
+This product includes software developed as part of the
+Ocelli project by Netflix Inc. (https://github.com/Netflix/ocelli/).
+
+Apache ZooKeeper
+Copyright 2009-2022 The Apache Software Foundation
+
+This product includes software components originally
+developed for Airlift (https://github.com/airlift/airlift),
+licensed under the Apache 2.0 license.
+
+Jackson Data Mapper, Jackson JAX RS, Jackson JAXRS, Jackson JAXRS JSON and Jackson Xml Compatibility Extensions
+
+This product currently only contains code developed by authors
+of specific components, as identified by the source code files;
+if such notes are missing files have been created by
+Tatu Saloranta.
+
+For additional credits (generally to people who reported problems)
+see CREDITS file.
+
+Apache HttpComponents Core HTTP/1.1
+Copyright 2005-2021 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+## Base64 implementation
+
+JJWT's `io.jsonwebtoken.io.Base64` implementation is based on [MigBase64](https://github.com/brsanthu/migbase64) with
+continued modifications for Base64 URL support and additional test cases. The MigBase64 copyright and license notice
+have been retained and are repeated here per that code's requirements:
+
+```
+Licence (BSD):
+==============
+
+Copyright (c) 2004, Mikael Grev, MiG InfoCom AB. (base64 @ miginfocom . com)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+Redistributions of source code must retain the above copyright notice, this list
+of conditions and the following disclaimer.
+Redistributions in binary form must reproduce the above copyright notice, this
+list of conditions and the following disclaimer in the documentation and/or other
+materials provided with the distribution.
+Neither the name of the MiG InfoCom AB nor the names of its contributors may be
+used to endorse or promote products derived from this software without specific
+prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
+OF SUCH DAMAGE.
+```
+
+Additionally, the following classes were copied from the Apache Commons-Codec project, with further JJWT-specific
+modifications:
+* io.jsonwebtoken.impl.io.Base64Codec
+* io.jsonwebtoken.impl.io.Base64InputStream
+* io.jsonwebtoken.impl.io.Base64OutputStream
+* io.jsonwebtoken.impl.io.BaseNCodec
+* io.jsonwebtoken.impl.io.BaseNCodecInputStream
+* io.jsonwebtoken.impl.io.BaseNCodecOutputStream
+* io.jsonwebtoken.impl.io.CodecPolicy
+
+Its attribution:
+
+```
+Apache Commons Codec
+Copyright 2002-2023 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+```
+
+Also, the following classes were copied from the Apache Commons-IO project, with further JJWT-specific modifications:
+* io.jsonwebtoken.impl.io.CharSequenceReader
+* io.jsonwebtoken.impl.io.FilteredInputStream
+* io.jsonwebtoken.impl.io.FilteredOutputStream
+* io.jsonwebtoken.impl.io.ClosedInputStream
+* io.jsonwebtoken.impl.io.UncloseableInputStream
+
+It's attribution:
+
+```
+Apache Commons IO
+Copyright 2002-2023 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (https://www.apache.org/).
+```
+
+Prometheus instrumentation library for JVM applications
+Copyright 2012-2015 The Prometheus Authors
+
+This product includes software developed at
+Boxever Ltd. (http://www.boxever.com/).
+
+This product includes software developed at
+SoundCloud Ltd. (http://soundcloud.com/).
+
+This product includes software developed as part of the
+Ocelli project by Netflix Inc. (https://github.com/Netflix/ocelli/).
+
+This product includes software developed by Google
+ Snappy: http://code.google.com/p/snappy/ (New BSD License)
+
+This product includes software developed by Apache
+ PureJavaCrc32C from apache-hadoop-common http://hadoop.apache.org/
+ (Apache 2.0 license)
+
+This library contains statically linked libstdc++. This inclusion is allowed by
+"GCC Runtime Library Exception"
+http://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
+
+== Contributors ==
+  * Tatu Saloranta
+    * Providing benchmark suite
+  * Alec Wysoker
+    * Performance and memory usage improvement
+
+Third-Party Notices and Licenses:
+
+- Hadoop: Apache Hadoop is used as a dependency
+  License: Apache License 2.0
+  Source/Reference: https://github.com/apache/hadoop/blob/trunk/NOTICE.txt
+
+OpenLineage
+This project includes code from the Marquez Project, part of the LFAI & Data Foundation.
+This project includes code from https://github.com/oittaa/uuid6-python repo (MIT license).
+This project includes code from https://github.com/f4b6a3/uuid-creator repo (MIT license).
+
+Eclipse Collections
+Copyright (c) 2022 Goldman Sachs and others.
+All rights reserved.
+
+This program and the accompanying materials are made available under the
+terms of the Eclipse Public License v1.0 and Eclipse Distribution License v1.0
+which accompany this distribution.
+
+FlatBuffers
+Copyright 2014 Google Inc.
+
+Apache HttpComponents Client
+Copyright 1999-2023 The Apache Software Foundation
+
+Apache HttpCore
+Copyright 2005-2020 The Apache Software Foundation
+
+Oracle JDBC driver (ojdbc11)
+Copyright (c) Oracle and/or its affiliates.
+Governed by the Oracle Free Distribution, Hosting, and Use Terms and
+Conditions, Version 1.0, 28 June 2022.
+See licenses/oracle-fdhut.txt.
+
+Microsoft JDBC Driver for SQL Server (mssql-jdbc)
+Copyright(c) Microsoft Corporation. All rights reserved.
+Licensed under the MIT License. See licenses/mssql-jdbc-mit.txt.
+
+Metrics code included in Jersey Server
+org.glassfish.jersey.server.internal.monitoring.core
+Copyright (c) 2015-2018 Oracle and/or its affiliates. All rights reserved.
+Copyright 2010-2013 Coda Hale and Yammer, Inc.
+
+Apache Paimon (paimon-common)
+Copyright 2023-2025 The Apache Software Foundation
+
+DataSketches included in paimon-common:
+
+datasketches-java
+Copyright 2015-2022 The Apache Software Foundation
+
+Apache DataSketches Memory
+Copyright 2022 - The Apache Software Foundation
+
+Copyright 2015-2018 Yahoo Inc.
+Copyright 2019-2020 Verizon Media
+Copyright 2021 Yahoo Inc.
+
+Prior to moving to ASF, the software for this project was developed at
+Yahoo Inc. (https://developer.yahoo.com).
+
+gRPC (grpc-api and grpc-context)
+Copyright 2014 The gRPC Authors
+
+Google Guava Version 18.0 included in Jersey Common
+Copyright (C) 2009 The Guava Authors
+
+Jackson JAX-RS Providers version 2.15.2 included in Jersey
+Copyright (c) 2009-2023 FasterXML, LLC. All rights reserved unless otherwise indicated.
+
+MyBatis 3.5.6 includes OGNL and the refactored SqlBuilder classes:
+
+OGNL
+Copyright (c) 2004, Drew Davidson and Luke Blanshard
+All rights reserved.
+
+Refactored SqlBuilder class (SQL, AbstractSQL)
+This product includes software developed by
+Adam Gent (https://gist.github.com/3650165)
+Copyright 2010 Adam Gent
+
+Older Jackson FastDoubleParser code shaded in paimon-format 1.2.0
+
+## FastDoubleParser
+
+jackson-core bundles a shaded copy of FastDoubleParser <https://github.com/wrandelshofer/FastDoubleParser>.
+That code is available under an Apache license under the following copyright.
+
+Copyright (c) Werner Randelshofer. Apache 2.0 License.
+
+FastDoubleParser code also contains code from:
+
+fast_double_parser <https://github.com/lemire/fast_double_parser>
+Copyright 2020 Daniel Lemire. Apache 2.0 License.
+
+fast_float <https://github.com/fastfloat/fast_float>
+Copyright 2021 The fast_float authors. Apache 2.0 License.
+
+bigint <https://github.com/tbuktu/bigint/tree/floatfft> (only using code from the  BSD License source files)
+Copyright 2020 Tim Buktu. 2-clause BSD License
+
+Code included in Micrometer 1.12.2
+
+This product contains a modified portion of 'io.netty.util.internal.logging',
+in the Netty/Common library distributed by The Netty Project:
+
+  * Copyright 2013 The Netty Project
+  * License: Apache License v2.0
+  * Homepage: https://netty.io
+
+This product contains a modified portion of 'StringUtils.isBlank()',
+in the Commons Lang library distributed by The Apache Software Foundation:
+
+  * Copyright 2001-2019 The Apache Software Foundation
+  * License: Apache License v2.0
+  * Homepage: https://commons.apache.org/proper/commons-lang/
+
+This product contains a modified portion of the 'org.springframework.lang'
+package in the Spring Framework library, distributed by VMware, Inc:
+
+  * Copyright 2002-2019 the original author or authors.
+  * License: Apache License v2.0
+  * Homepage: https://spring.io/projects/spring-framework
+
+========================================================================
+Apache-licensed components in this package
+========================================================================
+
+cglib 3.3.0 [Server]
+com.alibaba:qlexpress4 4.0.3 [Server]
+com.aliyun.odps:odps-jdbc (jar with dependencies) 3.8.8 [Server]
+com.aliyun.odps:odps-sdk-commons 0.52.1-public [Server]
+com.aliyun.odps:odps-sdk-core 0.52.1-public [Server]
+com.aliyun.oss:aliyun-sdk-oss 3.10.2, 3.13.0 [Server]
+com.aliyun:aliyun-http-apache 0.2.16-beta [Server]
+com.aliyun:aliyun-java-auth 0.2.16-beta [Server]
+com.aliyun:aliyun-java-core 0.2.16-beta [Server]
+com.aliyun:aliyun-java-sdk-core 3.4.0, 4.5.10 [Server]
+com.aliyun:aliyun-java-sdk-ecs 4.2.0 [Server]
+com.aliyun:aliyun-java-sdk-kms 2.7.0, 2.11.0 [Server]
+com.aliyun:aliyun-java-sdk-ram 3.0.0, 3.1.0 [Server]
+com.aliyun:aliyun-java-sdk-sts 3.0.0 [Server]
+com.aliyun:credentials-java 0.3.12 [Server]
+com.aliyun:tea 1.3.1, 1.4.2 [Server]
+com.amazonaws:aws-java-sdk 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-accessanalyzer 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-account 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-acm 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-acmpca 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-alexaforbusiness 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-amplify 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-amplifybackend 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-amplifyuibuilder 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-api-gateway 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-apigatewaymanagementapi 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-apigatewayv2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-appconfig 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-appconfigdata 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-appflow 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-appintegrations 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-applicationautoscaling 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-applicationcostprofiler 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-applicationinsights 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-appmesh 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-appregistry 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-apprunner 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-appstream 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-appsync 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-arczonalshift 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-athena 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-auditmanager 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-augmentedairuntime 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-autoscaling 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-autoscalingplans 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-backup 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-backupgateway 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-backupstorage 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-batch 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-billingconductor 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-braket 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-budgets 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-bundle 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-chime 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-chimesdkidentity 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-chimesdkmediapipelines 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-chimesdkmeetings 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-chimesdkmessaging 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-chimesdkvoice 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloud9 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudcontrolapi 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-clouddirectory 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudformation 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudfront 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudhsm 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudhsmv2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudsearch 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudtrail 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudwatch 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudwatchevidently 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudwatchmetrics 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cloudwatchrum 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codeartifact 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codebuild 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codecommit 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codedeploy 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codeguruprofiler 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codegurureviewer 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codepipeline 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codestar 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codestarconnections 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-codestarnotifications 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cognitoidentity 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cognitoidp 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-cognitosync 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-comprehend 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-comprehendmedical 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-computeoptimizer 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-config 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-connect 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-connectcampaign 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-connectcases 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-connectcontactlens 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-connectparticipant 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-connectwisdom 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-controltower 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-core 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-costandusagereport 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-costexplorer 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-customerprofiles 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-dataexchange 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-datapipeline 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-datasync 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-dax 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-detective 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-devicefarm 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-devopsguru 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-directconnect 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-directory 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-discovery 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-dlm 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-dms 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-docdb 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-docdbelastic 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-drs 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-dynamodb 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ebs 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ec2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ec2instanceconnect 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ecr 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ecrpublic 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ecs 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-efs 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-eks 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-elasticache 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-elasticbeanstalk 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-elasticinference 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-elasticloadbalancing 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-elasticloadbalancingv2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-elasticsearch 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-elastictranscoder 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-emr 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-emrcontainers 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-emrserverless 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-eventbridge 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-events 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-finspace 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-finspacedata 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-fis 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-fms 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-forecast 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-forecastquery 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-frauddetector 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-fsx 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-gamelift 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-gamesparks 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-glacier 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-globalaccelerator 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-glue 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-gluedatabrew 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-greengrass 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-greengrassv2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-groundstation 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-guardduty 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-health 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-healthlake 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-honeycode 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iam 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iamrolesanywhere 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-identitystore 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-imagebuilder 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-importexport 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-inspector 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-inspector2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iot 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iot1clickdevices 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iot1clickprojects 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotanalytics 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotdeviceadvisor 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotevents 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ioteventsdata 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotfleethub 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotfleetwise 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotjobsdataplane 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotroborunner 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotsecuretunneling 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotsitewise 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotthingsgraph 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iottwinmaker 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-iotwireless 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ivs 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ivschat 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-kafka 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-kafkaconnect 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-kendra 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-keyspaces 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-kinesis 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-kinesisanalyticsv2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-kinesisvideo 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-kinesisvideosignalingchannels 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-kms 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lakeformation 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lambda 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lex 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lexmodelbuilding 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lexmodelsv2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lexruntimev2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-licensemanager 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-licensemanagerusersubscriptions 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lightsail 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-location 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-logs 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lookoutequipment 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lookoutforvision 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-lookoutmetrics 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-machinelearning 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-macie 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-macie2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mainframemodernization 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-managedblockchain 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-managedgrafana 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-marketplacecatalog 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-marketplacecommerceanalytics 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-marketplaceentitlement 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-marketplacemeteringservice 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mechanicalturkrequester 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mediaconnect 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mediaconvert 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-medialive 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mediapackage 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mediapackagevod 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mediastore 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mediastoredata 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mediatailor 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-memorydb 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mgn 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-migrationhub 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-migrationhubconfig 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-migrationhuborchestrator 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-migrationhubrefactorspaces 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-migrationhubstrategyrecommendations 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mobile 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-models 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mq 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-mwaa 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-neptune 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-networkfirewall 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-networkmanager 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-nimblestudio 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-oam 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-omics 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-opensearch 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-opensearchserverless 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-opsworks 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-opsworkscm 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-organizations 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-outposts 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-panorama 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-personalize 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-personalizeevents 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-personalizeruntime 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-pi 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-pinpoint 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-pinpointemail 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-pinpointsmsvoice 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-pinpointsmsvoicev2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-pipes 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-polly 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-pricing 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-private5g 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-prometheus 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-proton 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-qldb 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-qldbsession 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-quicksight 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ram 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-rds 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-rdsdata 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-recyclebin 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-redshift 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-redshiftdataapi 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-redshiftserverless 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-rekognition 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-resiliencehub 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-resourceexplorer2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-resourcegroups 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-resourcegroupstaggingapi 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-robomaker 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-route53 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-route53recoverycluster 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-route53recoverycontrolconfig 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-route53recoveryreadiness 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-route53resolver 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-s3 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-s3control 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-s3outposts 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sagemaker 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sagemakeredgemanager 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sagemakerfeaturestoreruntime 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sagemakergeospatial 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sagemakermetrics 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sagemakerruntime 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-savingsplans 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-scheduler 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-schemas 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-secretsmanager 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-securityhub 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-securitylake 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-serverlessapplicationrepository 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-servermigration 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-servicecatalog 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-servicediscovery 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-servicequotas 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ses 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sesv2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-shield 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-signer 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-simpledb 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-simpleworkflow 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-simspaceweaver 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-snowball 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-snowdevicemanagement 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sns 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sqs 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ssm 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ssmcontacts 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ssmincidents 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ssmsap 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sso 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ssoadmin 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-ssooidc 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-stepfunctions 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-storagegateway 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-sts 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-support 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-supportapp 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-swf-libraries 1.11.22 [Server]
+com.amazonaws:aws-java-sdk-synthetics 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-textract 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-timestreamquery 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-timestreamwrite 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-transcribe 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-transfer 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-translate 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-voiceid 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-waf 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-wafv2 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-wellarchitected 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-workdocs 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-worklink 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-workmail 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-workmailmessageflow 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-workspaces 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-workspacesweb 1.12.367 [Server]
+com.amazonaws:aws-java-sdk-xray 1.12.367 [Server]
+com.amazonaws:jmespath-java 1.12.367 [Server]
+com.carrotsearch:hppc 0.7.2 [Server]
+com.clickhouse:clickhouse-jdbc (all-in-one jar) 0.7.1 [Server]
+com.fasterxml.jackson.core:jackson-annotations 2.12.7, 2.14.2, 2.15.2, 2.17.0, 2.18.3, 2.18.4, 2.21 [Marquez; Server]
+com.fasterxml.jackson.core:jackson-core 2.12.7, 2.13.4, 2.14.2, 2.14.3, 2.15.2, 2.17.0, 2.18.3, 2.18.4.1, 2.21.3 [Marquez; Server]
+com.fasterxml.jackson.core:jackson-databind 2.12.7.1, 2.14.2, 2.14.3, 2.15.2, 2.17.0, 2.18.3, 2.18.4, 2.21.3 [Marquez; Server]
+com.fasterxml.jackson.dataformat:jackson-dataformat-cbor 2.12.6 [Server]
+com.fasterxml.jackson.dataformat:jackson-dataformat-csv 2.14.2 [Server]
+com.fasterxml.jackson.dataformat:jackson-dataformat-xml 2.13.5, 2.18.3 [Server]
+com.fasterxml.jackson.dataformat:jackson-dataformat-yaml 2.14.2, 2.15.2, 2.17.0 [Marquez; Server]
+com.fasterxml.jackson.datatype:jackson-datatype-jdk8 2.14.2, 2.15.2, 2.17.0, 2.18.3, 2.21.3 [Marquez; Server]
+com.fasterxml.jackson.datatype:jackson-datatype-jsr310 2.13.5, 2.14.2, 2.15.2, 2.17.0, 2.18.3, 2.18.4, 2.21.3 [Marquez; Server]
+com.fasterxml.jackson.jakarta.rs:jackson-jakarta-rs-base 2.16.1 [Server]
+com.fasterxml.jackson.jakarta.rs:jackson-jakarta-rs-json-provider 2.16.1 [Server]
+com.fasterxml.jackson.jaxrs:jackson-jaxrs-base 2.12.7, 2.15.2, 2.17.0, 2.18.3 [Marquez; Server]
+com.fasterxml.jackson.jaxrs:jackson-jaxrs-json-provider 2.12.7, 2.15.2, 2.17.0, 2.18.3 [Marquez; Server]
+com.fasterxml.jackson.module:jackson-module-jakarta-xmlbind-annotations 2.16.1 [Server]
+com.fasterxml.jackson.module:jackson-module-jaxb-annotations 2.12.7, 2.15.2, 2.17.0, 2.18.3, 2.21.3 [Marquez; Server]
+com.fasterxml.woodstox:woodstox-core 5.4.0, 6.5.1, 7.0.0 [Server]
+com.github.ben-manes.caffeine:caffeine 2.9.3 [Server]
+com.github.davidmoten:guava-mini 0.1.3 [Server]
+com.github.davidmoten:hilbert-curve 0.2.2 [Server]
+com.github.seancfoley.ipaddress:ipaddress 5.5.1 [Server]
+com.github.stephenc.jcip:jcip-annotations 1.0-1 [Server]
+com.google.android:annotations 4.1.1.4 [Server]
+com.google.api-client:google-api-client 2.0.1, 2.7.2 [Server]
+com.google.api-client:google-api-client-jackson2 2.0.1 [Server]
+com.google.api.grpc:gapic-google-cloud-storage-v2 2.28.0-alpha, 2.67.0 [Server]
+com.google.api.grpc:grpc-google-cloud-bigquerystorage-v1 3.27.0 [Server]
+com.google.api.grpc:grpc-google-cloud-bigquerystorage-v1beta1 0.199.0 [Server]
+com.google.api.grpc:grpc-google-cloud-bigquerystorage-v1beta2 0.199.0 [Server]
+com.google.api.grpc:grpc-google-cloud-storage-v2 2.28.0-alpha, 2.67.0 [Server]
+com.google.api.grpc:proto-google-cloud-bigquerystorage-v1 3.27.0 [Server]
+com.google.api.grpc:proto-google-cloud-bigquerystorage-v1alpha 3.27.0 [Server]
+com.google.api.grpc:proto-google-cloud-bigquerystorage-v1beta 3.27.0 [Server]
+com.google.api.grpc:proto-google-cloud-bigquerystorage-v1beta1 0.199.0 [Server]
+com.google.api.grpc:proto-google-cloud-bigquerystorage-v1beta2 0.199.0 [Server]
+com.google.api.grpc:proto-google-cloud-kms-v1 0.185.0 [Server]
+com.google.api.grpc:proto-google-cloud-monitoring-v3 1.64.0, 3.92.0 [Server]
+com.google.api.grpc:proto-google-cloud-storage-v2 2.28.0-alpha, 2.67.0 [Server]
+com.google.api.grpc:proto-google-common-protos 2.22.0, 2.70.0 [Server]
+com.google.api.grpc:proto-google-iam-v1 1.1.7, 1.65.0 [Server]
+com.google.apis:google-api-services-bigquery v2-rev20251012-2.0.0 [Server]
+com.google.apis:google-api-services-iamcredentials v1-rev20211203-2.0.0 [Server]
+com.google.apis:google-api-services-storage v1-rev135-1.24.1, v1-rev20220705-2.0.0, v1-rev20260204-2.0.0 [Server]
+com.google.auto.value:auto-value-annotations 1.11.0, 1.11.1 [Server]
+com.google.cloud.bigdataoss:gcs-connector 1.9.4-hadoop3, hadoop2-2.2.18 [Server]
+com.google.cloud.bigdataoss:gcs-connector (shaded) hadoop2-2.2.18 [Server]
+com.google.cloud.bigdataoss:gcsio 1.9.4, 2.2.18 [Server]
+com.google.cloud.bigdataoss:util 1.9.4, 2.2.18 [Server]
+com.google.cloud.bigdataoss:util-hadoop 1.9.4-hadoop3, hadoop2-2.2.18 [Server]
+com.google.cloud.gcs.analytics:client 1.2.3 [Server]
+com.google.cloud.gcs.analytics:gcs-analytics-core 1.2.3 [Server]
+com.google.cloud:google-cloud-bigquery 2.65.0 [Server]
+com.google.cloud:google-cloud-bigquerystorage 3.27.0 [Server]
+com.google.cloud:google-cloud-core 2.5.4, 2.69.0 [Server]
+com.google.cloud:google-cloud-core-grpc 2.25.0, 2.69.0 [Server]
+com.google.cloud:google-cloud-core-http 2.25.0, 2.69.0 [Server]
+com.google.cloud:google-cloud-kms 2.94.0 [Server]
+com.google.cloud:google-cloud-monitoring 1.82.0, 3.92.0 [Server]
+com.google.cloud:google-cloud-storage 2.28.0, 2.67.0 [Server]
+com.google.code.findbugs:jsr305 3.0.2 [Marquez; Server]
+com.google.code.gson:gson 2.8.9, 2.9.0, 2.10, 2.10.1, 2.11.0, 2.12.1, 2.13.1 [Server]
+com.google.errorprone:error_prone_annotations 2.5.1, 2.10.0, 2.18.0, 2.21.1, 2.23.0, 2.27.0, 2.33.0, 2.45.0 [Marquez; Server]
+com.google.flatbuffers:flatbuffers-java 1.12.0, 24.3.25, 25.2.10 [Server]
+com.google.guava:failureaccess 1.0.1, 1.0.2, 1.0.3 [Marquez; Server]
+com.google.guava:guava 29.0-android, 30.1.1-jre, 31.1-jre, 32.1.1-jre, 32.1.3-jre, 33.0.0-jre, 33.3.1-jre, 33.5.0-jre, 33.6.0-jre [Marquez; Server]
+com.google.guava:listenablefuture 1.0, 9999.0-empty-to-avoid-conflict-with-guava [Marquez; Server]
+com.google.http-client:google-http-client 1.42.3, 1.45.0, 2.1.0 [Server]
+com.google.http-client:google-http-client-apache-v2 1.42.3, 2.1.0 [Server]
+com.google.http-client:google-http-client-appengine 1.43.3, 2.1.0 [Server]
+com.google.http-client:google-http-client-gson 1.42.3, 1.45.0, 2.1.0 [Server]
+com.google.http-client:google-http-client-jackson2 1.42.3, 2.1.0 [Server]
+com.google.inject.servlet:guice-servlet 4.0 [Server]
+com.google.inject:guice 4.0 [Server]
+com.google.j2objc:j2objc-annotations 1.3, 2.8, 3.0.0, 3.1 [Server]
+com.google.oauth-client:google-oauth-client 1.34.1, 1.39.0 [Server]
+com.googlecode.concurrent-trees:concurrent-trees 2.6.0 [Server]
+com.helger:profiler 1.1.1 [Marquez; Server]
+com.jolbox:bonecp 0.8.0.RELEASE [Server]
+com.microsoft.azure:azure-storage 7.0.1 [Server]
+com.nimbusds:content-type 2.3 [Server]
+com.nimbusds:lang-tag 1.7 [Server]
+com.nimbusds:nimbus-jose-jwt 9.8.1, 9.30.1, 10.9 [Server]
+com.nimbusds:oauth2-oidc-sdk 11.9.1 [Server]
+com.squareup.okhttp3:okhttp 3.12.13, 4.9.3 [Server]
+com.squareup.okio:okio 1.15.0 [Server]
+com.vlkan:flatbuffers 1.2.0-3f79e055 [Server]
+commons-beanutils 1.9.4, 1.11.0 [Server]
+commons-cli 1.2, 1.9.0 [Server]
+commons-codec 1.4, 1.9, 1.13, 1.15, 1.16.1, 1.17.1, 1.18.0, 1.19.0 [Marquez; Server]
+commons-collections 3.2.2 [Server]
+commons-configuration 1.6 [Server]
+commons-dbcp 1.4 [Server]
+commons-digester 1.8 [Server]
+commons-io 2.8.0, 2.11.0, 2.16.1, 2.18.0, 2.20.0 [Server]
+commons-lang 2.4, 2.6 [Server]
+commons-logging 1.1.1, 1.1.3, 1.2, 1.3.0, 1.3.4, 1.3.5 [Marquez; Server]
+commons-net 3.9.0 [Server]
+commons-pool 1.5.4, 1.6 [Server]
+dev.failsafe:failsafe 3.3.2 [Server]
+grpc-context 1.66.0 [Server]
+iceberg-aliyun 1.11.0 [Server]
+iceberg-api 1.11.0 [Server]
+iceberg-aws 1.11.0 [Server]
+iceberg-azure 1.11.0 [Server]
+iceberg-common 1.11.0 [Server]
+iceberg-core 1.11.0 [Server]
+iceberg-gcp 1.11.0 [Server]
+iceberg-hive-metastore 1.11.0 [Server]
+io.airlift:aircompressor 0.8, 0.10, 0.27, 2.0.3 [Server]
+io.airlift:slice 0.29 [Server]
+io.dropwizard.metrics:metrics-annotation 4.2.25 [Marquez; Server]
+io.dropwizard.metrics:metrics-caffeine 4.2.25 [Server]
+io.dropwizard.metrics:metrics-core 3.2.4, 4.2.25 [Marquez; Server]
+io.dropwizard.metrics:metrics-healthchecks 4.2.25 [Marquez; Server]
+io.dropwizard.metrics:metrics-jersey2 4.2.25 [Marquez; Server]
+io.dropwizard.metrics:metrics-jmx 4.2.25 [Marquez; Server]
+io.dropwizard.metrics:metrics-json 4.2.25 [Marquez; Server]
+io.dropwizard.metrics:metrics-jvm 4.2.25 [Marquez; Server]
+io.dropwizard.metrics:metrics-servlets 4.2.25 [Marquez; Server]
+io.github.aviatorscript:aviator 5.9.0 [Server]
+io.grpc:grpc-api 1.66.0 [Server]
+io.jsonwebtoken:jjwt-api 0.11.1 [Server]
+io.jsonwebtoken:jjwt-gson 0.11.1 [Server]
+io.jsonwebtoken:jjwt-impl 0.11.1 [Server]
+io.micrometer:micrometer-commons 1.12.2 [Server]
+io.micrometer:micrometer-core 1.12.2 [Server]
+io.micrometer:micrometer-observation 1.12.2 [Server]
+io.netty:netty-all 4.1.86.Final [Server]
+io.netty:netty-buffer 4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.1.119.Final, 4.2.13.Final [Server]
+io.netty:netty-codec 4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final [Server]
+io.netty:netty-codec-base 4.2.13.Final [Server]
+io.netty:netty-codec-compression 4.2.13.Final [Server]
+io.netty:netty-codec-dns 4.1.86.Final, 4.1.109.Final, 4.2.13.Final [Server]
+io.netty:netty-codec-haproxy 4.1.86.Final [Server]
+io.netty:netty-codec-http 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final [Server]
+io.netty:netty-codec-http2 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final [Server]
+io.netty:netty-codec-marshalling 4.2.13.Final [Server]
+io.netty:netty-codec-memcache 4.1.86.Final [Server]
+io.netty:netty-codec-mqtt 4.1.86.Final [Server]
+io.netty:netty-codec-protobuf 4.2.13.Final [Server]
+io.netty:netty-codec-redis 4.1.86.Final [Server]
+io.netty:netty-codec-smtp 4.1.86.Final [Server]
+io.netty:netty-codec-socks 4.1.86.Final, 4.1.110.Final, 4.2.13.Final [Server]
+io.netty:netty-codec-stomp 4.1.86.Final [Server]
+io.netty:netty-codec-xml 4.1.86.Final [Server]
+io.netty:netty-common 4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.1.119.Final, 4.2.13.Final [Server]
+io.netty:netty-handler 4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final [Server]
+io.netty:netty-handler-proxy 4.1.86.Final, 4.1.110.Final, 4.2.13.Final [Server]
+io.netty:netty-handler-ssl-ocsp 4.1.86.Final [Server]
+io.netty:netty-resolver 4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final [Server]
+io.netty:netty-resolver-dns 4.1.86.Final, 4.1.109.Final, 4.2.13.Final [Server]
+io.netty:netty-resolver-dns-classes-macos 4.1.86.Final, 4.1.109.Final, 4.2.13.Final [Server]
+io.netty:netty-resolver-dns-native-macos 4.1.86.Final, 4.1.109.Final, 4.2.13.Final [Server]
+io.netty:netty-tcnative-boringssl-static 2.0.65.Final, 2.0.74.Final [Server]
+io.netty:netty-tcnative-classes 2.0.65.Final, 2.0.74.Final [Server]
+io.netty:netty-transport 4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final [Server]
+io.netty:netty-transport-classes-epoll 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final [Server]
+io.netty:netty-transport-classes-kqueue 4.1.86.Final, 4.1.110.Final, 4.2.13.Final [Server]
+io.netty:netty-transport-native-epoll 4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.2.13.Final [Server]
+io.netty:netty-transport-native-kqueue 4.1.86.Final, 4.1.110.Final, 4.2.13.Final [Server]
+io.netty:netty-transport-native-unix-common 4.1.63.Final, 4.1.86.Final, 4.1.110.Final, 4.1.118.Final, 4.2.13.Final [Server]
+io.netty:netty-transport-rxtx 4.1.86.Final [Server]
+io.netty:netty-transport-sctp 4.1.86.Final [Server]
+io.netty:netty-transport-udt 4.1.86.Final [Server]
+io.opentracing:opentracing-api 0.33.0 [Server]
+io.opentracing:opentracing-noop 0.33.0 [Server]
+io.opentracing:opentracing-util 0.33.0 [Server]
+io.projectreactor.reactor-core:reactor-core 3.5.20 [Server]
+io.prometheus:simpleclient 0.16.0 [Marquez; Server]
+io.prometheus:simpleclient_common 0.16.0 [Marquez; Server]
+io.prometheus:simpleclient_dropwizard 0.16.0 [Marquez; Server]
+io.prometheus:simpleclient_servlet 0.16.0 [Marquez; Server]
+io.prometheus:simpleclient_servlet_common 0.16.0 [Marquez; Server]
+io.prometheus:simpleclient_tracer_common 0.16.0 [Marquez; Server]
+io.prometheus:simpleclient_tracer_otel 0.16.0 [Marquez; Server]
+io.prometheus:simpleclient_tracer_otel_agent 0.16.0 [Marquez; Server]
+io.swagger.core.v3:swagger-annotations 2.2.20 [Server]
+jakarta.inject:jakarta.inject-api 1.0.5, 2.0.1 [Marquez; Server]
+jakarta.validation:jakarta.validation-api 2.0.2, 3.0.2 [Marquez; Server]
+jdo-api 3.0.1 [Server]
+joda-time 2.8.1, 2.9.9, 2.12.6 [Marquez; Server]
+kotlin-stdlib 1.4.10 [Server]
+kotlin-stdlib-common 1.4.10 [Server]
+libfb303 0.9.3 [Server]
+net.minidev:accessors-smart 2.5.0 [Server]
+net.minidev:json-smart 1.3.2 [Server]
+net.openhft:zero-allocation-hashing 0.16, 0.26ea0 [Server]
+net.sf.jpam:jpam 1.1 [Server]
+net.sf.opencsv:opencsv 2.3 [Server]
+ognl 3.2.15, 3.4.7 [Server]
+okio-jvm 2.8.0 [Server]
+opencensus-api 0.31.1 [Server]
+opencensus-contrib-http-util 0.31.1 [Server]
+openlineage-java 1.29.0 [Server]
+opensearch-java 2.19.0 [Server]
+org.apache.arrow:arrow-c-data 18.3.0 [Server]
+org.apache.arrow:arrow-compression 4.0.0 [Server]
+org.apache.arrow:arrow-dataset 18.3.0 [Server]
+org.apache.arrow:arrow-format 4.0.0, 17.0.0, 18.3.0 [Server]
+org.apache.arrow:arrow-memory-core 4.0.0, 17.0.0, 18.3.0 [Server]
+org.apache.arrow:arrow-memory-netty 4.0.0, 17.0.0, 18.3.0 [Server]
+org.apache.arrow:arrow-memory-netty-buffer-patch 17.0.0, 18.3.0 [Server]
+org.apache.arrow:arrow-vector 4.0.0, 17.0.0, 18.3.0 [Server]
+org.apache.avro:avro 1.7.7, 1.11.4, 1.12.1 [Server]
+org.apache.commons:commons-collections4 4.4 [Server]
+org.apache.commons:commons-compress 1.20, 1.21, 1.26.2, 1.27.1, 1.28.0 [Server]
+org.apache.commons:commons-configuration2 2.8.0, 2.10.1 [Server]
+org.apache.commons:commons-csv 1.12.0 [Server]
+org.apache.commons:commons-dbcp2 2.11.0 [Server]
+org.apache.commons:commons-lang3 3.12.0, 3.14.0, 3.16.0, 3.17.0, 3.18.0, 3.20.0 [Marquez; Server]
+org.apache.commons:commons-math3 3.1.1 [Server]
+org.apache.commons:commons-pool2 2.12.0 [Server]
+org.apache.commons:commons-text 1.10.0, 1.11.0 [Marquez; Server]
+org.apache.curator:curator-client 5.2.0 [Server]
+org.apache.curator:curator-framework 5.2.0 [Server]
+org.apache.curator:curator-recipes 5.2.0 [Server]
+org.apache.datasketches:datasketches-java 4.2.0 [Server]
+org.apache.datasketches:datasketches-memory 2.2.0 [Server]
+org.apache.directory.scimple:scim-core 1.0.0-M1 [Server]
+org.apache.directory.scimple:scim-server 1.0.0-M1 [Server]
+org.apache.directory.scimple:scim-spec-protocol 1.0.0-M1 [Server]
+org.apache.directory.scimple:scim-spec-schema 1.0.0-M1 [Server]
+org.apache.hadoop.thirdparty:hadoop-shaded-guava 1.1.1 [Server]
+org.apache.hadoop.thirdparty:hadoop-shaded-protobuf_3_7 1.1.1 [Server]
+org.apache.hadoop:hadoop-aliyun 3.3.6 [Server]
+org.apache.hadoop:hadoop-annotations 3.3.6 [Server]
+org.apache.hadoop:hadoop-auth 2.7.1, 3.3.6 [Server]
+org.apache.hadoop:hadoop-aws 3.3.6 [Server]
+org.apache.hadoop:hadoop-azure 3.3.6 [Server]
+org.apache.hadoop:hadoop-client 3.3.6 [Server]
+org.apache.hadoop:hadoop-client-api 3.3.6 [Server]
+org.apache.hadoop:hadoop-common 2.7.1, 3.3.6 [Server]
+org.apache.hadoop:hadoop-hdfs 3.3.6 [Server]
+org.apache.hadoop:hadoop-hdfs-client 3.3.6 [Server]
+org.apache.hadoop:hadoop-mapreduce-client-common 3.3.6 [Server]
+org.apache.hadoop:hadoop-mapreduce-client-core 3.3.6 [Server]
+org.apache.hadoop:hadoop-mapreduce-client-jobclient 3.3.6 [Server]
+org.apache.hadoop:hadoop-yarn-api 3.3.6 [Server]
+org.apache.hadoop:hadoop-yarn-client 3.3.6 [Server]
+org.apache.hadoop:hadoop-yarn-common 3.3.6 [Server]
+org.apache.hive.shims:hive-shims-0.23 2.3.9, 2.3.10, 3.1.3 [Server]
+org.apache.hive.shims:hive-shims-common 2.3.9, 2.3.10, 3.1.3 [Server]
+org.apache.hive.shims:hive-shims-scheduler 2.3.9, 2.3.10, 3.1.3 [Server]
+org.apache.hive:hive-classification 3.1.3 [Server]
+org.apache.hive:hive-common 2.3.9, 2.3.10, 3.1.3 [Server]
+org.apache.hive:hive-exec 2.3.9 [Server]
+org.apache.hive:hive-jdbc 2.3.9 [Server]
+org.apache.hive:hive-metastore 2.3.9, 2.3.10, 3.1.3 [Server]
+org.apache.hive:hive-serde 2.3.9, 2.3.10, 3.1.3 [Server]
+org.apache.hive:hive-service-rpc 2.3.9, 2.3.10, 3.1.3 [Server]
+org.apache.hive:hive-shims 2.3.9, 2.3.10, 3.1.3 [Server]
+org.apache.hive:hive-standalone-metastore 3.1.3 [Server]
+org.apache.hive:hive-storage-api 2.4.0, 2.7.0, 2.8.1 [Server]
+org.apache.hive:hive-upgrade-acid 3.1.3 [Server]
+org.apache.httpcomponents.client5:httpclient5 5.2.1, 5.4, 5.4.4, 5.6.1 [Marquez; Server]
+org.apache.httpcomponents.core5:httpcore5 5.2.1, 5.3, 5.3.4, 5.4 [Marquez; Server]
+org.apache.httpcomponents.core5:httpcore5-h2 5.2, 5.3, 5.3.4, 5.4 [Marquez; Server]
+org.apache.httpcomponents:httpasyncclient 4.1.5 [Marquez; Server]
+org.apache.httpcomponents:httpclient 4.4.1, 4.5.13, 4.5.14 [Marquez; Server]
+org.apache.httpcomponents:httpcore 4.4.1, 4.4.13, 4.4.15, 4.4.16 [Marquez; Server]
+org.apache.httpcomponents:httpcore-nio 4.4.16 [Marquez; Server]
+org.apache.kafka:kafka-clients 3.4.0 [Server]
+org.apache.kerby:kerb-admin 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerb-client 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerb-common 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerb-core 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerb-crypto 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerb-identity 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerb-server 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerb-simplekdc 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerb-util 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerby-asn1 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerby-config 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerby-pkix 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerby-util 1.0.1, 2.0.3 [Server]
+org.apache.kerby:kerby-xdr 1.0.1, 2.0.3 [Server]
+org.apache.kerby:token-provider 1.0.1, 2.0.3 [Server]
+org.apache.logging.log4j:log4j-1.2-api 2.25.4 [Server]
+org.apache.logging.log4j:log4j-api 2.25.4 [Server]
+org.apache.logging.log4j:log4j-core 2.25.4 [Server]
+org.apache.logging.log4j:log4j-layout-template-json 2.25.4 [Server]
+org.apache.logging.log4j:log4j-slf4j2-impl 2.25.4 [Server]
+org.apache.orc:orc-core 1.3.4, 1.5.8, 1.9.2 [Server]
+org.apache.orc:orc-shims 1.5.8, 1.9.2 [Server]
+org.apache.paimon:paimon-api 1.2.0 [Server]
+org.apache.paimon:paimon-codegen 1.2.0 [Server]
+org.apache.paimon:paimon-codegen-loader 1.2.0 [Server]
+org.apache.paimon:paimon-common 1.2.0 [Server]
+org.apache.paimon:paimon-core 1.2.0 [Server]
+org.apache.paimon:paimon-format 1.2.0 [Server]
+org.apache.paimon:paimon-hive-catalog 1.2.0 [Server]
+org.apache.paimon:paimon-hive-common 1.2.0 [Server]
+org.apache.paimon:paimon-oss 1.2.0 [Server]
+org.apache.paimon:paimon-s3 1.2.0 [Server]
+org.apache.parquet:parquet-column 1.15.1 [Server]
+org.apache.parquet:parquet-common 1.15.1 [Server]
+org.apache.parquet:parquet-encoding 1.15.1 [Server]
+org.apache.parquet:parquet-format 2.10.0 [Server]
+org.apache.parquet:parquet-format-structures 1.15.1 [Server]
+org.apache.parquet:parquet-hadoop 1.15.1 [Server]
+org.apache.parquet:parquet-jackson 1.15.1 [Server]
+org.apache.ranger:ranger-intg 2.4.0 [Server]
+org.apache.ranger:ranger-plugins-common 2.4.0 [Server]
+org.apache.thrift:libthrift 0.9.3, 0.12.0, 0.14.1 [Server]
+org.apache.yetus:audience-annotations 0.5.0 [Server]
+org.apache.zookeeper:zookeeper 3.6.3 [Server]
+org.apache.zookeeper:zookeeper-jute 3.6.3 [Server]
+org.apache:jsp-api 2.1 [Server]
+org.casbin:jcasbin 1.99.0 [Server]
+org.codehaus.jackson:jackson-core-asl 1.9.13 [Server]
+org.codehaus.jackson:jackson-jaxrs 1.9.13 [Server]
+org.codehaus.jackson:jackson-mapper-asl 1.9.13 [Server]
+org.codehaus.jettison:jettison 1.1, 1.5.4 [Server]
+org.eclipse.jetty.servlet-api:servlet-api 5.0.2 [Server]
+org.eclipse.jetty:jetty-client 9.4.51.v20230217 [Server]
+org.eclipse.jetty:jetty-continuation 9.4.53.v20231009, 9.4.58.v20250814 [Marquez; Server]
+org.eclipse.jetty:jetty-http 9.4.58.v20250814, 11.0.24 [Server]
+org.eclipse.jetty:jetty-io 9.4.58.v20250814, 11.0.24 [Server]
+org.eclipse.jetty:jetty-security 9.4.53.v20231009, 9.4.58.v20250814, 11.0.24 [Marquez; Server]
+org.eclipse.jetty:jetty-server 9.4.53.v20231009, 9.4.58.v20250814, 11.0.24 [Marquez; Server]
+org.eclipse.jetty:jetty-servlet 9.4.58.v20250814, 11.0.24 [Server]
+org.eclipse.jetty:jetty-servlets 9.4.58.v20250814 [Server]
+org.eclipse.jetty:jetty-util 9.4.51.v20230217, 9.4.53.v20231009, 9.4.58.v20250814, 11.0.24 [Marquez; Server]
+org.eclipse.jetty:jetty-util-ajax 9.4.51.v20230217, 9.4.53.v20231009, 9.4.58.v20250814 [Marquez; Server]
+org.eclipse.jetty:jetty-webapp 9.4.51.v20230217, 9.4.58.v20250814 [Server]
+org.eclipse.jetty:jetty-xml 9.4.51.v20230217, 9.4.58.v20250814 [Server]
+org.fusesource.jansi:jansi 2.4.1 [Server]
+org.ini4j:ini4j 0.5.4 [Server]
+org.javassist:javassist 3.27.0-GA, 3.29.2-GA, 3.30.2-GA [Marquez; Server]
+org.jboss.logging:jboss-logging 3.3.1.Final, 3.4.1.Final [Marquez; Server]
+org.jboss.threads:jboss-threads 2.3.6.Final [Server]
+org.jboss.xnio:xnio-api 3.8.8.Final [Server]
+org.jctools:jctools-core 3.1.0, 4.0.5, 4.0.6 [Server]
+org.jetbrains:annotations 13.0 [Server]
+org.lance:lance-namespace-apache-client 0.7.5 [Server]
+org.lance:lance-namespace-core 0.7.5 [Server]
+org.lz4:lz4-java 1.8.0 [Server]
+org.mybatis:mybatis 3.5.6 [Server]
+org.openapitools:jackson-databind-nullable 0.2.6 [Server]
+org.opensearch.client:opensearch-rest-client 2.19.0 [Server]
+org.questdb:jar-jni 1.1.1 [Server]
+org.wildfly.client:wildfly-client-config 1.0.1.Final [Server]
+org.wildfly.common:wildfly-common 1.5.4.Final [Server]
+org.xerial.snappy:snappy-java 1.1.10.8 [Server]
+org.yaml:snakeyaml 2.0, 2.2 [Marquez; Server]
+paimon-shade-caffeine 2-2.9.3-0.8.0 [Server]
+paimon-shade-guava 30-30.1.1-jre-0.8.0 [Server]
+paimon-shade-jackson 2-2.14.2-0.8.0 [Server]
+re2j 1.7 [Server]
+RoaringBitmap 1.6.14 [Server]
+rome 1.0 [Server]
+software.amazon.awssdk.crt:aws-crt 0.45.1 [Server]
+software.amazon.awssdk:annotations 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:apache-client 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:arns 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:auth 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:aws-core 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:aws-json-protocol 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:aws-query-protocol 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:aws-xml-protocol 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:checksums 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:checksums-spi 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:cloudwatch 2.44.4 [Server]
+software.amazon.awssdk:cloudwatch-metric-publisher 2.44.4 [Server]
+software.amazon.awssdk:crt-core 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:dynamodb 2.44.4 [Server]
+software.amazon.awssdk:endpoints-spi 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:glue 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:http-auth 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:http-auth-aws 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:http-auth-aws-crt 2.44.4 [Server]
+software.amazon.awssdk:http-auth-aws-eventstream 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:http-auth-spi 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:http-client-spi 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:iam 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:iam-policy-builder 2.31.73 [Server]
+software.amazon.awssdk:identity-spi 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:json-utils 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:kms 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:lakeformation 2.44.4 [Server]
+software.amazon.awssdk:metrics-spi 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:netty-nio-client 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:profiles 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:protocol-core 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:regions 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:retries 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:retries-spi 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:s3 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:s3control 2.44.4 [Server]
+software.amazon.awssdk:sdk-core 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:smithy-rpcv2-protocol 2.44.4 [Server]
+software.amazon.awssdk:sso 2.44.4 [Server]
+software.amazon.awssdk:sts 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:utils 2.31.73, 2.44.4 [Server]
+software.amazon.awssdk:utils-lite 2.44.4 [Server]
+software.amazon.eventstream:eventstream 1.0.1 [Server]
+software.amazon.ion:ion-java 1.0.2 [Server]
+software.amazon.s3.accessgrants:aws-s3-accessgrants-java-plugin 2.4.1 [Server]
+third-party-jackson-core 2.31.73 [Server]
+trino-jdbc 435 [Server]
