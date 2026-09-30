@@ -9,6 +9,8 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(git -C "$script_dir" rev-parse --show-toplevel)"
+source "$repo_root/dev/headers/copy-untracked-files.sh"
+bash "$script_dir/test_copy_untracked_license_headers.sh"
 scratch_dir="$(mktemp -d -t enterprise-license-validation.XXXXXX)"
 worktree="$scratch_dir/worktree"
 working_tree_patch="$scratch_dir/working-tree.patch"
@@ -75,10 +77,7 @@ git -C "$repo_root" worktree add --detach --quiet "$worktree" HEAD
 if [[ -s "$working_tree_patch" ]]; then
   git -C "$worktree" apply "$working_tree_patch"
 fi
-while IFS= read -r -d '' untracked_file; do
-  mkdir -p "$(dirname "$worktree/$untracked_file")"
-  cp -p "$repo_root/$untracked_file" "$worktree/$untracked_file"
-done < <(git -C "$repo_root" ls-files --others --exclude-standard -z)
+copy_untracked_files "$repo_root" "$worktree"
 
 baseline_log="$scratch_dir/baseline.log"
 if ! run_check "$baseline_log"; then
@@ -115,8 +114,10 @@ policy_files=(
   "buildSrc/src/main/java/org/apache/gravitino/license/LicenseHeaderClassifier.java"
   "buildSrc/src/test/java/org/apache/gravitino/license/TestLicenseHeaderClassifier.java"
   "dev/ci/test_enterprise_license_headers.sh"
+  "dev/ci/test_copy_untracked_license_headers.sh"
   "dev/ci/test_new_file_license_headers.sh"
   "dev/headers/apply-datastrato-license-headers.sh"
+  "dev/headers/copy-untracked-files.sh"
   "dev/headers/rewrite-datastrato-headers.py"
   "dev/headers/test/run.sh"
   "enterprise-licensing.gradle.kts"
