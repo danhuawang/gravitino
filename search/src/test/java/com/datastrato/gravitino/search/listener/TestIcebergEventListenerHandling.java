@@ -135,7 +135,7 @@ public class TestIcebergEventListenerHandling {
 
   @Test
   public void testDataDiscoveryListenerRoutesIcebergTableEventToIcebergHandler() throws Exception {
-    DataDiscoveryListener listener = new DataDiscoveryListener();
+    DataDiscoveryListener listener = ListenerTestUtils.newListener();
     IcebergEventHandler mockIcebergHandler = mock(IcebergEventHandler.class);
     EventHandler mockTableHandler = mock(EventHandler.class);
     EventHandler mockSchemaHandler = mock(EventHandler.class);
@@ -157,7 +157,7 @@ public class TestIcebergEventListenerHandling {
   @Test
   public void testDataDiscoveryListenerRoutesIcebergNamespaceEventToIcebergHandler()
       throws Exception {
-    DataDiscoveryListener listener = new DataDiscoveryListener();
+    DataDiscoveryListener listener = ListenerTestUtils.newListener();
     IcebergEventHandler mockIcebergHandler = mock(IcebergEventHandler.class);
     EventHandler mockTableHandler = mock(EventHandler.class);
     EventHandler mockSchemaHandler = mock(EventHandler.class);
@@ -178,7 +178,7 @@ public class TestIcebergEventListenerHandling {
 
   @Test
   public void testDataDiscoveryListenerIgnoresIcebergTableFailureEvent() throws Exception {
-    DataDiscoveryListener listener = new DataDiscoveryListener();
+    DataDiscoveryListener listener = ListenerTestUtils.newListener();
     IcebergEventHandler mockIcebergHandler = mock(IcebergEventHandler.class);
     EventHandler mockTableHandler = mock(EventHandler.class);
     EventHandler mockSchemaHandler = mock(EventHandler.class);

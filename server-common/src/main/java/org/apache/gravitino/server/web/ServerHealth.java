@@ -18,6 +18,11 @@
  */
 package org.apache.gravitino.server.web;
 
+import java.util.Collections;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import javax.annotation.Nullable;
 
 /**
@@ -31,6 +36,7 @@ public final class ServerHealth {
   private static final ServerHealth INSTANCE = new ServerHealth();
 
   private volatile boolean outOfMemory;
+  private final Map<String, BooleanSupplier> optionalChecks = new ConcurrentHashMap<>();
 
   /** Creates an independent health state, initially healthy. */
   public ServerHealth() {}
@@ -78,5 +84,34 @@ public final class ServerHealth {
    */
   public boolean hasOutOfMemoryError() {
     return outOfMemory;
+  }
+
+  /**
+   * Registers an optional component that is reported by the health endpoints without affecting the
+   * overall status, so an unavailable optional component does not take the server out of service.
+   *
+   * @param name the component name shown in the health response
+   * @param check returns whether the component is available
+   */
+  public void registerOptionalCheck(String name, BooleanSupplier check) {
+    optionalChecks.put(name, check);
+  }
+
+  /**
+   * Removes an optional component check.
+   *
+   * @param name the component name
+   */
+  public void removeOptionalCheck(String name) {
+    optionalChecks.remove(name);
+  }
+
+  /**
+   * Returns a snapshot of the optional component checks, ordered by name.
+   *
+   * @return an immutable snapshot of registered checks
+   */
+  public Map<String, BooleanSupplier> optionalChecks() {
+    return Collections.unmodifiableMap(new TreeMap<>(optionalChecks));
   }
 }

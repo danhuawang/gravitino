@@ -91,6 +91,67 @@ public class TestHealthOperations {
   }
 
   @Test
+  public void testOptionalCheckIsReportedWithoutChangingStatus() throws IOException {
+    ServerHealth health = new ServerHealth();
+    EntityStore store = Mockito.mock(EntityStore.class);
+    Mockito.when(store.exists(Mockito.any(), Mockito.any())).thenReturn(false);
+    HealthOperations ops = newOps(store, 2000L, health);
+    health.registerOptionalCheck("search", () -> false);
+
+    Response ready = ops.ready();
+    assertEquals(200, ready.getStatus());
+    HealthResponse body = (HealthResponse) ready.getEntity();
+    assertEquals(HealthCheckDTO.Status.UP, body.getStatus());
+    assertEquals("search", body.getChecks().get(1).getName());
+    assertEquals(HealthCheckDTO.Status.DOWN, body.getChecks().get(1).getStatus());
+    assertEquals("unavailable", body.getChecks().get(1).getDetails().get("reason"));
+
+    Response aggregate = ops.health();
+    assertEquals(200, aggregate.getStatus());
+    HealthResponse aggregateBody = (HealthResponse) aggregate.getEntity();
+    assertEquals(HealthCheckDTO.Status.UP, aggregateBody.getStatus());
+    assertEquals("search", aggregateBody.getChecks().get(2).getName());
+
+    health.registerOptionalCheck("search", () -> true);
+    body = (HealthResponse) ops.ready().getEntity();
+    assertEquals(HealthCheckDTO.Status.UP, body.getChecks().get(1).getStatus());
+    health.removeOptionalCheck("search");
+    assertEquals(1, ((HealthResponse) ops.ready().getEntity()).getChecks().size());
+  }
+
+  @Test
+  public void testOptionalChecksAreOrderedByName() throws IOException {
+    ServerHealth health = new ServerHealth();
+    EntityStore store = Mockito.mock(EntityStore.class);
+    Mockito.when(store.exists(Mockito.any(), Mockito.any())).thenReturn(false);
+    health.registerOptionalCheck("search", () -> true);
+    health.registerOptionalCheck("lineage", () -> true);
+    HealthOperations ops = newOps(store, 2000L, health);
+
+    HealthResponse body = (HealthResponse) ops.ready().getEntity();
+    assertEquals("lineage", body.getChecks().get(1).getName());
+    assertEquals("search", body.getChecks().get(2).getName());
+  }
+
+  @Test
+  public void testThrowingOptionalCheckIsReportedDown() throws IOException {
+    ServerHealth health = new ServerHealth();
+    EntityStore store = Mockito.mock(EntityStore.class);
+    Mockito.when(store.exists(Mockito.any(), Mockito.any())).thenReturn(false);
+    health.registerOptionalCheck(
+        "search",
+        () -> {
+          throw new IllegalStateException("offline");
+        });
+    HealthOperations ops = newOps(store, 2000L, health);
+
+    Response response = ops.ready();
+    assertEquals(200, response.getStatus());
+    HealthResponse body = (HealthResponse) response.getEntity();
+    assertEquals("check-failed", body.getChecks().get(1).getDetails().get("reason"));
+  }
+
+  @Test
   public void testReadyReturns503WhenEntityStoreThrows() throws IOException {
     EntityStore store = Mockito.mock(EntityStore.class);
     Mockito.when(store.exists(Mockito.any(), Mockito.any()))

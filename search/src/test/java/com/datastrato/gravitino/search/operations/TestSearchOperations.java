@@ -244,6 +244,19 @@ public class TestSearchOperations extends JerseyTest {
   }
 
   @Test
+  void testUnavailableSearchReturns503() {
+    Mockito.doReturn(false).when(searchService).isAvailable();
+    try {
+      Response response = query("metalake1", "keyword", null, null);
+      Assertions.assertEquals(Status.SERVICE_UNAVAILABLE.getStatusCode(), response.getStatus());
+      ErrorResponse error = response.readEntity(ErrorResponse.class);
+      Assertions.assertEquals(ErrorConstants.CONNECTION_FAILED_CODE, error.getCode());
+    } finally {
+      Mockito.doCallRealMethod().when(searchService).isAvailable();
+    }
+  }
+
+  @Test
   void testParserFailuresReturnBadRequest() {
     String[][] cases = {
       {"+", "Remove the unsupported character '+' or put the search term in double quotes."},

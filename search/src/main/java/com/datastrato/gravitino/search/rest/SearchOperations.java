@@ -35,6 +35,7 @@ import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.authorization.AuthorizationRequestContext;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
+import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.exceptions.ForbiddenException;
 import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.listener.api.event.server.AuthorizationDenialFailureEvent;
@@ -69,6 +70,10 @@ public class SearchOperations {
           httpRequest,
           () -> {
             checkMaintenancePermission(metalake, "rebuildMetadata");
+            Response unavailable = unavailableSearchResponse();
+            if (unavailable != null) {
+              return unavailable;
+            }
             // Use sync method to rebuild metadata
             SyncTask task =
                 ExtendedDatastratoGravitinoEnv.getInstance()
@@ -110,6 +115,10 @@ public class SearchOperations {
           httpRequest,
           () -> {
             checkMaintenancePermission(metalake, "syncMetadataObjects");
+            Response unavailable = unavailableSearchResponse();
+            if (unavailable != null) {
+              return unavailable;
+            }
             boolean cascade = request.isCascade();
             // If metadataObject is null, it means we are syncing all objects in the metalake; then
             // cascade is always true
@@ -161,6 +170,10 @@ public class SearchOperations {
           httpRequest,
           () -> {
             checkQueryMembership(metalake);
+            Response unavailable = unavailableSearchResponse();
+            if (unavailable != null) {
+              return unavailable;
+            }
 
             SearchService searchService =
                 ExtendedDatastratoGravitinoEnv.getInstance().getSearchService();
@@ -214,6 +227,16 @@ public class SearchOperations {
       LOG.error("Failed to get task status for taskId: {}", taskId, e);
       return Utils.internalError(e.getMessage());
     }
+  }
+
+  @Nullable
+  private Response unavailableSearchResponse() {
+    SearchService service = ExtendedDatastratoGravitinoEnv.getInstance().getSearchService();
+    return service != null && service.isAvailable()
+        ? null
+        : Utils.serviceUnavailable(
+            ErrorResponse.connectionFailed(
+                "Search storage is unavailable; retry after it has been initialized"));
   }
 
   private static boolean authorizationEnabled() {

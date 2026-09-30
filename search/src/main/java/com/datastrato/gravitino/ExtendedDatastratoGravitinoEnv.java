@@ -8,6 +8,7 @@ import com.datastrato.gravitino.license.LicenseManager;
 import com.datastrato.gravitino.search.service.SearchService;
 import org.apache.gravitino.Config;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.server.web.ServerHealth;
 
 public class ExtendedDatastratoGravitinoEnv extends DatastratoGravitinoEnv {
   private static final ExtendedDatastratoGravitinoEnv INSTANCE =
@@ -26,12 +27,14 @@ public class ExtendedDatastratoGravitinoEnv extends DatastratoGravitinoEnv {
   @Override
   public void initializeFullComponents(Config config) {
     this.searchService = new SearchService(config);
+    ServerHealth.getInstance().registerOptionalCheck("search", searchService::isAvailable);
     super.initializeFullComponents(config);
     LicenseManager.getInstance().initialize(config);
   }
 
   @Override
   public void shutdown() {
+    ServerHealth.getInstance().removeOptionalCheck("search");
     LicenseManager.getInstance().shutdown();
     if (searchService != null) {
       searchService.close();

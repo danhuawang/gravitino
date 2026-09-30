@@ -296,6 +296,23 @@ Initial Data Sync
 - Existing deployments: Run `bin/index.sh rebuild` to index existing metadata. See
   [Command-Line Index Management](#command-line-index-management).
 
+OpenSearch unavailable at startup
+- The Gravitino server initializes OpenSearch in the background, so an unavailable or slow OpenSearch
+  does not delay or stop server startup. Failed attempts are retried with the delay growing from
+  1 second to at most 60 seconds.
+- Until initialization succeeds, search endpoints return 503. The `search` check in
+  `/api/health/ready` is `down`, but it does not change the overall health status.
+- Metadata changed during this period is not indexed. After the server logs that search storage is
+  available, run `bin/index.sh rebuild` for the affected metalakes.
+- A missing index template is reported separately from an unavailable or overloaded OpenSearch. Install
+  or upgrade the templates as described in [Command-Line Index Management](#command-line-index-management).
+- This covers startup only. If OpenSearch becomes unreachable after initialization, search requests
+  fail with server errors and the `search` check stays `up`.
+- Any script that runs `bin/index.sh` before starting the server must not abort when OpenSearch is
+  unreachable, or the server never reaches this code. `bin/gravitino.sh start` continues after a
+  failed `index.sh init`. Deployments that stop on that failure, such as a container entrypoint that
+  exits, still fail to start.
+
 ## Command-Line Index Management
 
 The Gravitino server provides a CLI tool for OpenSearch templates and indexes.

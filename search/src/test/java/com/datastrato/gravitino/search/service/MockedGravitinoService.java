@@ -13,6 +13,7 @@ import com.datastrato.gravitino.authorization.DatastratoAccessControlDispatcher;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +76,7 @@ import org.apache.gravitino.tag.Tag;
 import org.apache.gravitino.tag.TagDispatcher;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.apache.gravitino.utils.NamespaceUtil;
+import org.awaitility.Awaitility;
 import org.mockito.Mockito;
 
 public class MockedGravitinoService {
@@ -97,6 +99,9 @@ public class MockedGravitinoService {
 
   public SearchService createMokedSearchService(SearchService service)
       throws IllegalAccessException {
+    // The spy copies the service's fields, so the storage must be initialized before it is made.
+    // Wait through the background retry rather than failing on one transient error.
+    Awaitility.await().atMost(Duration.ofMinutes(2)).until(service::isAvailable);
     GravitinoEnv gravitinoEnv = GravitinoEnv.getInstance();
     FieldUtils.writeField(
         gravitinoEnv,

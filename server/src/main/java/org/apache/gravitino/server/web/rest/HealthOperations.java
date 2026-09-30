@@ -34,6 +34,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
@@ -61,7 +62,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code GET /api/health/live} — liveness, 200 when the HTTP thread can respond and no OOM
  *       has been observed
  *   <li>{@code GET /api/health/ready} — readiness, 200 when entity store is reachable and no OOM
- *       has been observed
+ *       has been observed; optional components are reported without affecting the status
  *   <li>{@code GET /api/health} — aggregate, 200 when both pass
  * </ul>
  *
@@ -141,7 +142,10 @@ public class HealthOperations {
       return Utils.outOfMemoryResponse();
     }
     HealthCheckDTO.Status overall = entityStoreCheck.getStatus();
-    HealthResponse body = new HealthResponse(overall, Collections.singletonList(entityStoreCheck));
+    List<HealthCheckDTO> checks = new ArrayList<>();
+    checks.add(entityStoreCheck);
+    checks.addAll(checkOptionalComponents());
+    HealthResponse body = new HealthResponse(overall, checks);
     return overall == HealthCheckDTO.Status.UP ? Utils.ok(body) : Utils.serviceUnavailable(body);
   }
 
@@ -164,9 +168,27 @@ public class HealthOperations {
         checks.stream().anyMatch(c -> c.getStatus() == HealthCheckDTO.Status.DOWN)
             ? HealthCheckDTO.Status.DOWN
             : HealthCheckDTO.Status.UP;
+    // Optional components are reported but do not take the server out of service.
+    checks.addAll(checkOptionalComponents());
 
     HealthResponse body = new HealthResponse(overall, checks);
     return overall == HealthCheckDTO.Status.UP ? Utils.ok(body) : Utils.serviceUnavailable(body);
+  }
+
+  private List<HealthCheckDTO> checkOptionalComponents() {
+    List<HealthCheckDTO> checks = new ArrayList<>();
+    for (Map.Entry<String, BooleanSupplier> entry : serverHealth.optionalChecks().entrySet()) {
+      try {
+        checks.add(
+            entry.getValue().getAsBoolean()
+                ? up(entry.getKey(), Collections.emptyMap())
+                : down(entry.getKey(), "reason", "unavailable"));
+      } catch (RuntimeException e) {
+        LOG.warn("Optional health check {} failed", entry.getKey(), e);
+        checks.add(down(entry.getKey(), "reason", "check-failed"));
+      }
+    }
+    return checks;
   }
 
   private HealthCheckDTO checkEntityStore() {

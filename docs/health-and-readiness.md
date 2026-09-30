@@ -60,6 +60,12 @@ a status of `up` or `down`, and a details map that explains a failure. On the Gr
 normal check names are `httpServer` and `entityStore`. After an observed out-of-memory error, all
 three endpoints instead report the `jvm` failure described below.
 
+When search is enabled, `/api/health/ready` and `/api/health` also list a `search` check. It does
+not change the overall status, so an unavailable search backend does not take the metadata server
+out of service. With OpenSearch, the server initializes the storage in the background, retrying
+until it succeeds, and the check is `down` until then. The check covers startup initialization
+only: it stays `up` if OpenSearch becomes unreachable after initialization.
+
 ## Out-of-memory Failures
 
 A Metaspace or heap `OutOfMemoryError` can leave already-loaded endpoints responding successfully

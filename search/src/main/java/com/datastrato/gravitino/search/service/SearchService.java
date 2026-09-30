@@ -38,11 +38,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -69,6 +73,10 @@ public class SearchService implements Closeable {
       ImmutableMap.of(
           GRAVITINO_SEARCH_STORAGE_IMPL_MEMORY, InMemorySearchStorage.class,
           GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH, OpenSearchStorage.class);
+  private static final long STORAGE_INIT_RETRY_INITIAL_MS = 1000L;
+  private static final long STORAGE_INIT_RETRY_MAX_MS = 60_000L;
+  // A healthy first attempt finishes well within this bound; past it, events are skipped.
+  private static final long FIRST_ATTEMPT_WAIT_SECONDS = 60L;
 
   private final int maxQueueSize;
   private final int backoffTime;
@@ -76,7 +84,8 @@ public class SearchService implements Closeable {
   private final int entityProcessBatchSize;
   private final int maxAuthorizationScanSize;
 
-  @VisibleForTesting protected final SearchStorage storage;
+  // Null until the search storage has been initialized.
+  @VisibleForTesting @Nullable protected volatile SearchStorage storage;
 
   private final TaskStatusStorage taskStatusStorage;
 
@@ -88,7 +97,11 @@ public class SearchService implements Closeable {
   private final Striped<Lock> metalakeLocks = Striped.lock(METALAKE_LOCK_STRIPES);
 
   private final ExecutorService executorService;
-  boolean stop = false;
+  private final Object storageLock = new Object();
+  private final CountDownLatch firstInitializationAttempt = new CountDownLatch(1);
+  private final AtomicBoolean eventsSkipped = new AtomicBoolean(false);
+  @Nullable private final ScheduledExecutorService storageInitExecutor;
+  volatile boolean stop = false;
 
   public SearchService(Config config) {
     try {
@@ -106,8 +119,27 @@ public class SearchService implements Closeable {
       this.backoffTime = searchConfig.getMaxBackoffMs();
       this.maxAuthorizationScanSize = searchConfig.getMaxAuthorizationScanSize();
 
-      this.storage = clazz.getDeclaredConstructor().newInstance();
-      this.storage.initialize(config);
+      // OpenSearch initializes in the background, so an unavailable or slow backend never delays
+      // server startup. Search stays unavailable until an attempt succeeds.
+      if (GRAVITINO_SEARCH_STORAGE_IMPL_OPENSEARCH.equals(storageType)) {
+        this.storageInitExecutor =
+            Executors.newSingleThreadScheduledExecutor(
+                new ThreadFactoryBuilder()
+                    .setNameFormat("SearchService-StorageInitializer-%d")
+                    .setDaemon(true)
+                    .build());
+      } else {
+        SearchStorage localStorage = clazz.getDeclaredConstructor().newInstance();
+        try {
+          localStorage.initialize(config);
+        } catch (Exception e) {
+          closeQuietly(localStorage);
+          throw e;
+        }
+        this.storage = localStorage;
+        this.storageInitExecutor = null;
+        firstInitializationAttempt.countDown();
+      }
 
       this.executorService =
           new ThreadPoolExecutor(
@@ -129,11 +161,119 @@ public class SearchService implements Closeable {
       // simplicity, but it can be replaced with a persistent storage like a database.
       this.taskStatusStorage = new InMemoryTaskStatusStorage();
       taskStatusStorage.initialize(searchConfig);
+
+      // Schedule last so a failed constructor does not leave a retry thread running.
+      if (storageInitExecutor != null) {
+        scheduleStorageInitialization(clazz, config, 0L);
+      }
     } catch (Exception e) {
       String errorMessage = "Failed to initialize SearchService";
       LOG.error(errorMessage, e);
       throw new RuntimeException(errorMessage, e);
     }
+  }
+
+  /**
+   * Returns whether the search storage has been initialized. This reflects startup initialization
+   * only: it does not turn false if the backend becomes unreachable after initialization.
+   *
+   * @return true when the search storage has been initialized
+   */
+  public boolean isAvailable() {
+    return storage != null;
+  }
+
+  /**
+   * Waits, for a bounded time, until the first storage initialization attempt has finished, so that
+   * events raised while a healthy backend is still initializing are indexed rather than skipped.
+   */
+  public void awaitFirstInitializationAttempt() {
+    try {
+      firstInitializationAttempt.await(FIRST_ATTEMPT_WAIT_SECONDS, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  /**
+   * Returns whether a metadata event must be skipped because the search storage is unavailable. The
+   * first skip is logged at WARN, and a skipped event makes recovery ask for a rebuild.
+   *
+   * @return true when the storage is unavailable and the event must not be indexed
+   */
+  public boolean skipEventWhileUnavailable() {
+    if (isAvailable()) {
+      return false;
+    }
+    if (eventsSkipped.compareAndSet(false, true)) {
+      LOG.warn(
+          "Skipping search events because the search storage is unavailable; metadata changed "
+              + "until it recovers is not indexed");
+    }
+    return true;
+  }
+
+  @Nullable
+  private static SearchStorage tryInitializeStorage(
+      Class<? extends SearchStorage> clazz, Config config) {
+    SearchStorage candidate = null;
+    try {
+      candidate = clazz.getDeclaredConstructor().newInstance();
+      candidate.initialize(config);
+      return candidate;
+    } catch (Exception e) {
+      LOG.warn(
+          "Search storage is unavailable; search requests will be rejected until it recovers", e);
+      if (candidate != null) {
+        closeQuietly(candidate);
+      }
+      return null;
+    }
+  }
+
+  private static void closeQuietly(SearchStorage searchStorage) {
+    try {
+      searchStorage.close();
+    } catch (Exception e) {
+      LOG.warn("Failed to close search storage", e);
+    }
+  }
+
+  private void scheduleStorageInitialization(
+      Class<? extends SearchStorage> clazz, Config config, long delayMs) {
+    storageInitExecutor.schedule(
+        () -> {
+          if (stop) {
+            return;
+          }
+          SearchStorage initialized = tryInitializeStorage(clazz, config);
+          if (initialized == null) {
+            firstInitializationAttempt.countDown();
+            scheduleStorageInitialization(
+                clazz,
+                config,
+                Math.min(
+                    Math.max(delayMs * 2, STORAGE_INIT_RETRY_INITIAL_MS),
+                    STORAGE_INIT_RETRY_MAX_MS));
+            return;
+          }
+          synchronized (storageLock) {
+            if (stop) {
+              closeQuietly(initialized);
+              return;
+            }
+            storage = initialized;
+          }
+          storageInitExecutor.shutdown();
+          if (firstInitializationAttempt.getCount() == 0 || eventsSkipped.get()) {
+            LOG.warn(
+                "Search storage is available. Metadata changed while it was unavailable is not "
+                    + "indexed; run `bin/index.sh rebuild` for the affected metalakes.");
+          }
+          firstInitializationAttempt.countDown();
+        },
+        delayMs,
+        TimeUnit.MILLISECONDS);
   }
 
   public int getMaxSyncMetadataThreadNum() {
@@ -632,14 +772,23 @@ public class SearchService implements Closeable {
 
   @Override
   public void close() {
-    try {
-      if (storage != null) {
-        storage.close();
-      }
+    SearchStorage current;
+    synchronized (storageLock) {
       stop = true;
-      executorService.shutdownNow();
+      current = storage;
+    }
+    firstInitializationAttempt.countDown();
+    if (storageInitExecutor != null) {
+      storageInitExecutor.shutdownNow();
+    }
+    try {
+      if (current != null) {
+        current.close();
+      }
     } catch (Exception e) {
       LOG.error("Failed to close SearchService", e);
+    } finally {
+      executorService.shutdownNow();
     }
   }
 

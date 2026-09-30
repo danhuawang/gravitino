@@ -6,6 +6,7 @@ package com.datastrato.gravitino.search.store.opensearch;
 import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS;
 import static com.datastrato.gravitino.search.utils.SearchEntityCodec.ENTITY_TYPE_TO_CLASS_DTO;
 import static java.net.HttpURLConnection.HTTP_NOT_FOUND;
+import static java.net.HttpURLConnection.HTTP_UNAVAILABLE;
 
 import com.datastrato.gravitino.search.dto.SearchEntitiesDTO;
 import com.datastrato.gravitino.search.dto.SearchEntityDTO;
@@ -25,6 +26,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -162,27 +164,71 @@ public class OpenSearchStorage implements SearchStorage {
     removeCatalogPropertiesFromExistingIndices();
   }
 
-  private void checkIndexTemplate() {
-    try {
-      // The index template should be created before the Gravitino server starts.
-      // The name of the index template like "fileset_entity_index_template_v1",
-      GetIndexTemplateRequest request = new GetIndexTemplateRequest.Builder().build();
-      GetIndexTemplateResponse response = client.indices().getIndexTemplate(request);
-      List<IndexTemplateItem> templates = response.indexTemplates();
-      List<String> templateNames =
-          templates.stream().map(IndexTemplateItem::name).collect(Collectors.toList());
-      for (String v : ENTITY_TYPE_TO_INDEX_SUFFIX.values()) {
-        boolean found = templateNames.stream().anyMatch(name -> name.startsWith(v));
-        if (!found) {
-          LOG.error("Index template for {} not found", v);
-          throw new Exception("Index template for " + v + " not found");
+  void checkIndexTemplate() {
+    int attempts = Math.max(1, maxRetries);
+    for (int attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        // Templates must be installed before search can become available.
+        GetIndexTemplateResponse response =
+            client.indices().getIndexTemplate(new GetIndexTemplateRequest.Builder().build());
+        List<String> templateNames =
+            response.indexTemplates().stream()
+                .map(IndexTemplateItem::name)
+                .collect(Collectors.toList());
+        for (String suffix : ENTITY_TYPE_TO_INDEX_SUFFIX.values()) {
+          if (templateNames.stream().noneMatch(name -> name.startsWith(suffix))) {
+            // Not retried: OpenSearch responded, and an operator must install the templates.
+            throw new MissingIndexTemplateException(
+                "OpenSearch index template for "
+                    + suffix
+                    + " is missing; install or upgrade the search index templates with"
+                    + " `bin/index.sh`");
+          }
+        }
+        return;
+      } catch (MissingIndexTemplateException e) {
+        throw e;
+      } catch (Exception e) {
+        if (!isRetryableTemplateFailure(e)) {
+          throw new RuntimeException("Failed to check OpenSearch index templates", e);
+        }
+        if (attempt == attempts) {
+          throw new RuntimeException(
+              String.format(
+                  "OpenSearch is unavailable or overloaded; index-template check failed after %d"
+                      + " attempt(s)",
+                  attempt),
+              e);
+        }
+        LOG.warn("OpenSearch index-template check failed; retrying ({}/{})", attempt, attempts, e);
+        try {
+          Thread.sleep(retryBackoffMs * attempt);
+        } catch (InterruptedException interrupted) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException(
+              "Interrupted while checking OpenSearch index templates", interrupted);
         }
       }
-
-    } catch (Exception e) {
-      LOG.error("Failed to check index template: {}", e.getMessage());
-      throw new RuntimeException("Failed to check index template", e);
     }
+  }
+
+  /** Raised when OpenSearch responds but a required index template is not installed. */
+  static class MissingIndexTemplateException extends IllegalStateException {
+    MissingIndexTemplateException(String message) {
+      super(message);
+    }
+  }
+
+  private static boolean isRetryableTemplateFailure(Exception failure) {
+    if (failure instanceof OpenSearchException) {
+      int status = ((OpenSearchException) failure).status();
+      return status == 429 || status == HTTP_UNAVAILABLE;
+    }
+    if (failure instanceof ResponseException) {
+      int status = ((ResponseException) failure).getResponse().getStatusLine().getStatusCode();
+      return status == 429 || status == HTTP_UNAVAILABLE;
+    }
+    return failure instanceof IOException;
   }
 
   private ThreadPoolExecutor createThreadExecutor(OpenSearchConfig openSearchConfig) {
@@ -396,8 +442,19 @@ public class OpenSearchStorage implements SearchStorage {
 
   @Override
   public void close() {
-    if (client != null) {
-      client.shutdown();
+    // Keep the fields non-null: requests still in flight during shutdown should fail on the closed
+    // executor or transport instead of with a NullPointerException.
+    if (queryExecutor != null) {
+      queryExecutor.shutdownNow();
+    }
+    // OpenSearchClient#shutdown() only returns the _nodes/shutdown API client; closing the
+    // RestClient is what releases the HTTP connection pool and I/O reactor threads.
+    if (restClient != null) {
+      try {
+        restClient.close();
+      } catch (IOException e) {
+        LOG.warn("Failed to close OpenSearch REST client", e);
+      }
     }
   }
 

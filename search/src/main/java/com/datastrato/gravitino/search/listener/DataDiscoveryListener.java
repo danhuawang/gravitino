@@ -77,6 +77,13 @@ public class DataDiscoveryListener implements EventListenerPlugin {
   @Override
   public void onPostEvent(Event event) {
     try {
+      // Events raised during a healthy startup wait for the first initialization attempt. Changes
+      // made while the storage stays unavailable are reconciled by `bin/index.sh rebuild`.
+      searchService.awaitFirstInitializationAttempt();
+      if (searchService.skipEventWhileUnavailable()) {
+        LOG.debug("Skip event {}: search storage is unavailable", event.getClass().getSimpleName());
+        return;
+      }
 
       EventHandler handler = null;
       if (event instanceof JobTemplateEvent) {

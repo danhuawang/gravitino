@@ -93,7 +93,7 @@ class TestMetalakeEventHandler {
 
   @Test
   void testDataDiscoveryListenerRoutesMetalakeEvents() throws Exception {
-    DataDiscoveryListener listener = new DataDiscoveryListener();
+    DataDiscoveryListener listener = ListenerTestUtils.newListener();
     EventHandler mockHandler = Mockito.mock(EventHandler.class);
     Field handlersField = DataDiscoveryListener.class.getDeclaredField("eventHandlers");
     handlersField.setAccessible(true);

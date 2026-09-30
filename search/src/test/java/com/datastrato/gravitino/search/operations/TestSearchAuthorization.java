@@ -38,6 +38,7 @@ import org.apache.gravitino.MetadataObjects;
 import org.apache.gravitino.UserPrincipal;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
+import org.apache.gravitino.dto.responses.ErrorConstants;
 import org.apache.gravitino.dto.responses.ErrorResponse;
 import org.apache.gravitino.listener.EventBus;
 import org.apache.gravitino.listener.api.event.server.AuthorizationDenialFailureEvent;
@@ -91,6 +92,7 @@ public class TestSearchAuthorization extends JerseyTest {
     config = mock(Config.class);
     authorizer = mock(GravitinoAuthorizer.class);
     searchService = mock(SearchService.class);
+    when(searchService.isAvailable()).thenReturn(true);
     eventBus = mock(EventBus.class);
     when(config.get(Configs.ENABLE_AUTHORIZATION)).thenReturn(true);
     FieldUtils.writeField(env, "config", config, true);
@@ -152,6 +154,21 @@ public class TestSearchAuthorization extends JerseyTest {
     }
     verifyNoInteractions(searchService);
     verify(eventBus).dispatchEvent(any(AuthorizationDenialFailureEvent.class));
+  }
+
+  @Test
+  void testUnavailableSearchIsCheckedAfterAuthorization() {
+    when(searchService.isAvailable()).thenReturn(false);
+    when(authorizer.isMetalakeUser(eq("lake"), any())).thenReturn(true);
+    try (Response denied = query("other-lake")) {
+      assertEquals(403, denied.getStatus());
+    }
+    try (Response unavailable = query("lake")) {
+      assertEquals(503, unavailable.getStatus());
+      ErrorResponse error = unavailable.readEntity(ErrorResponse.class);
+      assertEquals(ErrorConstants.CONNECTION_FAILED_CODE, error.getCode());
+      assertTrue(error.getMessage().contains("Search storage is unavailable"));
+    }
   }
 
   @Test

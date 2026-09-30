@@ -58,7 +58,7 @@ class TestJobTemplateEventHandler {
     // Only job templates are searchable. A job execution is a transient record identified by a
     // generated ID, carrying nothing a caller would search for that the template does not hold, so
     // its events must not reach the search service at all.
-    DataDiscoveryListener listener = new DataDiscoveryListener();
+    DataDiscoveryListener listener = ListenerTestUtils.newListener();
     EventHandler handler = mock(EventHandler.class);
     Field field = DataDiscoveryListener.class.getDeclaredField("eventHandlers");
     field.setAccessible(true);
