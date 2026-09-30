@@ -18,6 +18,7 @@ import com.datastrato.gravitino.metrics.dto.MetricDTO;
 import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
+import com.datastrato.gravitino.metrics.storage.relational.TagNameMetadataObjectRelPO;
 import com.google.common.collect.Lists;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -42,6 +43,8 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 
 class TestMetricDataService {
@@ -161,6 +164,45 @@ class TestMetricDataService {
     assertEquals(result[0].values().length, result[0].states().length);
     assertEquals(result[0].values().length, result[0].messages().length);
     assertTrue(service.getDirtyMetalake(1L) != null);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {"CATALOG", "SCHEMA", "TABLE", "VIEW", "TOPIC", "FILESET", "MODEL", "FUNCTION"})
+  void testTagNameRelationsUseCollectedObjectTypes(String objectType) throws SQLException {
+    try (Connection conn = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+        Statement statement = conn.createStatement()) {
+      try {
+        statement.executeUpdate(
+            "INSERT INTO tag_meta (tag_id, tag_name, metalake_id, audit_info, deleted_at) VALUES"
+                + " (9001, 'classification', 1, '{}', 0),"
+                + " (9002, 'column_only', 1, '{}', 0),"
+                + " (9003, 'uncollected_only', 1, '{}', 0)");
+        // MODEL_VERSION represents a type outside the collected asset set.
+        statement.executeUpdate(
+            "INSERT INTO tag_relation_meta"
+                + " (tag_id, metadata_object_id, metadata_object_type, audit_info,"
+                + " deleted_at) VALUES"
+                + " (9001, 9101, '"
+                + objectType
+                + "', '{}', 0),"
+                + " (9001, 9102, 'COLUMN', '{}', 0),"
+                + " (9002, 9102, 'COLUMN', '{}', 0),"
+                + " (9001, 9103, 'MODEL_VERSION', '{}', 0),"
+                + " (9003, 9103, 'MODEL_VERSION', '{}', 0)");
+
+        assertEquals(
+            List.of(
+                TagNameMetadataObjectRelPO.builder()
+                    .withTagName("classification")
+                    .withObjectId(9101L)
+                    .build()),
+            service.listTagNameMetadataObjectRelsByMetalakeId(1L));
+      } finally {
+        statement.executeUpdate("DELETE FROM tag_relation_meta WHERE tag_id IN (9001, 9002, 9003)");
+        statement.executeUpdate("DELETE FROM tag_meta WHERE tag_id IN (9001, 9002, 9003)");
+      }
+    }
   }
 
   @Test

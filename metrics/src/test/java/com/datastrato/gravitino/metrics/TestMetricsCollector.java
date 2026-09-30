@@ -26,6 +26,8 @@ import com.datastrato.gravitino.metrics.config.MetricsConfig;
 import com.datastrato.gravitino.metrics.dto.MetricState;
 import com.datastrato.gravitino.metrics.storage.relational.MetricDirtyPO;
 import com.datastrato.gravitino.metrics.storage.relational.MetricPO;
+import com.datastrato.gravitino.metrics.storage.relational.OwnerNameRelPO;
+import com.datastrato.gravitino.metrics.storage.relational.TagNameMetadataObjectRelPO;
 import com.datastrato.gravitino.metrics.storage.relational.service.MetricDataService;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -35,21 +37,28 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.ServiceConfigurationError;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import org.apache.gravitino.Catalog;
 import org.apache.gravitino.Configs;
 import org.apache.gravitino.Entity;
 import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.GravitinoEnv;
+import org.apache.gravitino.HasIdentifier;
 import org.apache.gravitino.MetadataObject;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.OwnerDispatcher;
+import org.apache.gravitino.authorization.Privilege;
+import org.apache.gravitino.authorization.SecurableObject;
 import org.apache.gravitino.catalog.CatalogDispatcher;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.FilesetDispatcher;
@@ -71,15 +80,28 @@ import org.apache.gravitino.meta.RoleEntity;
 import org.apache.gravitino.meta.SchemaEntity;
 import org.apache.gravitino.meta.SchemaVersion;
 import org.apache.gravitino.meta.TableEntity;
+import org.apache.gravitino.meta.TopicEntity;
 import org.apache.gravitino.meta.UserEntity;
+import org.apache.gravitino.meta.ViewEntity;
 import org.apache.gravitino.metalake.MetalakeDispatcher;
 import org.apache.gravitino.server.ServerConfig;
+import org.apache.gravitino.storage.relational.po.SecurableObjectPO;
 import org.apache.gravitino.tag.TagDispatcher;
 import org.apache.gravitino.utils.NameIdentifierUtil;
 import org.apache.gravitino.utils.NamespaceUtil;
 import org.apache.gravitino.utils.ThrowableFunction;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedConstruction;
@@ -254,6 +276,389 @@ class TestMetricsCollector {
       assertMetric(metrics, "asset_count", 3.0, MetricState.COMPLETE);
       assertMetric(metrics, "by_asset_type::FUNCTION::asset_count", 1.0, MetricState.COMPLETE);
     }
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {0, 2})
+  void testMissingTagRelationsAggregateWarningsPerCollection(int missingRelationCount)
+      throws Exception {
+    mockAssetInventory(Capability.Scope.TABLE, "retained", "stale", "retained");
+    List<TagNameMetadataObjectRelPO> relations = new ArrayList<>();
+    relations.add(
+        TagNameMetadataObjectRelPO.builder()
+            .withObjectId(42L)
+            .withTagName("classification")
+            .build());
+    for (int i = 0; i < missingRelationCount; i++) {
+      relations.add(
+          TagNameMetadataObjectRelPO.builder()
+              .withObjectId(43L)
+              .withTagName("stale_tag_" + i)
+              .build());
+    }
+    when(metricDataService.listTagNameMetadataObjectRelsByMetalakeId(mockId)).thenReturn(relations);
+
+    LoggerContext context =
+        (LoggerContext) LogManager.getContext(MetricsCollector.class.getClassLoader(), false);
+    Configuration configuration = context.getConfiguration();
+    String loggerName = MetricsCollector.class.getName();
+    LoggerConfig previousConfig = configuration.getLoggers().get(loggerName);
+    Appender appender = mock(Appender.class);
+    when(appender.getName()).thenReturn("metricsTagRelationLogs");
+    when(appender.isStarted()).thenReturn(true);
+    List<LogEvent> events = new ArrayList<>();
+    doAnswer(
+            invocation -> {
+              LogEvent event = invocation.getArgument(0);
+              events.add(event.toImmutable());
+              return null;
+            })
+        .when(appender)
+        .append(any(LogEvent.class));
+    LoggerConfig loggerConfig = new LoggerConfig(loggerName, Level.DEBUG, false);
+    loggerConfig.addAppender(appender, Level.DEBUG, null);
+    configuration.removeLogger(loggerName);
+    configuration.addLogger(loggerName, loggerConfig);
+    context.updateLoggers();
+    try {
+      for (int attempt = 0; attempt < 2; attempt++) {
+        events.clear();
+        MetalakeSnapshot snapshot = collectSnapshot();
+
+        assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+        assertEquals(Collections.singleton(42L), snapshot.getTaggedObjectIds());
+        List<String> warnings =
+            events.stream()
+                .filter(event -> Level.WARN.equals(event.getLevel()))
+                .map(event -> event.getMessage().getFormattedMessage())
+                .collect(Collectors.toList());
+        assertEquals(
+            missingRelationCount == 0
+                ? Collections.emptyList()
+                : Collections.singletonList(
+                    "Skipped 2 tag relations with unavailable asset nodes while collecting dashboard"
+                        + " metrics for metalake "
+                        + metalakeName),
+            warnings);
+        assertEquals(
+            missingRelationCount,
+            events.stream()
+                .filter(event -> Level.DEBUG.equals(event.getLevel()))
+                .filter(
+                    event ->
+                        event.getMessage().getFormattedMessage().contains("loading tag relations"))
+                .count());
+      }
+    } finally {
+      configuration.removeLogger(loggerName);
+      if (previousConfig != null) {
+        configuration.addLogger(loggerName, previousConfig);
+      }
+      context.updateLoggers();
+    }
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = Capability.Scope.class,
+      names = {"TABLE", "VIEW", "TOPIC"})
+  void testUnmanagedAssetsUseSourceInventoryAndRetainGovernance(Capability.Scope scope)
+      throws Exception {
+    mockAssetInventory(scope, "retained", "stale", "retained", "new_asset");
+    mockAssetGovernance(scope);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    Set<AssetNode> assets = snapshot.getSchemaNodes().iterator().next().getChildren();
+    assertEquals(
+        Set.of("retained", "new_asset"),
+        assets.stream().map(AssetNode::getName).collect(Collectors.toSet()));
+    AssetNode retained = snapshot.getAssetNodeById().get(42L);
+    assertNotNull(retained);
+    assertTrue(assets.contains(retained));
+    assertEquals("owner", retained.getOwners().iterator().next().name());
+    assertFalse(snapshot.getAssetNodeById().containsKey(43L));
+    assertFalse(snapshot.getAssetNodeById().containsKey(-1L));
+    AssetNode newAsset =
+        assets.stream()
+            .filter(node -> node.getName().equals("new_asset"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(-1L, newAsset.getId());
+    assertEquals(MetadataObject.Type.valueOf(scope.name()), newAsset.getType());
+    assertTrue(newAsset.getOwners().isEmpty());
+    assertEquals(Collections.singleton(42L), snapshot.getTaggedObjectIds());
+
+    List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+    assertMetric(metrics, "asset_count", 2.0, MetricState.COMPLETE);
+    assertMetric(metrics, "by_asset_type::" + scope + "::asset_count", 2.0, MetricState.COMPLETE);
+    assertMetric(metrics, "owned_asset_count", 1.0, MetricState.COMPLETE);
+    assertMetric(metrics, "tagged_asset_count", 1.0, MetricState.COMPLETE);
+    assertMetric(metrics, "policy_covered_asset_count", 1.0, MetricState.COMPLETE);
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forSchema(relationalCatalogName, relationalSchemaName),
+        2.0,
+        MetricState.COMPLETE);
+    verify(store, never()).delete(any(), any(), eq(true));
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = Capability.Scope.class,
+      names = {"TABLE", "VIEW", "TOPIC"})
+  void testUnmanagedAssetsMatchNormalizedSourceNamesAndRetainGovernance(Capability.Scope scope)
+      throws Exception {
+    mockAssetInventory(scope, "orders", "stale", "Orders", "NewAsset");
+    mockAssetGovernance(scope);
+    AtomicBoolean catalogLeaseHeld = new AtomicBoolean();
+    doAnswer(
+            invocation -> {
+              ThrowableFunction<CatalogManager.CatalogWrapper, Object> operation =
+                  invocation.getArgument(1);
+              catalogLeaseHeld.set(true);
+              try {
+                return operation.apply(catalogWrapper);
+              } finally {
+                catalogLeaseHeld.set(false);
+              }
+            })
+        .when(catalogManager)
+        .doWithCatalogWrapper(
+            eq(NameIdentifierUtil.ofCatalog(metalakeName, relationalCatalogName)), any());
+    when(catalogWrapper.capabilities())
+        .thenReturn(
+            new Capability() {
+              @Override
+              public String normalizeName(Scope requestedScope, String name) {
+                assertTrue(catalogLeaseHeld.get(), "Normalization must hold the catalog lease");
+                return Capability.super.normalizeName(requestedScope, name);
+              }
+
+              @Override
+              public CapabilityResult caseSensitiveOnName(Scope requestedScope) {
+                return requestedScope == scope
+                    ? CapabilityResult.unsupported("case-insensitive asset names")
+                    : Capability.DEFAULT.caseSensitiveOnName(requestedScope);
+              }
+            });
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertFalse(catalogLeaseHeld.get());
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    Set<AssetNode> assets = snapshot.getSchemaNodes().iterator().next().getChildren();
+    assertEquals(
+        Set.of("orders", "NewAsset"),
+        assets.stream().map(AssetNode::getName).collect(Collectors.toSet()));
+    AssetNode retained = snapshot.getAssetNodeById().get(42L);
+    assertNotNull(retained);
+    assertTrue(assets.contains(retained));
+    assertEquals("owner", retained.getOwners().iterator().next().name());
+    assertFalse(snapshot.getAssetNodeById().containsKey(43L));
+    assertFalse(snapshot.getAssetNodeById().containsKey(-1L));
+    AssetNode newAsset =
+        assets.stream().filter(node -> node.getName().equals("NewAsset")).findFirst().orElseThrow();
+    assertEquals(-1L, newAsset.getId());
+    assertTrue(newAsset.getOwners().isEmpty());
+    assertEquals(Collections.singleton(42L), snapshot.getTaggedObjectIds());
+    List<SecurableObject> securableObjects = snapshot.getRoleIdToSecurableObjects().get(51L);
+    assertEquals(1, securableObjects.size());
+    assertEquals(
+        relationalCatalogName + "." + relationalSchemaName + ".orders",
+        securableObjects.get(0).fullName());
+    assertEquals(MetadataObject.Type.valueOf(scope.name()), securableObjects.get(0).type());
+    assertEquals(Privilege.Name.MANAGE_GRANTS, securableObjects.get(0).privileges().get(0).name());
+
+    List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+    assertMetric(metrics, "asset_count", 2.0, MetricState.COMPLETE);
+    assertMetric(metrics, "by_asset_type::" + scope + "::asset_count", 2.0, MetricState.COMPLETE);
+    assertMetric(metrics, "owned_asset_count", 1.0, MetricState.COMPLETE);
+    assertMetric(metrics, "tagged_asset_count", 1.0, MetricState.COMPLETE);
+    assertMetric(metrics, "policy_covered_asset_count", 1.0, MetricState.COMPLETE);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = Capability.Scope.class,
+      names = {"TABLE", "VIEW", "TOPIC"})
+  void testManagedAssetsUseStoredInventory(Capability.Scope scope) throws Exception {
+    mockAssetInventory(scope, "retained", "stored_only", "retained", "external_only");
+    when(catalogWrapper.capabilities())
+        .thenReturn(
+            new Capability() {
+              @Override
+              public CapabilityResult managedStorage(Scope requestedScope) {
+                return requestedScope == scope
+                    ? CapabilityResult.SUPPORTED
+                    : Capability.DEFAULT.managedStorage(requestedScope);
+              }
+            });
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertEquals(
+        Set.of("retained", "stored_only"),
+        snapshot.getSchemaNodes().iterator().next().getChildren().stream()
+            .map(AssetNode::getName)
+            .collect(Collectors.toSet()));
+    assertTrue(snapshot.getAssetNodeById().containsKey(42L));
+    assertTrue(snapshot.getAssetNodeById().containsKey(43L));
+    assertMetric(
+        new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz(),
+        "by_asset_type::" + scope + "::asset_count",
+        2.0,
+        MetricState.COMPLETE);
+    switch (scope) {
+      case TABLE:
+        verify(tableDispatcher, never()).listTables(any());
+        break;
+      case VIEW:
+        verify(viewDispatcher, never()).listViews(any());
+        break;
+      case TOPIC:
+        verify(topicDispatcher, never()).listTopics(any());
+        break;
+      default:
+        throw new AssertionError("Unexpected scope: " + scope);
+    }
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = Capability.Scope.class,
+      names = {"TABLE", "VIEW", "TOPIC"})
+  void testEmptySourceInventoryExcludesStoredAssets(Capability.Scope scope) throws Exception {
+    mockAssetInventory(scope, "retained", "stale");
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertTrue(snapshot.getSchemaNodes().iterator().next().getChildren().isEmpty());
+    assertFalse(snapshot.getAssetNodeById().containsKey(42L));
+    assertFalse(snapshot.getAssetNodeById().containsKey(43L));
+    List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+    assertMetric(metrics, "asset_count", 0.0, MetricState.COMPLETE);
+    assertMetric(
+        metrics,
+        DirectChildCountMetricNames.forSchema(relationalCatalogName, relationalSchemaName),
+        0.0,
+        MetricState.COMPLETE);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = Capability.Scope.class,
+      names = {"TABLE", "VIEW", "TOPIC"})
+  void testFailedSourceInventoryDoesNotFallBackToStoredAssets(Capability.Scope scope)
+      throws Exception {
+    Namespace namespace = mockAssetInventory(scope, "retained", "stale");
+    IllegalStateException failure = new IllegalStateException("Source listing failed");
+    switch (scope) {
+      case TABLE:
+        when(tableDispatcher.listTables(namespace)).thenThrow(failure);
+        break;
+      case VIEW:
+        when(viewDispatcher.listViews(namespace)).thenThrow(failure);
+        break;
+      case TOPIC:
+        when(topicDispatcher.listTopics(namespace)).thenThrow(failure);
+        break;
+      default:
+        throw new AssertionError("Unexpected scope: " + scope);
+    }
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertEquals(Collections.singleton(relationalCatalogName), snapshot.getFailedCatalogNames());
+    assertFalse(snapshot.getAssetNodeById().containsKey(42L));
+    assertFalse(snapshot.getAssetNodeById().containsKey(43L));
+    List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+    assertMetric(metrics, "asset_count", null, MetricState.UNAVAILABLE);
+    assertMetric(
+        metrics,
+        DashboardMetricNames.forCatalog(
+            relationalCatalogName, relationalCatalogProvider, "asset_count"),
+        null,
+        MetricState.UNAVAILABLE);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = Capability.Scope.class,
+      names = {"TABLE", "VIEW", "TOPIC"})
+  void testSourceInventoryPreservesCaseSensitiveNames(Capability.Scope scope) throws Exception {
+    mockAssetInventory(scope, "MixedCase", "MIXEDCASE", "MixedCase", "MIXEDCASE");
+    when(catalogWrapper.capabilities())
+        .thenReturn(
+            new Capability() {
+              @Override
+              public CapabilityResult caseSensitiveOnName(Scope requestedScope) {
+                return requestedScope == scope
+                    ? CapabilityResult.SUPPORTED
+                    : CapabilityResult.unsupported("other scopes are case-insensitive");
+              }
+            });
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertEquals(2, snapshot.getSchemaNodes().iterator().next().getChildren().size());
+    assertEquals("MixedCase", snapshot.getAssetNodeById().get(42L).getName());
+    assertEquals("MIXEDCASE", snapshot.getAssetNodeById().get(43L).getName());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdbc-oracle", "JDBC-Oracle", "JDBC-ORACLE"})
+  void testOracleSourceInventoryPreservesDistinctPhysicalNames(String provider) throws Exception {
+    mockAssetInventory(Capability.Scope.TABLE, "MyTable", "MYTABLE", "MyTable", "MYTABLE");
+    mockOracleCapability(provider);
+    mockAssetGovernance(Capability.Scope.TABLE);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertEquals(2, snapshot.getTableNodes().size());
+    assertEquals("MyTable", snapshot.getAssetNodeById().get(42L).getName());
+    assertEquals("MYTABLE", snapshot.getAssetNodeById().get(43L).getName());
+    assertEquals(
+        "owner", snapshot.getAssetNodeById().get(42L).getOwners().iterator().next().name());
+    assertEquals(Set.of(42L, 43L), snapshot.getTaggedObjectIds());
+    assertEquals(
+        Set.of("MyTable", "MYTABLE"),
+        snapshot.getRoleIdToSecurableObjects().get(51L).stream()
+            .map(SecurableObject::name)
+            .collect(Collectors.toSet()));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"jdbc-oracle", "JDBC-Oracle", "JDBC-ORACLE"})
+  void testOracleSourceInventoryDoesNotMatchDifferentPhysicalName(String provider)
+      throws Exception {
+    mockAssetInventory(Capability.Scope.TABLE, "MYTABLE", "STALE", "MyTable");
+    mockOracleCapability(provider);
+    mockAssetGovernance(Capability.Scope.TABLE);
+
+    MetalakeSnapshot snapshot = collectSnapshot();
+
+    assertTrue(snapshot.getFailedCatalogNames().isEmpty());
+    assertEquals(1, snapshot.getTableNodes().size());
+    AssetNode table = snapshot.getTableNodes().iterator().next();
+    assertEquals("MyTable", table.getName());
+    assertEquals(-1L, table.getId());
+    assertTrue(table.getOwners().isEmpty());
+    assertFalse(snapshot.getAssetNodeById().containsKey(42L));
+    assertFalse(snapshot.getAssetNodeById().containsKey(43L));
+    assertFalse(snapshot.getAssetNodeById().containsKey(-1L));
+    assertTrue(snapshot.getTaggedObjectIds().isEmpty());
+    assertTrue(snapshot.getRoleIdToSecurableObjects().isEmpty());
+    List<MetricPO> metrics = new MetricsCalculator(snapshot).calculateMetricsForDisableAuthz();
+    assertMetric(metrics, "asset_count", 1.0, MetricState.COMPLETE);
+    assertMetric(metrics, "owned_asset_count", 0.0, MetricState.COMPLETE);
+    assertMetric(metrics, "tagged_asset_count", 0.0, MetricState.COMPLETE);
+    assertMetric(metrics, "policy_covered_asset_count", 0.0, MetricState.COMPLETE);
   }
 
   @Test
@@ -440,7 +845,7 @@ class TestMetricsCollector {
 
   @Test
   void testMissingHierarchicalParentRemovesPreviouslyCollectedChildren() throws Exception {
-    Capability capability = mock(Capability.class);
+    Capability capability = mock(Capability.class, Mockito.CALLS_REAL_METHODS);
     when(capability.managedStorage(any())).thenReturn(CapabilityResult.unsupported("external"));
     when(capability.supportsHierarchicalSchema()).thenReturn(CapabilityResult.SUPPORTED);
     when(catalogWrapper.capabilities()).thenReturn(capability);
@@ -1307,19 +1712,148 @@ class TestMetricsCollector {
   }
 
   private void mockListCatalogFromStore() throws IOException {
+    mockListCatalogFromStore(Catalog.Type.RELATIONAL);
+  }
+
+  private void mockListCatalogFromStore(Catalog.Type catalogType) throws IOException {
+    mockListCatalogFromStore(catalogType, relationalCatalogProvider);
+  }
+
+  private void mockListCatalogFromStore(Catalog.Type catalogType, String provider)
+      throws IOException {
     CatalogEntity catalogEntity =
         CatalogEntity.builder()
             .withId(1L)
             .withName(relationalCatalogName)
             .withNamespace(NamespaceUtil.ofCatalog(metalakeName))
-            .withType(Catalog.Type.RELATIONAL)
-            .withProvider(relationalCatalogProvider)
+            .withType(catalogType)
+            .withProvider(provider)
             .withAuditInfo(
                 AuditInfo.builder().withCreator("test").withCreateTime(Instant.now()).build())
             .build();
     when(store.list(
             NamespaceUtil.ofCatalog(metalakeName), CatalogEntity.class, Entity.EntityType.CATALOG))
         .thenReturn(ImmutableList.of(catalogEntity));
+  }
+
+  private Namespace mockAssetInventory(
+      Capability.Scope scope,
+      String firstStoredName,
+      String secondStoredName,
+      String... sourceNames)
+      throws IOException {
+    mockListCatalogFromStore(
+        scope == Capability.Scope.TOPIC ? Catalog.Type.MESSAGING : Catalog.Type.RELATIONAL);
+    mockStoredRelationalSchema(41L);
+    Namespace namespace = Namespace.of(metalakeName, relationalCatalogName, relationalSchemaName);
+    NameIdentifier[] identifiers = new NameIdentifier[sourceNames.length];
+    for (int i = 0; i < sourceNames.length; i++) {
+      identifiers[i] = NameIdentifier.of(namespace, sourceNames[i]);
+    }
+    when(tableDispatcher.listTables(namespace)).thenReturn(new NameIdentifier[0]);
+    when(viewDispatcher.listViews(namespace)).thenReturn(new NameIdentifier[0]);
+    switch (scope) {
+      case TABLE:
+        mockStoredAssets(
+            namespace,
+            TableEntity.class,
+            Entity.EntityType.TABLE,
+            firstStoredName,
+            secondStoredName);
+        when(tableDispatcher.listTables(namespace)).thenReturn(identifiers);
+        break;
+      case VIEW:
+        mockStoredAssets(
+            namespace, ViewEntity.class, Entity.EntityType.VIEW, firstStoredName, secondStoredName);
+        when(viewDispatcher.listViews(namespace)).thenReturn(identifiers);
+        break;
+      case TOPIC:
+        mockStoredAssets(
+            namespace,
+            TopicEntity.class,
+            Entity.EntityType.TOPIC,
+            firstStoredName,
+            secondStoredName);
+        when(topicDispatcher.listTopics(namespace)).thenReturn(identifiers);
+        break;
+      default:
+        throw new AssertionError("Unexpected scope: " + scope);
+    }
+    return namespace;
+  }
+
+  private <E extends Entity & HasIdentifier> void mockStoredAssets(
+      Namespace namespace,
+      Class<E> entityClass,
+      Entity.EntityType entityType,
+      String firstName,
+      String secondName)
+      throws IOException {
+    E first = mock(entityClass);
+    when(first.id()).thenReturn(42L);
+    when(first.name()).thenReturn(firstName);
+    E second = mock(entityClass);
+    when(second.id()).thenReturn(43L);
+    when(second.name()).thenReturn(secondName);
+    when(store.list(namespace, entityClass, entityType))
+        .thenReturn(ImmutableList.of(first, second));
+  }
+
+  private void mockAssetGovernance(Capability.Scope scope) throws IOException {
+    List<OwnerNameRelPO> owners = new ArrayList<>();
+    List<TagNameMetadataObjectRelPO> tags = new ArrayList<>();
+    List<SecurableObjectPO> securableObjects = new ArrayList<>();
+    for (long id : new long[] {42L, 43L}) {
+      owners.add(
+          OwnerNameRelPO.builder()
+              .withOwnerId("owner")
+              .withOwnerType("USER")
+              .withMetadataObjectId(id)
+              .withMetadataObjectType(scope.name())
+              .build());
+      tags.add(
+          TagNameMetadataObjectRelPO.builder()
+              .withObjectId(id)
+              .withTagName("classification")
+              .build());
+      securableObjects.add(
+          SecurableObjectPO.builder()
+              .withRoleId(51L)
+              .withMetadataObjectId(id)
+              .withType(scope.name())
+              .withPrivilegeNames("[\"MANAGE_GRANTS\"]")
+              .withPrivilegeConditions("[\"ALLOW\"]")
+              .withCurrentVersion(1L)
+              .withLastVersion(1L)
+              .withDeletedAt(0L)
+              .build());
+    }
+    when(metricDataService.listOwnerNameRelsByMetalakeId(mockId)).thenReturn(owners);
+    when(metricDataService.listTagNameMetadataObjectRelsByMetalakeId(mockId)).thenReturn(tags);
+    when(metricDataService.listEnabledPolicyMetadataObjectIdsByMetalakeId(mockId))
+        .thenReturn(Set.of(42L, 43L));
+    RoleEntity role = mock(RoleEntity.class);
+    when(role.id()).thenReturn(51L);
+    when(store.list(NamespaceUtil.ofRole(metalakeName), RoleEntity.class, Entity.EntityType.ROLE))
+        .thenReturn(Collections.singletonList(role));
+    when(metricDataService.listSecurableObjectsByRoleIds(Collections.singleton(51L)))
+        .thenReturn(securableObjects);
+  }
+
+  private void mockOracleCapability(String provider) throws Exception {
+    mockListCatalogFromStore(Catalog.Type.RELATIONAL, provider);
+    when(catalogWrapper.capabilities())
+        .thenReturn(
+            new Capability() {
+              @Override
+              public String normalizeName(Scope scope, String name) {
+                // Match Oracle's input contract without adding a catalog dependency to metrics.
+                // Keep this folding behavior in sync with OracleIdentifierUtil.toPhysicalName.
+                return name.startsWith("\"") && name.endsWith("\"")
+                    ? name.substring(1, name.length() - 1)
+                    : name.toUpperCase(Locale.ROOT);
+              }
+            });
   }
 
   private void assertCatalogFailureIsIsolated(Throwable failure) throws Exception {

@@ -67,6 +67,11 @@ public class MetricDataBaseSQLProvider {
           .add(VIEW_TARGET, FUNCTION_TARGET)
           .build();
 
+  private static final String TAG_ASSOCIATION_OBJECT_TYPES =
+      TAG_ASSOCIATION_TARGETS.stream()
+          .map(target -> "'" + target.objectType + "'")
+          .collect(Collectors.joining(", ", "(", ")"));
+
   private static final String ASSOCIATED_TAG_COUNTS_BY_CATALOG_QUERY =
       catalogAssociationCountQuery(
           buildCatalogAssociationUnion(
@@ -230,6 +235,7 @@ public class MetricDataBaseSQLProvider {
   }
 
   public String listTagNameMetadataObjectRelsByMetalakeId(@Param("metalakeId") long metalakeId) {
+    // Only return tag relations for object types collected by dashboard metrics.
     return "SELECT tm.tag_name as tagName, trm.metadata_object_id as objectId"
         + " FROM "
         + TagMetaMapper.TAG_TABLE_NAME
@@ -237,7 +243,9 @@ public class MetricDataBaseSQLProvider {
         + " INNER JOIN "
         + TagMetadataObjectRelMapper.TAG_METADATA_OBJECT_RELATION_TABLE_NAME
         + " trm ON tm.tag_id = trm.tag_id"
-        + " WHERE tm.metalake_id = #{metalakeId} AND tm.deleted_at = 0 AND trm.deleted_at = 0";
+        + " WHERE tm.metalake_id = #{metalakeId} AND tm.deleted_at = 0 AND trm.deleted_at = 0"
+        + " AND trm.metadata_object_type IN "
+        + TAG_ASSOCIATION_OBJECT_TYPES;
   }
 
   /**

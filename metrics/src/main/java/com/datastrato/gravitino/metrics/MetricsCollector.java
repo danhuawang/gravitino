@@ -60,6 +60,7 @@ import org.apache.gravitino.Namespace;
 import org.apache.gravitino.authorization.GravitinoAuthorizer;
 import org.apache.gravitino.authorization.Owner;
 import org.apache.gravitino.authorization.SecurableObject;
+import org.apache.gravitino.catalog.CapabilityHelpers;
 import org.apache.gravitino.catalog.CatalogManager;
 import org.apache.gravitino.catalog.SchemaDispatcher;
 import org.apache.gravitino.catalog.TableDispatcher;
@@ -786,6 +787,7 @@ public class MetricsCollector implements Closeable {
       Set<String> missingSchemaNames = new HashSet<>();
       try {
         CatalogCapabilities catalogCapabilities = loadCatalogCapabilities(catalog);
+        boolean quoteListedNames = "jdbc-oracle".equalsIgnoreCase(catalog.getProvider());
         boolean managedSchema = catalogCapabilities.managedSchema;
         boolean managedTable = catalogCapabilities.managedTable;
         boolean managedView = catalogCapabilities.managedView;
@@ -819,11 +821,21 @@ public class MetricsCollector implements Closeable {
               case RELATIONAL:
                 Set<AssetNode> tables =
                     getTableNodes(
-                        ns, schemaNode, managedTable, objectIdToOwners, schemaAssetNodeById);
+                        ns,
+                        schemaNode,
+                        managedTable,
+                        quoteListedNames,
+                        objectIdToOwners,
+                        schemaAssetNodeById);
                 Set<AssetNode> views =
                     viewListingSupported
                         ? getViewNodes(
-                            ns, schemaNode, managedView, objectIdToOwners, schemaAssetNodeById)
+                            ns,
+                            schemaNode,
+                            managedView,
+                            quoteListedNames,
+                            objectIdToOwners,
+                            schemaAssetNodeById)
                         : Collections.emptySet();
                 schemaNode.addChildren(tables);
                 catalogTableNodes.addAll(tables);
@@ -841,7 +853,12 @@ public class MetricsCollector implements Closeable {
               case MESSAGING:
                 Set<AssetNode> topics =
                     getTopicNodes(
-                        ns, schemaNode, managedTopic, objectIdToOwners, schemaAssetNodeById);
+                        ns,
+                        schemaNode,
+                        managedTopic,
+                        quoteListedNames,
+                        objectIdToOwners,
+                        schemaAssetNodeById);
                 schemaNode.addChildren(topics);
                 catalogTopicNodes.addAll(topics);
                 break;
@@ -1084,12 +1101,14 @@ public class MetricsCollector implements Closeable {
 
   private Set<Long> getTaggedObjectIds(BaseMetalake metalake, Map<Long, AssetNode> assetNodeById) {
     Set<Long> taggedObjectIds = new HashSet<>();
+    int skippedTagRelationCount = 0;
     List<TagNameMetadataObjectRelPO> tagNameMetadataObjectRelPOS =
         metricDataService.listTagNameMetadataObjectRelsByMetalakeId(metalake.id());
     for (TagNameMetadataObjectRelPO relPO : tagNameMetadataObjectRelPOS) {
       AssetNode assetNode = assetNodeById.get(relPO.getObjectId());
       if (assetNode == null) {
-        LOG.warn(
+        skippedTagRelationCount++;
+        LOG.debug(
             "Asset node not found for object id: {} in metalake: {} when loading tag relations for"
                 + " tag: {}",
             relPO.getObjectId(),
@@ -1098,6 +1117,13 @@ public class MetricsCollector implements Closeable {
         continue;
       }
       taggedObjectIds.add(assetNode.getId());
+    }
+    if (skippedTagRelationCount > 0) {
+      LOG.warn(
+          "Skipped {} tag relations with unavailable asset nodes while collecting dashboard"
+              + " metrics for metalake {}",
+          skippedTagRelationCount,
+          metalake.name());
     }
     return taggedObjectIds;
   }
@@ -1341,6 +1367,7 @@ public class MetricsCollector implements Closeable {
       Namespace nsOfTable,
       AssetNode schemaNode,
       boolean managedTable,
+      boolean quoteListedNames,
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException, CatalogCollectionException {
@@ -1349,17 +1376,13 @@ public class MetricsCollector implements Closeable {
       tableNodes =
           store.list(nsOfTable, TableEntity.class, Entity.EntityType.TABLE).stream()
               .map(
-                  table -> {
-                    AssetNode assetNode =
-                        new AssetNode(
-                            table.id(),
-                            table.name(),
-                            MetadataObject.Type.TABLE,
-                            schemaNode,
-                            objectIdToOwners.get(table.id()));
-                    assetNodeById.put(assetNode.getId(), assetNode);
-                    return assetNode;
-                  })
+                  table ->
+                      new AssetNode(
+                          table.id(),
+                          table.name(),
+                          MetadataObject.Type.TABLE,
+                          schemaNode,
+                          objectIdToOwners.get(table.id())))
               .collect(Collectors.toSet());
     } catch (NoSuchEntityException e) {
       if (managedTable) {
@@ -1371,22 +1394,22 @@ public class MetricsCollector implements Closeable {
           e);
     }
 
-    // if the tables are not managed, it means there may be external tables that have not been
-    // imported, so we need to use tableDispatcher to get the full tables
     if (!managedTable) {
       try {
-        Set<AssetNode> tablesFromDispatcher =
-            Arrays.stream(tableDispatcher.listTables(nsOfTable))
-                .map(
-                    table ->
-                        new AssetNode(
-                            -1, table.name(), MetadataObject.Type.TABLE, schemaNode, null))
-                .collect(Collectors.toSet());
-        tableNodes.addAll(tablesFromDispatcher);
+        tableNodes =
+            selectExternalAssetNodes(
+                tableNodes,
+                tableDispatcher.listTables(nsOfTable),
+                MetadataObject.Type.TABLE,
+                schemaNode,
+                quoteListedNames);
       } catch (Exception e) {
         throw new CatalogCollectionException(e);
       }
     }
+    tableNodes.stream()
+        .filter(node -> node.getId() != -1L)
+        .forEach(node -> assetNodeById.put(node.getId(), node));
     return tableNodes;
   }
 
@@ -1394,6 +1417,7 @@ public class MetricsCollector implements Closeable {
       Namespace nsOfView,
       AssetNode schemaNode,
       boolean managedView,
+      boolean quoteListedNames,
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException, CatalogCollectionException {
@@ -1402,17 +1426,13 @@ public class MetricsCollector implements Closeable {
       viewNodes =
           store.list(nsOfView, ViewEntity.class, Entity.EntityType.VIEW).stream()
               .map(
-                  view -> {
-                    AssetNode assetNode =
-                        new AssetNode(
-                            view.id(),
-                            view.name(),
-                            MetadataObject.Type.VIEW,
-                            schemaNode,
-                            objectIdToOwners.get(view.id()));
-                    assetNodeById.put(assetNode.getId(), assetNode);
-                    return assetNode;
-                  })
+                  view ->
+                      new AssetNode(
+                          view.id(),
+                          view.name(),
+                          MetadataObject.Type.VIEW,
+                          schemaNode,
+                          objectIdToOwners.get(view.id())))
               .collect(Collectors.toSet());
     } catch (NoSuchEntityException e) {
       if (managedView) {
@@ -1426,17 +1446,20 @@ public class MetricsCollector implements Closeable {
 
     if (!managedView) {
       try {
-        Set<AssetNode> viewsFromDispatcher =
-            Arrays.stream(viewDispatcher.listViews(nsOfView))
-                .map(
-                    view ->
-                        new AssetNode(-1, view.name(), MetadataObject.Type.VIEW, schemaNode, null))
-                .collect(Collectors.toSet());
-        viewNodes.addAll(viewsFromDispatcher);
+        viewNodes =
+            selectExternalAssetNodes(
+                viewNodes,
+                viewDispatcher.listViews(nsOfView),
+                MetadataObject.Type.VIEW,
+                schemaNode,
+                quoteListedNames);
       } catch (Exception e) {
         throw new CatalogCollectionException(e);
       }
     }
+    viewNodes.stream()
+        .filter(node -> node.getId() != -1L)
+        .forEach(node -> assetNodeById.put(node.getId(), node));
     return viewNodes;
   }
 
@@ -1493,6 +1516,7 @@ public class MetricsCollector implements Closeable {
       Namespace nsOfTopic,
       AssetNode schemaNode,
       boolean managedTopic,
+      boolean quoteListedNames,
       Map<Long, Set<Owner>> objectIdToOwners,
       Map<Long, AssetNode> assetNodeById)
       throws IOException, CatalogCollectionException {
@@ -1501,17 +1525,13 @@ public class MetricsCollector implements Closeable {
       topicNodes =
           store.list(nsOfTopic, TopicEntity.class, Entity.EntityType.TOPIC).stream()
               .map(
-                  topic -> {
-                    AssetNode assetNode =
-                        new AssetNode(
-                            topic.id(),
-                            topic.name(),
-                            MetadataObject.Type.TOPIC,
-                            schemaNode,
-                            objectIdToOwners.get(topic.id()));
-                    assetNodeById.put(assetNode.getId(), assetNode);
-                    return assetNode;
-                  })
+                  topic ->
+                      new AssetNode(
+                          topic.id(),
+                          topic.name(),
+                          MetadataObject.Type.TOPIC,
+                          schemaNode,
+                          objectIdToOwners.get(topic.id())))
               .collect(Collectors.toSet());
     } catch (NoSuchEntityException e) {
       if (managedTopic) {
@@ -1523,23 +1543,60 @@ public class MetricsCollector implements Closeable {
           e);
     }
 
-    // if the topics are not managed, it means there may be external topics that have not been
-    // imported, so we need to use topicDispatcher to get the full topics
     if (!managedTopic) {
       try {
-        Set<AssetNode> topicsFromDispatcher =
-            Arrays.stream(topicDispatcher.listTopics(nsOfTopic))
-                .map(
-                    topic ->
-                        new AssetNode(
-                            -1, topic.name(), MetadataObject.Type.TOPIC, schemaNode, null))
-                .collect(Collectors.toSet());
-        topicNodes.addAll(topicsFromDispatcher);
+        topicNodes =
+            selectExternalAssetNodes(
+                topicNodes,
+                topicDispatcher.listTopics(nsOfTopic),
+                MetadataObject.Type.TOPIC,
+                schemaNode,
+                quoteListedNames);
       } catch (Exception e) {
         throw new CatalogCollectionException(e);
       }
     }
+    topicNodes.stream()
+        .filter(node -> node.getId() != -1L)
+        .forEach(node -> assetNodeById.put(node.getId(), node));
     return topicNodes;
+  }
+
+  private Set<AssetNode> selectExternalAssetNodes(
+      Set<AssetNode> storedNodes,
+      NameIdentifier[] externalIdentifiers,
+      MetadataObject.Type type,
+      AssetNode schemaNode,
+      boolean quoteListedNames)
+      throws Exception {
+    Map<String, AssetNode> storedNodesByName =
+        storedNodes.stream().collect(Collectors.toMap(AssetNode::getName, node -> node));
+    Capability.Scope scope = Capability.Scope.valueOf(type.name());
+    // The source determines which unmanaged assets exist. Stored entries only enrich matching
+    // assets with their IDs and governance metadata. Stored names are already normalized.
+    return catalogManager.doWithCatalogWrapper(
+        NameIdentifierUtil.getCatalogIdentifier(schemaNode.getNameIdent()),
+        catalogWrapper -> {
+          // Use connector capabilities only while the catalog lease is held.
+          Capability capability = catalogWrapper.capabilities();
+          return Arrays.stream(externalIdentifiers)
+              .map(
+                  identifier -> {
+                    String listedName = identifier.name();
+                    // Oracle lists physical names without quotes. Quoting bypasses unquoted-name
+                    // folding so normalization preserves the exact physical name.
+                    // When adding a catalog with custom name normalization, verify this matching
+                    // logic and adapt it if needed.
+                    String inputName = quoteListedNames ? "\"" + listedName + "\"" : listedName;
+                    String storedName =
+                        CapabilityHelpers.applyCaseSensitiveOnName(scope, inputName, capability);
+                    AssetNode storedNode = storedNodesByName.get(storedName);
+                    return storedNode != null
+                        ? storedNode
+                        : new AssetNode(-1L, listedName, type, schemaNode, null);
+                  })
+              .collect(Collectors.toSet());
+        });
   }
 
   private Set<AssetNode> getModelNodes(
