@@ -354,6 +354,18 @@ public class IcebergCatalogWrapper implements AutoCloseable {
   }
 
   /**
+   * Loads table metadata directly from a metadata file location.
+   *
+   * @param metadataLocation metadata file location
+   * @return parsed table metadata
+   */
+  public TableMetadata loadTableMetadataFromLocation(String metadataLocation) {
+    try (FileIO fileIO = CatalogUtil.loadFileIO(fileIOImpl(), fileIOProperties(), null)) {
+      return TableMetadataParser.read(fileIO, metadataLocation);
+    }
+  }
+
+  /**
    * Returns the FileIO implementation configured for this catalog.
    *
    * @return the {@code io-impl} class, or the Iceberg default when unset

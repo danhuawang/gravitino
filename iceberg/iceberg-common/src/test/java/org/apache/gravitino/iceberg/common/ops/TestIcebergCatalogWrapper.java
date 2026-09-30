@@ -160,6 +160,26 @@ public class TestIcebergCatalogWrapper {
     return wrapper;
   }
 
+  @Test
+  public void testLoadTableMetadataFromLocation(@TempDir Path tempDir) throws Exception {
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    TableMetadata expected =
+        TableMetadata.newTableMetadata(
+            schema,
+            PartitionSpec.unpartitioned(),
+            tempDir.resolve("table").toUri().toString(),
+            Map.of());
+    Path metadataFile = tempDir.resolve("v1.metadata.json");
+    Files.writeString(metadataFile, TableMetadataParser.toJson(expected), StandardCharsets.UTF_8);
+    IcebergCatalogWrapper wrapper =
+        new IcebergCatalogWrapper(
+            new IcebergConfig(Map.of(IcebergConstants.CATALOG_BACKEND, "memory")));
+
+    TableMetadata actual = wrapper.loadTableMetadataFromLocation(metadataFile.toUri().toString());
+
+    Assertions.assertEquals(schema.asStruct(), actual.schema().asStruct());
+  }
+
   private static TableMetadataCache invokeGetMetadataCache(IcebergCatalogWrapper wrapper)
       throws Exception {
     Method method = IcebergCatalogWrapper.class.getDeclaredMethod("getMetadataCache");
