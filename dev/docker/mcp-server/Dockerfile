@@ -55,7 +55,13 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.14 /uv /bin/uv
 
 WORKDIR /opt/mcp-server
 
+<<<<<<< HEAD
 # Copy pre-built MCP server package (prepared by mcp-server-dependency.sh)
+=======
+# Pinned to an exact version so every build ships the same uv.
+COPY --from=ghcr.io/astral-sh/uv:0.12.14 /uv /bin/uv
+
+>>>>>>> upstream/branch-1.3
 COPY --chmod=775 packages/mcp-server /opt/mcp-server
 COPY --chmod=775 start-mcp-server.sh /opt/mcp-server/
 
@@ -71,8 +77,14 @@ RUN uv venv /opt/mcp-server/.venv && \
     uv pip install -e . && \
     rm -rf /opt/mcp-server/.cache
 
+<<<<<<< HEAD
 # --- Red Hat certification: licenses directory ---
 COPY licenses /licenses
+=======
+# --no-dev excludes the [dependency-groups] dev tools (pylint/astroid, pytest,
+# parameterized) so GPL/LGPL and unused test tooling stay out of the shipped image.
+RUN uv sync --no-dev
+>>>>>>> upstream/branch-1.3
 
 # --- OpenShift arbitrary UID compatibility ---
 # GID 0 group permissions allow any UID assigned by OpenShift SCC to write

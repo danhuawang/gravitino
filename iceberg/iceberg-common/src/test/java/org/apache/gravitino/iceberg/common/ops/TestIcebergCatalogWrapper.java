@@ -39,7 +39,10 @@ import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
+<<<<<<< HEAD
 import org.apache.iceberg.TableProperties;
+=======
+>>>>>>> upstream/branch-1.3
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -117,6 +120,7 @@ public class TestIcebergCatalogWrapper {
   }
 
   @Test
+<<<<<<< HEAD
   public void testAtomicIntegrityIsTrueForHiveWithoutAskingTheBackend() throws Exception {
     // Hive publishes the pointer and the hash under the HMS lock, so the answer is unconditional.
     HiveCatalogWithMetadataLocationSupport hive =
@@ -158,6 +162,25 @@ public class TestIcebergCatalogWrapper {
     field.setAccessible(true);
     field.set(wrapper, loadedCatalog);
     return wrapper;
+=======
+  public void testLoadTableMetadataFromLocation(@TempDir Path tempDir) throws Exception {
+    Schema schema = new Schema(Types.NestedField.required(1, "id", Types.LongType.get()));
+    TableMetadata expected =
+        TableMetadata.newTableMetadata(
+            schema,
+            PartitionSpec.unpartitioned(),
+            tempDir.resolve("table").toUri().toString(),
+            Map.of());
+    Path metadataFile = tempDir.resolve("v1.metadata.json");
+    Files.writeString(metadataFile, TableMetadataParser.toJson(expected), StandardCharsets.UTF_8);
+    IcebergCatalogWrapper wrapper =
+        new IcebergCatalogWrapper(
+            new IcebergConfig(Map.of(IcebergConstants.CATALOG_BACKEND, "memory")));
+
+    TableMetadata actual = wrapper.loadTableMetadataFromLocation(metadataFile.toUri().toString());
+
+    Assertions.assertEquals(schema.asStruct(), actual.schema().asStruct());
+>>>>>>> upstream/branch-1.3
   }
 
   private static TableMetadataCache invokeGetMetadataCache(IcebergCatalogWrapper wrapper)

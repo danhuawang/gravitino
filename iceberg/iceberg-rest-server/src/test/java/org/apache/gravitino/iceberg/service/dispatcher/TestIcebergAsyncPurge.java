@@ -198,13 +198,21 @@ class TestIcebergAsyncPurge {
     CatalogWrapperForREST wrapper = mock(CatalogWrapperForREST.class);
     IcebergCleanupManager cleanup = mock(IcebergCleanupManager.class);
     when(cleanup.isNameOccupied(CATALOG_ID, "db", "t")).thenReturn(false);
+    TableMetadata metadata = mock(TableMetadata.class);
+    when(metadata.schema()).thenReturn(SCHEMA);
+    when(wrapper.loadTableMetadataFromLocation("s3://b/db/t/metadata/0.json")).thenReturn(metadata);
 
     try (MockedStatic<GravitinoEnv> ignored = mockCatalogId()) {
       namespaceExecutor(wrapper, Optional.of(cleanup))
           .registerTable(context(false), DB, registerReq());
     }
+<<<<<<< HEAD
     verify(wrapper)
         .registerTable(any(Namespace.class), any(RegisterTableRequest.class), anyBoolean());
+=======
+    verify(wrapper).loadTableMetadataFromLocation("s3://b/db/t/metadata/0.json");
+    verify(wrapper).registerTable(any(), any(), anyBoolean());
+>>>>>>> upstream/branch-1.3
   }
 
   // --- helpers ---

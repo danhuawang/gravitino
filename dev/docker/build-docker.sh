@@ -135,6 +135,14 @@ elif [[ "${component_type}" == "spark-connectors" || "${component_type}" == "fli
   if [ -n "${IMAGE_VERSION:-}" ]; then
     build_args="${build_args} --build-arg IMAGE_VERSION=${IMAGE_VERSION}"
   fi
+<<<<<<< HEAD
+=======
+  echo "INFO : IMAGE_VERSION=${image_version} (from gradle.properties)"
+  # Build the connector jars, stage them under packages/, and stage each
+  # artifact's own LICENSE/NOTICE under licenses/ (done by the dependency script).
+  . "${script_dir}/${component_type}/${component_type}-dependency.sh"
+  build_args="--build-arg IMAGE_VERSION=${image_version}"
+>>>>>>> upstream/branch-1.3
 else
   echo "ERROR : ${component_type} is not a valid component type"
   usage
