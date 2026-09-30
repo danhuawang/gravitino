@@ -771,6 +771,7 @@ public class TestDynamicIcebergConfigProvider {
                 "from-secret",
                 IcebergConstants.GRAVITINO_JDBC_PASSWORD,
                 "secret-pwd"));
+    Mockito.when(mockCatalog.supportsCredentials()).thenReturn(supportsCredentials);
     Mockito.when(supportsCredentials.getCredentials())
         .thenReturn(new Credential[] {new JdbcCredential("cred-user", "cred-pwd")});
 
