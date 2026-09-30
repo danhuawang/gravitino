@@ -37,10 +37,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.CatalogUtil;
-<<<<<<< HEAD
 import org.apache.iceberg.Table;
-=======
->>>>>>> upstream/branch-1.3
 import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableMetadataParser;
 import org.apache.iceberg.Transaction;
@@ -49,10 +46,7 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.SupportsNamespaces;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.catalog.ViewCatalog;
-<<<<<<< HEAD
 import org.apache.iceberg.hive.HiveCatalogWithMetadataLocationSupport;
-=======
->>>>>>> upstream/branch-1.3
 import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.ResolvingFileIO;
 import org.apache.iceberg.jdbc.JdbcCatalogWithMetadataLocationSupport;

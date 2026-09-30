@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.gravitino.Entity;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.encryption.EncryptionAdmissionService;
 import org.apache.gravitino.encryption.EncryptionAdmissionService.AdmissionRequest;
@@ -22,6 +23,8 @@ import org.apache.gravitino.iceberg.common.utils.IcebergIdentifierUtils;
 import org.apache.gravitino.iceberg.service.cleanup.IcebergCleanupManager;
 import org.apache.gravitino.iceberg.service.dispatcher.IcebergCleanupHelper;
 import org.apache.gravitino.listener.api.event.IcebergRequestContext;
+import org.apache.gravitino.meta.ColumnEntity;
+import org.apache.gravitino.meta.TableEntity;
 import org.apache.gravitino.utils.HierarchicalSchemaUtil;
 import org.apache.gravitino.utils.RequestContext;
 import org.apache.iceberg.TableMetadata;
@@ -110,12 +113,14 @@ public final class GovernedRegistrationService {
   public LoadTableResponse register(
       IcebergRequestContext context, Namespace namespace, RegisterTableRequest request) {
     request.validate();
+    TableEntity.NAME.validate(request.name(), Entity.EntityType.TABLE);
     IcebergCleanupHelper.rejectIfBeingPurged(
         cleanupManager, context.catalogName(), namespace, request.name());
 
     CatalogWrapperForREST catalogWrapper =
         catalogWrapperManager.getCatalogWrapper(context.catalogName());
     TableMetadata metadata = catalogWrapper.readTableMetadata(request.metadataLocation());
+    validateColumnFields(metadata);
     TableIdentifier identifier = TableIdentifier.of(namespace, request.name());
     EncryptionAdmission admission =
         admissionService.admit(
@@ -150,6 +155,21 @@ public final class GovernedRegistrationService {
       recordMetadataIntegrityFailure(facts, e);
       throw e;
     }
+  }
+
+  /**
+   * Applies the top-level column name and comment limits the ungoverned registration path enforces,
+   * before admission or the backend sees the file.
+   */
+  private static void validateColumnFields(TableMetadata metadata) {
+    metadata
+        .schema()
+        .columns()
+        .forEach(
+            column -> {
+              ColumnEntity.NAME.validate(column.name(), Entity.EntityType.COLUMN);
+              ColumnEntity.COMMENT.validate(column.doc(), Entity.EntityType.COLUMN);
+            });
   }
 
   /**

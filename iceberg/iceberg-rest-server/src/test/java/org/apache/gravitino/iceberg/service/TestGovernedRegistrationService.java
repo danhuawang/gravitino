@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
+import org.apache.gravitino.EntityFieldLimits;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergCatalogBackend;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
@@ -450,6 +451,56 @@ public class TestGovernedRegistrationService {
     Assertions.assertEquals(
         Reason.KEY_REFERENCE_INVALID.code(),
         RequestContext.takeAuditExtras().get(IcebergEncryptionAuditInfos.REASON));
+    verify(catalogWrapper, never())
+        .registerTable(any(TableIdentifier.class), any(), anyBoolean(), anyBoolean());
+  }
+
+  @Test
+  void testOversizedTableNameIsRefusedBeforeReadingTheFile() {
+    RegisterTableRequest request =
+        ImmutableRegisterTableRequest.builder()
+            .name("t".repeat(EntityFieldLimits.MAX_NAME_LENGTH + 1))
+            .metadataLocation(LOCATION_PREFIX + "oversized-name.metadata.json")
+            .build();
+
+    Assertions.assertThrows(
+        IllegalArgumentException.class,
+        () -> service(admissionService()).register(context, NAMESPACE, request));
+
+    verify(catalogWrapper, never()).readTableMetadata(any());
+    verify(catalogWrapper, never())
+        .registerTable(any(TableIdentifier.class), any(), anyBoolean(), anyBoolean());
+  }
+
+  @Test
+  void testOversizedColumnFieldsAreRefusedBeforeAdmission() {
+    List<Types.NestedField> oversized =
+        List.of(
+            Types.NestedField.required(
+                1, "c".repeat(EntityFieldLimits.MAX_NAME_LENGTH + 1), Types.LongType.get()),
+            Types.NestedField.optional(
+                1,
+                "id",
+                Types.LongType.get(),
+                "d".repeat(EntityFieldLimits.MAX_COMMENT_LENGTH + 1)));
+    for (Types.NestedField field : oversized) {
+      TableMetadata metadata =
+          TableMetadata.newTableMetadata(
+              new Schema(field),
+              PartitionSpec.unpartitioned(),
+              "memory://governed-registration/schema/table",
+              Map.of(TableProperties.FORMAT_VERSION, "3"));
+      String location = LOCATION_PREFIX + "oversized-column.metadata.json";
+      when(catalogWrapper.readTableMetadata(location)).thenReturn(metadata);
+      currentLocation = location;
+      EncryptionAdmissionService admission = spy(admissionService());
+
+      Assertions.assertThrows(
+          IllegalArgumentException.class,
+          () -> service(admission).register(context, NAMESPACE, request(false)));
+
+      verify(admission, never()).admit(any());
+    }
     verify(catalogWrapper, never())
         .registerTable(any(TableIdentifier.class), any(), anyBoolean(), anyBoolean());
   }

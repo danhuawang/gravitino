@@ -58,13 +58,8 @@ val isortRequirement = "isort==9.0.0"
 // astroid) for linting, pytest and parameterized for the unit tests. These live in
 // pyproject's [dependency-groups] dev, not the runtime dependencies, so
 // `uv pip install -e .` (installDependenciesWithUv) does not pull them in and they
-<<<<<<< HEAD
 // never reach the shipped image (enterprise-deployment #302). Pinned so a new release
 // cannot change the lint/test outcome in CI.
-=======
-// never reach the shipped image. Pinned so a new release cannot change the lint/test
-// outcome in CI.
->>>>>>> upstream/branch-1.3
 val devToolRequirements = listOf(
   "pylint==3.3.8",
   "pytest==8.4.1",
@@ -226,13 +221,8 @@ tasks {
   register<Exec>("testPython") {
     group = "python"
     description = "Run Python unit tests with unittest"
-<<<<<<< HEAD
     // The tests import pytest/parameterized, which moved to pyproject's dev group (#302)
     // and are therefore not installed by installDependenciesWithUv; installDevTools adds
-=======
-    // The tests import pytest/parameterized, which moved to pyproject's dev group and
-    // are therefore not installed by installDependenciesWithUv; installDevTools adds
->>>>>>> upstream/branch-1.3
     // them to the venv.
     dependsOn("buildPython", "installDevTools")
     workingDir(pythonProjectDir)
@@ -312,11 +302,7 @@ tasks {
 }
 
 tasks.register<Exec>("pylint") {
-<<<<<<< HEAD
   // pylint moved to pyproject's dev group (#302), so it is no longer installed by
-=======
-  // pylint moved to pyproject's dev group, so it is no longer installed by
->>>>>>> upstream/branch-1.3
   // installDependenciesWithUv; installDevTools puts it into the venv for this task.
   dependsOn("installDevTools")
   mustRunAfter("buildPython")

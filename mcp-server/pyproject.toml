@@ -42,10 +42,7 @@ dependencies = [
 # the Dockerfile runs `uv sync --no-dev` and start-mcp-server.sh runs `uv run --no-dev`,
 # so pylint (GPL-2.0-or-later) and its transitive dep astroid (LGPL) stay out of the
 # distributed runtime environment. Developers still get them via `uv sync` locally.
-<<<<<<< HEAD
 # See enterprise-deployment issue #302.
-=======
->>>>>>> upstream/branch-1.3
 [dependency-groups]
 dev = [
     "parameterized>=0.9.0",

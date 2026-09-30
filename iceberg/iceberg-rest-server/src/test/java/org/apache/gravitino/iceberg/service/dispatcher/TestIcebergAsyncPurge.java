@@ -206,13 +206,9 @@ class TestIcebergAsyncPurge {
       namespaceExecutor(wrapper, Optional.of(cleanup))
           .registerTable(context(false), DB, registerReq());
     }
-<<<<<<< HEAD
+    verify(wrapper).loadTableMetadataFromLocation("s3://b/db/t/metadata/0.json");
     verify(wrapper)
         .registerTable(any(Namespace.class), any(RegisterTableRequest.class), anyBoolean());
-=======
-    verify(wrapper).loadTableMetadataFromLocation("s3://b/db/t/metadata/0.json");
-    verify(wrapper).registerTable(any(), any(), anyBoolean());
->>>>>>> upstream/branch-1.3
   }
 
   // --- helpers ---

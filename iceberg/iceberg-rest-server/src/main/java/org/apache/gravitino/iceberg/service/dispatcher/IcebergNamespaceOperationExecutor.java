@@ -26,6 +26,7 @@ import org.apache.gravitino.Entity;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.catalog.lakehouse.iceberg.IcebergConstants;
 import org.apache.gravitino.iceberg.service.CatalogWrapperForREST;
+import org.apache.gravitino.iceberg.service.FederatedCatalogWrapper;
 import org.apache.gravitino.iceberg.service.IcebergCatalogWrapperManager;
 import org.apache.gravitino.iceberg.service.cleanup.IcebergCleanupManager;
 import org.apache.gravitino.listener.api.event.IcebergRequestContext;
@@ -136,12 +137,13 @@ public class IcebergNamespaceOperationExecutor implements IcebergNamespaceOperat
 
     CatalogWrapperForREST catalogWrapper =
         icebergCatalogWrapperManager.getCatalogWrapper(context.catalogName());
-<<<<<<< HEAD
-=======
-    TableMetadata metadata =
-        catalogWrapper.loadTableMetadataFromLocation(registerTableRequest.metadataLocation());
-    IcebergColumnFieldValidator.validateSchema(metadata.schema());
->>>>>>> upstream/branch-1.3
+    // A federated catalog forwards registration by location: the metadata file belongs to the
+    // remote catalog, whose storage this server may not be able to read.
+    if (!(catalogWrapper instanceof FederatedCatalogWrapper)) {
+      TableMetadata metadata =
+          catalogWrapper.loadTableMetadataFromLocation(registerTableRequest.metadataLocation());
+      IcebergColumnFieldValidator.validateSchema(metadata.schema());
+    }
     return catalogWrapper.registerTable(
         namespace, registerTableRequest, context.requestCredentialVending());
   }
