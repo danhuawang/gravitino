@@ -236,4 +236,107 @@ public class TestCredentialFactory {
     Assertions.assertEquals(jdbcPassword, jdbcCredential.jdbcPassword());
     Assertions.assertEquals(expireTime, jdbcCredential.expireTimeInMs());
   }
+
+  @Test
+  void testAwsSecretKeyCredential() {
+    Map<String, String> awsSecretKeyCredentialInfo =
+        ImmutableMap.of(
+            AwsSecretKeyCredential.GRAVITINO_AWS_ACCESS_KEY_ID,
+            "accessKeyId",
+            AwsSecretKeyCredential.GRAVITINO_AWS_SECRET_ACCESS_KEY,
+            "secretAccessKey");
+    long expireTime = 0;
+    Credential credential =
+        CredentialFactory.create(
+            AwsSecretKeyCredential.AWS_SECRET_KEY_CREDENTIAL_TYPE,
+            awsSecretKeyCredentialInfo,
+            expireTime);
+    Assertions.assertEquals(
+        AwsSecretKeyCredential.AWS_SECRET_KEY_CREDENTIAL_TYPE, credential.credentialType());
+    Assertions.assertInstanceOf(AwsSecretKeyCredential.class, credential);
+    AwsSecretKeyCredential aws = (AwsSecretKeyCredential) credential;
+    Assertions.assertEquals("accessKeyId", aws.accessKeyId());
+    Assertions.assertEquals("secretAccessKey", aws.secretAccessKey());
+    Assertions.assertEquals(expireTime, aws.expireTimeInMs());
+  }
+
+  @Test
+  void testDlfSecretKeyCredential() {
+    Map<String, String> dlfSecretKeyCredentialInfo =
+        ImmutableMap.of(
+            DlfSecretKeyCredential.GRAVITINO_DLF_ACCESS_KEY_ID,
+            "dlf-ak",
+            DlfSecretKeyCredential.GRAVITINO_DLF_ACCESS_KEY_SECRET,
+            "dlf-sk",
+            DlfSecretKeyCredential.GRAVITINO_DLF_SECURITY_TOKEN,
+            "dlf-token");
+    long expireTime = 0;
+    Credential credential =
+        CredentialFactory.create(
+            DlfSecretKeyCredential.DLF_SECRET_KEY_CREDENTIAL_TYPE,
+            dlfSecretKeyCredentialInfo,
+            expireTime);
+    Assertions.assertEquals(
+        DlfSecretKeyCredential.DLF_SECRET_KEY_CREDENTIAL_TYPE, credential.credentialType());
+    Assertions.assertInstanceOf(DlfSecretKeyCredential.class, credential);
+    DlfSecretKeyCredential dlf = (DlfSecretKeyCredential) credential;
+    Assertions.assertEquals("dlf-ak", dlf.accessKeyId());
+    Assertions.assertEquals("dlf-sk", dlf.accessKeySecret());
+    Assertions.assertEquals("dlf-token", dlf.securityToken());
+    Assertions.assertEquals(expireTime, dlf.expireTimeInMs());
+  }
+
+  @Test
+  void testDlfSecretKeyCredentialWithoutToken() {
+    Map<String, String> dlfSecretKeyCredentialInfo =
+        ImmutableMap.of(
+            DlfSecretKeyCredential.GRAVITINO_DLF_ACCESS_KEY_ID,
+            "dlf-ak",
+            DlfSecretKeyCredential.GRAVITINO_DLF_ACCESS_KEY_SECRET,
+            "dlf-sk");
+    Credential credential =
+        CredentialFactory.create(
+            DlfSecretKeyCredential.DLF_SECRET_KEY_CREDENTIAL_TYPE, dlfSecretKeyCredentialInfo, 0);
+    Assertions.assertInstanceOf(DlfSecretKeyCredential.class, credential);
+    DlfSecretKeyCredential dlf = (DlfSecretKeyCredential) credential;
+    Assertions.assertEquals("dlf-ak", dlf.accessKeyId());
+    Assertions.assertEquals("dlf-sk", dlf.accessKeySecret());
+    Assertions.assertNull(dlf.securityToken());
+  }
+
+  @Test
+  void testUnknownCredentialType() {
+    RuntimeException e =
+        Assertions.assertThrows(
+            RuntimeException.class,
+            () -> CredentialFactory.create("no-such-credential", ImmutableMap.of(), 0));
+    Assertions.assertEquals("No credential found for: no-such-credential", e.getMessage());
+  }
+
+  @Test
+  void testUnknownCredentialTypeMessagePreservesOriginalCasing() {
+    // Lookup is case-insensitive, but the "not found" message must echo the type as the caller
+    // supplied it, not the lower-cased lookup key.
+    RuntimeException e =
+        Assertions.assertThrows(
+            RuntimeException.class,
+            () -> CredentialFactory.create("No-Such-Credential", ImmutableMap.of(), 0));
+    Assertions.assertEquals("No credential found for: No-Such-Credential", e.getMessage());
+  }
+
+  @Test
+  void testCredentialTypeLookupIsCaseInsensitive() {
+    // The factory looks up the credential class by type case-insensitively; a differently-cased
+    // type must resolve to the same implementation.
+    Credential credential =
+        CredentialFactory.create(
+            JdbcCredential.JDBC_CREDENTIAL_TYPE.toUpperCase(java.util.Locale.ROOT),
+            ImmutableMap.of(
+                JdbcCredential.GRAVITINO_JDBC_USER,
+                "test-user",
+                JdbcCredential.GRAVITINO_JDBC_PASSWORD,
+                "test-password"),
+            0);
+    Assertions.assertInstanceOf(JdbcCredential.class, credential);
+  }
 }

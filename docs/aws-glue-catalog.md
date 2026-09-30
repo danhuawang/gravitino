@@ -55,7 +55,12 @@ Besides the [common catalog properties](./gravitino-server-config.md#catalog-pro
 Refer to [Manage Catalogs and Schemas](./manage-catalogs-and-schemas.md#catalog-operations) for more details.
 
 :::note
-Sensitive catalog properties such as `aws-access-key-id` and `aws-secret-access-key` are hidden from the load catalog response. Use the [credential vending API](security/credential-vending.md) to retrieve them at runtime.
+Sensitive catalog properties such as `aws-access-key-id` / `aws-secret-access-key` are hidden from the default load catalog response. Recover them via:
+
+- `getCredentials` / `AwsSecretKeyCredential` (and remapped `S3SecretKeyCredential` when auto-detected) — no dedicated privilege beyond loading the catalog
+- `getSecrets` / `GET .../objects/{type}/{fullName}/secrets` with `USE_SECRETS` and `INCLUDE_CREDENTIAL_SECRETS`
+
+See [credential vending](security/credential-vending.md) for details.
 :::
 
 ## Schema
