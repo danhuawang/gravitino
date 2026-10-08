@@ -74,10 +74,13 @@ public final class ScimRESTServiceImpl {
     jettyServer.addServlet(new ScimHealthAliasServlet("/scim"), "/health/*");
     jettyServer.addServlet(new ScimHealthAliasServlet("/scim"), "/health.html");
 
+    int listenPort =
+        serverConfig.isEnableHttps() ? serverConfig.getHttpsPort() : serverConfig.getHttpPort();
     LOG.info(
-        "SCIM auxiliary service initialized on {}:{} (auxMode={})",
+        "SCIM auxiliary service initialized on {}:{} ({}, auxMode={})",
         serverConfig.getHost(),
-        serverConfig.getHttpPort(),
+        listenPort,
+        serverConfig.isEnableHttps() ? "https" : "http",
         auxMode);
   }
 

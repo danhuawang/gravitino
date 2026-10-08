@@ -39,6 +39,7 @@ class TestScimRestServiceSpi {
     JettyServerConfig serverConfig = JettyServerConfig.fromConfig(scimConfig);
 
     assertEquals(ScimConfig.DEFAULT_HTTP_PORT, serverConfig.getHttpPort());
+    assertEquals(ScimConfig.DEFAULT_HTTPS_PORT, serverConfig.getHttpsPort());
     assertEquals("0.0.0.0", serverConfig.getHost());
   }
 

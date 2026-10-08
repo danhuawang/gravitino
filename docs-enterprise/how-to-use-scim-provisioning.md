@@ -31,13 +31,14 @@ See [License management](license-management) for license setup.
 
 Gravitino exposes two HTTP surfaces for SCIM:
 
-| Traffic                   | Port | Path prefix          | Authentication                           |
-|---------------------------|------|----------------------|------------------------------------------|
-| IdP SCIM provisioning     | 9201 | `/scim/v2/`          | Opaque bearer token (`gravitino_scim_*`) |
-| Operator token management | 8090 | `/api/scim/tokens`   | Main-server user auth + service admin    |
+| Traffic                   | Port                       | Path prefix        | Authentication                           |
+|---------------------------|----------------------------|--------------------|------------------------------------------|
+| IdP SCIM provisioning     | 9201 (HTTP) / 9633 (HTTPS) | `/scim/v2/`        | Opaque bearer token (`gravitino_scim_*`) |
+| Operator token management | 8090                       | `/api/scim/tokens` | Main-server user auth + service admin    |
 
-The IdP never calls Gravitino management APIs directly. It uses the SCIM base URL on port **9201**
-with an integration token. Service admins create and rotate those tokens on port **8090**.
+The IdP never calls Gravitino management APIs directly. It uses the SCIM base URL on the SCIM
+listener (default HTTP **9201**, or HTTPS **9633** when `gravitino.scim.enableHttps` is true) with
+an integration token. Service admins create and rotate those tokens on port **8090**.
 
 When SCIM is enabled, OAuth still proves **who** the caller is, and SCIM defines **which groups**
 a provisioned user belongs to. For users provisioned by SCIM, group membership for authorization is
@@ -70,23 +71,25 @@ Add SCIM settings to `conf/gravitino.conf`. Keep existing server, entity-store, 
 settings unchanged. When the SCIM extension package is registered, Gravitino validates the required
 keys at startup and **fails to start** if any are missing or incompatible.
 
-| Configuration item                                            | Description                                                                                       | Example                                                                |
-|---------------------------------------------------------------|---------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
-| `gravitino.server.rest.extensionPackages`                     | Registers the SCIM token management APIs and OAuth wiring on **8090** (required)                  | `com.datastrato.gravitino.scim.web.rest.feature`                       |
-| `gravitino.auxService.names`                                  | Must include `scim` to start the SCIM listener (required)                                         | `scim`                                                                 |
-| `gravitino.scim.classpath`                                    | Directory with the SCIM server JARs (required)                                                    | `scim-server/libs`                                                     |
-| `gravitino.authenticator.oauth.principalMapper`               | Must be the SCIM principal mapper, which loads groups from `scim_user_group_rel` (required)       | `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper`   |
-| `gravitino.authenticator.oauth.groupsFields`                  | Must be **empty** so JWT group claims do not override SCIM membership (required)                  | (empty)                                                                |
-| `gravitino.server.webserver.customFilters`                    | Must include the filter that captures the request token for the principal mapper (required)       | `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter` |
-| `gravitino.authenticator.oauth.principalMapper.regex.pattern` | Regex applied to the JWT identity claim before username lookup (optional)                         | `([^@]+)@.*`                                                           |
-| `gravitino.scim.jit.groupsFields`                             | JWT claims that supply groups for users not provisioned by SCIM (optional, default `groups`)      | `groups`                                                               |
-| `gravitino.scim.httpPort`                                     | SCIM listener port (optional, default `9201`)                                                     | `9201`                                                                 |
-| `gravitino.scim.host`                                         | SCIM listener bind address (optional)                                                             | `0.0.0.0`                                                              |
-| `gravitino.scim.userMapper`                                   | Maps SCIM `userName` to the stored user name (optional, default passthrough regex)                | `regex`                                                                |
-| `gravitino.scim.userMapper.regex.pattern`                     | Regex for `userMapper`; the first capture group is stored (optional, default `^(.*)$`)            | `([^@]+)@.*`                                                           |
-| `gravitino.scim.groupMapper`                                  | Maps SCIM `displayName` to the stored group name (optional, default passthrough regex)            | `regex`                                                                |
-| `gravitino.scim.groupMapper.regex.pattern`                    | Regex for `groupMapper`; the first capture group is stored (optional, default `^(.*)$`)           | `^/(.*)`                                                               |
-| `gravitino.scim.errorHistory.retentionDays`                   | Days to retain SCIM protocol failure rows in `scim_error_history` (optional, default `30`)        | `30`                                                                   |
+| Configuration item                                            | Description                                                                                                 | Example                                                                |
+|---------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
+| `gravitino.server.rest.extensionPackages`                     | Registers the SCIM token management APIs and OAuth wiring on **8090** (required)                            | `com.datastrato.gravitino.scim.web.rest.feature`                       |
+| `gravitino.auxService.names`                                  | Must include `scim` to start the SCIM listener (required)                                                   | `scim`                                                                 |
+| `gravitino.scim.classpath`                                    | Directory with the SCIM server JARs (required)                                                              | `scim-server/libs`                                                     |
+| `gravitino.authenticator.oauth.principalMapper`               | Must be the SCIM principal mapper, which loads groups from `scim_user_group_rel` (required)                 | `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper`   |
+| `gravitino.authenticator.oauth.groupsFields`                  | Must be **empty** so JWT group claims do not override SCIM membership (required)                            | (empty)                                                                |
+| `gravitino.server.webserver.customFilters`                    | Must include the filter that captures the request token for the principal mapper (required)                 | `com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter` |
+| `gravitino.authenticator.oauth.principalMapper.regex.pattern` | Regex applied to the JWT identity claim before username lookup (optional)                                   | `([^@]+)@.*`                                                           |
+| `gravitino.scim.jit.groupsFields`                             | JWT claims that supply groups for users not provisioned by SCIM (optional, default `groups`)                | `groups`                                                               |
+| `gravitino.scim.httpPort`                                     | SCIM HTTP listener port (optional, default `9201`; unused when HTTPS is enabled)                            | `9201`                                                                 |
+| `gravitino.scim.httpsPort`                                    | SCIM HTTPS listener port (optional, default `9633`)                                                         | `9633`                                                                 |
+| `gravitino.scim.enableHttps`                                  | Serve SCIM over HTTPS instead of HTTP (optional, default `false`). See [HTTPS](/security/how-to-use-https). | `true`                                                                 |
+| `gravitino.scim.host`                                         | SCIM listener bind address (optional)                                                                       | `0.0.0.0`                                                              |
+| `gravitino.scim.userMapper`                                   | Maps SCIM `userName` to the stored user name (optional, default passthrough regex)                          | `regex`                                                                |
+| `gravitino.scim.userMapper.regex.pattern`                     | Regex for `userMapper`; the first capture group is stored (optional, default `^(.*)$`)                      | `([^@]+)@.*`                                                           |
+| `gravitino.scim.groupMapper`                                  | Maps SCIM `displayName` to the stored group name (optional, default passthrough regex)                      | `regex`                                                                |
+| `gravitino.scim.groupMapper.regex.pattern`                    | Regex for `groupMapper`; the first capture group is stored (optional, default `^(.*)$`)                     | `^/(.*)`                                                               |
+| `gravitino.scim.errorHistory.retentionDays`                   | Days to retain SCIM protocol failure rows in `scim_error_history` (optional, default `30`)                  | `30`                                                                   |
 
 Example:
 
@@ -109,11 +112,17 @@ gravitino.scim.userMapper = regex
 gravitino.scim.userMapper.regex.pattern = ([^@]+)@.*
 ```
 
-The IdP SCIM base URL is built from the listener host and `gravitino.scim.httpPort`:
+The IdP SCIM base URL is built from the listener host and the active protocol port
+(`gravitino.scim.httpPort` or `gravitino.scim.httpsPort`):
 
 ```text
-https://{host}:9201/scim/v2
+http://{host}:9201/scim/v2
+https://{host}:9633/scim/v2
 ```
+
+Prefer HTTPS in production. Set `gravitino.scim.enableHttps = true` and the same key-store
+properties as other Gravitino HTTPS listeners (see [HTTPS](/security/how-to-use-https)). Enabling
+HTTPS replaces the HTTP listener rather than adding a second port.
 
 ---
 
@@ -140,15 +149,15 @@ The Web UI also calls internal endpoints under `/api/internal/scim/tokens`. Pref
 Integration tokens are opaque bearer secrets for the whole Gravitino instance. Token names are unique
 among active tokens.
 
-| Attribute       | Value                                                                              |
-|-----------------|------------------------------------------------------------------------------------|
-| `tokenName`     | Required on create                                                                 |
-| `expiresInDays` | Optional on create and rotate; omit on create for no expiry (`expiresAt = 0`)      |
-| `tokenValue`    | Returned **only once** on create and rotate; Gravitino stores only a SHA-256 hash  |
-| Format          | Opaque bearer string with prefix `gravitino_scim_`                                 |
-| Rotation        | Replaces the secret in place; the previous value fails on the next SCIM request    |
-| Revocation      | Delete invalidates the token immediately                                           |
-| Expiry          | SCIM requests with an expired token are rejected                                   |
+| Attribute       | Value                                                                             |
+|-----------------|-----------------------------------------------------------------------------------|
+| `tokenName`     | Required on create                                                                |
+| `expiresInDays` | Optional on create and rotate; omit on create for no expiry (`expiresAt = 0`)     |
+| `tokenValue`    | Returned **only once** on create and rotate; Gravitino stores only a SHA-256 hash |
+| Format          | Opaque bearer string with prefix `gravitino_scim_`                                |
+| Rotation        | Replaces the secret in place; the previous value fails on the next SCIM request   |
+| Revocation      | Delete invalidates the token immediately                                          |
+| Expiry          | SCIM requests with an expired token are rejected                                  |
 
 ### List SCIM tokens
 
@@ -212,12 +221,12 @@ groups into Gravitino.
 
 ### Connector settings
 
-| IdP field      | Value                                               |
-|----------------|-----------------------------------------------------|
-| SCIM base URL  | `https://{host}:9201/scim/v2`                       |
-| Authentication | Bearer token                                        |
-| Secret / token | `tokenValue` from create (prefix `gravitino_scim_`) |
-| Content type   | `application/scim+json`                             |
+| IdP field      | Value                                                                               |
+|----------------|-------------------------------------------------------------------------------------|
+| SCIM base URL  | `http://{host}:9201/scim/v2` or `https://{host}:9633/scim/v2` when HTTPS is enabled |
+| Authentication | Bearer token                                                                        |
+| Secret / token | `tokenValue` from create (prefix `gravitino_scim_`)                                 |
+| Content type   | `application/scim+json`                                                             |
 
 ### Microsoft Entra ID (high level)
 
@@ -243,20 +252,20 @@ groups into Gravitino.
 Gravitino implements a focused SCIM 2.0 subset. Bulk operations, sorting, and ETags are not
 supported.
 
-| Resource | Supported operations                                                                                                         |
-|----------|------------------------------------------------------------------------------------------------------------------------------|
-| Users    | `POST`, `GET` (filter `eq` on `id`, `userName`, `externalId`), `PUT`, `PATCH` (`active`, `externalId`), `DELETE`             |
-| Groups   | `POST`, `GET` (filter `eq` on `id`, `displayName`, `externalId`), `PUT`, `PATCH` (`members`, `externalId`), `DELETE`         |
+| Resource | Supported operations                                                                                                 |
+|----------|----------------------------------------------------------------------------------------------------------------------|
+| Users    | `POST`, `GET` (filter `eq` on `id`, `userName`, `externalId`), `PUT`, `PATCH` (`active`, `externalId`), `DELETE`     |
+| Groups   | `POST`, `GET` (filter `eq` on `id`, `displayName`, `externalId`), `PUT`, `PATCH` (`members`, `externalId`), `DELETE` |
 
 Key attribute mapping:
 
-| SCIM attribute | Gravitino storage                                                           |
-|----------------|-----------------------------------------------------------------------------|
-| `userName`     | `scim_user_meta.user_name` (required on create, immutable after create)     |
-| `displayName`  | `scim_group_meta.group_name` (required on create, immutable after create)   |
-| `externalId`   | `scim_user_meta.external_id` / `scim_group_meta.external_id` (optional)     |
-| `active`       | `scim_user_meta.enabled`                                                    |
-| `members`      | `scim_user_group_rel`                                                       |
+| SCIM attribute | Gravitino storage                                                         |
+|----------------|---------------------------------------------------------------------------|
+| `userName`     | `scim_user_meta.user_name` (required on create, immutable after create)   |
+| `displayName`  | `scim_group_meta.group_name` (required on create, immutable after create) |
+| `externalId`   | `scim_user_meta.external_id` / `scim_group_meta.external_id` (optional)   |
+| `active`       | `scim_user_meta.enabled`                                                  |
+| `members`      | `scim_user_group_rel`                                                     |
 
 Entra and Okta typically deprovision users with `PATCH active: false` and remove groups with
 `DELETE /Groups/{id}`.
@@ -266,7 +275,7 @@ token. `Users` and `Groups` require the integration token:
 
 ```shell
 curl -s -H "Accept: application/scim+json" \
-  https://localhost:9201/scim/v2/ServiceProviderConfig
+  http://localhost:9201/scim/v2/ServiceProviderConfig
 ```
 
 ---
@@ -275,11 +284,11 @@ curl -s -H "Accept: application/scim+json" \
 
 SCIM and OAuth serve different roles:
 
-| Concern             | Mechanism                                    |
-|---------------------|----------------------------------------------|
-| Prove user identity | OAuth JWT on port **8090**                   |
-| User/group metadata | SCIM push on port **9201**                   |
-| Group membership    | `scim_user_group_rel` when SCIM is enabled   |
+| Concern             | Mechanism                                           |
+|---------------------|-----------------------------------------------------|
+| Prove user identity | OAuth JWT on port **8090**                          |
+| User/group metadata | SCIM push on port **9201** (or **9633** with HTTPS) |
+| Group membership    | `scim_user_group_rel` when SCIM is enabled          |
 
 Configure OAuth as described in [Authentication](/security/how-to-authenticate). Map the JWT identity
 claim with `gravitino.authenticator.oauth.principalFields` and
@@ -304,7 +313,8 @@ and groups through [Access control](/security/access-control).
 
 The following steps provision Gravitino so an IdP can push users and groups and OAuth users can
 access metadata. The examples use SCIM token name `prod`, metalake `example`, and Gravitino at
-`http://localhost:8090` with SCIM on `https://localhost:9201`.
+`http://localhost:8090` with SCIM on `http://localhost:9201` (use `https://localhost:9633` when
+`gravitino.scim.enableHttps` is true).
 
 ### 1. Enable SCIM and OAuth
 
@@ -321,8 +331,9 @@ As a service admin, [create a token](#create-a-scim-token) and copy `tokenValue`
 
 ### 3. Configure the IdP connector
 
-Configure Entra, Okta, or another SCIM 2.0 IdP with the base URL `https://{host}:9201/scim/v2` and
-the bearer token from step 2. Assign the users and groups that should exist in Gravitino.
+Configure Entra, Okta, or another SCIM 2.0 IdP with the SCIM base URL
+(`http://{host}:9201/scim/v2`, or `https://{host}:9633/scim/v2` when HTTPS is enabled) and the
+bearer token from step 2. Assign the users and groups that should exist in Gravitino.
 
 ### 4. Verify provisioning
 
@@ -331,11 +342,11 @@ After the IdP sync cycle, list the provisioned users and groups:
 ```shell
 curl -s -H "Accept: application/scim+json" \
   -H "Authorization: Bearer gravitino_scim_<token>" \
-  https://localhost:9201/scim/v2/Users
+  http://localhost:9201/scim/v2/Users
 
 curl -s -H "Accept: application/scim+json" \
   -H "Authorization: Bearer gravitino_scim_<token>" \
-  https://localhost:9201/scim/v2/Groups
+  http://localhost:9201/scim/v2/Groups
 ```
 
 ### 5. Grant roles and test OAuth login
@@ -348,18 +359,18 @@ user access token. Group-based access should reflect the IdP-assigned groups syn
 
 ## Protocol error history
 
-Eligible failed IdP-facing SCIM **Users** and **Groups** calls on port **9201** are recorded into
+Eligible failed IdP-facing SCIM **Users** and **Groups** calls on the SCIM listener are recorded into
 the enterprise table `scim_error_history` after the HTTP response is known. Recording is
 **best-effort**: failures are queued asynchronously and may be dropped if the bounded recorder
 queue is full under extreme load. Each row stores the HTTP method and path, status, optional
 RFC 7644 `scimType`, a truncated error detail, the SCIM token name (principal), and `created_at`.
 
-| Behavior  | Detail                                                                                                                  |
-|-----------|-------------------------------------------------------------------------------------------------------------------------|
-| In scope  | `/scim/v2/Users` and `/scim/v2/Groups` responses with status **≥ 400**, except **404**                                 |
-| Skipped   | **404** (not-found probes), successful responses, discovery endpoints, and token management APIs on **8090**           |
-| Retention | `gravitino.scim.errorHistory.retentionDays` (default **30**, must be a **positive integer**)                            |
-| Cleanup   | A dedicated cleaner deletes rows older than the retention window **once per day**                                       |
+| Behavior  | Detail                                                                                                       |
+|-----------|--------------------------------------------------------------------------------------------------------------|
+| In scope  | `/scim/v2/Users` and `/scim/v2/Groups` responses with status **≥ 400**, except **404**                       |
+| Skipped   | **404** (not-found probes), successful responses, discovery endpoints, and token management APIs on **8090** |
+| Retention | `gravitino.scim.errorHistory.retentionDays` (default **30**, must be a **positive integer**)                 |
+| Cleanup   | A dedicated cleaner deletes rows older than the retention window **once per day**                            |
 
 There is no public REST API to list these rows in the current release; operators query
 `scim_error_history` in the entity-store JDBC database when investigating provisioning failures.

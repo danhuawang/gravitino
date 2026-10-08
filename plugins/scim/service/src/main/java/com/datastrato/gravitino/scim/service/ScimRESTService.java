@@ -17,7 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * SCIM 2.0 auxiliary HTTP service SPI entry on port 9201.
+ * SCIM 2.0 auxiliary HTTP(S) service SPI entry (default HTTP {@code 9201}, HTTPS {@code 9633}).
  *
  * <p>Free of Jetty / Jersey / Jakarta imports so {@link
  * org.apache.gravitino.utils.IsolatedClassLoader} does not link those types from the main server

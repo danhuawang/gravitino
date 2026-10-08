@@ -19,12 +19,15 @@ import org.apache.gravitino.config.ConfigConstants;
  *
  * <p>{@link org.apache.gravitino.auxiliary.AuxiliaryServiceManager} forwards {@code
  * gravitino.scim.*} entries with the {@code scim.} prefix stripped (e.g. {@code userMapper}, {@code
- * httpPort}).
+ * httpPort}, {@code httpsPort}, {@code enableHttps}).
  */
 public final class ScimConfig extends Config implements OverwriteDefaultConfig {
 
   /** Default SCIM auxiliary HTTP port. */
   public static final int DEFAULT_HTTP_PORT = 9201;
+
+  /** Default SCIM auxiliary HTTPS port. */
+  public static final int DEFAULT_HTTPS_PORT = 9633;
 
   /** Default regex mapper type. */
   public static final String DEFAULT_MAPPER_TYPE = "regex";
@@ -75,6 +78,10 @@ public final class ScimConfig extends Config implements OverwriteDefaultConfig {
 
   @Override
   public Map<String, String> getOverwriteDefaultConfig() {
-    return ImmutableMap.of(ConfigConstants.WEBSERVER_HTTP_PORT, String.valueOf(DEFAULT_HTTP_PORT));
+    return ImmutableMap.of(
+        ConfigConstants.WEBSERVER_HTTP_PORT,
+        String.valueOf(DEFAULT_HTTP_PORT),
+        ConfigConstants.WEBSERVER_HTTPS_PORT,
+        String.valueOf(DEFAULT_HTTPS_PORT));
   }
 }

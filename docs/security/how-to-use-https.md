@@ -16,24 +16,33 @@ A server instance serves one protocol. Enabling HTTPS stops the plain HTTP liste
 
 ## Configuration
 
-The Gravitino server and the Iceberg REST service are configured separately with the same property names under different prefixes. Use `gravitino.server.webserver.` for the Gravitino server and `gravitino.iceberg-rest.` for the Iceberg REST service.
+The Gravitino server and auxiliary services are configured separately with the same property names under different prefixes. Use `gravitino.server.webserver.` for the Gravitino server, `gravitino.iceberg-rest.` for the Iceberg REST service, `gravitino.lance-rest.` for the Lance REST service, and `gravitino.scim.` for the SCIM auxiliary service.
 
-| Property Name             | Description                                    | Default Value | Required                       |
-|---------------------------|------------------------------------------------|---------------|--------------------------------|
-| `enableHttps`             | Enables HTTPS                                  | `false`       | No                             |
-| `httpsPort`               | HTTPS port for the Jetty web server            | `8433` and `9433` | No                         |
-| `keyStorePath`            | Path to the key store file                     | (none)        | Yes                            |
-| `keyStorePassword`        | Password for the key store                     | (none)        | Yes                            |
-| `managerPassword`         | Manager password for the key store             | (none)        | Yes                            |
-| `keyStoreType`            | Key store type                                 | `JKS`         | No                             |
-| `tlsProtocol`             | TLS protocol to use, which the JVM must support| (none)        | No                             |
-| `enableCipherAlgorithms`  | Cipher algorithms to enable                    | (empty)       | No                             |
-| `enableClientAuth`        | Requires clients to authenticate with a certificate | `false`  | No                             |
-| `trustStorePath`          | Path to the trust store file                   | (none)        | Yes with client authentication |
-| `trustStorePassword`      | Password for the trust store                   | (none)        | Yes with client authentication |
-| `trustStoreType`          | Trust store type                               | `JKS`         | No                             |
+| Property Name            | Description                                         | Default Value | Required                       |
+|--------------------------|-----------------------------------------------------|---------------|--------------------------------|
+| `enableHttps`            | Enables HTTPS                                       | `false`       | No                             |
+| `httpsPort`              | HTTPS port for the Jetty web server                 | see below     | No                             |
+| `keyStorePath`           | Path to the key store file                          | (none)        | Yes                            |
+| `keyStorePassword`       | Password for the key store                          | (none)        | Yes                            |
+| `managerPassword`        | Manager password for the key store                  | (none)        | Yes                            |
+| `keyStoreType`           | Key store type                                      | `JKS`         | No                             |
+| `tlsProtocol`            | TLS protocol to use, which the JVM must support     | (none)        | No                             |
+| `enableCipherAlgorithms` | Cipher algorithms to enable                         | (empty)       | No                             |
+| `enableClientAuth`       | Requires clients to authenticate with a certificate | `false`       | No                             |
+| `trustStorePath`         | Path to the trust store file                        | (none)        | Yes with client authentication |
+| `trustStorePassword`     | Password for the trust store                        | (none)        | Yes with client authentication |
+| `trustStoreType`         | Trust store type                                    | `JKS`         | No                             |
 
-The default HTTPS port is `8433` for the Gravitino server and `9433` for the Iceberg REST service. Everything in the Required column applies once `enableHttps` is `true`.
+Default HTTPS ports:
+
+| Service                | Prefix                        | Default `httpsPort` |
+|------------------------|-------------------------------|---------------------|
+| Gravitino server       | `gravitino.server.webserver.` | `8433`              |
+| Iceberg REST service   | `gravitino.iceberg-rest.`     | `9433`              |
+| Lance REST service     | `gravitino.lance-rest.`       | `9533`              |
+| SCIM auxiliary service | `gravitino.scim.`             | `9633`              |
+
+Everything in the Required column applies once `enableHttps` is `true`.
 
 For the values `tlsProtocol` and `enableCipherAlgorithms` accept, see the "Additional JSSE Standard Names" section of the Java security guide, under [protocols](https://docs.oracle.com/javase/8/docs/technotes/guides/security/StandardNames.html#jssenames) and [cipher suites](https://docs.oracle.com/javase/8/docs/technotes/guides/security/StandardNames.html#ciphersuites) respectively.
 
