@@ -5,6 +5,7 @@ package com.datastrato.gravitino.server.web;
 
 import com.datastrato.gravitino.license.rest.LicenseStatusResource;
 import com.datastrato.gravitino.metrics.rest.MetricOperations;
+import com.datastrato.gravitino.scim.web.rest.PublicScimTokenOperations;
 import com.datastrato.gravitino.scim.web.rest.ScimTokenOperations;
 import com.datastrato.gravitino.search.rest.SearchOperations;
 import com.datastrato.gravitino.server.web.rest.EntityOperations;
@@ -44,7 +45,9 @@ public class TestInternalApiPaths {
   private static final Set<Class<?>> PUBLIC_RESOURCES =
       ImmutableSet.of(
           // Users need to query the license status outside the Web UI.
-          LicenseStatusResource.class);
+          LicenseStatusResource.class,
+          // Service admins manage SCIM tokens from scripts and pipelines.
+          PublicScimTokenOperations.class);
 
   @Test
   public void testEnterpriseResourcesAreInternalUnlessPublic() {
@@ -55,6 +58,7 @@ public class TestInternalApiPaths {
                 EntityOperations.class,
                 SearchOperations.class,
                 MetricOperations.class,
+                PublicScimTokenOperations.class,
                 ScimTokenOperations.class,
                 LicenseStatusResource.class)),
         "Resource scanning did not find the expected Enterprise resources: " + resources);

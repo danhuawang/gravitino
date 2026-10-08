@@ -16,14 +16,18 @@ info:
     `com.datastrato.gravitino.scim.web.rest.feature` in
     `gravitino.server.rest.extensionPackages`.
 
-    These are **internal APIs** served under `/api/internal`. They are used by the
-    Gravitino Enterprise Web UI, are not part of the public REST API, and may change
-    without notice. Requests must include the `X-Gravitino-Internal-Origin` header;
-    requests without it are rejected with HTTP 400.
+    **Public token APIs** are served under `/api/scim/tokens`. Use them from scripts
+    and pipelines. They require the same main-server authentication as other public
+    REST APIs; the caller must be a service admin listed in
+    `gravitino.authorization.serviceAdmins`.
 
-    All endpoints require main-server authentication, and the caller must be a
-    service admin listed in `gravitino.authorization.serviceAdmins`. Plaintext token
-    values are returned only in create and rotate responses.
+    **Internal APIs** under `/api/internal/scim/**` are used by the Gravitino
+    Enterprise Web UI, are not part of the public REST API, and may change without
+    notice. Requests to internal paths must include the
+    `X-Gravitino-Internal-Origin` header; requests without it are rejected with
+    HTTP 400.
+
+    Plaintext token values are returned only in create and rotate responses.
 
 servers:
   - url: "{scheme}://{host}:{port}/{basePath}"
@@ -47,6 +51,17 @@ security:
   - BasicAuth: []
 
 paths:
+  /scim/tokens:
+    $ref: "./scim-tokens.yaml#/paths/~1scim~1tokens"
+
+  /scim/tokens/{tokenName}/rotate:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./scim-tokens.yaml#/paths/~1scim~1tokens~1%7BtokenName%7D~1rotate"
+
+  /scim/tokens/{tokenName}:
+    # escape the path name by replacing `{ }` with `%7B %7D`
+    $ref: "./scim-tokens.yaml#/paths/~1scim~1tokens~1%7BtokenName%7D"
+
   /internal/scim/provisioning:
     $ref: "./scim-tokens.yaml#/paths/~1internal~1scim~1provisioning"
 

@@ -6,21 +6,10 @@ package com.datastrato.gravitino.scim.web.rest;
 
 import com.codahale.metrics.annotation.ResponseMetered;
 import com.codahale.metrics.annotation.Timed;
-import com.datastrato.gravitino.scim.ScimTokenManager;
-import com.datastrato.gravitino.scim.dto.ScimTokenDTO;
-import com.datastrato.gravitino.scim.dto.ScimTokenSummaryDTO;
 import com.datastrato.gravitino.scim.dto.requests.CreateScimTokenRequest;
 import com.datastrato.gravitino.scim.dto.requests.RotateScimTokenRequest;
-import com.datastrato.gravitino.scim.dto.responses.ScimTokenDeleteResponse;
-import com.datastrato.gravitino.scim.dto.responses.ScimTokenListResponse;
-import com.datastrato.gravitino.scim.dto.responses.ScimTokenResponse;
-import com.datastrato.gravitino.scim.model.CreatedScimToken;
 import com.datastrato.gravitino.scim.web.ScimManagement;
-import com.datastrato.gravitino.scim.web.ScimOperationType;
-import com.datastrato.gravitino.scim.web.ScimRESTUtils;
 import com.datastrato.gravitino.server.web.InternalApiPaths;
-import java.util.List;
-import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import javax.servlet.http.HttpServletRequest;
@@ -34,96 +23,91 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import org.apache.gravitino.exceptions.NotFoundException;
 import org.apache.gravitino.metrics.MetricNames;
 
-/** REST resource for SCIM token administration on the main Gravitino server. */
+/**
+ * Internal REST resource for SCIM token administration used by the Datastrato Web UI.
+ *
+ * <p>Scripts and automation should use {@link PublicScimTokenOperations} at {@code
+ * /api/scim/tokens} instead. This resource remains under {@link InternalApiPaths#PREFIX} and
+ * requires the internal origin header.
+ */
 @ScimManagement
 @Path(InternalApiPaths.PREFIX + "/scim/tokens")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class ScimTokenOperations {
-  private final ScimTokenManager tokenManager;
+
+  private final ScimTokenAdminHandler handler;
+
   @Context private HttpServletRequest httpRequest;
 
+  /**
+   * Creates the internal SCIM token resource.
+   *
+   * @param handler the shared SCIM token admin handler
+   */
   @Inject
-  public ScimTokenOperations(ScimTokenManager tokenManager) {
-    this.tokenManager = tokenManager;
+  public ScimTokenOperations(ScimTokenAdminHandler handler) {
+    this.handler = handler;
   }
 
+  /**
+   * Lists active SCIM tokens. Plaintext token values are never returned.
+   *
+   * @return the token list response
+   */
   @GET
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "internal-list-scim-tokens." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "internal-list-scim-tokens", absolute = true)
-  public Response listTokens() {
-    return ScimRESTUtils.doAs(
-        httpRequest,
-        () -> {
-          List<ScimTokenSummaryDTO> tokens =
-              tokenManager.listScimTokens().stream()
-                  .map(ScimTokenSummaryDTO::from)
-                  .collect(Collectors.toList());
-          return ScimRESTUtils.ok(new ScimTokenListResponse(tokens));
-        },
-        "",
-        ScimOperationType.LIST);
+  public Response list() {
+    return handler.listTokens(httpRequest);
   }
 
+  /**
+   * Creates a SCIM integration token. The plaintext {@code tokenValue} is returned only once.
+   *
+   * @param request the create request
+   * @return the created token response
+   */
   @POST
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "internal-create-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "internal-create-scim-token", absolute = true)
-  public Response createToken(CreateScimTokenRequest request) {
-    return ScimRESTUtils.doAs(
-        httpRequest,
-        () -> {
-          request.validate();
-          CreatedScimToken created =
-              tokenManager.createScimToken(request.getTokenName(), request.getExpiresInDays());
-          return ScimRESTUtils.ok(new ScimTokenResponse(toTokenDto(created)));
-        },
-        request.getTokenName(),
-        ScimOperationType.CREATE);
+  public Response create(CreateScimTokenRequest request) {
+    return handler.createToken(httpRequest, request);
   }
 
+  /**
+   * Rotates the bearer secret for an existing named token.
+   *
+   * @param tokenName the token name
+   * @param request optional rotate request; {@code null} keeps the current expiry
+   * @return the rotated token response
+   */
   @POST
   @Path("{tokenName}/rotate")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "internal-rotate-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "internal-rotate-scim-token", absolute = true)
-  public Response rotateToken(
+  public Response rotate(
       @PathParam("tokenName") String tokenName, @Nullable RotateScimTokenRequest request) {
-    return ScimRESTUtils.doAs(
-        httpRequest,
-        () -> {
-          if (request != null) request.validate();
-          Integer expiresInDays = request == null ? null : request.getExpiresInDays();
-          CreatedScimToken rotated = tokenManager.rotateScimToken(tokenName, expiresInDays);
-          return ScimRESTUtils.ok(new ScimTokenResponse(toTokenDto(rotated)));
-        },
-        tokenName,
-        ScimOperationType.ROTATE);
+    return handler.rotateToken(httpRequest, tokenName, request);
   }
 
+  /**
+   * Soft-deletes the named SCIM token.
+   *
+   * @param tokenName the token name
+   * @return the delete response
+   */
   @DELETE
   @Path("{tokenName}")
   @Produces("application/vnd.gravitino.v1+json")
   @Timed(name = "internal-delete-scim-token." + MetricNames.HTTP_PROCESS_DURATION, absolute = true)
   @ResponseMetered(name = "internal-delete-scim-token", absolute = true)
-  public Response deleteToken(@PathParam("tokenName") String tokenName) {
-    return ScimRESTUtils.doAs(
-        httpRequest,
-        () -> {
-          if (!tokenManager.deleteScimToken(tokenName)) {
-            throw new NotFoundException("SCIM token not found: %s", tokenName);
-          }
-          return ScimRESTUtils.ok(new ScimTokenDeleteResponse(true));
-        },
-        tokenName,
-        ScimOperationType.DELETE);
-  }
-
-  private ScimTokenDTO toTokenDto(CreatedScimToken created) {
-    return ScimTokenDTO.of(created.getTokenName(), created.getTokenValue(), created.getExpiresAt());
+  public Response delete(@PathParam("tokenName") String tokenName) {
+    return handler.deleteToken(httpRequest, tokenName);
   }
 }

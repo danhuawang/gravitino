@@ -13,5 +13,6 @@ public class ScimTokenBinder extends AbstractBinder {
   @Override
   protected void configure() {
     bind(ScimTokenManager.getInstance()).to(ScimTokenManager.class);
+    bindAsContract(ScimTokenAdminHandler.class);
   }
 }

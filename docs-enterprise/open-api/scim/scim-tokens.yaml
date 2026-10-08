@@ -4,6 +4,171 @@
 
 paths:
 
+  /scim/tokens:
+    get:
+      tags:
+        - SCIM Token
+      summary: List SCIM integration tokens
+      description: >
+        Lists active SCIM tokens. Requires a service admin. Plaintext token values are never
+        returned. Rows past `expiresAt` but not yet processed by the expiry task
+        appear with `status: expired`.
+      operationId: listScimTokens
+      responses:
+        "200":
+          description: Returns the SCIM token list
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenListResponse"
+              examples:
+                ScimTokenListResponse:
+                  $ref: "#/components/examples/ScimTokenListResponse"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+    post:
+      tags:
+        - SCIM Token
+      summary: Create SCIM integration token
+      description: >
+        Creates a new opaque SCIM bearer token. Requires a service admin. The plaintext `tokenValue`
+        is returned only in this response.
+      operationId: createScimToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScimTokenRequest"
+            examples:
+              CreateScimTokenRequest:
+                $ref: "#/components/examples/CreateScimTokenRequest"
+      responses:
+        "200":
+          description: Returns the created SCIM token
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenResponse"
+              examples:
+                ScimTokenCreateResponse:
+                  $ref: "#/components/examples/ScimTokenCreateResponse"
+        "400":
+          description: Bad Request - The request body is invalid
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                IllegalArgumentException:
+                  $ref: "#/components/examples/ScimTokenIllegalArgumentException"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "409":
+          description: Conflict - A token with the same name already exists
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                AlreadyExistsException:
+                  $ref: "#/components/examples/ScimTokenAlreadyExistsException"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /scim/tokens/{tokenName}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/tokenName"
+
+    post:
+      tags:
+        - SCIM Token
+      summary: Rotate SCIM integration token
+      description: >
+        Rotates the bearer secret for an existing named token. Requires a service
+        admin. The new plaintext `tokenValue` is
+        returned only in this response.
+      operationId: rotateScimToken
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateScimTokenRequest"
+            examples:
+              RotateScimTokenRequest:
+                $ref: "#/components/examples/RotateScimTokenRequest"
+      responses:
+        "200":
+          description: Returns the rotated SCIM token
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenResponse"
+              examples:
+                ScimTokenRotateResponse:
+                  $ref: "#/components/examples/ScimTokenRotateResponse"
+        "400":
+          description: Bad Request - The request body is invalid
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                IllegalArgumentException:
+                  $ref: "#/components/examples/ScimRotateIllegalArgumentException"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "404":
+          description: Not Found - The token does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NotFoundException:
+                  $ref: "#/components/examples/ScimTokenNotFoundException"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
+  /scim/tokens/{tokenName}:
+    parameters:
+      - $ref: "#/components/parameters/tokenName"
+
+    delete:
+      tags:
+        - SCIM Token
+      summary: Delete SCIM integration token
+      description: >
+        Soft-deletes the named SCIM token. Requires a service admin.
+      operationId: deleteScimToken
+      responses:
+        "200":
+          description: Returns whether the token was deleted
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "#/components/schemas/ScimTokenDeleteResponse"
+              examples:
+                ScimTokenDeleteResponse:
+                  $ref: "#/components/examples/ScimTokenDeleteResponse"
+        "403":
+          $ref: "#/components/responses/ScimTokenForbiddenErrorResponse"
+        "404":
+          description: Not Found - The token does not exist
+          content:
+            application/vnd.gravitino.v1+json:
+              schema:
+                $ref: "../../../docs/open-api/openapi.yaml#/components/schemas/ErrorModel"
+              examples:
+                NotFoundException:
+                  $ref: "#/components/examples/ScimTokenNotFoundException"
+        "5xx":
+          $ref: "../../../docs/open-api/openapi.yaml#/components/responses/ServerErrorResponse"
+
   /internal/scim/provisioning:
     parameters:
       - $ref: "../openapi.yaml#/components/parameters/InternalOriginHeader"
@@ -45,8 +210,8 @@ paths:
       description: >
         Lists active SCIM tokens. Requires a service admin. Plaintext token values are never
         returned. Rows past `expiresAt` but not yet processed by the expiry task
-        appear with `status: expired`.
-      operationId: listScimTokens
+        appear with `status: expired`. Prefer the public `/scim/tokens` API for automation.
+      operationId: listScimTokensInternal
       responses:
         "200":
           description: Returns the SCIM token list
@@ -68,8 +233,8 @@ paths:
       summary: Create SCIM integration token
       description: >
         Creates a new opaque SCIM bearer token. Requires a service admin. The plaintext `tokenValue`
-        is returned only in this response.
-      operationId: createScimToken
+        is returned only in this response. Prefer the public `/scim/tokens` API for automation.
+      operationId: createScimTokenInternal
       requestBody:
         required: true
         content:
@@ -157,8 +322,8 @@ paths:
       description: >
         Rotates the bearer secret for an existing named token. Requires a service
         admin. The new plaintext `tokenValue` is
-        returned only in this response.
-      operationId: rotateScimToken
+        returned only in this response. Prefer the public `/scim/tokens` API for automation.
+      operationId: rotateScimTokenInternal
       requestBody:
         required: false
         content:
@@ -211,8 +376,9 @@ paths:
         - SCIM Token
       summary: Delete SCIM integration token
       description: >
-        Soft-deletes the named SCIM token. Requires a service admin.
-      operationId: deleteScimToken
+        Soft-deletes the named SCIM token. Requires a service admin. Prefer the public
+        `/scim/tokens` API for automation.
+      operationId: deleteScimTokenInternal
       responses:
         "200":
           description: Returns whether the token was deleted

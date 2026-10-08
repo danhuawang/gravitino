@@ -31,10 +31,10 @@ See [License management](license-management) for license setup.
 
 Gravitino exposes two HTTP surfaces for SCIM:
 
-| Traffic                   | Port | Path prefix                 | Authentication                           |
-|---------------------------|------|-----------------------------|------------------------------------------|
-| IdP SCIM provisioning     | 9201 | `/scim/v2/`                 | Opaque bearer token (`gravitino_scim_*`) |
-| Operator token management | 8090 | `/api/internal/scim/tokens` | Main-server user auth + service admin    |
+| Traffic                   | Port | Path prefix          | Authentication                           |
+|---------------------------|------|----------------------|------------------------------------------|
+| IdP SCIM provisioning     | 9201 | `/scim/v2/`          | Opaque bearer token (`gravitino_scim_*`) |
+| Operator token management | 8090 | `/api/scim/tokens`   | Main-server user auth + service admin    |
 
 The IdP never calls Gravitino management APIs directly. It uses the SCIM base URL on port **9201**
 with an integration token. Service admins create and rotate those tokens on port **8090**.
@@ -122,22 +122,18 @@ https://{host}:9201/scim/v2
 The following sections show how to manage SCIM integration tokens with `curl`. Replace
 `localhost:8090` and tokens with values that match your deployment.
 
-:::note
-The token management API is an internal API served under `/api/internal`. It is not part of the
-public REST API and may change without notice. Requests must include the
-`X-Gravitino-Internal-Origin` header, unless the server sets
-`gravitino.datastrato.internalApi.requireOriginHeader = false`.
-:::
+Token management APIs are **public REST APIs** under `/api/scim/tokens`. They use the **same
+authentication** as other main REST APIs and require a **service admin**. They do **not** accept
+`gravitino_scim_*` tokens.
 
-Token management APIs use the **same authentication** as other main REST APIs and require a
-**service admin**. They do **not** accept `gravitino_scim_*` tokens.
+The Web UI also calls internal endpoints under `/api/internal/scim/tokens`. Prefer the public
+`/api/scim/tokens` paths for scripts and pipelines.
 
-| Header                        | Value                                     |
-|-------------------------------|-------------------------------------------|
-| `Accept`                      | `application/vnd.gravitino.v1+json`       |
-| `Content-Type`                | `application/json` (for POST bodies)      |
-| `Authorization`               | Main-server credential of a service admin |
-| `X-Gravitino-Internal-Origin` | Any non-empty value                       |
+| Header          | Value                                     |
+|-----------------|-------------------------------------------|
+| `Accept`        | `application/vnd.gravitino.v1+json`       |
+| `Content-Type`  | `application/json` (for POST bodies)      |
+| `Authorization` | Main-server credential of a service admin |
 
 ### Token fields and lifecycle
 
@@ -159,8 +155,7 @@ among active tokens.
 ```shell
 curl -s -H "Accept: application/vnd.gravitino.v1+json" \
   -H "Authorization: Bearer <main-server-access-token>" \
-  -H "X-Gravitino-Internal-Origin: curl" \
-  http://localhost:8090/api/internal/scim/tokens
+  http://localhost:8090/api/scim/tokens
 ```
 
 ### Create a SCIM token
@@ -169,9 +164,8 @@ curl -s -H "Accept: application/vnd.gravitino.v1+json" \
 curl -s -X POST -H "Accept: application/vnd.gravitino.v1+json" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <main-server-access-token>" \
-  -H "X-Gravitino-Internal-Origin: curl" \
   -d '{"tokenName":"prod","expiresInDays":180}' \
-  http://localhost:8090/api/internal/scim/tokens
+  http://localhost:8090/api/scim/tokens
 ```
 
 Example response:
@@ -197,9 +191,8 @@ An empty JSON body keeps the current `expiresAt` unchanged.
 curl -s -X POST -H "Accept: application/vnd.gravitino.v1+json" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <main-server-access-token>" \
-  -H "X-Gravitino-Internal-Origin: curl" \
   -d '{"expiresInDays":180}' \
-  http://localhost:8090/api/internal/scim/tokens/prod/rotate
+  http://localhost:8090/api/scim/tokens/prod/rotate
 ```
 
 ### Delete a SCIM token
@@ -207,8 +200,7 @@ curl -s -X POST -H "Accept: application/vnd.gravitino.v1+json" \
 ```shell
 curl -s -X DELETE -H "Accept: application/vnd.gravitino.v1+json" \
   -H "Authorization: Bearer <main-server-access-token>" \
-  -H "X-Gravitino-Internal-Origin: curl" \
-  http://localhost:8090/api/internal/scim/tokens/prod
+  http://localhost:8090/api/scim/tokens/prod
 ```
 
 ---

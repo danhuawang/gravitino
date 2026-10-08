@@ -22,6 +22,7 @@ import com.datastrato.gravitino.scim.model.CreatedScimToken;
 import com.datastrato.gravitino.scim.model.ScimTokenSummary;
 import java.io.IOException;
 import java.util.List;
+import java.util.stream.Stream;
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.Application;
@@ -36,13 +37,18 @@ import org.glassfish.jersey.test.JerseyTest;
 import org.glassfish.jersey.test.TestProperties;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
-class TestScimTokenOperations extends JerseyTest {
+/** Exercises the public and internal SCIM token REST resources against the shared admin handler. */
+class TestScimTokenAdminRestResources extends JerseyTest {
 
   private static final String ACCEPT = "application/vnd.gravitino.v1+json";
-  private static final String TOKENS = "/internal/scim/tokens";
   private static final ScimTokenManager TOKEN_MANAGER = mock(ScimTokenManager.class);
+
+  static Stream<String> tokenBasePaths() {
+    return Stream.of("/scim/tokens", "/internal/scim/tokens");
+  }
 
   @BeforeEach
   void resetMocks() {
@@ -62,20 +68,23 @@ class TestScimTokenOperations extends JerseyTest {
     when(request.getRemoteUser()).thenReturn(null);
 
     ResourceConfig resourceConfig = new ResourceConfig();
+    resourceConfig.register(PublicScimTokenOperations.class);
     resourceConfig.register(ScimTokenOperations.class);
     resourceConfig.register(
         new AbstractBinder() {
           @Override
           protected void configure() {
             bind(TOKEN_MANAGER).to(ScimTokenManager.class);
+            bind(new ScimTokenAdminHandler(TOKEN_MANAGER)).to(ScimTokenAdminHandler.class);
             bind(request).to(HttpServletRequest.class);
           }
         });
     return resourceConfig;
   }
 
-  @Test
-  void testList() {
+  @ParameterizedTest
+  @MethodSource("tokenBasePaths")
+  void testList(String tokensPath) {
     doReturn(
             List.of(
                 summary("prod", 1000L, "valid", 500L, 900L),
@@ -83,14 +92,15 @@ class TestScimTokenOperations extends JerseyTest {
         .when(TOKEN_MANAGER)
         .listScimTokens();
 
-    ScimTokenListResponse body = get(TOKENS).readEntity(ScimTokenListResponse.class);
+    ScimTokenListResponse body = get(tokensPath).readEntity(ScimTokenListResponse.class);
     Assertions.assertEquals(2, body.getTokens().size());
     Assertions.assertEquals("prod", body.getTokens().get(0).getTokenName());
     Assertions.assertEquals(900L, body.getTokens().get(0).getLastUsedAt());
   }
 
-  @Test
-  void testCreate() throws Exception {
+  @ParameterizedTest
+  @MethodSource("tokenBasePaths")
+  void testCreate(String tokensPath) throws Exception {
     CreateScimTokenRequest request = new CreateScimTokenRequest("prod", 30);
     doReturn(created("prod", "gravitino_scim_secret", 1000L))
         .when(TOKEN_MANAGER)
@@ -98,48 +108,52 @@ class TestScimTokenOperations extends JerseyTest {
 
     Assertions.assertEquals(
         "prod",
-        post(TOKENS, request).readEntity(ScimTokenResponse.class).getToken().getTokenName());
+        post(tokensPath, request).readEntity(ScimTokenResponse.class).getToken().getTokenName());
 
     doThrow(new AlreadyExistsException("exists"))
         .when(TOKEN_MANAGER)
         .createScimToken(eq("prod"), eq(30));
-    assertStatus(Response.Status.CONFLICT, post(TOKENS, request));
+    assertStatus(Response.Status.CONFLICT, post(tokensPath, request));
   }
 
-  @Test
-  void testRotate() throws Exception {
+  @ParameterizedTest
+  @MethodSource("tokenBasePaths")
+  void testRotate(String tokensPath) throws Exception {
     doReturn(created("prod", "gravitino_scim_new", 2000L))
         .when(TOKEN_MANAGER)
         .rotateScimToken(eq("prod"), eq(7));
 
     Assertions.assertEquals(
         "gravitino_scim_new",
-        post(TOKENS + "/prod/rotate", new RotateScimTokenRequest(7))
+        post(tokensPath + "/prod/rotate", new RotateScimTokenRequest(7))
             .readEntity(ScimTokenResponse.class)
             .getToken()
             .getTokenValue());
   }
 
-  @Test
-  void testDelete() {
+  @ParameterizedTest
+  @MethodSource("tokenBasePaths")
+  void testDelete(String tokensPath) {
     doReturn(true).when(TOKEN_MANAGER).deleteScimToken("prod");
     Assertions.assertTrue(
-        delete(TOKENS + "/prod").readEntity(ScimTokenDeleteResponse.class).getDeleted());
+        delete(tokensPath + "/prod").readEntity(ScimTokenDeleteResponse.class).getDeleted());
 
     doReturn(false).when(TOKEN_MANAGER).deleteScimToken("missing");
-    assertStatus(Response.Status.NOT_FOUND, delete(TOKENS + "/missing"));
+    assertStatus(Response.Status.NOT_FOUND, delete(tokensPath + "/missing"));
   }
 
-  @Test
-  void testCreateBadRequest() {
-    assertStatus(Response.Status.BAD_REQUEST, post(TOKENS, new CreateScimTokenRequest("", 30)));
+  @ParameterizedTest
+  @MethodSource("tokenBasePaths")
+  void testCreateBadRequest(String tokensPath) {
+    assertStatus(Response.Status.BAD_REQUEST, post(tokensPath, new CreateScimTokenRequest("", 30)));
   }
 
-  @Test
-  void testCreateTooLongTokenName() {
+  @ParameterizedTest
+  @MethodSource("tokenBasePaths")
+  void testCreateTooLongTokenName(String tokensPath) {
     String tokenName = "t".repeat(ScimFieldLimits.MAX_TOKEN_NAME_LENGTH + 1);
     assertStatus(
-        Response.Status.BAD_REQUEST, post(TOKENS, new CreateScimTokenRequest(tokenName, 30)));
+        Response.Status.BAD_REQUEST, post(tokensPath, new CreateScimTokenRequest(tokenName, 30)));
   }
 
   private static ScimTokenSummary summary(

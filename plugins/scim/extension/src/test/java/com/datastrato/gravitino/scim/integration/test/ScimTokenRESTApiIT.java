@@ -174,6 +174,42 @@ class ScimTokenRESTApiIT extends BaseIT {
         ErrorConstants.NOT_FOUND_CODE);
   }
 
+  @Test
+  void testPublicCrudWithoutInternalOriginHeader() throws Exception {
+    String tokenName = "public-prod";
+    HttpResponse<String> createdResponse =
+        postPublic("/scim/tokens", new CreateScimTokenRequest(tokenName, 30), OWNER);
+    Assertions.assertEquals(200, createdResponse.statusCode(), createdResponse.body());
+    ScimTokenResponse created =
+        JsonUtils.objectMapper().readValue(createdResponse.body(), ScimTokenResponse.class);
+    created.validate();
+    Assertions.assertEquals(tokenName, created.getToken().getTokenName());
+    Assertions.assertTrue(ScimTokenGenerator.hasValidPrefix(created.getToken().getTokenValue()));
+
+    ScimTokenListResponse list =
+        read(getPublic("/scim/tokens", OWNER), ScimTokenListResponse.class);
+    list.validate();
+    Assertions.assertTrue(
+        list.getTokens().stream().anyMatch(token -> tokenName.equals(token.getTokenName())));
+
+    HttpResponse<String> rotatedResponse =
+        postPublic(
+            "/scim/tokens/" + tokenName + "/rotate", new RotateScimTokenRequest(null), OWNER);
+    Assertions.assertEquals(200, rotatedResponse.statusCode(), rotatedResponse.body());
+    ScimTokenResponse rotated =
+        JsonUtils.objectMapper().readValue(rotatedResponse.body(), ScimTokenResponse.class);
+    rotated.validate();
+    Assertions.assertNotEquals(
+        created.getToken().getTokenValue(), rotated.getToken().getTokenValue());
+
+    HttpResponse<String> deletedResponse = deletePublic("/scim/tokens/" + tokenName, OWNER);
+    Assertions.assertEquals(200, deletedResponse.statusCode(), deletedResponse.body());
+    ScimTokenDeleteResponse deleted =
+        JsonUtils.objectMapper().readValue(deletedResponse.body(), ScimTokenDeleteResponse.class);
+    deleted.validate();
+    Assertions.assertTrue(deleted.getDeleted());
+  }
+
   private static ScimTokenResponse createToken(String tokenName, Integer expiresInDays)
       throws Exception {
     HttpResponse<String> response =
@@ -207,14 +243,31 @@ class ScimTokenRESTApiIT extends BaseIT {
 
   private static HttpResponse<String> get(String path, String username) throws Exception {
     return HTTP.send(
-        authorized(username).uri(URI.create(apiBase + path)).GET().build(),
+        authorized(username, true).uri(URI.create(apiBase + path)).GET().build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static HttpResponse<String> getPublic(String path, String username) throws Exception {
+    return HTTP.send(
+        authorized(username, false).uri(URI.create(apiBase + path)).GET().build(),
         HttpResponse.BodyHandlers.ofString());
   }
 
   private static HttpResponse<String> post(String path, Object body, String username)
       throws Exception {
     return HTTP.send(
-        authorized(username)
+        authorized(username, true)
+            .uri(URI.create(apiBase + path))
+            .header("Content-Type", "application/json")
+            .POST(jsonBody(body))
+            .build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static HttpResponse<String> postPublic(String path, Object body, String username)
+      throws Exception {
+    return HTTP.send(
+        authorized(username, false)
             .uri(URI.create(apiBase + path))
             .header("Content-Type", "application/json")
             .POST(jsonBody(body))
@@ -224,15 +277,25 @@ class ScimTokenRESTApiIT extends BaseIT {
 
   private static HttpResponse<String> delete(String path, String username) throws Exception {
     return HTTP.send(
-        authorized(username).uri(URI.create(apiBase + path)).DELETE().build(),
+        authorized(username, true).uri(URI.create(apiBase + path)).DELETE().build(),
         HttpResponse.BodyHandlers.ofString());
   }
 
-  private static HttpRequest.Builder authorized(String username) {
-    return HttpRequest.newBuilder()
-        .header("Accept", ACCEPT)
-        .header(InternalApiPaths.ORIGIN_HEADER, "scim-token-it")
-        .header("Authorization", simpleAuth(username));
+  private static HttpResponse<String> deletePublic(String path, String username) throws Exception {
+    return HTTP.send(
+        authorized(username, false).uri(URI.create(apiBase + path)).DELETE().build(),
+        HttpResponse.BodyHandlers.ofString());
+  }
+
+  private static HttpRequest.Builder authorized(String username, boolean internalOrigin) {
+    HttpRequest.Builder builder =
+        HttpRequest.newBuilder()
+            .header("Accept", ACCEPT)
+            .header("Authorization", simpleAuth(username));
+    if (internalOrigin) {
+      builder.header(InternalApiPaths.ORIGIN_HEADER, "scim-token-it");
+    }
+    return builder;
   }
 
   private static HttpRequest.BodyPublisher jsonBody(Object body) throws Exception {

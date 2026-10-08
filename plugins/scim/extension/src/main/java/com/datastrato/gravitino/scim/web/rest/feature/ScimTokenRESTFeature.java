@@ -9,6 +9,7 @@ import com.datastrato.gravitino.scim.ScimTokenManager;
 import com.datastrato.gravitino.scim.ScimUserGroupRelManager;
 import com.datastrato.gravitino.scim.basic.oauth.ScimOAuthPrincipalMapper;
 import com.datastrato.gravitino.scim.basic.oauth.ScimOAuthRequestPathFilter;
+import com.datastrato.gravitino.scim.web.rest.PublicScimTokenOperations;
 import com.datastrato.gravitino.scim.web.rest.ScimAuthorizationFilter;
 import com.datastrato.gravitino.scim.web.rest.ScimProvisioningOperations;
 import com.datastrato.gravitino.scim.web.rest.ScimTokenBinder;
@@ -53,6 +54,7 @@ public class ScimTokenRESTFeature implements Feature {
 
     context.register(ScimAuthorizationFilter.class);
     context.register(ScimTokenBinder.class);
+    context.register(PublicScimTokenOperations.class);
     context.register(ScimTokenOperations.class);
     context.register(ScimTokenOverviewOperations.class);
     context.register(ScimProvisioningOperations.class);
