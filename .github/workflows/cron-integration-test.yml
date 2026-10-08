@@ -262,166 +262,18 @@ jobs:
     name: cloud-test
     needs: select-suites
     if: needs.select-suites.outputs.cloud-test == 'true'
-    runs-on: gcp-arc-runners
-    env:
-      GRAVITINO_TEST_CLOUD_IT: true
+    uses: ./.github/workflows/cloud-integration-test-action.yml
+    with:
+      java-version: ${{ needs.select-suites.outputs.java-version }}
+    secrets:
       S3_STS_ACCESS_KEY_ID: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
       S3_STS_SECRET_ACCESS_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
-      S3_STS_ENDPOINT: ${{ vars.S3_ENDPOINT }}
-      S3_STS_BUCKET_NAME: ${{ vars.S3_BUCKET }}
-      S3_STS_REGION: ${{ vars.S3_REGION }}
-      S3_STS_ROLE_ARN: ${{ vars.S3_ROLE_ARN }}
-      S3_ACCESS_KEY_ID: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
-      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
-      S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
-      S3_BUCKET_NAME: ${{ vars.S3_BUCKET }}
-      PLATFORM: linux/amd64
-      S3_ACCESS_KEY_ID_FOR_CREDENTIAL: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
-      S3_BUCKET_NAME_FOR_CREDENTIAL: ${{ vars.S3_BUCKET }}
-      S3_ENDPOINT_FOR_CREDENTIAL: ${{ vars.S3_ENDPOINT }}
-      S3_REGION_FOR_CREDENTIAL: ${{ vars.S3_REGION }}
-      S3_ROLE_ARN_FOR_CREDENTIAL: ${{ vars.S3_ROLE_ARN }}
-      S3_ROLE_ARN: ${{ vars.S3_ROLE_ARN }}
-      S3_SECRET_ACCESS_KEY_FOR_CREDENTIAL: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
-      GCS_BUCKET_NAME_FOR_CREDENTIAL: ${{ vars.GCS_BUCKET }}
-      GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET }}
-      GRAVITINO_HOME: ${{ github.workspace }}/distribution/package
-      PYTHON_BUILD_PATH: ${{ github.workspace }}/clients/client-python/build
-      GRAVITINO_CI_HIVE_DOCKER_IMAGE: apache/gravitino-ci:hive-0.1.20
-      DOCKER_TEST: "true"
-      GRAVITINO_GCS_BUCKET: ${{ vars.GCS_BUCKET }}
-      GRAVITINO_S3_ACCESS_KEY: ${{ secrets.S3_STS_ACCESS_KEY_ID }}
-      GRAVITINO_S3_BUCKET: ${{ vars.S3_BUCKET }}
-      GRAVITINO_S3_REGION: ${{ vars.S3_REGION }}
-      GRAVITINO_S3_ROLE_ARN: ${{ vars.S3_ROLE_ARN }}
-      GRAVITINO_S3_SECRET_KEY: ${{ secrets.S3_STS_SECRET_ACCESS_KEY }}
-      LICENSE_PUBLIC_KEY_URL: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
-      GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
-      GRAVITINO_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          java-version: ${{ needs.select-suites.outputs.java-version }}
-          distribution: 'temurin'
-          cache: 'gradle'
-          cache-dependency-path: |
-            **/*.gradle*
-            **/gradle-wrapper.properties
-            gradle/libs.versions.toml
-            gradle.properties
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-
-      - name: Create GCS credentials
-        env:
-          GCS_SERVICE_ACCOUNT_JSON_CONTENT: ${{ secrets.GCS_SERVICE_ACCOUNT_JSON_CONTENT }}
-        run: |
-          credential_path="${RUNNER_TEMP}/gcs-service-account.json"
-          umask 077
-          printf '%s' "$GCS_SERVICE_ACCOUNT_JSON_CONTENT" > "$credential_path"
-          chmod 600 "$credential_path"
-          test -s "$credential_path"
-          python3 -m json.tool "$credential_path" > /dev/null
-          {
-            echo "GCS_SERVICE_ACCOUNT_JSON_PATH_FOR_CREDENTIAL=$credential_path"
-            echo "GCS_SERVICE_ACCOUNT_JSON_PATH=$credential_path"
-            echo "GOOGLE_APPLICATION_CREDENTIALS=$credential_path"
-          } >> "$GITHUB_ENV"
-
-      - name: Check required command
-        run: dev/ci/check_commands.sh
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Package
-        run: |
-          export MINIFORGE_BIN="$GITHUB_WORKSPACE/.gradle/python/Linux/Miniforge3/bin"
-          export PATH="$MINIFORGE_BIN:$PATH"
-
-          ./gradlew build -x checkAddedEnterpriseFilesHaveEnterpriseOnlyHeader -x test
-          mkdir -p /tmp/bundles
-          cp -r bundles/*-bundle/build/libs/*.jar /tmp/bundles
-
-          mkdir -p /tmp/irc-bundles
-          cp -r bundles/iceberg-*/build/libs/*.jar /tmp/irc-bundles
-          ./gradlew compileDistribution -x test -PjdkVersion=${{ needs.select-suites.outputs.java-version }}
-
-          # distribution already at repo root after flat build
-          cp -r /tmp/bundles/* ./distribution/package/catalogs/fileset/libs
-          cp -r /tmp/irc-bundles/* ./distribution/package/iceberg-rest-server/libs
-
-      - name: IRC IcebergRESTS3TokenIT Test
-        run: |
-          ./gradlew -PskipTests -PtestMode=deploy -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTS3TokenIT"
-
-      - name: IRC IcebergRESTGCSIT Test
-        run: |
-          ./gradlew -PskipTests -PtestMode=deploy -PskipDockerTests=false :iceberg:iceberg-rest-server:test --tests "org.apache.gravitino.iceberg.integration.test.IcebergRESTGCSIT"
-
-      - name: Fileset Cloud Integration Test python
-        id: integrationTest1
-        run: |
-          echo "==============start gravitino server================="
-          cd distribution/package/bin
-          pwd
-          ./gravitino.sh start
-          cd -
-          pwd
-          cd clients/client-python
-          python3 -m venv venv
-          source venv/bin/activate
-          pip install .
-          pip install -r requirements-dev.txt
-          echo "============ Start to run test_gvfs_with_s3 and test_gvfs_with_s3_credential ============"
-          python -m unittest tests.integration.test_gvfs_with_s3_credential -v
-          echo "============ Start to run test_gvfs_with_gcs and test_gvfs_with_gcs_credential ============"
-          python -m unittest tests.integration.test_gvfs_with_gcs_credential -v
-          echo "==============stop gravitino server================="
-          cd -
-          cd distribution/package/bin
-          ./gravitino.sh stop
-
-      - name: Update S3_BUCKET_NAME env var
-        run: |
-          echo "S3_BUCKET_NAME=amzn-s3-ci-sydney-bucket" >> "$GITHUB_ENV"
-
-      - name: Fileset Cloud Integration Test java
-        run: |
-          ./gradlew -PskipTests -PtestMode=deploy -PjdkVersion=${{ needs.select-suites.outputs.java-version }} -PjdbcBackend=postgresql -PskipDockerTests=false :clients:filesystem-hadoop3:test --tests "org.apache.gravitino.filesystem.hadoop.integration.test.**"
-
-      - name: Upload integrate tests reports
-        uses: actions/upload-artifact@v4
-        if: ${{ failure() }}
-        with:
-          name: integrate test reports-cloud-test-${{ needs.select-suites.outputs.java-version }}
-          path: |
-            build/reports
-            iceberg/iceberg-rest-server/build/*.log
-            integration-test/build/*.log
-            integration-test/build/*.tar
-            integration-test/build/trino-ci-container-log/hive/*.*
-            integration-test/build/trino-ci-container-log/hdfs/*.*
-            catalogs/**/*.log
-            catalogs/**/*.tar
-            distribution/**/*.log
-            distribution/**/*.out
-
-      - name: Remove GCS credentials
-        if: ${{ always() }}
-        run: rm -f -- "${RUNNER_TEMP}/gcs-service-account.json"
+      GCS_SERVICE_ACCOUNT_JSON_CONTENT: ${{ secrets.GCS_SERVICE_ACCOUNT_JSON_CONTENT }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      PRIVATE_REPO_ACCESS_TOKEN: ${{ secrets.PRIVATE_REPO_ACCESS_TOKEN }}
+      ENTERPRISE_TEST_PUBLIC_KEY_URI: ${{ secrets.ENTERPRISE_TEST_PUBLIC_KEY_URI }}
+      ENTERPRISE_TEST_LICENSE_KEY: ${{ secrets.ENTERPRISE_TEST_LICENSE_KEY }}
 
   summary:
     name: Integration test summary
