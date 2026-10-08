@@ -335,7 +335,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @return Directory users ordered by username.
    */
   public List<DirectoryUser> listDirectoryUsers() {
-    return DatastratoUserMetaService.getInstance().listDirectoryUsers();
+    return withDirectoryUserMutationCapabilities(
+        DatastratoUserMetaService.getInstance().listDirectoryUsers());
   }
 
   /**
@@ -409,7 +410,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
    *
    * <p>Requires every origin to be Local and every username to exist in {@code idp_user_meta}.
-   * Validation failure updates no rows.
+   * Validation failure updates no rows. Suspending a configured service admin or the current caller
+   * is rejected.
    *
    * @param names Usernames to update.
    * @param origins Origins aligned with {@code names}; every value must be Local.
@@ -418,6 +420,9 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    */
   public List<String> batchUpdateDirectoryUserEnabled(
       List<String> names, List<IdentitySource> origins, boolean enabled) {
+    if (!enabled) {
+      checkCannotSuspendOrDeleteDirectoryUsers(names, "suspend");
+    }
     return DatastratoUserMetaService.getInstance()
         .batchUpdateDirectoryUserEnabled(names, origins, enabled);
   }
@@ -437,7 +442,11 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    * @throws UserAlreadyExistsException If the username already exists in {@code idp_user_meta}.
    */
   public DirectoryUser addDirectoryUser(String username, String password, List<String> groupNames) {
-    return DatastratoUserMetaService.getInstance().addDirectoryUser(username, password, groupNames);
+    String currentUser = PrincipalUtils.getCurrentUserName();
+    return withDirectoryUserMutationCapabilities(
+        DatastratoUserMetaService.getInstance().addDirectoryUser(username, password, groupNames),
+        currentUser,
+        isServiceAdmin(currentUser));
   }
 
   /**
@@ -445,7 +454,7 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    *
    * <p>Only validates that every request origin is Local (no DB existence check). Each call
    * soft-deletes {@code idp_user_meta} and {@code idp_user_group_rel}. Metalake {@code user_meta}
-   * is left unchanged.
+   * is left unchanged. Deleting a configured service admin or the current caller is rejected.
    *
    * @param names Usernames to delete.
    * @param origins Origins aligned with {@code names}; every value must be Local.
@@ -471,6 +480,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
       }
       distinctNames.add(name);
     }
+
+    checkCannotSuspendOrDeleteDirectoryUsers(distinctNames, "delete");
 
     List<String> deleted = Lists.newArrayList();
     for (String name : distinctNames) {
@@ -524,7 +535,8 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
    */
   public List<DirectoryUser> listDirectoryUsersForGroup(
       String groupName, @javax.annotation.Nullable IdentitySource origin) {
-    return DatastratoUserMetaService.getInstance().listDirectoryUsersForGroup(groupName, origin);
+    return withDirectoryUserMutationCapabilities(
+        DatastratoUserMetaService.getInstance().listDirectoryUsersForGroup(groupName, origin));
   }
 
   /**
@@ -1618,6 +1630,56 @@ public class DatastratoAccessControlDispatcher implements AccessControlDispatche
             authorizationPlugin.onGrantedRolesToGroup(filteredRoles, group);
           }
         });
+  }
+
+  /**
+   * Rejects Directory suspend/delete for configured service admins and the current caller.
+   *
+   * @param names Usernames targeted by the request.
+   * @param action {@code suspend} or {@code delete} for the error message.
+   */
+  private void checkCannotSuspendOrDeleteDirectoryUsers(Iterable<String> names, String action) {
+    String currentUser = PrincipalUtils.getCurrentUserName();
+    if (!isServiceAdmin(currentUser)) {
+      throw new IllegalArgumentException(
+          String.format("Cannot %s Directory Users without service admin privilege", action));
+    }
+    for (String name : names) {
+      if (StringUtils.equals(name, currentUser)) {
+        throw new IllegalArgumentException(String.format("Cannot %s yourself (%s)", action, name));
+      }
+      if (isServiceAdmin(name)) {
+        throw new IllegalArgumentException(
+            String.format("Cannot %s service admin %s", action, name));
+      }
+    }
+  }
+
+  private List<DirectoryUser> withDirectoryUserMutationCapabilities(List<DirectoryUser> users) {
+    String currentUser = PrincipalUtils.getCurrentUserName();
+    boolean callerIsServiceAdmin = isServiceAdmin(currentUser);
+    List<DirectoryUser> result = Lists.newArrayListWithCapacity(users.size());
+    for (DirectoryUser user : users) {
+      result.add(withDirectoryUserMutationCapabilities(user, currentUser, callerIsServiceAdmin));
+    }
+    return result;
+  }
+
+  private DirectoryUser withDirectoryUserMutationCapabilities(
+      DirectoryUser user, String currentUser, boolean callerIsServiceAdmin) {
+    boolean canMutate =
+        callerIsServiceAdmin
+            && user.origin() == IdentitySource.LOCAL
+            && !isServiceAdmin(user.name())
+            && !StringUtils.equals(user.name(), currentUser);
+    return new DirectoryUser(
+        user.name(),
+        user.enabled(),
+        user.origin(),
+        user.groups(),
+        user.metalakes(),
+        canMutate,
+        canMutate);
   }
 
   private static class AuthorizationPluginCallbackWrapper {

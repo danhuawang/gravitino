@@ -18,6 +18,10 @@ import org.apache.commons.lang3.StringUtils;
  * <p>{@code origin} is {@link IdentitySource#LOCAL} ({@code idp_user_meta}), {@link
  * IdentitySource#PROVISIONED} ({@code scim_user_meta}), or omitted ({@code null}) for metalake-only
  * names — matching metalake security Users.
+ *
+ * <p>{@code canDelete} and {@code canSuspend} share one rule: the caller must be a configured
+ * service admin, and the row must be Local, not a configured service admin, and not the current
+ * caller. The UI uses these flags because clients do not receive the {@code serviceAdmins} list.
  */
 public class DirectoryUserDTO {
 
@@ -48,6 +52,16 @@ public class DirectoryUserDTO {
      * @return Metalake names containing this username.
      */
     List<String> metalakes();
+
+    /**
+     * @return Whether the caller may delete this Local Directory user.
+     */
+    boolean canDelete();
+
+    /**
+     * @return Whether the caller may suspend this Local Directory user.
+     */
+    boolean canSuspend();
   }
 
   @JsonProperty("name")
@@ -67,6 +81,12 @@ public class DirectoryUserDTO {
   @JsonProperty("metalakes")
   private List<String> metalakes = Collections.emptyList();
 
+  @JsonProperty("canDelete")
+  private boolean canDelete;
+
+  @JsonProperty("canSuspend")
+  private boolean canSuspend;
+
   /** Default constructor for Jackson deserialization. */
   private DirectoryUserDTO() {}
 
@@ -75,12 +95,16 @@ public class DirectoryUserDTO {
       boolean enabled,
       @Nullable IdentitySource origin,
       List<String> groups,
-      List<String> metalakes) {
+      List<String> metalakes,
+      boolean canDelete,
+      boolean canSuspend) {
     this.name = name;
     this.enabled = enabled;
     this.origin = origin;
     this.groups = groups == null ? Collections.emptyList() : groups;
     this.metalakes = metalakes == null ? Collections.emptyList() : metalakes;
+    this.canDelete = canDelete;
+    this.canSuspend = canSuspend;
   }
 
   /**
@@ -121,6 +145,20 @@ public class DirectoryUserDTO {
   }
 
   /**
+   * @return Whether the caller may delete this Local Directory user.
+   */
+  public boolean canDelete() {
+    return canDelete;
+  }
+
+  /**
+   * @return Whether the caller may suspend this Local Directory user.
+   */
+  public boolean canSuspend() {
+    return canSuspend;
+  }
+
+  /**
    * Builds a DTO from a directory user view.
    *
    * @param user Directory user view.
@@ -128,7 +166,14 @@ public class DirectoryUserDTO {
    */
   public static DirectoryUserDTO from(DirectoryUserView user) {
     Preconditions.checkArgument(user != null, "user cannot be null");
-    return from(user.name(), user.enabled(), user.origin(), user.groups(), user.metalakes());
+    return from(
+        user.name(),
+        user.enabled(),
+        user.origin(),
+        user.groups(),
+        user.metalakes(),
+        user.canDelete(),
+        user.canSuspend());
   }
 
   /**
@@ -151,8 +196,10 @@ public class DirectoryUserDTO {
       boolean enabled,
       @Nullable IdentitySource origin,
       @Nullable List<String> groups,
-      @Nullable List<String> metalakes) {
+      @Nullable List<String> metalakes,
+      boolean canDelete,
+      boolean canSuspend) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
-    return new DirectoryUserDTO(name, enabled, origin, groups, metalakes);
+    return new DirectoryUserDTO(name, enabled, origin, groups, metalakes, canDelete, canSuspend);
   }
 }

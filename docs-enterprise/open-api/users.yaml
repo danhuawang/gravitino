@@ -140,6 +140,9 @@ paths:
         `enabled` maps to Active / Suspended in the UI (from the identity store for Local /
         Provisioned / JIT). `groups` are identity-store group names for that row's origin.
         `metalakes` are metalake names where the username exists in `user_meta`.
+        `canDelete` and `canSuspend` are true only when the caller is a configured service admin
+        and the row is a Local user that is not a configured service admin and not the current
+        caller (clients do not receive the serviceAdmins list).
 
       responses:
         "200":
@@ -367,8 +370,9 @@ paths:
         `idp_user_group_rel`).
 
         Validates that every listed `origin` is `Local` (request field only; no existence check).
-        Then soft-deletes each user through the IdP manager. Metalake `user_meta` rows are left
-        unchanged.
+        Deleting a configured service admin (`gravitino.authorization.serviceAdmins`) or the
+        current caller is rejected with 400. Then soft-deletes each user through the IdP manager.
+        Metalake `user_meta` rows are left unchanged.
 
       requestBody:
         required: true
@@ -404,8 +408,10 @@ paths:
         Batch-update the `enabled` flag for Local Directory Users (Configure → Directory → Users).
 
         Validates first that every listed `origin` is `Local` and that every `name` exists in
-        `idp_user_meta`. Only then is a single UPDATE executed against `idp_user_meta`. Otherwise
-        the request fails and no user is updated.
+        `idp_user_meta`. Suspending a configured service admin (`gravitino.authorization.serviceAdmins`)
+        or the current caller is rejected with 400. Only then are rows updated in `idp_user_meta`
+        (including `audit_info.lastModifier` / `lastModifiedTime`). Otherwise the request fails and
+        no user is updated.
 
       requestBody:
         required: true
@@ -982,6 +988,8 @@ components:
         - enabled
         - groups
         - metalakes
+        - canDelete
+        - canSuspend
       properties:
         name:
           type: string
@@ -1007,6 +1015,16 @@ components:
           description: Metalake names containing this username
           items:
             type: string
+        canDelete:
+          type: boolean
+          description: >
+            Whether the caller may delete this user. True only when the caller is a configured
+            service admin and the row is a Local user that is not a configured service admin and
+            not the current caller.
+        canSuspend:
+          type: boolean
+          description: >
+            Whether the caller may suspend this user. Same rule as `canDelete`.
 
     DirectoryUserListResponse:
       type: object
@@ -1231,12 +1249,16 @@ components:
             metalakes:
               - Acme
               - Contoso
+            canDelete: false
+            canSuspend: false
           - name: lee.p
             enabled: false
             origin: Local
             groups: []
             metalakes:
               - Acme
+            canDelete: true
+            canSuspend: true
           - name: sam.o
             enabled: true
             origin: Local
@@ -1246,6 +1268,8 @@ components:
               - security
             metalakes:
               - Contoso
+            canDelete: true
+            canSuspend: true
 
     DirectoryUserDetailResponse:
       value:

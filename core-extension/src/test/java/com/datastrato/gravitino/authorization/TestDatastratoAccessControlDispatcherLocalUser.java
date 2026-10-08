@@ -16,6 +16,7 @@ import com.datastrato.gravitino.dto.authorization.IdentityType;
 import java.util.Collections;
 import java.util.List;
 import org.apache.gravitino.EntityStore;
+import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.authorization.AccessControlDispatcher;
 import org.apache.gravitino.authorization.Group;
 import org.apache.gravitino.authorization.User;
@@ -41,6 +42,8 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
     inner = mock(AccessControlDispatcher.class);
     idp = mock(IdpUserGroupManager.class);
     dispatcher = new DatastratoAccessControlDispatcher(inner, mock(EntityStore.class), idp);
+    // Directory mutate APIs require SERVICE_ADMIN; unit tests run as anonymous by default.
+    when(inner.isServiceAdmin(AuthConstants.ANONYMOUS_USER)).thenReturn(true);
   }
 
   @Test
@@ -166,6 +169,54 @@ public class TestDatastratoAccessControlDispatcherLocalUser {
             List.of("sam.o", "lee.p"), List.of(IdentitySource.LOCAL, IdentitySource.LOCAL)));
     verify(idp).removeUser("sam.o");
     verify(idp).removeUser("lee.p");
+  }
+
+  @Test
+  public void testDeleteDirectoryUsersRejectsServiceAdmin() {
+    when(inner.isServiceAdmin("admin")).thenReturn(true);
+
+    IllegalArgumentException ex =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> dispatcher.deleteDirectoryUsers(List.of("admin"), List.of(IdentitySource.LOCAL)));
+    Assertions.assertEquals("Cannot delete service admin admin", ex.getMessage());
+    verify(idp, never()).removeUser(any());
+  }
+
+  @Test
+  public void testDeleteDirectoryUsersRejectsSelf() {
+    IllegalArgumentException ex =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                dispatcher.deleteDirectoryUsers(
+                    List.of(AuthConstants.ANONYMOUS_USER), List.of(IdentitySource.LOCAL)));
+    Assertions.assertTrue(ex.getMessage().contains("Cannot delete yourself"));
+    verify(idp, never()).removeUser(any());
+  }
+
+  @Test
+  public void testBatchUpdateDirectoryUserEnabledRejectsServiceAdminOnSuspend() {
+    when(inner.isServiceAdmin("admin")).thenReturn(true);
+
+    IllegalArgumentException ex =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                dispatcher.batchUpdateDirectoryUserEnabled(
+                    List.of("admin"), List.of(IdentitySource.LOCAL), false));
+    Assertions.assertEquals("Cannot suspend service admin admin", ex.getMessage());
+  }
+
+  @Test
+  public void testBatchUpdateDirectoryUserEnabledRejectsSelfOnSuspend() {
+    IllegalArgumentException ex =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                dispatcher.batchUpdateDirectoryUserEnabled(
+                    List.of(AuthConstants.ANONYMOUS_USER), List.of(IdentitySource.LOCAL), false));
+    Assertions.assertTrue(ex.getMessage().contains("Cannot suspend yourself"));
   }
 
   @Test

@@ -99,6 +99,54 @@ public final class DatastratoPOConverters {
   }
 
   /**
+   * Rebuilds {@code audit_info} JSON with last-modifier fields for the current principal.
+   *
+   * <p>Preserves creator and createTime from the existing JSON when present.
+   *
+   * @param existingAuditInfoJson previously stored audit JSON, or blank
+   * @return updated audit JSON
+   */
+  public static String withLastModifiedAuditInfoJson(@Nullable String existingAuditInfoJson) {
+    return mergeLastModifiedAuditInfoJson(
+        existingAuditInfoJson, PrincipalUtils.getCurrentUserName(), Instant.now().toString());
+  }
+
+  /**
+   * Merges {@code lastModifier} / {@code lastModifiedTime} into existing {@code audit_info} JSON.
+   *
+   * <p>Also registered as the H2 SQL alias {@code MERGE_IDP_USER_LAST_MODIFIED_AUDIT} for one-shot
+   * Directory Local enabled updates (H2 has no {@code JSON_SET}).
+   *
+   * @param existingAuditInfoJson previously stored audit JSON, or blank
+   * @param lastModifier last modifier username
+   * @param lastModifiedTime ISO-8601 timestamp string (same encoding as Jackson {@link Instant})
+   * @return updated audit JSON
+   */
+  public static String mergeLastModifiedAuditInfoJson(
+      @Nullable String existingAuditInfoJson, String lastModifier, String lastModifiedTime) {
+    AuditInfo.Builder builder =
+        AuditInfo.builder()
+            .withLastModifier(lastModifier)
+            .withLastModifiedTime(Instant.parse(lastModifiedTime));
+    if (StringUtils.isNotBlank(existingAuditInfoJson)) {
+      try {
+        AuditInfo existing =
+            JsonUtils.anyFieldMapper().readValue(existingAuditInfoJson, AuditInfo.class);
+        if (existing != null) {
+          builder.withCreator(existing.creator()).withCreateTime(existing.createTime());
+        }
+      } catch (Exception ignored) {
+        // Keep last-modifier fields when the prior audit JSON is unparsable.
+      }
+    }
+    try {
+      return JsonUtils.anyFieldMapper().writeValueAsString(builder.build());
+    } catch (Exception e) {
+      throw new IllegalStateException("Failed to serialize Directory last-modified audit_info", e);
+    }
+  }
+
+  /**
    * Parses a JSON array column into distinct, sorted names.
    *
    * @param jsonArray serialized JSON array, or blank when empty

@@ -19,12 +19,21 @@ public class TestDirectoryUserDTO {
   public void testFromDirectoryUserView() {
     DirectoryUserDTO local =
         DirectoryUserDTO.from(
-            view("sam.o", true, IdentitySource.LOCAL, List.of("governance"), List.of("Contoso")));
+            view(
+                "sam.o",
+                true,
+                IdentitySource.LOCAL,
+                List.of("governance"),
+                List.of("Contoso"),
+                true,
+                true));
     assertEquals("sam.o", local.name());
     assertTrue(local.enabled());
     assertEquals(IdentitySource.LOCAL, local.origin());
     assertEquals(List.of("governance"), local.groups());
     assertEquals(List.of("Contoso"), local.metalakes());
+    assertTrue(local.canDelete());
+    assertTrue(local.canSuspend());
 
     DirectoryUserDTO provisioned =
         DirectoryUserDTO.from(
@@ -33,21 +42,27 @@ public class TestDirectoryUserDTO {
                 false,
                 IdentitySource.PROVISIONED,
                 List.of("finance"),
-                List.of("Acme", "Contoso")));
+                List.of("Acme", "Contoso"),
+                false,
+                false));
     assertEquals("dana.k", provisioned.name());
     assertFalse(provisioned.enabled());
     assertEquals(IdentitySource.PROVISIONED, provisioned.origin());
     assertEquals(List.of("finance"), provisioned.groups());
     assertEquals(List.of("Acme", "Contoso"), provisioned.metalakes());
+    assertFalse(provisioned.canDelete());
+    assertFalse(provisioned.canSuspend());
 
     DirectoryUserDTO metalakeOnly =
         DirectoryUserDTO.from(
-            view("jordan.m", true, null, List.of(), List.of("Contoso", "Northwind")));
+            view("jordan.m", true, null, List.of(), List.of("Contoso", "Northwind"), false, false));
     assertEquals("jordan.m", metalakeOnly.name());
     assertTrue(metalakeOnly.enabled());
     assertNull(metalakeOnly.origin());
     assertTrue(metalakeOnly.groups().isEmpty());
     assertEquals(List.of("Contoso", "Northwind"), metalakeOnly.metalakes());
+    assertFalse(metalakeOnly.canDelete());
+    assertFalse(metalakeOnly.canSuspend());
   }
 
   private static DirectoryUserDTO.DirectoryUserView view(
@@ -55,7 +70,9 @@ public class TestDirectoryUserDTO {
       boolean enabled,
       IdentitySource origin,
       List<String> groups,
-      List<String> metalakes) {
+      List<String> metalakes,
+      boolean canDelete,
+      boolean canSuspend) {
     return new DirectoryUserDTO.DirectoryUserView() {
       @Override
       public String name() {
@@ -80,6 +97,16 @@ public class TestDirectoryUserDTO {
       @Override
       public List<String> metalakes() {
         return metalakes;
+      }
+
+      @Override
+      public boolean canDelete() {
+        return canDelete;
+      }
+
+      @Override
+      public boolean canSuspend() {
+        return canSuspend;
       }
     };
   }

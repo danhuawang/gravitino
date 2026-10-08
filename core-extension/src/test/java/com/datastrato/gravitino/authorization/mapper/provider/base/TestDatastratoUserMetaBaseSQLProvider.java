@@ -171,12 +171,15 @@ public class TestDatastratoUserMetaBaseSQLProvider {
   }
 
   @Test
-  public void testBatchUpdateIdpUserEnabledByUserNames() {
+  public void testBatchUpdateIdpUserEnabledByUserNamesMergesAuditWithJsonSet() {
     String sql =
-        provider.batchUpdateIdpUserEnabledByUserNames(Lists.newArrayList("alice", "bob"), false);
+        provider.batchUpdateIdpUserEnabledByUserNames(
+            Lists.newArrayList("alice", "bob"), false, "admin", "2026-10-08T03:00:00Z");
 
     assertTrue(sql.contains("UPDATE idp_user_meta"));
     assertTrue(sql.contains("SET enabled = #{enabled}"));
+    assertTrue(sql.contains("JSON_SET(audit_info, '$.lastModifier', #{lastModifier}"));
+    assertTrue(sql.contains("JSON_OBJECT('lastModifier', #{lastModifier}"));
     assertTrue(sql.contains("user_name IN "));
     assertTrue(sql.contains("current_version"));
   }

@@ -387,23 +387,49 @@ public class DatastratoUserMetaBaseSQLProvider {
   }
 
   /**
-   * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
+   * Batch-updates {@code enabled} and merges last-modifier fields into {@code audit_info} for Local
+   * Directory Users in {@code idp_user_meta}.
+   *
+   * <p>Default dialect is MySQL ({@code JSON_SET} / {@code JSON_OBJECT}).
    *
    * @param userNames Distinct usernames already validated as Local IdP users.
    * @param enabled Target enabled value.
+   * @param lastModifier Current principal name.
+   * @param lastModifiedTime ISO-8601 timestamp string.
    * @return MyBatis script SQL.
    */
   public String batchUpdateIdpUserEnabledByUserNames(
-      @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled) {
+      @Param("userNames") List<String> userNames,
+      @Param("enabled") boolean enabled,
+      @Param("lastModifier") String lastModifier,
+      @Param("lastModifiedTime") String lastModifiedTime) {
     return "<script>"
         + "UPDATE "
         + DatastratoUserMetaMapper.IDP_USER_TABLE_NAME
         + " SET enabled = #{enabled},"
+        + " audit_info = "
+        + mergeIdpUserLastModifiedAuditInfoExpression()
+        + ","
         + " last_version = current_version,"
         + " current_version = current_version + 1"
         + " WHERE deleted_at = 0 AND user_name IN "
         + userNameInClause()
         + "</script>";
+  }
+
+  /**
+   * SQL expression that merges {@code lastModifier} / {@code lastModifiedTime} into {@code
+   * audit_info}.
+   *
+   * @return dialect-specific SQL expression
+   */
+  protected String mergeIdpUserLastModifiedAuditInfoExpression() {
+    return "CAST("
+        + "IF(audit_info IS NULL OR audit_info = '' OR JSON_VALID(audit_info) = 0, "
+        + "JSON_OBJECT('lastModifier', #{lastModifier}, 'lastModifiedTime', #{lastModifiedTime}), "
+        + "JSON_SET(audit_info, '$.lastModifier', #{lastModifier}, '$.lastModifiedTime',"
+        + " #{lastModifiedTime}))"
+        + " AS CHAR)";
   }
 
   /**

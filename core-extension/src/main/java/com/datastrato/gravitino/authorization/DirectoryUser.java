@@ -25,9 +25,11 @@ public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
   @Nullable private final IdentitySource origin;
   private final List<String> groups;
   private final List<String> metalakes;
+  private final boolean canDelete;
+  private final boolean canSuspend;
 
   /**
-   * Creates a directory user.
+   * Creates a directory user without mutation flags (defaults to {@code false}).
    *
    * @param name Username.
    * @param enabled Whether the user is enabled (Active / Suspended in the UI).
@@ -41,12 +43,36 @@ public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
       @Nullable IdentitySource origin,
       List<String> groups,
       List<String> metalakes) {
+    this(name, enabled, origin, groups, metalakes, false, false);
+  }
+
+  /**
+   * Creates a directory user including mutation capability flags for the Directory list UI.
+   *
+   * @param name Username.
+   * @param enabled Whether the user is enabled (Active / Suspended in the UI).
+   * @param origin Local / Provisioned, or {@code null} when metalake-only.
+   * @param groups Identity-store group names (empty for metalake-only).
+   * @param metalakes Metalake names where the username exists in {@code user_meta}.
+   * @param canDelete Whether the caller may delete this user.
+   * @param canSuspend Whether the caller may suspend this user.
+   */
+  public DirectoryUser(
+      String name,
+      boolean enabled,
+      @Nullable IdentitySource origin,
+      List<String> groups,
+      List<String> metalakes,
+      boolean canDelete,
+      boolean canSuspend) {
     Preconditions.checkArgument(StringUtils.isNotBlank(name), "name cannot be blank");
     this.name = name;
     this.enabled = enabled;
     this.origin = origin;
     this.groups = groups == null ? Collections.emptyList() : List.copyOf(groups);
     this.metalakes = metalakes == null ? Collections.emptyList() : List.copyOf(metalakes);
+    this.canDelete = canDelete;
+    this.canSuspend = canSuspend;
   }
 
   @Override
@@ -76,6 +102,16 @@ public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
   }
 
   @Override
+  public boolean canDelete() {
+    return canDelete;
+  }
+
+  @Override
+  public boolean canSuspend() {
+    return canSuspend;
+  }
+
+  @Override
   public boolean equals(Object o) {
     if (this == o) {
       return true;
@@ -85,6 +121,8 @@ public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
     }
     DirectoryUser that = (DirectoryUser) o;
     return enabled == that.enabled
+        && canDelete == that.canDelete
+        && canSuspend == that.canSuspend
         && Objects.equals(name, that.name)
         && origin == that.origin
         && Objects.equals(groups, that.groups)
@@ -93,6 +131,6 @@ public final class DirectoryUser implements DirectoryUserDTO.DirectoryUserView {
 
   @Override
   public int hashCode() {
-    return Objects.hash(name, enabled, origin, groups, metalakes);
+    return Objects.hash(name, enabled, origin, groups, metalakes, canDelete, canSuspend);
   }
 }

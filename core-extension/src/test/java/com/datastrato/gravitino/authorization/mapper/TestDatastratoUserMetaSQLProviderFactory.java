@@ -110,6 +110,35 @@ public class TestDatastratoUserMetaSQLProviderFactory {
     }
   }
 
+  @Test
+  public void testH2BatchUpdateIdpUserEnabledUsesAuditMergeAlias() {
+    DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaH2Provider provider =
+        new DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaH2Provider();
+
+    String sql =
+        provider.batchUpdateIdpUserEnabledByUserNames(
+            Lists.newArrayList("alice", "bob"), false, "admin", "2026-10-08T03:00:00Z");
+
+    assertTrue(
+        sql.contains(
+            "MERGE_IDP_USER_LAST_MODIFIED_AUDIT(audit_info, #{lastModifier}, #{lastModifiedTime})"));
+    assertFalse(sql.contains("JSON_SET"));
+  }
+
+  @Test
+  public void testPostgreSQLBatchUpdateIdpUserEnabledUsesJsonbSet() {
+    DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaPostgreSQLProvider provider =
+        new DatastratoUserMetaSQLProviderFactory.DatastratoUserMetaPostgreSQLProvider();
+
+    String sql =
+        provider.batchUpdateIdpUserEnabledByUserNames(
+            Lists.newArrayList("alice", "bob"), false, "admin", "2026-10-08T03:00:00Z");
+
+    assertTrue(sql.contains("jsonb_set"));
+    assertTrue(sql.contains("jsonb_build_object('lastModifier', #{lastModifier}"));
+    assertFalse(sql.contains("JSON_SET"));
+  }
+
   private static void assertUsesJsonArrayAgg(String sql) {
     assertTrue(sql.contains("JSON_ARRAYAGG(rot.role_name) as roleNames"));
     assertTrue(sql.contains("JSON_ARRAYAGG(rot.role_id) as roleIds"));

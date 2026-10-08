@@ -148,15 +148,21 @@ public class TestExtendedUserOperations extends JerseyTest {
                     true,
                     IdentitySource.PROVISIONED,
                     List.of("finance"),
-                    List.of("Acme", "Contoso")),
-                new DirectoryUser("jordan.m", true, null, List.of(), List.of("Contoso")),
-                new DirectoryUser("lee.p", false, IdentitySource.LOCAL, List.of(), List.of("Acme")),
+                    List.of("Acme", "Contoso"),
+                    false,
+                    false),
+                new DirectoryUser(
+                    "jordan.m", true, null, List.of(), List.of("Contoso"), false, false),
+                new DirectoryUser(
+                    "lee.p", false, IdentitySource.LOCAL, List.of(), List.of("Acme"), true, true),
                 new DirectoryUser(
                     "sam.o",
                     true,
                     IdentitySource.LOCAL,
                     List.of("governance", "ops"),
-                    List.of("Contoso"))));
+                    List.of("Contoso"),
+                    true,
+                    true)));
 
     Response response = get("/internal/security/directory/users");
     Assertions.assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
@@ -166,10 +172,16 @@ public class TestExtendedUserOperations extends JerseyTest {
     Assertions.assertEquals(4, users.length);
     Assertions.assertEquals("dana.k", users[0].name());
     Assertions.assertEquals(IdentitySource.PROVISIONED, users[0].origin());
+    Assertions.assertFalse(users[0].canDelete());
+    Assertions.assertFalse(users[0].canSuspend());
     Assertions.assertEquals("jordan.m", users[1].name());
     Assertions.assertNull(users[1].origin());
     Assertions.assertEquals(IdentitySource.LOCAL, users[2].origin());
+    Assertions.assertTrue(users[2].canDelete());
+    Assertions.assertTrue(users[2].canSuspend());
     Assertions.assertEquals(IdentitySource.LOCAL, users[3].origin());
+    Assertions.assertTrue(users[3].canDelete());
+    Assertions.assertTrue(users[3].canSuspend());
   }
 
   @Test

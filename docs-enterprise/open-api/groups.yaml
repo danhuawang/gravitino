@@ -776,8 +776,12 @@ components:
             origin: Provisioned
             groups: []
             metalakes: []
+            canDelete: false
+            canSuspend: false
           - name: ivanne
             enabled: false
             origin: Provisioned
             groups: []
             metalakes: []
+            canDelete: false
+            canSuspend: false

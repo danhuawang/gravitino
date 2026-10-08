@@ -102,8 +102,12 @@ public class DatastratoUserMetaSQLProviderFactory {
   }
 
   public static String batchUpdateIdpUserEnabledByUserNames(
-      @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled) {
-    return getProvider().batchUpdateIdpUserEnabledByUserNames(userNames, enabled);
+      @Param("userNames") List<String> userNames,
+      @Param("enabled") boolean enabled,
+      @Param("lastModifier") String lastModifier,
+      @Param("lastModifiedTime") String lastModifiedTime) {
+    return getProvider()
+        .batchUpdateIdpUserEnabledByUserNames(userNames, enabled, lastModifier, lastModifiedTime);
   }
 
   public static String selectIdpGroupIdsByNames(@Param("groupNames") List<String> groupNames) {
@@ -186,9 +190,33 @@ public class DatastratoUserMetaSQLProviderFactory {
     }
   }
 
-  static class DatastratoUserMetaH2Provider extends DatastratoUserMetaBaseSQLProvider {}
+  static class DatastratoUserMetaH2Provider extends DatastratoUserMetaBaseSQLProvider {
+    /**
+     * H2 2.x has no {@code JSON_SET}; use the Java merge alias registered by {@link
+     * DatastratoUserMetaMapper#createH2MergeIdpUserLastModifiedAuditAlias()}.
+     */
+    @Override
+    protected String mergeIdpUserLastModifiedAuditInfoExpression() {
+      return "MERGE_IDP_USER_LAST_MODIFIED_AUDIT(audit_info, #{lastModifier}, #{lastModifiedTime})";
+    }
+  }
 
   static class DatastratoUserMetaPostgreSQLProvider extends DatastratoUserMetaBaseSQLProvider {
+    /**
+     * Merge last-modifier fields with {@code jsonb_set}, preserving other audit keys when present.
+     */
+    @Override
+    protected String mergeIdpUserLastModifiedAuditInfoExpression() {
+      return "(CASE"
+          + " WHEN audit_info IS NULL OR btrim(audit_info) = '' THEN"
+          + " jsonb_build_object('lastModifier', #{lastModifier}, 'lastModifiedTime',"
+          + " #{lastModifiedTime})"
+          + " ELSE jsonb_set("
+          + " jsonb_set(audit_info::jsonb, '{lastModifier}', to_jsonb(#{lastModifier}::text), true),"
+          + " '{lastModifiedTime}', to_jsonb(#{lastModifiedTime}::text), true)"
+          + " END)::text";
+    }
+
     @Override
     protected String jsonArrayAgg(String expr) {
       return "JSON_AGG(" + expr + ")";

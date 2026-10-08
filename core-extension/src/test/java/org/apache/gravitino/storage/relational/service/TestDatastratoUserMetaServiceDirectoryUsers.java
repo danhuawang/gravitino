@@ -6,6 +6,7 @@ package org.apache.gravitino.storage.relational.service;
 import static org.apache.gravitino.Configs.ENTITY_RELATIONAL_JDBC_BACKEND_MAX_CONNECTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -460,6 +461,19 @@ public class TestDatastratoUserMetaServiceDirectoryUsers {
             .orElseThrow();
     assertFalse(lee.enabled());
     assertFalse(samLocal.enabled());
+
+    try (Connection connection = DriverManager.getConnection(JDBC_URL, "sa", "");
+        Statement statement = connection.createStatement();
+        ResultSet resultSet =
+            statement.executeQuery(
+                "SELECT audit_info FROM idp_user_meta WHERE user_name = 'lee.p'")) {
+      assertTrue(resultSet.next());
+      String auditInfo = resultSet.getString(1);
+      assertNotNull(auditInfo);
+      assertTrue(auditInfo.contains("\"creator\":\"test\""));
+      assertTrue(auditInfo.contains("lastModifier"));
+      assertTrue(auditInfo.contains("lastModifiedTime"));
+    }
   }
 
   @Test

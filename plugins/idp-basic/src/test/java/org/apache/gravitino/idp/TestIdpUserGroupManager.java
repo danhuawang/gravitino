@@ -38,6 +38,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.stream.Stream;
 import org.apache.gravitino.Config;
+import org.apache.gravitino.UserPrincipal;
 import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.auth.AuthenticatorType;
 import org.apache.gravitino.exceptions.AlreadyExistsException;
@@ -48,6 +49,7 @@ import org.apache.gravitino.idp.basic.IdpCredentialValidator;
 import org.apache.gravitino.idp.model.IdpGroup;
 import org.apache.gravitino.idp.model.IdpUser;
 import org.apache.gravitino.storage.RandomIdGenerator;
+import org.apache.gravitino.utils.PrincipalUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -163,8 +165,10 @@ public class TestIdpUserGroupManager {
     Assertions.assertFalse(disabled.enabled());
     Assertions.assertEquals(AuthConstants.ANONYMOUS_USER, disabled.auditInfo().lastModifier());
     Assertions.assertNotNull(disabled.auditInfo().lastModifiedTime());
-    Assertions.assertThrows(
-        UnauthorizedException.class, () -> manager.authenticate("testEnabled", VALID_PASSWORD));
+    UnauthorizedException suspended =
+        Assertions.assertThrows(
+            UnauthorizedException.class, () -> manager.authenticate("testEnabled", VALID_PASSWORD));
+    Assertions.assertEquals("Account is suspended", suspended.getMessage());
 
     Assertions.assertTrue(manager.updateEnabled("testEnabled", true));
     Assertions.assertTrue(manager.getUser("testEnabled").enabled());
@@ -186,6 +190,54 @@ public class TestIdpUserGroupManager {
     Assertions.assertEquals("Cannot disable service admin svcAdminDisable", exception.getMessage());
     Assertions.assertTrue(manager.getUser("svcAdminDisable").enabled());
     Assertions.assertTrue(manager.updateEnabled("svcAdminDisable", true));
+  }
+
+  @Test
+  public void testCannotSuspendYourself() throws Exception {
+    manager.addUser("selfSuspend", VALID_PASSWORD);
+
+    IllegalArgumentException exception =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                PrincipalUtils.doAs(
+                    new UserPrincipal("selfSuspend"),
+                    () -> {
+                      manager.updateEnabled("selfSuspend", false);
+                      return null;
+                    }));
+    Assertions.assertTrue(exception.getMessage().contains("Cannot suspend yourself"));
+    Assertions.assertTrue(manager.getUser("selfSuspend").enabled());
+  }
+
+  @Test
+  public void testCannotDeleteServiceAdmin() throws IOException {
+    loadServiceAdminConfig(BASIC_AUTHENTICATOR, "svcAdminDelete");
+    manager.addUser("svcAdminDelete", VALID_PASSWORD);
+
+    IllegalArgumentException exception =
+        Assertions.assertThrows(
+            IllegalArgumentException.class, () -> manager.removeUser("svcAdminDelete"));
+    Assertions.assertEquals("Cannot delete service admin svcAdminDelete", exception.getMessage());
+    Assertions.assertEquals("svcAdminDelete", manager.getUser("svcAdminDelete").name());
+  }
+
+  @Test
+  public void testCannotDeleteYourself() throws Exception {
+    manager.addUser("selfDelete", VALID_PASSWORD);
+
+    IllegalArgumentException exception =
+        Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                PrincipalUtils.doAs(
+                    new UserPrincipal("selfDelete"),
+                    () -> {
+                      manager.removeUser("selfDelete");
+                      return null;
+                    }));
+    Assertions.assertTrue(exception.getMessage().contains("Cannot delete yourself"));
+    Assertions.assertEquals("selfDelete", manager.getUser("selfDelete").name());
   }
 
   @Test

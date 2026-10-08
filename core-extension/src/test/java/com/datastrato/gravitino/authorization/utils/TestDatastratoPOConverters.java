@@ -71,4 +71,30 @@ public class TestDatastratoPOConverters {
     assertNotNull(DatastratoPOConverters.parseCreateTime(json));
     assertTrue(json.contains("creator"));
   }
+
+  /** Verifies last-modifier merge keeps create fields and sets lastModifier. */
+  @Test
+  public void testWithLastModifiedAuditInfoJson() {
+    String created = DatastratoPOConverters.newCreateAuditInfoJson();
+    Instant createTime = DatastratoPOConverters.parseCreateTime(created);
+    String updated = DatastratoPOConverters.withLastModifiedAuditInfoJson(created);
+
+    assertEquals(createTime, DatastratoPOConverters.parseCreateTime(updated));
+    assertTrue(updated.contains("lastModifier"));
+    assertTrue(updated.contains("lastModifiedTime"));
+  }
+
+  /** Verifies the H2 SQL alias entry point preserves create fields. */
+  @Test
+  public void testMergeLastModifiedAuditInfoJson() {
+    String created = "{\"creator\":\"admin\",\"createTime\":\"2025-09-14T00:00:00Z\"}";
+    String updated =
+        DatastratoPOConverters.mergeLastModifiedAuditInfoJson(
+            created, "operator", "2026-10-08T03:00:00Z");
+
+    assertEquals(
+        Instant.parse("2025-09-14T00:00:00Z"), DatastratoPOConverters.parseCreateTime(updated));
+    assertTrue(updated.contains("\"lastModifier\":\"operator\""));
+    assertTrue(updated.contains("\"lastModifiedTime\":\"2026-10-08T03:00:00Z\""));
+  }
 }

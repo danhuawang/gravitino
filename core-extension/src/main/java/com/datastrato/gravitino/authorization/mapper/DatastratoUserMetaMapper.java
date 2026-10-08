@@ -14,6 +14,7 @@ import org.apache.gravitino.storage.relational.po.UserPO;
 import org.apache.ibatis.annotations.InsertProvider;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
+import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.annotations.UpdateProvider;
 
 /** Enterprise MyBatis mapper for user_meta reads/updates and built-in IdP origin checks. */
@@ -141,17 +142,34 @@ public interface DatastratoUserMetaMapper {
   List<String> listIdpUserNames();
 
   /**
-   * Batch-updates {@code enabled} for Local Directory Users in {@code idp_user_meta}.
+   * Registers the H2 alias used to merge Directory Local {@code audit_info} during batch enabled
+   * updates. No-op on other backends; call only when the JDBC backend is H2.
+   *
+   * @return ignored update count
+   */
+  @Update(
+      "CREATE ALIAS IF NOT EXISTS MERGE_IDP_USER_LAST_MODIFIED_AUDIT FOR"
+          + " \"com.datastrato.gravitino.authorization.utils.DatastratoPOConverters.mergeLastModifiedAuditInfoJson\"")
+  int createH2MergeIdpUserLastModifiedAuditAlias();
+
+  /**
+   * Batch-updates {@code enabled} and merges {@code lastModifier} / {@code lastModifiedTime} into
+   * {@code audit_info} for Local Directory Users in {@code idp_user_meta}.
    *
    * @param userNames Distinct usernames.
    * @param enabled Target enabled value.
+   * @param lastModifier Current principal name.
+   * @param lastModifiedTime ISO-8601 timestamp string.
    * @return Number of rows updated.
    */
   @UpdateProvider(
       type = DatastratoUserMetaSQLProviderFactory.class,
       method = "batchUpdateIdpUserEnabledByUserNames")
   int batchUpdateIdpUserEnabledByUserNames(
-      @Param("userNames") List<String> userNames, @Param("enabled") boolean enabled);
+      @Param("userNames") List<String> userNames,
+      @Param("enabled") boolean enabled,
+      @Param("lastModifier") String lastModifier,
+      @Param("lastModifiedTime") String lastModifiedTime);
 
   /**
    * Returns active IdP group ids for the given names.

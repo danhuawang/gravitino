@@ -45,6 +45,7 @@ import org.apache.gravitino.idp.storage.service.IdpGroupMetaService;
 import org.apache.gravitino.idp.storage.service.IdpUserMetaService;
 import org.apache.gravitino.storage.IdGenerator;
 import org.apache.gravitino.storage.relational.utils.POConverters;
+import org.apache.gravitino.utils.PrincipalUtils;
 
 /**
  * Manager for built-in IdP users and groups. It mirrors {@link
@@ -153,8 +154,11 @@ public class IdpUserGroupManager implements Closeable {
    *
    * @param username The username.
    * @return True if the user was removed, false if it did not exist.
+   * @throws IllegalArgumentException if the username is a configured service admin or the current
+   *     caller
    */
   public boolean removeUser(String username) {
+    checkCanDeleteUser(username);
     return USER_SERVICE.deleteIdpUser(username);
   }
 
@@ -169,19 +173,20 @@ public class IdpUserGroupManager implements Closeable {
   }
 
   public IdpUser authenticate(String username, String password) {
+    String challenge = AuthConstants.AUTHORIZATION_BASIC_HEADER.trim();
+    IdpUser user;
     try {
-      IdpUser user = USER_SERVICE.getIdpUser(username);
-      if (!user.enabled()
-          || user.passwordHash() == null
-          || !passwordHasher.verify(password, user.passwordHash())) {
-        throw new UnauthorizedException(
-            "Invalid username or password", AuthConstants.AUTHORIZATION_BASIC_HEADER.trim());
-      }
-      return user;
+      user = USER_SERVICE.getIdpUser(username);
     } catch (Exception e) {
-      throw new UnauthorizedException(
-          "Invalid username or password", AuthConstants.AUTHORIZATION_BASIC_HEADER.trim());
+      throw new UnauthorizedException("Invalid username or password", challenge);
     }
+    if (user.passwordHash() == null || !passwordHasher.verify(password, user.passwordHash())) {
+      throw new UnauthorizedException("Invalid username or password", challenge);
+    }
+    if (!user.enabled()) {
+      throw new UnauthorizedException("Account is suspended", challenge);
+    }
+    return user;
   }
 
   /**
@@ -288,6 +293,17 @@ public class IdpUserGroupManager implements Closeable {
     }
     Preconditions.checkArgument(
         !isServiceAdmin(username), "Cannot disable service admin %s", username);
+    Preconditions.checkArgument(!isCurrentUser(username), "Cannot suspend yourself (%s)", username);
+  }
+
+  private void checkCanDeleteUser(String username) {
+    Preconditions.checkArgument(
+        !isServiceAdmin(username), "Cannot delete service admin %s", username);
+    Preconditions.checkArgument(!isCurrentUser(username), "Cannot delete yourself (%s)", username);
+  }
+
+  private boolean isCurrentUser(String username) {
+    return StringUtils.equals(username, PrincipalUtils.getCurrentUserName());
   }
 
   private boolean isServiceAdmin(String username) {

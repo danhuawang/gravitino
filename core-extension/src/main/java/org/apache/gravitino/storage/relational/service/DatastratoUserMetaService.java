@@ -18,6 +18,7 @@ import com.datastrato.gravitino.authorization.utils.DatastratoPOConverters;
 import com.datastrato.gravitino.dto.authorization.IdentitySource;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -38,9 +39,12 @@ import org.apache.gravitino.idp.basic.password.PasswordHasherFactory;
 import org.apache.gravitino.meta.UserEntity;
 import org.apache.gravitino.metrics.Monitored;
 import org.apache.gravitino.storage.RandomIdGenerator;
+import org.apache.gravitino.storage.relational.JDBCBackend.JDBCBackendType;
 import org.apache.gravitino.storage.relational.po.UserPO;
+import org.apache.gravitino.storage.relational.session.SqlSessionFactoryHelper;
 import org.apache.gravitino.storage.relational.utils.POConverters;
 import org.apache.gravitino.storage.relational.utils.SessionUtils;
+import org.apache.gravitino.utils.PrincipalUtils;
 
 /**
  * Enterprise service for batch user_meta mutations.
@@ -348,25 +352,29 @@ public class DatastratoUserMetaService {
     }
     List<String> userNames = new ArrayList<>(distinctNames);
     int expectedCount = userNames.size();
+    String lastModifier = PrincipalUtils.getCurrentUserName();
+    String lastModifiedTime = Instant.now().toString();
 
     return SessionUtils.doWithCommitAndFetchResult(
         DatastratoUserMetaMapper.class,
         mapper -> {
-          Set<String> foundNames = new HashSet<>(mapper.selectIdpUserNamesByNames(userNames));
-          List<String> missing =
-              userNames.stream()
-                  .filter(name -> !foundNames.contains(name))
-                  .collect(Collectors.toList());
-          if (!missing.isEmpty()) {
-            throw new IllegalArgumentException(
-                String.format(
-                    "Cannot batch update enabled for Directory Users: users do not exist in"
-                        + " idp_user_meta: %s",
-                    missing));
-          }
-
-          int updated = mapper.batchUpdateIdpUserEnabledByUserNames(userNames, enabled);
+          ensureH2AuditMergeAlias(mapper);
+          int updated =
+              mapper.batchUpdateIdpUserEnabledByUserNames(
+                  userNames, enabled, lastModifier, lastModifiedTime);
           if (updated != expectedCount) {
+            Set<String> foundNames = new HashSet<>(mapper.selectIdpUserNamesByNames(userNames));
+            List<String> missing =
+                userNames.stream()
+                    .filter(name -> !foundNames.contains(name))
+                    .collect(Collectors.toList());
+            if (!missing.isEmpty()) {
+              throw new IllegalArgumentException(
+                  String.format(
+                      "Cannot batch update enabled for Directory Users: users do not exist in"
+                          + " idp_user_meta: %s",
+                      missing));
+            }
             throw new IllegalArgumentException(
                 String.format(
                     "Cannot batch update enabled for Directory Users: concurrent change detected,"
@@ -375,6 +383,18 @@ public class DatastratoUserMetaService {
           }
           return userNames;
         });
+  }
+
+  private static void ensureH2AuditMergeAlias(DatastratoUserMetaMapper mapper) {
+    String databaseId =
+        SqlSessionFactoryHelper.getInstance()
+            .getSqlSessionFactory()
+            .getConfiguration()
+            .getDatabaseId();
+    if (JDBCBackendType.fromString(databaseId) != JDBCBackendType.H2) {
+      return;
+    }
+    mapper.createH2MergeIdpUserLastModifiedAuditAlias();
   }
 
   /**
