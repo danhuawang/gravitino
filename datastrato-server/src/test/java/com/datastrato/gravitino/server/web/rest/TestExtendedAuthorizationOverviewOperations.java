@@ -276,6 +276,70 @@ public class TestExtendedAuthorizationOverviewOperations extends JerseyTest {
   }
 
   @Test
+  public void testMetalakeAdministrativePrivilegesDoNotCountAsCatalogPrivileged() {
+    SecurableObject metalakeManageUsers =
+        SecurableObjects.ofMetalake(
+            "metalake1", Lists.newArrayList(Privileges.ManageUsers.allow()));
+    SecurableObject iceberg =
+        SecurableObjects.ofCatalog("iceberg_s3", Lists.newArrayList(Privileges.UseCatalog.allow()));
+    SecurableObject glue =
+        SecurableObjects.ofCatalog("glue_cat", Lists.newArrayList(Privileges.UseCatalog.allow()));
+    SecurableObject icebergSchema =
+        SecurableObjects.ofSchema(iceberg, "db", Collections.emptyList());
+    SecurableObject icebergTable =
+        SecurableObjects.ofTable(
+            icebergSchema, "irc", Lists.newArrayList(Privileges.ModifyTable.allow()));
+
+    when(accessControlDispatcher.listRolesWithSecurableObjects("metalake1"))
+        .thenReturn(
+            new Role[] {
+              buildRole("fish", Lists.newArrayList(metalakeManageUsers, iceberg, glue)),
+              buildRole("trino-irc", Lists.newArrayList(icebergTable))
+            });
+    User fish1 = mockUser("fish1", Lists.newArrayList("fish"));
+    User fish2 = mockUser("fish2", Lists.newArrayList("fish"));
+    User fish3 = mockUser("fish3", Lists.newArrayList("fish"));
+    User fish4 = mockUser("fish4", Lists.newArrayList("fish"));
+    User fish5 = mockUser("fish5", Lists.newArrayList("fish"));
+    User trino = mockUser("trino", Lists.newArrayList("trino-irc"));
+    when(accessControlDispatcher.listUsersWithGroups("metalake1"))
+        .thenReturn(
+            List.of(
+                new UserWithGroups(fish1, List.of(), null, true, null),
+                new UserWithGroups(fish2, List.of(), null, true, null),
+                new UserWithGroups(fish3, List.of(), null, true, null),
+                new UserWithGroups(fish4, List.of(), null, true, null),
+                new UserWithGroups(fish5, List.of(), null, true, null),
+                new UserWithGroups(trino, List.of(), null, true, null)));
+    when(accessControlDispatcher.listExtendedGroups("metalake1"))
+        .thenReturn(new ExtendedGroupDTO[0]);
+    Catalog icebergInfo = mockCatalog("iceberg_s3", "lakehouse-iceberg", Catalog.Type.RELATIONAL);
+    Catalog glueInfo = mockCatalog("glue_cat", "lakehouse-iceberg", Catalog.Type.RELATIONAL);
+    when(catalogDispatcher.listCatalogsInfo(Namespace.of("metalake1")))
+        .thenReturn(new Catalog[] {icebergInfo, glueInfo});
+
+    AuthorizationOverviewResponse overview =
+        target("/internal/security/metalakes/metalake1/authorization/overview")
+            .request(MediaType.APPLICATION_JSON_TYPE)
+            .accept("application/vnd.gravitino.v1+json")
+            .get()
+            .readEntity(AuthorizationOverviewResponse.class);
+
+    CatalogAuthorizationDTO[] catalogs = overview.getCatalogs();
+    Assertions.assertEquals(2, catalogs.length);
+    Assertions.assertEquals("iceberg_s3", catalogs[0].getCatalog());
+    Assertions.assertArrayEquals(new String[] {"fish", "trino-irc"}, catalogs[0].getRoles());
+    Assertions.assertEquals(6, catalogs[0].getMemberCount());
+    Assertions.assertEquals(1, catalogs[0].getPrivilegedPrincipalCount());
+    Assertions.assertEquals(1.0 / 6.0, catalogs[0].getPrivileged());
+    Assertions.assertEquals("glue_cat", catalogs[1].getCatalog());
+    Assertions.assertArrayEquals(new String[] {"fish"}, catalogs[1].getRoles());
+    Assertions.assertEquals(5, catalogs[1].getMemberCount());
+    Assertions.assertEquals(0, catalogs[1].getPrivilegedPrincipalCount());
+    Assertions.assertEquals(0.0, catalogs[1].getPrivileged());
+  }
+
+  @Test
   public void testAuthorizationOverviewUsesVisiblePrincipals() throws IllegalAccessException {
     User visibleUser = mockUser("visible", List.of());
     User hiddenUser = mockUser("hidden", List.of());

@@ -306,8 +306,9 @@ public class ExtendedAuthorizationOverviewOperations {
       return;
     }
 
-    boolean privileged = hasWriteOrAdminPrivilege(object);
-    if (privileged && object.type() == MetadataObject.Type.METALAKE) {
+    boolean privileged = hasWriteOrAdminPrivilege(object, object.type());
+    if (object.type() == MetadataObject.Type.METALAKE
+        && hasWriteOrAdminPrivilege(object, MetadataObject.Type.CATALOG)) {
       metalakePrivilegedRoles.add(roleAccumulator.name);
     }
     roleAccumulator.objectCount++;
@@ -340,9 +341,10 @@ public class ExtendedAuthorizationOverviewOperations {
         .build();
   }
 
-  private boolean hasWriteOrAdminPrivilege(SecurableObject object) {
+  private boolean hasWriteOrAdminPrivilege(SecurableObject object, MetadataObject.Type targetType) {
     return object.privileges().stream()
         .filter(privilege -> privilege.condition() == Privilege.Condition.ALLOW)
+        .filter(privilege -> privilege.canBindTo(targetType))
         .map(privilege -> AuthorizationUtils.replaceLegacyPrivilegeName(privilege.name()))
         .filter(WRITE_OR_ADMIN_PRIVILEGES::contains)
         .anyMatch(
